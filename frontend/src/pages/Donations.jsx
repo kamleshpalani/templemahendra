@@ -1,8 +1,27 @@
 import { useState } from "react";
 import { Helmet } from "react-helmet-async";
+import { QRCodeSVG } from "qrcode.react";
 import { useLang } from "../context/LangContext";
 import "./PageCommon.css";
 import "./Donations.css";
+
+const UPI_ID = "dhabbalavaartemple@upi";
+const UPI_URI = `upi://pay?pa=${UPI_ID}&pn=Dhabbalavaar%20Renuka%20Devi%20Lingamma%20Sinnammal%20Temple%20Trust&cu=INR`;
+
+function CopyButton({ text, t }) {
+  const [copied, setCopied] = useState(false);
+  const handleCopy = () => {
+    navigator.clipboard.writeText(text).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    });
+  };
+  return (
+    <button className="copy-btn" onClick={handleCopy} type="button">
+      {copied ? t("நகலெடுக்கப்பட்டது ✓", "Copied ✓") : t("நகலெடு", "Copy")}
+    </button>
+  );
+}
 
 export default function Donations() {
   const { t } = useLang();
@@ -80,9 +99,26 @@ export default function Donations() {
               </div>
             </div>
             <h3>UPI</h3>
-            <p>
-              {t("UPI ஐடி:", "UPI ID:")} <strong>dhabbalavaartemple@upi</strong>
-            </p>
+            <div className="upi-block">
+              <div className="upi-qr">
+                <QRCodeSVG
+                  value={UPI_URI}
+                  size={160}
+                  bgColor="#fff8f0"
+                  fgColor="#7B1818"
+                  level="H"
+                  includeMargin={true}
+                />
+                <p className="upi-qr__label">
+                  {t("ஸ்கேன் செய்து பணம் அனுப்புங்கள்", "Scan to pay via UPI")}
+                </p>
+              </div>
+              <div className="upi-id-box">
+                <span className="upi-id__label">{t("UPI ஐடி", "UPI ID")}</span>
+                <strong className="upi-id__value">{UPI_ID}</strong>
+                <CopyButton text={UPI_ID} t={t} />
+              </div>
+            </div>
           </div>
 
           <div className="donations-form card">

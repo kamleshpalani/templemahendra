@@ -71,7 +71,78 @@
   }
 }
 
-.donations-info h2 {
+/* UPI QR block */
+.upi-block {
+  display: flex;
+  align-items: flex-start;
+  gap: 1.25rem;
+  margin-top: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.upi-qr {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.4rem;
+  background: #fff8f0;
+  border: 1.5px solid rgba(153, 27, 27, 0.2);
+  border-radius: var(--radius);
+  padding: 0.75rem;
+  box-shadow: var(--shadow-sm);
+}
+
+.upi-qr svg {
+  display: block;
+  border-radius: 6px;
+}
+
+.upi-qr__label {
+  font-size: 0.72rem;
+  color: var(--text-2);
+  text-align: center;
+  margin: 0;
+}
+
+.upi-id-box {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  justify-content: center;
+  padding: 0.5rem 0;
+}
+
+.upi-id__label {
+  font-size: 0.78rem;
+  color: var(--text-2);
+  font-weight: 500;
+}
+
+.upi-id__value {
+  font-size: 1rem;
+  color: var(--maroon);
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  word-break: break-all;
+}
+
+.copy-btn {
+  align-self: flex-start;
+  background: linear-gradient(135deg, var(--maroon) 0%, #b91c1c 100%);
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  padding: 0.35rem 0.9rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity 0.2s, transform 0.15s;
+}
+.copy-btn:hover {
+  opacity: 0.88;
+  transform: translateY(-1px);
+}
+
   font-family: var(--font-tamil);
   font-size: 1.3rem;
   color: var(--maroon);
