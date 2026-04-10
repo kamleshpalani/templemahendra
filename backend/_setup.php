@@ -14,6 +14,7 @@ require_once __DIR__ . '/config/database.php';
 
 function getDB(): PDO {
     $cfg = require __DIR__ . '/config/database.php';
+    // Force TCP connection — prevent Unix socket fallback
     $dsn = sprintf(
         'mysql:host=%s;port=%s;dbname=%s;charset=%s',
         $cfg['host'], $cfg['port'], $cfg['name'], $cfg['charset']
@@ -21,6 +22,7 @@ function getDB(): PDO {
     return new PDO($dsn, $cfg['user'], $cfg['pass'], [
         PDO::ATTR_ERRMODE            => PDO::ERRMODE_EXCEPTION,
         PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
+        PDO::MYSQL_ATTR_SSL_VERIFY_SERVER_CERT => false,
     ]);
 }
 
