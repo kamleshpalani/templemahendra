@@ -333,7 +333,9 @@ export default function Home() {
       <section className="hero">
         <div className="hero__overlay" />
         <div className="container hero__content">
-          <p className="hero__tagline">ஓம் நமசிவாய</p>
+          <p className="hero__tagline">
+            ஓம் சக்தி ஓம் · ஸ்ரீ ரேணுகாம்பிகை சரணம்
+          </p>
           <h1 className="hero__title">
             {t(
               "தபலவார் ரேணுகா தேவி லிங்கம்மா சின்னம்மாள் கோவில்",
