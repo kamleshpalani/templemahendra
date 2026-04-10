@@ -3,6 +3,7 @@ import { Helmet } from "react-helmet-async";
 import { Link } from "react-router-dom";
 import api from "../services/api";
 import { useLang } from "../context/LangContext";
+import Reviews from "../components/Reviews/Reviews";
 import "./Home.css";
 
 /* ─── Darshan mode detection ─────────────────────────────── */
@@ -538,6 +539,9 @@ export default function Home() {
           </div>
         </div>
       </section>
+
+      {/* Google Reviews */}
+      <Reviews t={t} />
     </>
   );
 }

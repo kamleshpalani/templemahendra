@@ -1,0 +1,139 @@
+.section--reviews {
+  background: var(--bg-alt);
+}
+
+/* Summary bar */
+.reviews-summary {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  margin-bottom: 2rem;
+}
+
+.reviews-summary__score {
+  font-size: 2.8rem;
+  font-weight: 800;
+  color: var(--maroon);
+  line-height: 1;
+}
+
+.reviews-summary__count {
+  font-size: 0.9rem;
+  color: var(--text-3);
+}
+
+.reviews-summary__link {
+  margin-left: auto;
+  font-size: 0.82rem;
+  color: var(--saffron-dark);
+  font-weight: 600;
+  text-decoration: none;
+  border: 1px solid var(--saffron-dark);
+  padding: 0.3rem 0.75rem;
+  border-radius: 50px;
+  transition:
+    background var(--transition),
+    color var(--transition);
+}
+.reviews-summary__link:hover {
+  background: var(--saffron-dark);
+  color: #fff;
+}
+
+/* Stars */
+.review-stars {
+  display: inline-flex;
+  gap: 1px;
+}
+.star {
+  color: #d1d5db;
+  font-size: 1rem;
+}
+.star--filled {
+  color: #f59e0b;
+}
+
+/* Grid */
+.reviews-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 1.25rem;
+}
+
+/* Card */
+.review-card {
+  padding: 1.25rem 1.4rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.review-card__header {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.review-card__avatar {
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  object-fit: cover;
+  flex-shrink: 0;
+  border: 2px solid rgba(153, 27, 27, 0.12);
+}
+.review-card__avatar--fallback {
+  background: var(--maroon);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.1rem;
+  font-weight: 700;
+}
+
+.review-card__author {
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: var(--text-1);
+  margin: 0;
+}
+.review-card__time {
+  font-size: 0.75rem;
+  color: var(--text-3);
+  margin: 0;
+}
+
+.review-card__stars {
+  margin-left: auto;
+  flex-shrink: 0;
+}
+
+.review-card__text {
+  font-size: 0.88rem;
+  color: var(--text-2);
+  line-height: 1.65;
+  margin: 0;
+}
+
+.review-card__toggle {
+  background: none;
+  border: none;
+  color: var(--saffron-dark);
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 0;
+  text-decoration: underline;
+  align-self: flex-start;
+}
+
+@media (max-width: 600px) {
+  .reviews-summary__score {
+    font-size: 2.2rem;
+  }
+  .reviews-summary__link {
+    margin-left: 0;
+  }
+}
