@@ -26,14 +26,22 @@
   text-decoration: none;
 }
 
-.navbar__brand-main {
+.navbar__brand-line1 {
   font-family: var(--font-tamil);
-  font-size: 1.1rem;
+  font-size: 1rem;
   color: var(--maroon);
   font-weight: 700;
   transition: color var(--transition);
 }
-.navbar__brand:hover .navbar__brand-main {
+.navbar__brand-line2 {
+  font-family: var(--font-tamil);
+  font-size: 0.82rem;
+  color: var(--saffron-dark);
+  font-weight: 600;
+  transition: color var(--transition);
+}
+.navbar__brand:hover .navbar__brand-line1,
+.navbar__brand:hover .navbar__brand-line2 {
   color: var(--saffron-dark);
 }
 

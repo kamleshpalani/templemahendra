@@ -29,11 +29,11 @@ export default function Layout() {
       <header className="navbar">
         <div className="container navbar__inner">
           <NavLink to="/" className="navbar__brand">
-            <span className="navbar__brand-main">
-              {t(
-                "தபலவார் ரேணுகா தேவி லிங்கம்மா சின்னம்மாள் கோவில்",
-                "Dhabbalavaar Renuka Devi Lingamma Sinnammal Temple",
-              )}
+            <span className="navbar__brand-line1">
+              {t("தபலவார் ரேணுகா தேவி", "Dhabbalavaar Renuka Devi")}
+            </span>
+            <span className="navbar__brand-line2">
+              {t("லிங்கம்மா சின்னம்மாள் கோவில்", "Lingamma Sinnammal Temple")}
             </span>
           </NavLink>
 
