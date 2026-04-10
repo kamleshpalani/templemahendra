@@ -1,6 +1,6 @@
 {
   "framework": null,
-  "buildCommand": "npm --prefix frontend ci && npm --prefix frontend run build",
+  "buildCommand": "npm --prefix frontend install && npm --prefix frontend run build",
   "outputDirectory": "frontend/dist",
   "installCommand": "echo skip",
   "rewrites": [{ "source": "/(.*)", "destination": "/index.html" }],
