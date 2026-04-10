@@ -299,19 +299,21 @@ export default function Home() {
   useEffect(() => {
     api
       .get("/announcements?limit=3")
-      .then((r) => setAnnouncements(r.data))
+      .then((r) => setAnnouncements(Array.isArray(r.data) ? r.data : []))
       .catch(() => {});
     api
       .get("/events?limit=3&upcoming=1")
-      .then((r) => setEvents(r.data))
+      .then((r) => setEvents(Array.isArray(r.data) ? r.data : []))
       .catch(() => {});
     api
       .get("/sevas?limit=4&featured=1")
-      .then((r) => setSevas(r.data))
+      .then((r) => setSevas(Array.isArray(r.data) ? r.data : []))
       .catch(() => {});
     api
       .get("/pulse")
-      .then((r) => setPulseData(r.data))
+      .then((r) =>
+        setPulseData(r.data && typeof r.data === "object" ? r.data : null),
+      )
       .catch(() => {});
   }, []);
 

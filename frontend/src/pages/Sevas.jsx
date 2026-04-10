@@ -175,7 +175,7 @@ export default function Sevas() {
   useEffect(() => {
     api
       .get("/sevas")
-      .then((r) => setSevas(r.data))
+      .then((r) => setSevas(Array.isArray(r.data) ? r.data : []))
       .catch(() => {})
       .finally(() => setLoading(false));
   }, []);

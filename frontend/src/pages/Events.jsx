@@ -12,7 +12,7 @@ export default function Events() {
   useEffect(() => {
     api
       .get("/events")
-      .then((r) => setEvents(r.data))
+      .then((r) => setEvents(Array.isArray(r.data) ? r.data : []))
       .catch(() => {})
       .finally(() => setLoading(false));
   }, []);
