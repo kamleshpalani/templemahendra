@@ -37,6 +37,7 @@ export default defineConfig({
       workbox: {
         // Pre-cache all built assets
         globPatterns: ["**/*.{js,css,html,ico,png,svg,woff2}"],
+        cacheId: "temple-v2",
         runtimeCaching: [
           {
             // API calls — network-first with 5s timeout, then cache
