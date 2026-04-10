@@ -40,7 +40,10 @@ export default function Donations() {
       <Helmet>
         <title>
           {t("நன்கொடை", "Donations")} —{" "}
-          {t("ஸ்ரீ மகேந்திர ஆலயம்", "Sri Mahendra Temple")}
+          {t(
+            "தபலவார் ரேணுகா தேவி லிங்கம்மா சின்னம்மாள் கோவில்",
+            "Dhabbalavaar Renuka Devi Lingamma Sinnammal Temple",
+          )}
         </title>
       </Helmet>
 
@@ -63,7 +66,8 @@ export default function Donations() {
             <h3>{t("வங்கி பரிமாற்றம்", "Bank Transfer")}</h3>
             <div className="bank-details">
               <div>
-                <strong>Account Name:</strong> Sri Mahendra Temple Trust
+                <strong>Account Name:</strong> Dhabbalavaar Renuka Devi Lingamma
+                Sinnammal Temple Trust
               </div>
               <div>
                 <strong>Account No:</strong> XXXX XXXX XXXX
@@ -77,7 +81,7 @@ export default function Donations() {
             </div>
             <h3>UPI</h3>
             <p>
-              {t("UPI ஐடி:", "UPI ID:")} <strong>templemahendra@upi</strong>
+              {t("UPI ஐடி:", "UPI ID:")} <strong>dhabbalavaartemple@upi</strong>
             </p>
           </div>
 

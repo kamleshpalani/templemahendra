@@ -34,7 +34,10 @@ export default function Contact() {
       <Helmet>
         <title>
           {t("தொடர்பு", "Contact")} —{" "}
-          {t("ஸ்ரீ மகேந்திர ஆலயம்", "Sri Mahendra Temple")}
+          {t(
+            "தபலவார் ரேணுகா தேவி லிங்கம்மா சின்னம்மாள் கோவில்",
+            "Dhabbalavaar Renuka Devi Lingamma Sinnammal Temple",
+          )}
         </title>
       </Helmet>
 
@@ -49,27 +52,37 @@ export default function Contact() {
           <div className="contact-details">
             <h2>{t("எங்களை சந்திக்கவும்", "Visit Us")}</h2>
             <address>
-              <p>{t("ஸ்ரீ மகேந்திர ஆலயம்", "Sri Mahendra Temple")}</p>
-              <p>{t("கோயில் தெரு, நகரம்", "Temple Street, City")}</p>
-              <p>Tamil Nadu – 600 000</p>
+              <p>
+                {t(
+                  "தபலவார் ரேணுகா தேவி லிங்கம்மா சின்னம்மாள் கோவில்",
+                  "Dhabbalavaar Renuka Devi Lingamma Sinnammal Temple",
+                )}
+              </p>
+              <p>{t("நடு தெரு, புதுப்பட்டி", "Middle Street, Pudupatti")}</p>
+              <p>Tamil Nadu – 627 719</p>
             </address>
             <h3>{t("தொலைபேசி", "Phone")}</h3>
             <a href="tel:+910000000000">+91 00000 00000</a>
             <h3>{t("மின்னஞ்சல்", "Email")}</h3>
-            <a href="mailto:info@templemahendra.in">info@templemahendra.in</a>
+            <a href="mailto:info@dhabbalavaartemple.in">
+              info@dhabbalavaartemple.in
+            </a>
             <h3>{t("கோயில் நேரம்", "Temple Timings")}</h3>
             <p>{t("காலை 6:00 – மதியம் 12:30", "6:00 AM – 12:30 PM")}</p>
             <p>{t("மாலை 4:00 – இரவு 9:00", "4:00 PM – 9:00 PM")}</p>
 
-            {/* Google Maps embed placeholder */}
-            <div className="map-placeholder">
-              <p>📍 {t("வரைபடம் விரைவில் வரும்", "Map coming soon")}</p>
-              <small>
-                {t(
-                  "Google Maps இணைக்கவும்",
-                  "Replace with actual Google Maps embed",
-                )}
-              </small>
+            {/* Google Maps embed */}
+            <div className="map-embed">
+              <iframe
+                title="Temple Location"
+                src="https://maps.google.com/maps?q=Dhabbalavaar+Renuka+Devi+Lingamma+Sinnammal+Temple,+Middle+Street,+Pudupatti,+Tamil+Nadu+627719&output=embed"
+                width="100%"
+                height="260"
+                style={{ border: 0, borderRadius: "10px" }}
+                allowFullScreen
+                loading="lazy"
+                referrerPolicy="no-referrer-when-downgrade"
+              />
             </div>
           </div>
 

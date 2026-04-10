@@ -9,8 +9,8 @@ export default defineConfig({
       registerType: "autoUpdate",
       includeAssets: ["favicon.svg"],
       manifest: {
-        name: "ஸ்ரீ மகேந்திர ஆலயம் | Sri Mahendra Temple",
-        short_name: "Mahendra Temple",
+        name: "தபலவார் ரேணுகா தேவி லிங்கம்மா சின்னம்மாள் கோவில் | Dhabbalavaar Renuka Devi Lingamma Sinnammal Temple",
+        short_name: "Dhabbalavaar Temple",
         description:
           "Official temple app — poojas, sevas, events, donations & more.",
         theme_color: "#6b1e1e",

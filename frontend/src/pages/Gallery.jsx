@@ -26,7 +26,10 @@ export default function Gallery() {
       <Helmet>
         <title>
           {t("தொகுப்பு", "Gallery")} —{" "}
-          {t("ஸ்ரீ மகேந்திர ஆலயம்", "Sri Mahendra Temple")}
+          {t(
+            "தபலவார் ரேணுகா தேவி லிங்கம்மா சின்னம்மாள் கோவில்",
+            "Dhabbalavaar Renuka Devi Lingamma Sinnammal Temple",
+          )}
         </title>
       </Helmet>
 

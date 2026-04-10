@@ -3,7 +3,7 @@ import { Component } from "react";
 export default class ErrorBoundary extends Component {
   constructor(props) {
     super(props);
-    this.state = { error: null };
+    this.state = { error: null, info: null };
   }
 
   static getDerivedStateFromError(error) {
@@ -12,6 +12,7 @@ export default class ErrorBoundary extends Component {
 
   componentDidCatch(error, info) {
     console.error("App crashed:", error, info);
+    this.setState({ info });
   }
 
   render() {
@@ -33,22 +34,25 @@ export default class ErrorBoundary extends Component {
             The page could not load. Please hard-refresh (Ctrl+Shift+R) to clear
             cache.
           </p>
-          <details style={{ marginTop: "1rem" }}>
-            <summary style={{ cursor: "pointer", color: "#991b1b" }}>
-              Error details
-            </summary>
-            <pre
-              style={{
-                marginTop: "0.5rem",
-                fontSize: "0.75rem",
-                overflowX: "auto",
-                whiteSpace: "pre-wrap",
-                color: "#7a3535",
-              }}
-            >
-              {this.state.error.toString()}
-            </pre>
-          </details>
+          <pre
+            style={{
+              marginTop: "1rem",
+              padding: "1rem",
+              background: "#fee2e2",
+              borderRadius: "8px",
+              fontSize: "0.8rem",
+              overflowX: "auto",
+              whiteSpace: "pre-wrap",
+              color: "#7f1d1d",
+              wordBreak: "break-all",
+            }}
+          >
+            {this.state.error.toString()}
+            {"\n\n"}
+            {this.state.error.stack}
+            {"\n\nComponent Stack:"}
+            {this.state.info?.componentStack}
+          </pre>
           <button
             onClick={() => window.location.reload()}
             style={{

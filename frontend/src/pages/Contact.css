@@ -42,19 +42,11 @@
   color: var(--text-2);
 }
 
-.map-placeholder {
+.map-embed {
   margin-top: 1.5rem;
-  background: rgba(255, 255, 255, 0.03);
-  border: 1px dashed rgba(255, 255, 255, 0.14);
   border-radius: var(--radius);
-  height: 185px;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  color: var(--text-3);
-  font-size: 0.9rem;
-  gap: 0.35rem;
+  overflow: hidden;
+  border: 1px solid rgba(153, 27, 27, 0.15);
 }
 
 .contact-form {
@@ -107,17 +99,11 @@
   color: var(--text-mid);
 }
 
-.map-placeholder {
+.map-embed {
   margin-top: 1.5rem;
-  background: #f0f0f0;
   border-radius: var(--radius);
-  height: 160px;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  color: #888;
-  font-size: 0.9rem;
+  overflow: hidden;
+  border: 1px solid rgba(153, 27, 27, 0.15);
 }
 
 .contact-form {

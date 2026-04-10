@@ -5,7 +5,7 @@ import "./FloatingActions.css";
 // Replace these with the actual temple numbers before going live
 const PHONE_NUMBER = "+910000000000";
 const WHATSAPP_MSG = encodeURIComponent(
-  "வணக்கம் 🙏 ஸ்ரீ மகேந்திர ஆலயம் பற்றி மேலும் அறிய விரும்புகிறேன்.\nNamaskar 🙏 I would like to know more about Sri Mahendra Temple.",
+  "வணக்கம் 🙏 தபலவார் ரேணுகா தேவி லிங்கம்மா சின்னம்மாள் கோவில் பற்றி மேலும் அறிய விரும்புகிறேன்.\nNamaskar 🙏 I would like to know more about Dhabbalavaar Renuka Devi Lingamma Sinnammal Temple.",
 );
 
 export default function FloatingActions() {

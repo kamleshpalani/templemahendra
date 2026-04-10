@@ -123,8 +123,8 @@ function FirstVisitContent({ t }) {
             <h4>{t("கோயிலை பற்றி", "About the Temple")}</h4>
             <p>
               {t(
-                "ஸ்ரீ மகேந்திர ஆலயம் — பல தசாப்தங்களாக பக்தியின் மையமாக விளங்குகிறது.",
-                "Sri Mahendra Temple — a sacred centre of devotion for decades.",
+                "தபலவார் ரேணுகா தேவி லிங்கம்மா சின்னம்மாள் கோவில் — பக்தி, பாரம்பரியம் மற்றும் கம்மவார் நாயுடு சமூகத்தின் புனிதத் தலம்.",
+                "Dhabbalavaar Renuka Devi Lingamma Sinnammal Temple — a sacred centre of devotion and Kammavar Naidu community tradition.",
               )}
             </p>
           </div>
@@ -322,7 +322,10 @@ export default function Home() {
       <Helmet>
         <title>
           {t("முகப்பு", "Home")} —{" "}
-          {t("ஸ்ரீ மகேந்திர ஆலயம்", "Sri Mahendra Temple")}
+          {t(
+            "தபலவார் ரேணுகா தேவி லிங்கம்மா சின்னம்மாள் கோவில்",
+            "Dhabbalavaar Renuka Devi Lingamma Sinnammal Temple",
+          )}
         </title>
       </Helmet>
 
@@ -332,10 +335,16 @@ export default function Home() {
         <div className="container hero__content">
           <p className="hero__tagline">ஓம் நமசிவாய</p>
           <h1 className="hero__title">
-            {t("ஸ்ரீ மகேந்திர ஆலயம்", "Sri Mahendra Temple")}
+            {t(
+              "தபலவார் ரேணுகா தேவி லிங்கம்மா சின்னம்மாள் கோவில்",
+              "Dhabbalavaar Renuka Devi Lingamma Sinnammal Temple",
+            )}
           </h1>
           <h2 className="hero__subtitle">
-            {t("Sri Mahendra Temple", "ஸ்ரீ மகேந்திர ஆலயம்")}
+            {t(
+              "Dhabbalavaar Renuka Devi Lingamma Sinnammal Temple",
+              "தபலவார் ரேணுகா தேவி லிங்கம்மா சின்னம்மாள் கோவில்",
+            )}
           </h2>
           <p className="hero__desc">
             {t(

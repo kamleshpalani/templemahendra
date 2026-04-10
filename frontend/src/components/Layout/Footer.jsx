@@ -19,7 +19,10 @@ export default function Footer() {
       <div className="container footer__grid">
         <div className="footer__col">
           <h3 className="footer__title">
-            {t("ஸ்ரீ மகேந்திர ஆலயம்", "Sri Mahendra Temple")}
+            {t(
+              "தபலவார் ரேணுகா தேவி லிங்கம்மா சின்னம்மாள் கோவில்",
+              "Dhabbalavaar Renuka Devi Lingamma Sinnammal Temple",
+            )}
           </h3>
           <p className="footer__desc">
             {t(
@@ -47,8 +50,8 @@ export default function Footer() {
               <FaMapMarkerAlt />{" "}
               <span>
                 {t(
-                  "கோயில் தெரு, நகரம், தமிழ்நாடு",
-                  "Temple Street, City, Tamil Nadu",
+                  "நடு தெரு, புதுப்பட்டி, தமிழ்நாடு 627 719",
+                  "Middle Street, Pudupatti, Tamil Nadu 627 719",
                 )}
               </span>
             </li>
@@ -57,7 +60,9 @@ export default function Footer() {
             </li>
             <li>
               <FaEnvelope />{" "}
-              <a href="mailto:info@templemahendra.in">info@templemahendra.in</a>
+              <a href="mailto:info@dhabbalavaartemple.in">
+                info@dhabbalavaartemple.in
+              </a>
             </li>
           </ul>
         </div>
@@ -67,8 +72,8 @@ export default function Footer() {
         <p>
           © {new Date().getFullYear()}{" "}
           {t(
-            "ஸ்ரீ மகேந்திர ஆலயம். அனைத்து உரிமைகளும் பாதுகாக்கப்பட்டவை.",
-            "Sri Mahendra Temple. All rights reserved.",
+            "தபலவார் ரேணுகா தேவி லிங்கம்மா சின்னம்மாள் கோவில். அனைத்து உரிமைகளும் பாதுகாக்கப்பட்டவை.",
+            "Dhabbalavaar Renuka Devi Lingamma Sinnammal Temple. All rights reserved.",
           )}
         </p>
       </div>

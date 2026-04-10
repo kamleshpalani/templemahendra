@@ -10,7 +10,10 @@ export default function About() {
       <Helmet>
         <title>
           {t("பற்றி", "About")} —{" "}
-          {t("ஸ்ரீ மகேந்திர ஆலயம்", "Sri Mahendra Temple")}
+          {t(
+            "தபலவார் ரேணுகா தேவி லிங்கம்மா சின்னம்மாள் கோவில்",
+            "Dhabbalavaar Renuka Devi Lingamma Sinnammal Temple",
+          )}
         </title>
       </Helmet>
 
@@ -25,8 +28,8 @@ export default function About() {
           <h2>{t("வரலாறு", "History")}</h2>
           <p>
             {t(
-              "ஸ்ரீ மகேந்திர ஆலயம் பல தலைமுறைகளாக பக்தி, கலாச்சாரம் மற்றும் தமிழ் மரபின் மையமாகத் திகழ்கிறது. இங்குள்ள தலைமை தெய்வம் ஆகம மரபுப்படி தினமும் வழிபடப்படுகிறது.",
-              "Sri Mahendra Temple has served the community for generations as a centre of devotion, culture, and Tamil tradition. The main deity enshrined here is worshipped daily with the full Agama tradition.",
+              "தபலவார் ரேணுகா தேவி லிங்கம்மா சின்னம்மாள் கோவில் பல தலைமுறைகளாக பக்தி, கலாச்சாரம் மற்றும் தமிழ் மரபின் மையமாகத் திகழ்கிறது. இங்குள்ள தலைமை தெய்வம் ஆகம மரபுப்படி தினமும் வழிபடப்படுகிறது.",
+              "Dhabbalavaar Renuka Devi Lingamma Sinnammal Temple has served the community for generations as a centre of devotion, culture, and Tamil tradition. The presiding deities — Dhabbalavaar, Renuka Devi, Lingamma, and Sinnammal — are worshipped daily with the full Agama tradition.",
             )}
           </p>
 

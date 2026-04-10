@@ -30,7 +30,10 @@ export default function Layout() {
         <div className="container navbar__inner">
           <NavLink to="/" className="navbar__brand">
             <span className="navbar__brand-main">
-              {t("ஸ்ரீ மகேந்திர ஆலயம்", "Sri Mahendra Temple")}
+              {t(
+                "தபலவார் ரேணுகா தேவி லிங்கம்மா சின்னம்மாள் கோவில்",
+                "Dhabbalavaar Renuka Devi Lingamma Sinnammal Temple",
+              )}
             </span>
           </NavLink>
 
