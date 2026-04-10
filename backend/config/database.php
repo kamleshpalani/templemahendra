@@ -2,17 +2,19 @@
 // backend/config/database.php
 // Credentials loaded from environment variables — never hardcode in production.
 
-/**
- * Read an env var from getenv(), $_ENV, or $_SERVER.
- * Apache + Docker sometimes only exposes vars via $_SERVER.
- */
-function dbEnv(string $key, string $default = ''): string
-{
-    $val = getenv($key);
-    if ($val !== false && $val !== '') return $val;
-    if (!empty($_ENV[$key]))    return (string) $_ENV[$key];
-    if (!empty($_SERVER[$key])) return (string) $_SERVER[$key];
-    return $default;
+if (!function_exists('dbEnv')) {
+    /**
+     * Read an env var from getenv(), $_ENV, or $_SERVER.
+     * Apache + Docker sometimes only exposes vars via $_SERVER.
+     */
+    function dbEnv(string $key, string $default = ''): string
+    {
+        $val = getenv($key);
+        if ($val !== false && $val !== '') return $val;
+        if (!empty($_ENV[$key]))    return (string) $_ENV[$key];
+        if (!empty($_SERVER[$key])) return (string) $_SERVER[$key];
+        return $default;
+    }
 }
 
 return [
