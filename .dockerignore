@@ -3,7 +3,7 @@
 # Frontend (served by Vercel, not Render)
 frontend/
 
-# Deployment config files
+# Deployment config files (not needed inside image)
 deploy/
 Dockerfile
 .dockerignore

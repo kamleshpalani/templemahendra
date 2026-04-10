@@ -22,6 +22,8 @@ services:
       # ── Database (external MySQL — e.g. Aiven, PlanetScale, Railway) ─────────────
       - key: DB_HOST
         sync: false # ← fill in Render dashboard after creating MySQL service
+      - key: DB_PORT
+        sync: false # e.g. 15884 for Aiven
       - key: DB_NAME
         sync: false
       - key: DB_USER

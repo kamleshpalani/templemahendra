@@ -4,8 +4,10 @@ FROM php:8.2-apache
 # Enable Apache modules
 RUN a2enmod rewrite headers
 
-# Install PDO MySQL extension
-RUN docker-php-ext-install pdo pdo_mysql
+# Install PDO MySQL extension + curl (needed for healthcheck)
+RUN apt-get update && apt-get install -y --no-install-recommends curl \
+    && rm -rf /var/lib/apt/lists/* \
+    && docker-php-ext-install pdo pdo_mysql
 
 # Copy backend source into web root
 COPY backend/ /var/www/html/
@@ -53,9 +55,15 @@ RUN cat > /etc/apache2/sites-available/000-default.conf <<'APACHECONF'
 </VirtualHost>
 APACHECONF
 
-# Expose port 80
+# Expose port 80 (Render overrides via $PORT — handled by entrypoint)
 EXPOSE 80
 
-# Health check (Render uses it to confirm startup)
+# Entrypoint rewrites Apache port to match Render's $PORT before starting
+COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
+RUN chmod +x /usr/local/bin/docker-entrypoint.sh
+
+# Health check
 HEALTHCHECK --interval=30s --timeout=5s --retries=3 \
-    CMD curl -sf http://localhost/api/sevas || exit 1
+    CMD curl -sf http://localhost:${PORT:-80}/api/sevas || exit 1
+
+ENTRYPOINT ["docker-entrypoint.sh"]
