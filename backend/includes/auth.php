@@ -11,12 +11,25 @@ function requireAdminAuth(): void
     }
 }
 
+/**
+ * Read an env var from getenv(), $_ENV, or $_SERVER — whichever has it.
+ * Apache + Docker sometimes only exposes vars via $_SERVER.
+ */
+function readEnv(string $key, string $default = ''): string
+{
+    $val = getenv($key);
+    if ($val !== false && $val !== '') return $val;
+    if (!empty($_ENV[$key]))    return (string) $_ENV[$key];
+    if (!empty($_SERVER[$key])) return (string) $_SERVER[$key];
+    return $default;
+}
+
 function adminLogin(string $username, string $password): bool
 {
-    $storedHash = getenv('ADMIN_PASS_HASH') ?: '';
-    $storedUser = getenv('ADMIN_USERNAME')  ?: 'admin';
+    $storedHash = readEnv('ADMIN_PASS_HASH');
+    $storedUser = readEnv('ADMIN_USERNAME', 'admin');
 
-    if ($username !== $storedUser) {
+    if ($storedHash === '' || $username !== $storedUser) {
         return false;
     }
     return password_verify($password, $storedHash);
