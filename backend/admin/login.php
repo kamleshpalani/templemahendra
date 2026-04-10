@@ -1,12 +1,3 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>Admin Login — Dhabbalavaar Temple</title>
-<link rel="stylesheet" href="assets/admin.css" />
-</head>
-<body class="login-page">
 <?php
 require_once __DIR__ . '/../includes/auth.php';
 require_once __DIR__ . '/../includes/helpers.php';
@@ -34,6 +25,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 }
 ?>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Admin Login — Dhabbalavaar Temple</title>
+<link rel="stylesheet" href="assets/admin.css" />
+</head>
+<body class="login-page">
 <div class="login-box">
   <h1>தபலவார் ரேணுகா தேவி கோவில்</h1>
   <h2>Admin Login</h2>
