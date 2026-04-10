@@ -16,7 +16,7 @@ function adminHeader(string $pageTitle): void
 <body>
 <aside class="sidebar">
   <div class="sidebar__brand">
-    <strong>ஸ்ரீ மகேந்திர</strong>
+    <strong>தபலவார் கோவில்</strong>
     <small>Admin Panel</small>
   </div>
   <nav class="sidebar__nav">
