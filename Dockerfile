@@ -12,6 +12,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends curl \
 # Copy backend source into web root
 COPY backend/ /var/www/html/
 
+# Tell PHP to auto-prepend the runtime env bootstrap (generated at container start)
+RUN echo 'auto_prepend_file = /var/www/html/config/runtime_env.php' \
+    > /usr/local/etc/php/conf.d/runtime-env.ini
+
 # Apache virtualhost — routes /api/* through the PHP router
 # and serves /admin/* directly
 RUN cat > /etc/apache2/sites-available/000-default.conf <<'APACHECONF'

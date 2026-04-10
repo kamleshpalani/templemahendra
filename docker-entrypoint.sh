@@ -8,21 +8,22 @@ PORT="${PORT:-80}"
 sed -i "s/^Listen 80$/Listen ${PORT}/" /etc/apache2/ports.conf
 sed -i "s/<VirtualHost \*:80>/<VirtualHost *:${PORT}>/" /etc/apache2/sites-available/000-default.conf
 
-# Write Render environment variables into Apache's envvars so PHP can read them
-# via getenv(). Apache does not inherit the process environment by default.
-{
-  [ -n "$DB_HOST" ]          && echo "export DB_HOST='$DB_HOST'"
-  [ -n "$DB_NAME" ]          && echo "export DB_NAME='$DB_NAME'"
-  [ -n "$DB_USER" ]          && echo "export DB_USER='$DB_USER'"
-  [ -n "$DB_PASS" ]          && echo "export DB_PASS='$DB_PASS'"
-  [ -n "$DB_PORT" ]          && echo "export DB_PORT='$DB_PORT'"
-  [ -n "$CORS_ORIGIN" ]      && echo "export CORS_ORIGIN='$CORS_ORIGIN'"
-  [ -n "$ADMIN_USERNAME" ]   && echo "export ADMIN_USERNAME='$ADMIN_USERNAME'"
-  [ -n "$ADMIN_PASS_HASH" ]  && echo "export ADMIN_PASS_HASH='$ADMIN_PASS_HASH'"
-  [ -n "$GEMINI_API_KEY" ]   && echo "export GEMINI_API_KEY='$GEMINI_API_KEY'"
-  [ -n "$GOOGLE_PLACES_API_KEY" ] && echo "export GOOGLE_PLACES_API_KEY='$GOOGLE_PLACES_API_KEY'"
-  [ -n "$GOOGLE_PLACE_ID" ]  && echo "export GOOGLE_PLACE_ID='$GOOGLE_PLACE_ID'"
-} >> /etc/apache2/envvars
+# Write all Render env vars to a PHP bootstrap file using base64 encoding
+# so special characters in passwords are handled safely.
+# PHP auto_prepend_file loads this before every script (see runtime-env.ini).
+PHP_BOOT="/var/www/html/config/runtime_env.php"
+printf '<?php\n' > "$PHP_BOOT"
+for _var in DB_HOST DB_PORT DB_NAME DB_USER DB_PASS CORS_ORIGIN \
+            ADMIN_USERNAME ADMIN_PASS_HASH \
+            GEMINI_API_KEY GOOGLE_PLACES_API_KEY GOOGLE_PLACE_ID; do
+    _val=$(eval "printf '%s' \"\${$_var}\"" 2>/dev/null || true)
+    if [ -n "$_val" ]; then
+        _b64=$(printf '%s' "$_val" | base64 | tr -d '\n\r')
+        printf 'putenv("%s=".base64_decode("%s"));\n' "$_var" "$_b64" >> "$PHP_BOOT"
+        printf '$_ENV["%s"]=base64_decode("%s");\n'   "$_var" "$_b64" >> "$PHP_BOOT"
+        printf '$_SERVER["%s"]=base64_decode("%s");\n' "$_var" "$_b64" >> "$PHP_BOOT"
+    fi
+done
 
 echo "Starting Apache on port ${PORT}..."
 exec apache2-foreground
