@@ -12,6 +12,11 @@ frontend/.env.*.local
 backend/uploads/*
 !backend/uploads/.gitkeep
 
+# Temporary one-off scripts (never commit DB seeds with credentials)
+_seed_aiven.mjs
+_seed_*.mjs
+_setup_*.php
+
 # Node
 frontend/node_modules/
 frontend/dist/
