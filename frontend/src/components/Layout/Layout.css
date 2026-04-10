@@ -24,8 +24,10 @@
   align-items: center;
   gap: 0.6rem;
   line-height: 1.2;
-  flex-shrink: 0;
+  flex-shrink: 1;
+  min-width: 0;
   text-decoration: none;
+  overflow: hidden;
 }
 
 .navbar__logo {
@@ -44,6 +46,8 @@
   display: flex;
   flex-direction: column;
   line-height: 1.25;
+  min-width: 0;
+  overflow: hidden;
 }
 
 .navbar__brand-line1 {
@@ -52,6 +56,9 @@
   color: var(--maroon);
   font-weight: 700;
   transition: color var(--transition);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .navbar__brand-line2 {
   font-family: var(--font-tamil);
@@ -59,6 +66,9 @@
   color: var(--saffron-dark);
   font-weight: 600;
   transition: color var(--transition);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .navbar__brand:hover .navbar__brand-line1,
 .navbar__brand:hover .navbar__brand-line2 {
@@ -170,6 +180,18 @@
     display: flex;
     align-items: center;
     justify-content: center;
+  }
+
+  .navbar__logo {
+    width: 36px;
+    height: 36px;
+  }
+
+  .navbar__brand-line1 {
+    font-size: 0.85rem;
+  }
+  .navbar__brand-line2 {
+    font-size: 0.72rem;
   }
 
   .navbar__nav {
