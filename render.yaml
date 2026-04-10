@@ -1,0 +1,48 @@
+# render.yaml — Infrastructure-as-Code for Render.com
+# Docs: https://render.com/docs/render-yaml-spec
+#
+# Deploy steps:
+#   1. Push repo to GitHub
+#   2. Render dashboard → New → Blueprint → connect repo → this file is auto-detected
+#   3. Fill in the env var values marked  sync: false  in the dashboard
+
+services:
+  - type: web
+    name: temple-mahendra-api
+    runtime: docker # PHP has no native Render runtime → Docker
+    dockerfilePath: ./Dockerfile
+
+    # Render free tier: auto-sleeps after 15 min inactivity
+    # Upgrade to "Starter" ($7/mo) for always-on
+    plan: free
+
+    # Render assigns a random port; we tell Apache to bind $PORT
+    # (Apache listens on 80 by default; Render proxies 80 → $PORT automatically)
+    envVars:
+      # ── Database (external MySQL — e.g. Aiven, PlanetScale, Railway) ─────────────
+      - key: DB_HOST
+        sync: false # ← fill in Render dashboard after creating MySQL service
+      - key: DB_NAME
+        sync: false
+      - key: DB_USER
+        sync: false
+      - key: DB_PASS
+        sync: false
+
+      # ── CORS — set to your Vercel frontend URL ────────────────────────────────────
+      # Example: https://temple-mahendra.vercel.app
+      - key: CORS_ORIGIN
+        sync: false
+
+      # ── Admin panel credentials ───────────────────────────────────────────────────
+      - key: ADMIN_USERNAME
+        sync: false
+      - key: ADMIN_PASS_HASH # bcrypt hash — generate with: php -r "echo password_hash('pwd', PASSWORD_BCRYPT);"
+        sync: false
+
+      # ── Google Gemini AI (optional — chatbot) ─────────────────────────────────────
+      - key: GEMINI_API_KEY
+        sync: false
+
+    # HTTP health probe — Render uses this to confirm the container started
+    healthCheckPath: /api/sevas

@@ -1,0 +1,397 @@
+/* ══════════════════════════════════════════════════════════
+   TEMPLE MAHENDRA  ·  2030 Design System
+   Sacred Light — Red & Saffron Glassmorphism Combo
+   ══════════════════════════════════════════════════════════ */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+:root {
+  /* ── Brand Palette ──────────────────────────────────── */
+  --maroon: #991b1b;
+  --maroon-deep: #6b0f0f;
+  --maroon-dark: #3d0707;
+  --maroon-light: #dc2626;
+  --saffron: #f97316;
+  --saffron-dark: #ea6c0d;
+  --saffron-light: #fb923c;
+  --gold: #d97706;
+  --gold-light: #fbbf24;
+  --gold-bright: #fde68a;
+
+  /* ── Backgrounds — WARM IVORY LIGHT ────────────────── */
+  --bg-root: #fffbf5;
+  --bg-deep: #fff8f0;
+  --bg-alt: #fff3e8;
+  --cream: #fff8f0; /* compat */
+
+  /* ── Glass System — frosted white ──────────────────── */
+  --glass: rgba(255, 255, 255, 0.72);
+  --glass-md: rgba(255, 255, 255, 0.88);
+  --glass-hi: rgba(255, 255, 255, 0.96);
+  --glass-border: rgba(153, 27, 27, 0.1);
+  --glass-gold: rgba(217, 119, 6, 0.1);
+
+  /* ── Text — DARK on light ───────────────────────────── */
+  --text-1: #1c0505;
+  --text-2: #3d1111;
+  --text-3: #7a3535;
+  --text-dark: #1c0505; /* compat */
+  --text-mid: #3d1111; /* compat */
+  --text-light: #7a3535; /* compat */
+
+  /* ── Shadows — soft warm ────────────────────────────── */
+  --shadow: 0 4px 24px rgba(153, 27, 27, 0.08);
+  --shadow-sm: 0 2px 16px rgba(153, 27, 27, 0.06);
+  --shadow-md: 0 8px 40px rgba(153, 27, 27, 0.12);
+  --shadow-lg: 0 20px 60px rgba(153, 27, 27, 0.16);
+  --glow-gold: 0 0 32px rgba(217, 119, 6, 0.22);
+  --glow-saffron: 0 0 32px rgba(249, 115, 22, 0.22);
+  --glow-maroon: 0 0 40px rgba(153, 27, 27, 0.22);
+
+  /* ── Borders ────────────────────────────────────────── */
+  --border: rgba(153, 27, 27, 0.12); /* compat */
+
+  /* ── Radii ──────────────────────────────────────────── */
+  --radius: 14px;
+  --radius-sm: 8px;
+  --radius-lg: 24px;
+
+  /* ── Fonts ──────────────────────────────────────────── */
+  --font-tamil: "Noto Serif Tamil", Georgia, serif;
+  --font-body: "Noto Sans Tamil", system-ui, sans-serif;
+
+  /* ── Motion ─────────────────────────────────────────── */
+  --ease: cubic-bezier(0.4, 0, 0.2, 1);
+  --transition: 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  --transition-slow: 0.45s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* ── Base ────────────────────────────────────────────────── */
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  font-family: var(--font-body);
+  background: var(--bg-root);
+  color: var(--text-1);
+  line-height: 1.65;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Ambient warm glow — subtle saffron/maroon wisps */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -2;
+  background:
+    radial-gradient(
+      ellipse 70% 50% at 5% 0%,
+      rgba(249, 115, 22, 0.07) 0%,
+      transparent 55%
+    ),
+    radial-gradient(
+      ellipse 60% 45% at 95% 5%,
+      rgba(217, 119, 6, 0.08) 0%,
+      transparent 50%
+    ),
+    radial-gradient(
+      ellipse 55% 40% at 50% 100%,
+      rgba(153, 27, 27, 0.05) 0%,
+      transparent 55%
+    );
+  pointer-events: none;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+img {
+  max-width: 100%;
+  height: auto;
+  display: block;
+}
+
+/* ── Layout ──────────────────────────────────────────────── */
+.container {
+  width: 100%;
+  max-width: 1140px;
+  margin: 0 auto;
+  padding: 0 1.25rem;
+}
+
+.section {
+  padding: 4.5rem 0;
+}
+
+/* ── Typography ──────────────────────────────────────────── */
+.section-title {
+  font-family: var(--font-tamil);
+  font-size: clamp(1.7rem, 3.5vw, 2.2rem);
+  color: var(--maroon);
+  text-align: center;
+  margin-bottom: 0.4rem;
+  letter-spacing: 0.01em;
+}
+
+.section-subtitle {
+  text-align: center;
+  color: var(--text-3);
+  margin-bottom: 2.5rem;
+  font-size: 0.95rem;
+}
+
+.divider {
+  width: 70px;
+  height: 3px;
+  background: linear-gradient(
+    90deg,
+    var(--saffron),
+    var(--gold-light),
+    var(--saffron)
+  );
+  background-size: 200% 100%;
+  animation: shimmer-bar 3s ease infinite;
+  margin: 0.6rem auto 2.2rem;
+  border-radius: 2px;
+}
+
+@keyframes shimmer-bar {
+  0% {
+    background-position: 100% 0;
+  }
+  100% {
+    background-position: -100% 0;
+  }
+}
+
+/* ── Buttons ─────────────────────────────────────────────── */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.72rem 1.9rem;
+  border-radius: 50px;
+  font-weight: 700;
+  font-size: 0.9rem;
+  font-family: var(--font-body);
+  cursor: pointer;
+  border: none;
+  letter-spacing: 0.04em;
+  transition:
+    transform var(--transition),
+    box-shadow var(--transition),
+    background var(--transition);
+  position: relative;
+  overflow: hidden;
+}
+
+/* shimmer sweep on hover */
+.btn::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: rgba(255, 255, 255, 0.12);
+  transform: translateX(-100%);
+  transition: transform 0.38s var(--ease);
+}
+.btn:hover::before {
+  transform: translateX(100%);
+}
+
+.btn-primary {
+  background: linear-gradient(
+    135deg,
+    var(--maroon) 0%,
+    var(--maroon-deep) 100%
+  );
+  color: #fff;
+  box-shadow: 0 4px 24px rgba(153, 27, 27, 0.35);
+}
+.btn-primary:hover {
+  transform: translateY(-2px) scale(1.02);
+  box-shadow: 0 8px 32px rgba(153, 27, 27, 0.5);
+}
+
+.btn-outline {
+  background: rgba(255, 255, 255, 0.8);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border: 1.5px solid var(--maroon);
+  color: var(--maroon);
+}
+.btn-outline:hover {
+  background: rgba(153, 27, 27, 0.07);
+  border-color: var(--saffron);
+  color: var(--saffron-dark);
+  transform: translateY(-2px);
+  box-shadow: var(--glow-saffron);
+}
+
+/* ── Glass Card — frosted white ─────────────────────────── */
+.card {
+  background: rgba(255, 255, 255, 0.85);
+  backdrop-filter: blur(20px) saturate(140%);
+  -webkit-backdrop-filter: blur(20px) saturate(140%);
+  border: 1px solid rgba(153, 27, 27, 0.1);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-sm);
+  overflow: hidden;
+  transition:
+    transform var(--transition),
+    box-shadow var(--transition),
+    border-color var(--transition);
+}
+
+.card:hover {
+  transform: translateY(-6px) scale(1.01);
+  border-color: rgba(249, 115, 22, 0.3);
+  box-shadow: var(--shadow-md), var(--glow-saffron);
+}
+
+/* ── Grid helpers ────────────────────────────────────────── */
+.grid-2 {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 1.5rem;
+}
+.grid-3 {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 1.5rem;
+}
+.grid-4 {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 1.25rem;
+}
+
+@media (max-width: 900px) {
+  .grid-4 {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  .grid-3 {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+@media (max-width: 600px) {
+  .grid-4,
+  .grid-3,
+  .grid-2 {
+    grid-template-columns: 1fr;
+  }
+  .section-title {
+    font-size: 1.5rem;
+  }
+  .section {
+    padding: 3rem 0;
+  }
+}
+
+/* ── Global form elements ────────────────────────────────── */
+label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  font-size: 0.86rem;
+  color: var(--text-3);
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  margin-bottom: 1.1rem;
+}
+
+input,
+select,
+textarea {
+  background: rgba(255, 255, 255, 0.92);
+  border: 1.5px solid rgba(153, 27, 27, 0.15);
+  border-radius: 10px;
+  padding: 0.75rem 1rem;
+  color: var(--text-1);
+  font-family: var(--font-body);
+  font-size: 0.9rem;
+  outline: none;
+  transition:
+    border-color var(--transition),
+    background var(--transition),
+    box-shadow var(--transition);
+}
+input:focus,
+select:focus,
+textarea:focus {
+  border-color: var(--saffron);
+  background: #fff;
+  box-shadow: 0 0 0 3px rgba(249, 115, 22, 0.12);
+}
+input::placeholder,
+textarea::placeholder {
+  color: rgba(100, 40, 40, 0.4);
+}
+select option {
+  background: #fff;
+  color: var(--text-1);
+}
+
+/* ── Feedback ────────────────────────────────────────────── */
+.form-success {
+  background: rgba(16, 185, 129, 0.08);
+  border: 1px solid rgba(16, 185, 129, 0.3);
+  border-radius: var(--radius-sm);
+  padding: 0.8rem 1rem;
+  color: #065f46;
+  font-size: 0.9rem;
+  margin-bottom: 1rem;
+}
+.form-error {
+  background: rgba(239, 68, 68, 0.08);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  border-radius: var(--radius-sm);
+  padding: 0.8rem 1rem;
+  color: var(--maroon);
+  font-size: 0.9rem;
+  margin-bottom: 1rem;
+}
+
+/* ── Section alt ─────────────────────────────────────────── */
+.section--alt {
+  background: var(--bg-alt);
+  position: relative;
+}
+.section--alt::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(
+      ellipse 60% 80% at 0% 50%,
+      rgba(249, 115, 22, 0.05) 0%,
+      transparent 60%
+    ),
+    radial-gradient(
+      ellipse 50% 70% at 100% 50%,
+      rgba(217, 119, 6, 0.05) 0%,
+      transparent 60%
+    );
+  pointer-events: none;
+}
+
+.section-cta {
+  text-align: center;
+  margin-top: 2.5rem;
+}
+
+.loading-text {
+  text-align: center;
+  color: var(--text-3);
+  padding: 3rem 0;
+  font-size: 1rem;
+}

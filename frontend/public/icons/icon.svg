@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <!-- Background -->
+  <rect width="512" height="512" rx="80" fill="#6b1e1e"/>
+  <!-- Decorative border -->
+  <rect x="20" y="20" width="472" height="472" rx="60" fill="none" stroke="#c9963e" stroke-width="6"/>
+  <!-- Temple Gopuram silhouette -->
+  <g fill="#c9963e">
+    <!-- Main tower tiers -->
+    <rect x="196" y="340" width="120" height="120" rx="4"/>
+    <rect x="206" y="300" width="100" height="50" rx="4"/>
+    <rect x="216" y="268" width="80" height="40" rx="4"/>
+    <rect x="226" y="242" width="60" height="32" rx="4"/>
+    <rect x="234" y="220" width="44" height="28" rx="4"/>
+    <rect x="240" y="202" width="32" height="22" rx="4"/>
+    <!-- Kalasha (top vessel) -->
+    <ellipse cx="256" cy="195" rx="14" ry="10"/>
+    <rect x="252" y="178" width="8" height="18" rx="2"/>
+    <ellipse cx="256" cy="176" rx="10" ry="7"/>
+  </g>
+  <!-- Tamil OM symbol area -->
+  <text x="256" y="420" text-anchor="middle" font-size="48" font-family="serif" fill="#f5d87c">🕉</text>
+  <!-- Temple name (abbreviated) -->
+  <text x="256" y="490" text-anchor="middle" font-size="22" font-family="sans-serif" fill="#f5d87c" font-weight="bold">Sri Mahendra</text>
+</svg>

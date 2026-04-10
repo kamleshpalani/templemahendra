@@ -1,0 +1,91 @@
+/* Floating Action Buttons - WhatsApp & Phone (bottom-left) */
+
+.fab-group {
+  position: fixed;
+  left: 20px;
+  bottom: 24px;
+  z-index: 900;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.fab {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  height: 54px;
+  padding: 0 18px 0 15px;
+  border-radius: 27px;
+  text-decoration: none;
+  font-size: 1.2rem;
+  font-weight: 700;
+  font-family: var(--font-body);
+  color: #fff;
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.35);
+  transition: transform var(--transition), box-shadow var(--transition);
+  overflow: hidden;
+  white-space: nowrap;
+  position: relative;
+}
+
+/* shimmer sweep */
+.fab::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: rgba(255, 255, 255, 0.12);
+  transform: translateX(-100%);
+  transition: transform 0.38s var(--ease);
+}
+.fab:hover::before {
+  transform: translateX(100%);
+}
+
+.fab:hover {
+  transform: translateY(-3px) scale(1.04);
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.4);
+}
+
+.fab--whatsapp {
+  background: linear-gradient(135deg, #25d366 0%, #1da851 100%);
+  box-shadow: 0 4px 20px rgba(37, 211, 102, 0.35);
+}
+.fab--whatsapp:hover {
+  box-shadow: 0 8px 28px rgba(37, 211, 102, 0.5);
+}
+
+.fab--phone {
+  background: linear-gradient(135deg, #0ea5e9 0%, #0369a1 100%);
+  box-shadow: 0 4px 20px rgba(14, 165, 233, 0.35);
+}
+.fab--phone:hover {
+  box-shadow: 0 8px 28px rgba(14, 165, 233, 0.5);
+}
+
+.fab__label {
+  font-size: 0.82rem;
+  letter-spacing: 0.03em;
+}
+
+/* Mobile: icon-only circles above BottomNav */
+@media (max-width: 768px) {
+  .fab-group {
+    bottom: 74px;
+    left: 12px;
+    gap: 9px;
+  }
+  .fab {
+    height: 46px;
+    width: 46px;
+    padding: 0;
+    border-radius: 50%;
+    justify-content: center;
+  }
+  .fab__label {
+    display: none;
+  }
+}

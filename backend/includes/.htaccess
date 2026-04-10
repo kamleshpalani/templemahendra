@@ -1,0 +1,8 @@
+# Deny direct access to API includes/config from HTTP
+
+# Place this file in backend/config/ and backend/includes/
+
+<Files "\*">
+Order Allow,Deny
+Deny from all
+</Files>

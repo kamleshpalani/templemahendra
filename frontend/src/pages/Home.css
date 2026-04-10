@@ -1,0 +1,709 @@
+/* ── Hero ──────────────────────────────────────────────── */
+.hero {
+  position: relative;
+  min-height: 600px;
+  display: flex;
+  align-items: center;
+  background: url("/images/temple-hero.jpg") center/cover no-repeat;
+  background-color: var(--maroon-dark);
+  overflow: hidden;
+}
+
+/* Warm saffron-maroon overlay */
+.hero__overlay {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    180deg,
+    rgba(61, 7, 7, 0.5) 0%,
+    rgba(107, 15, 15, 0.72) 50%,
+    rgba(61, 7, 7, 0.88) 100%
+  );
+  z-index: 1;
+}
+
+/* Saffron orb — top-right */
+.hero::before {
+  content: "";
+  position: absolute;
+  width: 640px;
+  height: 640px;
+  border-radius: 50%;
+  background: radial-gradient(
+    circle,
+    rgba(249, 115, 22, 0.22) 0%,
+    transparent 65%
+  );
+  top: -240px;
+  right: -120px;
+  z-index: 2;
+  animation: hero-orb-a 9s ease-in-out infinite;
+  pointer-events: none;
+}
+
+/* Gold orb — bottom-left */
+.hero::after {
+  content: "";
+  position: absolute;
+  width: 420px;
+  height: 420px;
+  border-radius: 50%;
+  background: radial-gradient(
+    circle,
+    rgba(217, 119, 6, 0.2) 0%,
+    transparent 65%
+  );
+  bottom: -120px;
+  left: -60px;
+  z-index: 2;
+  animation: hero-orb-b 11s ease-in-out infinite 2.5s;
+  pointer-events: none;
+}
+
+@keyframes hero-orb-a {
+  0%,
+  100% {
+    transform: translate(0, 0) scale(1);
+  }
+  33% {
+    transform: translate(24px, -36px) scale(1.06);
+  }
+  66% {
+    transform: translate(-18px, 18px) scale(0.96);
+  }
+}
+@keyframes hero-orb-b {
+  0%,
+  100% {
+    transform: translate(0, 0) scale(1);
+  }
+  40% {
+    transform: translate(-20px, -28px) scale(1.08);
+  }
+  70% {
+    transform: translate(16px, 20px) scale(0.95);
+  }
+}
+
+.hero__content {
+  position: relative;
+  z-index: 3;
+  text-align: center;
+  color: #fff;
+  padding: 4.5rem 1.25rem;
+}
+
+.hero__tagline {
+  font-family: var(--font-tamil);
+  font-size: 0.88rem;
+  color: var(--saffron);
+  letter-spacing: 0.35em;
+  margin-bottom: 1.1rem;
+  text-transform: uppercase;
+  opacity: 0.9;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.7rem;
+}
+.hero__tagline::before,
+.hero__tagline::after {
+  content: "";
+  display: inline-block;
+  width: 32px;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--saffron));
+}
+.hero__tagline::after {
+  background: linear-gradient(90deg, var(--saffron), transparent);
+}
+
+.hero__title {
+  font-family: var(--font-tamil);
+  font-size: clamp(2.4rem, 6.5vw, 4.2rem);
+  font-weight: 700;
+  margin-bottom: 0.4rem;
+  background: linear-gradient(
+    135deg,
+    #ffffff 20%,
+    var(--gold-bright) 60%,
+    var(--saffron) 100%
+  );
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  letter-spacing: -0.01em;
+  line-height: 1.12;
+}
+
+.hero__subtitle {
+  font-size: clamp(1rem, 2.5vw, 1.4rem);
+  font-weight: 400;
+  color: rgba(255, 255, 255, 0.7);
+  margin-bottom: 0.65rem;
+}
+
+.hero__desc {
+  font-size: 1rem;
+  color: rgba(255, 255, 255, 0.5);
+  margin-bottom: 2.75rem;
+  max-width: 420px;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.hero__actions {
+  display: flex;
+  justify-content: center;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+/* ── Announcement Ticker ─────────────────────────────── */
+.ticker-bar {
+  background: linear-gradient(90deg, var(--maroon) 0%, var(--maroon-deep) 100%);
+  border-bottom: 2px solid var(--gold);
+  padding: 0.6rem 1.25rem;
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  overflow: hidden;
+}
+
+.ticker-label {
+  font-weight: 700;
+  font-size: 0.78rem;
+  white-space: nowrap;
+  color: var(--gold-light);
+  letter-spacing: 0.06em;
+  flex-shrink: 0;
+  text-transform: uppercase;
+}
+
+.ticker-scroll {
+  display: flex;
+  gap: 4rem;
+  animation: ticker 24s linear infinite;
+  white-space: nowrap;
+}
+.ticker-item {
+  font-size: 0.875rem;
+  color: rgba(255, 255, 255, 0.9);
+}
+@keyframes ticker {
+  0% {
+    transform: translateX(0);
+  }
+  100% {
+    transform: translateX(-50%);
+  }
+}
+
+/* ── Seva cards ────────────────────────────────────────── */
+.seva-card__body {
+  padding: 1.6rem 1.5rem;
+  text-align: center;
+}
+.seva-card__body h3 {
+  font-family: var(--font-tamil);
+  font-size: 1rem;
+  color: var(--maroon);
+  margin-bottom: 0.45rem;
+}
+.seva-card__body p {
+  font-size: 0.82rem;
+  color: var(--text-3);
+}
+.seva-card__price {
+  margin-top: 0.9rem;
+  font-size: 1.4rem;
+  font-weight: 700;
+  background: linear-gradient(135deg, var(--maroon) 0%, var(--saffron) 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* ── Event cards ────────────────────────────────────────── */
+.event-card__date {
+  background: linear-gradient(
+    135deg,
+    var(--maroon) 0%,
+    var(--maroon-deep) 100%
+  );
+  color: var(--gold-light);
+  font-size: 0.76rem;
+  font-weight: 700;
+  padding: 0.42rem 0.9rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+.event-card__body {
+  padding: 1.15rem 1.3rem;
+}
+.event-card__body h3 {
+  font-family: var(--font-tamil);
+  font-size: 1rem;
+  color: var(--text-1);
+  line-height: 1.5;
+}
+.event-card__body p {
+  font-size: 0.84rem;
+  color: var(--text-3);
+  margin-top: 0.25rem;
+}
+
+/* ── Section alt ──────────────────────────────────────── */
+.section--alt {
+  background: var(--bg-alt);
+}
+
+.section-cta {
+  text-align: center;
+  margin-top: 2.5rem;
+}
+
+/* ── Quick link cards ─────────────────────────────────── */
+.quick-link-card {
+  padding: 2rem 1.5rem;
+  text-align: center;
+  cursor: pointer;
+  display: block;
+  position: relative;
+  overflow: hidden;
+}
+.quick-link-card::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    135deg,
+    rgba(153, 27, 27, 0.05) 0%,
+    transparent 65%
+  );
+  opacity: 0;
+  transition: opacity var(--transition);
+}
+.quick-link-card:hover::before {
+  opacity: 1;
+}
+
+.quick-link-card__icon {
+  font-size: 2.6rem;
+  display: block;
+  margin-bottom: 0.9rem;
+  transition: transform var(--transition);
+}
+.quick-link-card:hover .quick-link-card__icon {
+  transform: scale(1.18) rotate(-4deg);
+}
+
+.quick-link-card h3 {
+  font-family: var(--font-tamil);
+  color: var(--maroon);
+  font-size: 1rem;
+  margin-bottom: 0.45rem;
+}
+.quick-link-card p {
+  font-size: 0.82rem;
+  color: var(--text-3);
+}
+
+.hero__content {
+  position: relative;
+  z-index: 1;
+  text-align: center;
+  color: #fff;
+  padding: 3rem 1.25rem;
+}
+
+.hero__tagline {
+  font-family: var(--font-tamil);
+  font-size: 1.3rem;
+  color: var(--gold-light);
+  letter-spacing: 0.12em;
+  margin-bottom: 0.5rem;
+}
+
+.hero__title {
+  font-family: var(--font-tamil);
+  font-size: clamp(2rem, 5vw, 3.2rem);
+  font-weight: 700;
+  margin-bottom: 0.25rem;
+  text-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
+}
+
+.hero__subtitle {
+  font-size: clamp(1rem, 2.5vw, 1.5rem);
+  font-weight: 400;
+  color: rgba(255, 255, 255, 0.85);
+  margin-bottom: 0.5rem;
+}
+
+.hero__desc {
+  font-size: 1rem;
+  color: rgba(255, 255, 255, 0.7);
+  margin-bottom: 2rem;
+}
+
+.hero__actions {
+  display: flex;
+  justify-content: center;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+/* Announcement ticker */
+.ticker-bar {
+  background: var(--gold);
+  padding: 0.55rem 1.25rem;
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  overflow: hidden;
+}
+
+.ticker-label {
+  font-weight: 700;
+  font-size: 0.85rem;
+  white-space: nowrap;
+  color: #fff;
+}
+
+.ticker-scroll {
+  display: flex;
+  gap: 3rem;
+  animation: ticker 20s linear infinite;
+  white-space: nowrap;
+}
+
+.ticker-item {
+  font-size: 0.9rem;
+  color: #fff;
+}
+
+@keyframes ticker {
+  0% {
+    transform: translateX(0);
+  }
+  100% {
+    transform: translateX(-50%);
+  }
+}
+
+/* Seva cards */
+.seva-card__body {
+  padding: 1.25rem;
+  text-align: center;
+}
+
+.seva-card__body h3 {
+  font-family: var(--font-tamil);
+  font-size: 1.05rem;
+  color: var(--maroon);
+  margin-bottom: 0.2rem;
+}
+
+.seva-card__body p {
+  font-size: 0.85rem;
+  color: var(--text-light);
+}
+
+.seva-card__price {
+  margin-top: 0.65rem;
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: var(--saffron);
+}
+
+/* Event cards */
+.event-card__date {
+  background: var(--maroon);
+  color: var(--gold-light);
+  font-size: 0.8rem;
+  font-weight: 700;
+  padding: 0.35rem 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.event-card__body {
+  padding: 1rem;
+}
+.event-card__body h3 {
+  font-family: var(--font-tamil);
+  font-size: 1rem;
+  color: var(--maroon);
+}
+.event-card__body p {
+  font-size: 0.85rem;
+  color: var(--text-light);
+  margin-top: 0.2rem;
+}
+
+/* Section alt bg */
+.section--alt {
+  background: #fdf3e7;
+}
+
+/* CTA row */
+.section-cta {
+  text-align: center;
+  margin-top: 2rem;
+}
+
+/* Quick links */
+.quick-link-card {
+  padding: 2rem 1.5rem;
+  text-align: center;
+  cursor: pointer;
+  display: block;
+}
+
+.quick-link-card__icon {
+  font-size: 2.5rem;
+  display: block;
+  margin-bottom: 0.75rem;
+}
+
+.quick-link-card h3 {
+  font-family: var(--font-tamil);
+  color: var(--maroon);
+  font-size: 1rem;
+  margin-bottom: 0.4rem;
+}
+
+.quick-link-card p {
+  font-size: 0.85rem;
+  color: var(--text-light);
+}
+
+/* ══════════════════════════════════════════════════════════
+   Digital Darshan Flow — Mode System
+   ══════════════════════════════════════════════════════════ */
+
+.section--darshan {
+  background: var(--bg-alt);
+  padding-top: 2rem;
+  padding-bottom: 0;
+}
+
+/* Mode tabs */
+.darshan-modes {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  flex-wrap: wrap;
+  margin-bottom: 1.5rem;
+}
+.darshan-modes__label {
+  font-size: 0.78rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--text-3);
+  white-space: nowrap;
+}
+.darshan-modes__tabs {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+.darshan-modes__tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.45rem 1.1rem;
+  border-radius: 50px;
+  border: 1.5px solid var(--border);
+  background: var(--glass);
+  color: var(--text-2);
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all var(--transition);
+  white-space: nowrap;
+}
+.darshan-modes__tab:hover {
+  border-color: var(--maroon);
+  color: var(--maroon);
+  background: rgba(153, 27, 27, 0.06);
+}
+.darshan-modes__tab--active {
+  background: var(--maroon);
+  color: #fff;
+  border-color: var(--maroon);
+  box-shadow: 0 2px 12px rgba(153, 27, 27, 0.25);
+}
+.darshan-modes__tab-icon {
+  font-size: 1rem;
+}
+
+/* Content wrapper */
+.darshan-content {
+  padding-bottom: 2rem;
+  transition: opacity 0.25s ease;
+}
+.darshan-content--elder {
+  font-size: 1.15rem;
+}
+
+/* Generic mode block */
+.darshan-mode-block {
+  animation: darshan-fade 0.3s ease;
+}
+@keyframes darshan-fade {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.darshan-mode-block__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+}
+.darshan-mode-block__cta {
+  display: flex;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+/* Highlight box (Devotee / Elder) */
+.darshan-highlight {
+  display: flex;
+  align-items: center;
+  gap: 0.9rem;
+  padding: 1rem 1.25rem;
+}
+.darshan-highlight__icon {
+  font-size: 1.8rem;
+  flex-shrink: 0;
+}
+.darshan-highlight__label {
+  font-size: 0.68rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-3);
+  font-weight: 700;
+  margin-bottom: 0.15rem;
+}
+.darshan-highlight__value {
+  color: var(--maroon);
+  font-weight: 700;
+  font-size: 0.95rem;
+}
+.darshan-highlight__value--link {
+  text-decoration: none;
+  color: var(--maroon);
+  transition: color var(--transition);
+}
+.darshan-highlight__value--link:hover {
+  color: var(--saffron-dark);
+}
+.darshan-highlight--elder .darshan-highlight__value {
+  font-size: 1.1rem;
+}
+
+/* Numbered list (First Visit) */
+.darshan-info-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+}
+.darshan-info-item {
+  display: flex;
+  gap: 1rem;
+  padding: 1rem 1.25rem;
+  align-items: flex-start;
+}
+.darshan-info-item__num {
+  font-size: 1.6rem;
+  font-weight: 900;
+  color: rgba(153, 27, 27, 0.15);
+  line-height: 1;
+  flex-shrink: 0;
+  font-variant-numeric: tabular-nums;
+}
+.darshan-info-item h4 {
+  font-size: 0.88rem;
+  color: var(--maroon);
+  font-weight: 700;
+  margin-bottom: 0.3rem;
+}
+.darshan-info-item p {
+  font-size: 0.8rem;
+  color: var(--text-2);
+  line-height: 1.55;
+}
+
+/* NRI grid */
+.darshan-nri-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+}
+.darshan-nri-card {
+  padding: 1.5rem 1.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  text-align: center;
+  align-items: center;
+}
+.darshan-nri-card__icon {
+  font-size: 2.2rem;
+}
+.darshan-nri-card h4 {
+  color: var(--maroon);
+  font-size: 0.95rem;
+  font-weight: 700;
+}
+.darshan-nri-card p {
+  font-size: 0.8rem;
+  color: var(--text-2);
+  line-height: 1.5;
+  flex: 1;
+}
+
+/* Small button modifier */
+.btn--sm {
+  padding: 0.45rem 1rem;
+  font-size: 0.78rem;
+}
+.btn--lg {
+  padding: 0.85rem 2rem;
+  font-size: 1rem;
+}
+
+@media (max-width: 600px) {
+  .darshan-modes {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+  .darshan-modes__tabs {
+    width: 100%;
+    overflow-x: auto;
+    flex-wrap: nowrap;
+    padding-bottom: 4px;
+  }
+  .darshan-mode-block__cta {
+    flex-direction: column;
+  }
+}
+
+/* Status card tint (Elder mode) */
+.darshan-status-card--open {
+  border-left: 3px solid #10b981 !important;
+  background: rgba(16, 185, 129, 0.06) !important;
+}
+.darshan-status-card--closed {
+  border-left: 3px solid #ef4444 !important;
+  background: rgba(239, 68, 68, 0.06) !important;
+}

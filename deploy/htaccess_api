@@ -1,0 +1,13 @@
+# public_html/api/.htaccess
+# Route all /api/* requests through the PHP router
+
+Options -Indexes
+
+<IfModule mod_rewrite.c>
+  RewriteEngine On
+  RewriteBase /api/
+
+  # If the exact file exists (e.g. .php endpoint), serve it
+  RewriteCond %{REQUEST_FILENAME} !-f
+  RewriteRule ^ index.php [QSA,L]
+</IfModule>

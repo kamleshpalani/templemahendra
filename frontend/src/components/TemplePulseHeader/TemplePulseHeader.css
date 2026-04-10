@@ -1,0 +1,203 @@
+/* ══════════════════════════════════════════════════════════
+   Temple Pulse Header — Smart Live Status Bar
+   ══════════════════════════════════════════════════════════ */
+
+.pulse-bar {
+  background: linear-gradient(
+    90deg,
+    var(--maroon-dark) 0%,
+    var(--maroon-deep) 45%,
+    var(--maroon) 100%
+  );
+  border-bottom: 2px solid var(--gold);
+  padding: 0.45rem 0;
+  position: sticky;
+  top: 0;
+  z-index: 1001; /* above navbar */
+  transition:
+    transform 0.3s var(--ease),
+    opacity 0.3s var(--ease);
+  will-change: transform;
+  overflow: hidden;
+}
+
+/* Subtle shimmer sweep animation on the bar */
+.pulse-bar::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    120deg,
+    transparent 20%,
+    rgba(251, 191, 36, 0.06) 50%,
+    transparent 80%
+  );
+  background-size: 200% 100%;
+  animation: pulse-shimmer 5s linear infinite;
+}
+@keyframes pulse-shimmer {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}
+
+/* Hide when scrolling down */
+.pulse-bar--hidden {
+  transform: translateY(-100%);
+  opacity: 0;
+  pointer-events: none;
+}
+
+.pulse-bar__inner {
+  max-width: 1140px;
+  margin: 0 auto;
+  padding: 0 1.25rem;
+  display: flex;
+  align-items: center;
+  gap: 0.8rem;
+  flex-wrap: nowrap;
+  overflow: hidden;
+  position: relative;
+  z-index: 1;
+}
+
+/* Open / Closed pill */
+.pulse-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  border-radius: 50px;
+  padding: 0.22rem 0.7rem;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.pulse-pill--open {
+  background: rgba(16, 185, 129, 0.18);
+  color: #6ee7b7;
+  border: 1px solid rgba(16, 185, 129, 0.35);
+}
+.pulse-pill--closed {
+  background: rgba(239, 68, 68, 0.18);
+  color: #fca5a5;
+  border: 1px solid rgba(239, 68, 68, 0.35);
+}
+
+/* Animated pulsing dot */
+.pulse-pill__dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  animation: live-dot 1.8s ease-in-out infinite;
+}
+.pulse-pill--open .pulse-pill__dot {
+  background: #10b981;
+}
+.pulse-pill--closed .pulse-pill__dot {
+  background: #ef4444;
+}
+@keyframes live-dot {
+  0%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.4;
+    transform: scale(0.75);
+  }
+}
+
+/* Separator */
+.pulse-bar__sep {
+  color: rgba(255, 255, 255, 0.25);
+  font-size: 0.85rem;
+  flex-shrink: 0;
+}
+
+/* Info item */
+.pulse-bar__item {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  white-space: nowrap;
+  min-width: 0;
+  overflow: hidden;
+}
+.pulse-bar__label {
+  font-size: 0.66rem;
+  font-weight: 700;
+  color: var(--gold);
+  text-transform: uppercase;
+  letter-spacing: 0.09em;
+  flex-shrink: 0;
+}
+.pulse-bar__value {
+  font-size: 0.76rem;
+  color: rgba(255, 255, 255, 0.88);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Countdown digits — monospaced glow */
+.pulse-countdown {
+  display: inline-block;
+  font-family: "Courier New", monospace;
+  font-size: 0.78rem;
+  color: var(--gold-light);
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  background: rgba(251, 191, 36, 0.1);
+  border-radius: 4px;
+  padding: 0 4px;
+  margin-left: 3px;
+}
+
+/* Book Seva CTA */
+.pulse-bar__cta {
+  margin-left: auto;
+  background: var(--gold);
+  color: var(--maroon-dark);
+  font-size: 0.7rem;
+  font-weight: 800;
+  padding: 0.28rem 0.75rem;
+  border-radius: 50px;
+  white-space: nowrap;
+  flex-shrink: 0;
+  text-decoration: none;
+  letter-spacing: 0.03em;
+  transition:
+    background var(--transition),
+    transform var(--transition);
+}
+.pulse-bar__cta:hover {
+  background: var(--gold-light);
+  transform: scale(1.04);
+}
+
+/* Mobile: hide less-important items */
+@media (max-width: 820px) {
+  .pulse-bar__sep--hide-sm,
+  .pulse-bar__item--special {
+    display: none;
+  }
+  .pulse-bar__item {
+    gap: 0.3rem;
+  }
+  .pulse-bar__label {
+    display: none;
+  }
+}
+
+@media (max-width: 480px) {
+  .pulse-bar__cta {
+    display: none;
+  }
+}
