@@ -94,6 +94,13 @@ const FALLBACK_REVIEWS = [
     text: "புதுப்பட்டியில் இந்த கோவில் ஒரு ஆன்மீக சக்தி வாய்ந்த இடம். தினசரி வழிபாடு மிகவும் ஒழுங்காக நடக்கிறது. அனைவரும் ஒருமுறையாவது வர வேண்டும்.",
     avatar: "",
   },
+  {
+    author: "Rajesh Naidu",
+    rating: 5,
+    time: "1 year ago",
+    text: "This temple holds a very special place in our Kammavar Naidu community. The Pournami pooja is conducted with great devotion and discipline. The premises are always kept clean and the management is very welcoming to all devotees.",
+    avatar: "",
+  },
 ];
 
 const GOOGLE_MAPS_URL =

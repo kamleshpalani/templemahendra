@@ -14,11 +14,16 @@ $path = rtrim($path, '/') ?: '/';
 
 $routes = [
     'GET'  => [
-        '/announcements' => 'announcements.php',
-        '/sevas'         => 'sevas.php',
-        '/events'        => 'events.php',
-        '/gallery'       => 'gallery.php',
-        '/pulse'         => 'pulse.php',
+        '/announcements'   => 'announcements.php',
+        '/sevas'           => 'sevas.php',
+        '/events'          => 'events.php',
+        '/gallery'         => 'gallery.php',
+        '/pulse'           => 'pulse.php',
+        '/donors'          => 'donors.php',
+        '/reviews'         => 'reviews.php',
+        '/calendar'        => 'calendar.php',
+        '/homepage_widgets'=> 'homepage_widgets.php',
+        '/settings'        => 'settings.php',
     ],
     'POST' => [
         '/donations'      => 'donations.php',

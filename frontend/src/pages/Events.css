@@ -1,0 +1,64 @@
+/* ── Events Filter Tabs ──────────────────────────────── */
+.events-filter {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  margin-bottom: 1.5rem;
+}
+
+.events-filter__btn {
+  padding: 0.4rem 1rem;
+  border: 1.5px solid var(--gold, #d4a435);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--gold, #d4a435);
+  font-size: 0.85rem;
+  cursor: pointer;
+  transition:
+    background 0.18s,
+    color 0.18s;
+  font-family: inherit;
+}
+
+.events-filter__btn:hover {
+  background: rgba(212, 164, 53, 0.12);
+}
+
+.events-filter__btn--active {
+  background: var(--gold, #d4a435);
+  color: #1a0a00;
+  font-weight: 600;
+}
+
+/* ── Event Row ───────────────────────────────────────── */
+.event-row__header {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+}
+
+.event-row__header h3 {
+  margin: 0;
+  flex: 1 1 auto;
+}
+
+.event-row__badge {
+  display: inline-block;
+  padding: 0.18rem 0.65rem;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: #fff;
+  white-space: nowrap;
+  flex-shrink: 0;
+  margin-top: 0.1rem;
+}
+
+.event-row__time {
+  margin: 0.3rem 0 0;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: #7c3aed;
+  letter-spacing: 0.02em;
+}

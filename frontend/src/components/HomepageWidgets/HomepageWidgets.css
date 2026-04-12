@@ -1,0 +1,541 @@
+/* ══════════════════════════════════════════════════════════
+   HomepageWidgets.css — Dynamic homepage content blocks
+   ══════════════════════════════════════════════════════════ */
+
+.hw-section {
+  padding: 0;
+}
+
+/* ── Widgets row ─────────────────────────────────────────── */
+.hw-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  align-items: center;
+}
+
+/* ── Base card ───────────────────────────────────────────── */
+.hw-card {
+  border-radius: 14px;
+  padding: 1.1rem 1.3rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  position: relative;
+  overflow: hidden;
+  transition: box-shadow 0.15s;
+  width: 100%;
+  max-width: 560px;
+}
+
+/* Featured Pournami card */
+.hw-card--featured {
+  text-align: center;
+  padding: 1.75rem 2rem;
+}
+
+/* ── Pournami rich display ─────────────────────────────────── */
+.hw-pournami {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.5rem 0;
+}
+.hw-pournami__moon {
+  font-size: 2.8rem;
+  line-height: 1;
+  filter: drop-shadow(0 2px 8px rgba(124, 58, 237, 0.3));
+}
+.hw-pournami__body {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.3rem;
+}
+.hw-pournami__name {
+  font-family: var(--font-tamil);
+  font-size: 1.15rem;
+  font-weight: 800;
+  color: var(--maroon);
+}
+.hw-pournami__date {
+  font-family: var(--font-tamil);
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--text-1);
+}
+.hw-pournami__meta {
+  font-family: var(--font-tamil);
+  font-size: 0.85rem;
+  color: var(--text-3);
+}
+.hw-pournami__badge {
+  display: inline-flex;
+  padding: 0.25rem 1rem;
+  border-radius: 50px;
+  font-size: 0.82rem;
+  font-weight: 700;
+  background: #e9d5ff;
+  color: #4c1d95;
+  margin-top: 0.25rem;
+}
+.hw-pournami__badge--today {
+  background: #fef3c7;
+  color: #92400e;
+}
+.hw-pournami__timing {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--text-3);
+  margin-top: 0.15rem;
+  opacity: 0.85;
+}
+
+/* CTA row (Panchangam link) */
+.hw-card__cta {
+  display: flex;
+  justify-content: center;
+  margin-top: 0.5rem;
+}
+.hw-card::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 4px;
+  border-radius: 4px 0 0 4px;
+}
+
+/* ── Accent colours per content_type ────────────────────── */
+.hw-card--announcement {
+  background: linear-gradient(135deg, #fff7ed 60%, #ffedd5);
+  border: 1.5px solid #fed7aa;
+}
+.hw-card--announcement::before {
+  background: var(--saffron);
+}
+
+.hw-card--coming_soon {
+  background: linear-gradient(135deg, #f0fdf4 60%, #dcfce7);
+  border: 1.5px solid #86efac;
+}
+.hw-card--coming_soon::before {
+  background: #22c55e;
+}
+
+.hw-card--upcoming_pooja,
+.hw-card--calendar_pooja {
+  background: linear-gradient(135deg, #fdf4ff 60%, #f3e8ff);
+  border: 1.5px solid #d8b4fe;
+}
+.hw-card--upcoming_pooja::before,
+.hw-card--calendar_pooja::before {
+  background: #7c3aed;
+}
+
+.hw-card--nalla_neram {
+  background: linear-gradient(135deg, #f0fdf4 60%, #d1fae5);
+  border: 1.5px solid #6ee7b7;
+}
+.hw-card--nalla_neram::before {
+  background: #059669;
+}
+
+.hw-card--sponsor {
+  background: linear-gradient(135deg, #fffbeb 60%, #fef9c3);
+  border: 1.5px solid #fde68a;
+}
+.hw-card--sponsor::before {
+  background: var(--gold);
+}
+
+/* Pinned highlight */
+.hw-card--pinned {
+  box-shadow:
+    0 0 0 2px var(--saffron),
+    0 4px 16px rgba(249, 115, 22, 0.12);
+}
+
+/* ── Type badge ──────────────────────────────────────────── */
+.hw-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.2rem 0.65rem;
+  border-radius: 20px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  width: fit-content;
+}
+.hw-badge--announcement {
+  background: #fed7aa;
+  color: #9a3412;
+}
+.hw-badge--coming_soon {
+  background: #bbf7d0;
+  color: #14532d;
+}
+.hw-badge--upcoming_pooja,
+.hw-badge--calendar_pooja {
+  background: #e9d5ff;
+  color: #4c1d95;
+}
+.hw-badge--nalla_neram {
+  background: #a7f3d0;
+  color: #064e3b;
+}
+.hw-badge--sponsor {
+  background: #fde68a;
+  color: #78350f;
+}
+
+/* ── Card header ─────────────────────────────────────────── */
+.hw-card__header {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.6rem;
+}
+.hw-card__icon {
+  font-size: 1.4rem;
+  line-height: 1;
+  flex-shrink: 0;
+  margin-top: 0.05rem;
+}
+.hw-card__title {
+  font-size: 1rem;
+  font-weight: 800;
+  color: var(--maroon);
+  line-height: 1.25;
+}
+.hw-card__subtitle {
+  font-size: 0.82rem;
+  color: var(--text-muted, #7a5c3c);
+  margin-top: 0.15rem;
+}
+
+/* ── Description ─────────────────────────────────────────── */
+.hw-card__desc {
+  font-size: 0.88rem;
+  color: var(--text-body, #3d2a1e);
+  line-height: 1.55;
+}
+
+/* ── Pooja detail row ────────────────────────────────────── */
+.hw-pooja-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1rem;
+  margin-top: 0.15rem;
+}
+.hw-pooja-meta__item {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--maroon-deep);
+}
+.hw-pooja-meta__item span {
+  background: rgba(153, 27, 27, 0.08);
+  padding: 0.2rem 0.55rem;
+  border-radius: 8px;
+}
+
+/* ── Sponsor block ───────────────────────────────────────── */
+.hw-sponsor {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  margin-top: 0.2rem;
+  padding: 0.55rem 0.8rem;
+  background: rgba(0, 0, 0, 0.03);
+  border-radius: 8px;
+  border: 1px solid rgba(0, 0, 0, 0.06);
+}
+.hw-sponsor__icon {
+  font-size: 1.1rem;
+  flex-shrink: 0;
+}
+.hw-sponsor__info {
+  display: flex;
+  flex-direction: column;
+}
+.hw-sponsor__label {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted, #7a5c3c);
+}
+.hw-sponsor__name {
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: var(--maroon);
+}
+.hw-sponsor__phone {
+  font-size: 0.78rem;
+  color: var(--text-muted, #7a5c3c);
+}
+.hw-sponsor__note {
+  font-size: 0.78rem;
+  color: var(--text-body, #3d2a1e);
+  margin-top: 0.1rem;
+  font-style: italic;
+}
+
+/* ── Nalla Neram block ───────────────────────────────────── */
+.hw-nalla {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin-top: 0.1rem;
+}
+.hw-nalla__slot {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.25rem 0.65rem;
+  background: #d1fae5;
+  border: 1px solid #6ee7b7;
+  border-radius: 20px;
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: #065f46;
+}
+
+/* ── Sponsor block ────────────────────────────────────────── */
+.hw-sponsor {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  padding: 0.5rem 0.7rem;
+  background: rgba(251, 191, 36, 0.12);
+  border: 1px solid rgba(251, 191, 36, 0.4);
+  border-radius: 8px;
+  margin-top: 0.25rem;
+}
+.hw-sponsor__icon {
+  font-size: 1rem;
+  line-height: 1.4;
+  flex-shrink: 0;
+}
+.hw-sponsor__label {
+  font-size: 0.65rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #92400e;
+  opacity: 0.8;
+  margin-bottom: 0.1rem;
+}
+.hw-sponsor__name {
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: #78350f;
+}
+.hw-sponsor__note {
+  font-size: 0.75rem;
+  color: #92400e;
+  opacity: 0.8;
+  margin-top: 0.1rem;
+}
+
+/* ══════════════════════════════════════════════════════════
+   Positional Card Themes — each card slot gets a distinct
+   look regardless of content_type
+   ══════════════════════════════════════════════════════════ */
+
+/* ── Card 1 — Golden Sunrise ────────────────────────────── */
+.hw-card--pos-1 {
+  background: linear-gradient(145deg, #fffbeb 0%, #fef3c7 55%, #fde68a 100%);
+  border: 1.5px solid #f59e0b;
+}
+.hw-card--pos-1::before {
+  background: #d97706;
+}
+.hw-card--pos-1 .hw-pournami__moon {
+  filter: drop-shadow(0 2px 14px rgba(251, 191, 36, 0.65));
+}
+.hw-card--pos-1 .hw-pournami__name {
+  color: #78350f;
+}
+.hw-card--pos-1 .hw-pournami__date {
+  color: #92400e;
+}
+.hw-card--pos-1 .hw-pournami__meta {
+  color: #b45309;
+}
+.hw-card--pos-1 .hw-pournami__badge {
+  background: #fde68a;
+  color: #78350f;
+}
+.hw-card--pos-1 .hw-card__title {
+  color: #78350f;
+}
+.hw-card--pos-1 .hw-card__desc {
+  color: #92400e;
+}
+.hw-card--pos-1 .hw-pournami__timing {
+  color: #b45309;
+}
+
+/* ── Card 2 — Temple Crimson ────────────────────────────── */
+.hw-card--pos-2 {
+  background: linear-gradient(145deg, #450a0a 0%, #7f1d1d 55%, #991b1b 100%);
+  border: 1.5px solid #b91c1c;
+}
+.hw-card--pos-2::before {
+  background: #fbbf24;
+}
+.hw-card--pos-2 .hw-pournami__moon {
+  filter: drop-shadow(0 2px 18px rgba(251, 191, 36, 0.55));
+}
+.hw-card--pos-2 .hw-pournami__name {
+  color: #fef9c3;
+}
+.hw-card--pos-2 .hw-pournami__date {
+  color: #fde68a;
+}
+.hw-card--pos-2 .hw-pournami__meta {
+  color: #fcd34d;
+  opacity: 0.9;
+}
+.hw-card--pos-2 .hw-pournami__badge {
+  background: rgba(255, 255, 255, 0.14);
+  color: #fde68a;
+  border: 1px solid rgba(253, 230, 138, 0.35);
+}
+.hw-card--pos-2 .hw-pournami__badge--today {
+  background: rgba(251, 191, 36, 0.25);
+  color: #fef9c3;
+}
+.hw-card--pos-2 .hw-card__title {
+  color: #fef9c3;
+}
+.hw-card--pos-2 .hw-card__desc {
+  color: #fde68a;
+}
+.hw-card--pos-2 .hw-pournami__timing {
+  color: #fcd34d;
+}
+.hw-card--pos-2 .hw-badge {
+  background: rgba(255, 255, 255, 0.15);
+  color: #fde68a;
+}
+.hw-card--pos-2 .hw-nalla__slot {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(253, 230, 138, 0.35);
+  color: #fde68a;
+}
+.hw-card--pos-2 .hw-sponsor {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(251, 191, 36, 0.3);
+}
+.hw-card--pos-2 .hw-sponsor__label,
+.hw-card--pos-2 .hw-sponsor__name,
+.hw-card--pos-2 .hw-sponsor__note {
+  color: #fde68a;
+}
+.hw-card--pos-2 .hw-card__cta .btn {
+  border-color: #fbbf24;
+  color: #fbbf24;
+}
+
+/* ── Card 3 — Night Cosmos ──────────────────────────────── */
+.hw-card--pos-3 {
+  background: linear-gradient(145deg, #0f0c29 0%, #1e1b4b 55%, #312e81 100%);
+  border: 1.5px solid rgba(139, 92, 246, 0.5);
+}
+.hw-card--pos-3::before {
+  background: #818cf8;
+}
+.hw-card--pos-3 .hw-pournami__moon {
+  filter: drop-shadow(0 2px 20px rgba(167, 139, 250, 0.75));
+}
+.hw-card--pos-3 .hw-pournami__name {
+  color: #e9d5ff;
+}
+.hw-card--pos-3 .hw-pournami__date {
+  color: #c4b5fd;
+}
+.hw-card--pos-3 .hw-pournami__meta {
+  color: #a78bfa;
+}
+.hw-card--pos-3 .hw-pournami__badge {
+  background: rgba(139, 92, 246, 0.25);
+  color: #e9d5ff;
+  border: 1px solid rgba(167, 139, 250, 0.4);
+}
+.hw-card--pos-3 .hw-pournami__badge--today {
+  background: rgba(251, 191, 36, 0.2);
+  color: #fde68a;
+  border-color: rgba(251, 191, 36, 0.4);
+}
+.hw-card--pos-3 .hw-card__title {
+  color: #e9d5ff;
+}
+.hw-card--pos-3 .hw-card__desc {
+  color: #c4b5fd;
+}
+.hw-card--pos-3 .hw-pournami__timing {
+  color: #a78bfa;
+}
+.hw-card--pos-3 .hw-badge {
+  background: rgba(139, 92, 246, 0.25);
+  color: #e9d5ff;
+}
+.hw-card--pos-3 .hw-nalla__slot {
+  background: rgba(139, 92, 246, 0.15);
+  border-color: rgba(167, 139, 250, 0.35);
+  color: #e9d5ff;
+}
+.hw-card--pos-3 .hw-sponsor {
+  background: rgba(139, 92, 246, 0.1);
+  border-color: rgba(139, 92, 246, 0.3);
+}
+.hw-card--pos-3 .hw-sponsor__label,
+.hw-card--pos-3 .hw-sponsor__name,
+.hw-card--pos-3 .hw-sponsor__note {
+  color: #c4b5fd;
+}
+.hw-card--pos-3 .hw-card__cta .btn {
+  border-color: #8b5cf6;
+  color: #c4b5fd;
+}
+
+/* ── Skeleton loader ─────────────────────────────────────── */
+.hw-skeleton {
+  height: 5rem;
+  border-radius: 14px;
+  background: linear-gradient(90deg, #f5e6d3 25%, #ffe9cc 50%, #f5e6d3 75%);
+  background-size: 200% 100%;
+  animation: hw-shimmer 1.4s infinite;
+}
+@keyframes hw-shimmer {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}
+
+/* ── Responsive ──────────────────────────────────────────── */
+@media (min-width: 640px) {
+  .hw-grid {
+    display: flex;
+    flex-direction: row;
+    flex-wrap: nowrap;
+    justify-content: center;
+    align-items: stretch;
+    gap: 1rem;
+  }
+  .hw-card {
+    flex: 1 1 0;
+    min-width: 0;
+    max-width: none;
+  }
+}

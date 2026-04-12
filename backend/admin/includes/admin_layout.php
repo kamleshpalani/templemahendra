@@ -20,14 +20,18 @@ function adminHeader(string $pageTitle): void
     <small>Admin Panel</small>
   </div>
   <nav class="sidebar__nav">
-    <a href="/admin/"                   class="<?= basename($_SERVER['PHP_SELF']) === 'index.php'         ? 'active' : '' ?>">📊 Dashboard</a>
-    <a href="/admin/announcements.php"  class="<?= basename($_SERVER['PHP_SELF']) === 'announcements.php' ? 'active' : '' ?>">📢 Announcements</a>
-    <a href="/admin/sevas.php"          class="<?= basename($_SERVER['PHP_SELF']) === 'sevas.php'         ? 'active' : '' ?>">🙏 Sevas</a>
-    <a href="/admin/events.php"         class="<?= basename($_SERVER['PHP_SELF']) === 'events.php'        ? 'active' : '' ?>">📅 Events</a>
-    <a href="/admin/gallery.php"        class="<?= basename($_SERVER['PHP_SELF']) === 'gallery.php'       ? 'active' : '' ?>">🖼️ Gallery</a>
-    <a href="/admin/donations.php"      class="<?= basename($_SERVER['PHP_SELF']) === 'donations.php'      ? 'active' : '' ?>">💰 Donations</a>
-    <a href="/admin/seva_bookings.php"   class="<?= basename($_SERVER['PHP_SELF']) === 'seva_bookings.php'   ? 'active' : '' ?>">📋 Seva Bookings</a>
-    <a href="/admin/contact_messages.php" class="<?= basename($_SERVER['PHP_SELF']) === 'contact_messages.php' ? 'active' : '' ?>">✉️ Messages</a>
+    <a href="/admin/"                      class="<?= basename($_SERVER['PHP_SELF']) === 'index.php'              ? 'active' : '' ?>">📊 Dashboard</a>
+    <a href="/admin/homepage_widgets.php"   class="<?= basename($_SERVER['PHP_SELF']) === 'homepage_widgets.php'   ? 'active' : '' ?>">🏮 Homepage Widgets</a>
+    <a href="/admin/poojas.php"             class="<?= basename($_SERVER['PHP_SELF']) === 'poojas.php'             ? 'active' : '' ?>">🛕 Poojas</a>
+    <a href="/admin/sponsors.php"           class="<?= basename($_SERVER['PHP_SELF']) === 'sponsors.php'           ? 'active' : '' ?>">💛 Sponsors</a>
+    <a href="/admin/announcements.php"      class="<?= basename($_SERVER['PHP_SELF']) === 'announcements.php'      ? 'active' : '' ?>">📢 Announcements</a>
+    <a href="/admin/sevas.php"              class="<?= basename($_SERVER['PHP_SELF']) === 'sevas.php'              ? 'active' : '' ?>">🙏 Sevas</a>
+    <a href="/admin/events.php"             class="<?= basename($_SERVER['PHP_SELF']) === 'events.php'             ? 'active' : '' ?>">📅 Events</a>
+    <a href="/admin/gallery.php"            class="<?= basename($_SERVER['PHP_SELF']) === 'gallery.php'            ? 'active' : '' ?>">🖼️ Gallery</a>
+    <a href="/admin/donations.php"          class="<?= basename($_SERVER['PHP_SELF']) === 'donations.php'          ? 'active' : '' ?>">💰 Donations</a>
+    <a href="/admin/seva_bookings.php"      class="<?= basename($_SERVER['PHP_SELF']) === 'seva_bookings.php'      ? 'active' : '' ?>">📋 Seva Bookings</a>
+    <a href="/admin/contact_messages.php"   class="<?= basename($_SERVER['PHP_SELF']) === 'contact_messages.php'   ? 'active' : '' ?>">✉️ Messages</a>
+    <a href="/admin/settings.php"           class="<?= basename($_SERVER['PHP_SELF']) === 'settings.php'           ? 'active' : '' ?>">⚙️ Settings</a>
   </nav>
   <div class="sidebar__footer">
     <a href="/admin/logout.php">Logout ↗</a>

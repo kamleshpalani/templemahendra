@@ -4,6 +4,7 @@ import { Link } from "react-router-dom";
 import api from "../services/api";
 import { useLang } from "../context/LangContext";
 import Reviews from "../components/Reviews/Reviews";
+import HomepageWidgets from "../components/HomepageWidgets/HomepageWidgets";
 import "./Home.css";
 
 /* ─── Darshan mode detection ─────────────────────────────── */
@@ -22,13 +23,13 @@ const MODES = [
   { id: "first-visit", icon: "✨", ta: "புதிய வருகை", en: "First Visit" },
   { id: "nri", icon: "🌏", ta: "வெளிநாட்டினர்", en: "NRI / Online" },
   { id: "elder", icon: "🔆", ta: "மூத்தோர்", en: "Elder View" },
+  { id: "volunteer", icon: "🤝", ta: "தன்னார்வலர்", en: "Volunteer" },
+  { id: "sponsor", icon: "💛", ta: "ஸ்பான்சர்", en: "Seva Sponsor" },
 ];
 
 /* ─── Mode content blocks ─────────────────────────────────── */
-function DevoteeContent({ t, pulseData }) {
+function DevoteeContent({ t, pulseData, nallaTime, pournami }) {
   // Use live pulse data if available, else sensible fallbacks
-  const specialTa = pulseData?.todaySpecial?.ta ?? "சிவ அபிஷேகம்";
-  const specialEn = pulseData?.todaySpecial?.en ?? "Shiva Abhishekam";
   const nextPoojaName = pulseData?.nextPooja
     ? t(pulseData.nextPooja.name_ta, pulseData.nextPooja.name_en) +
       " · " +
@@ -39,17 +40,6 @@ function DevoteeContent({ t, pulseData }) {
   return (
     <div className="darshan-mode-block">
       <div className="darshan-mode-block__grid">
-        <div className="darshan-highlight card">
-          <span className="darshan-highlight__icon">🕉️</span>
-          <div>
-            <p className="darshan-highlight__label">
-              {t("இன்றைய விசேஷம்", "Today's Special")}
-            </p>
-            <p className="darshan-highlight__value">
-              {t(specialTa, specialEn)}
-            </p>
-          </div>
-        </div>
         <div className="darshan-highlight card">
           <span className="darshan-highlight__icon">🛕</span>
           <div>
@@ -88,27 +78,79 @@ function DevoteeContent({ t, pulseData }) {
             </div>
           </div>
         )}
-        {!nextEvent && (
+        {pournami && (
           <div className="darshan-highlight card">
-            <span className="darshan-highlight__icon">💛</span>
+            <span className="darshan-highlight__icon">🌕</span>
+            <div>
+              <p className="darshan-highlight__label">
+                {t("பௌர்ணமி பூஜை", "Pournami Poojai")}
+              </p>
+              <p className="darshan-highlight__value">
+                {new Date(pournami.date + "T00:00:00").toLocaleDateString(
+                  t("ta", "en") === "ta" ? "ta-IN" : "en-IN",
+                  {
+                    weekday: "short",
+                    day: "numeric",
+                    month: "short",
+                    year: "numeric",
+                  },
+                )}
+              </p>
+              {pournami.daysLeft === 0 ? (
+                <p
+                  className="darshan-highlight__value"
+                  style={{ fontSize: "0.78rem", color: "#d97706" }}
+                >
+                  {t("இன்று!", "Today!")}
+                </p>
+              ) : pournami.daysLeft === 1 ? (
+                <p
+                  className="darshan-highlight__value"
+                  style={{ fontSize: "0.78rem", opacity: 0.75 }}
+                >
+                  {t("நாளை", "Tomorrow")}
+                </p>
+              ) : (
+                <p
+                  className="darshan-highlight__value"
+                  style={{ fontSize: "0.78rem", opacity: 0.75 }}
+                >
+                  {t(
+                    `${pournami.daysLeft} நாட்களில்`,
+                    `In ${pournami.daysLeft} days`,
+                  )}
+                </p>
+              )}
+            </div>
+          </div>
+        )}
+        {!nextEvent && !pournami && (
+          <div className="darshan-highlight card">
+            <span className="darshan-highlight__icon">🌕</span>
             <div>
               <p className="darshan-highlight__label">
                 {t("விரைவில்", "Upcoming")}
               </p>
               <p className="darshan-highlight__value">
-                {t("கார்த்திகை தீபம்", "Karthigai Deepam")}
+                {t("பௌர்ணமி பூஜை", "Pournami Poojai")}
               </p>
             </div>
           </div>
         )}
-      </div>
-      <div className="darshan-mode-block__cta">
-        <Link to="/sevas" className="btn btn-primary">
-          {t("சேவை பதிவு →", "Book a Seva →")}
-        </Link>
-        <Link to="/donations" className="btn btn-outline">
-          {t("நன்கொடை →", "Donate Now →")}
-        </Link>
+        <div className="darshan-highlight card">
+          <span className="darshan-highlight__icon">📿</span>
+          <div>
+            <p className="darshan-highlight__label">
+              {t("தினசரி ஆசி", "Daily Blessings")}
+            </p>
+            <p className="darshan-highlight__value">
+              {t(
+                "காலை 6 மணிக்கு கோவிலில் வாருங்கள்",
+                "Visit at 6 AM for morning aarti",
+              )}
+            </p>
+          </div>
+        </div>
       </div>
     </div>
   );
@@ -152,11 +194,11 @@ function FirstVisitContent({ t }) {
         <div className="darshan-info-item card">
           <span className="darshan-info-item__num">04</span>
           <div>
-            <h4>{t("சேவை பதிவு", "Book a Seva")}</h4>
+            <h4>{t("உடை விதிமுறை", "Dress Code")}</h4>
             <p>
               {t(
-                "முன்கூட்டியே சேவை பதிவு செய்வது சிறந்தது.",
-                "Pre-booking a seva ensures a smooth experience.",
+                "பாரம்பரிய உடை அணியவும். குறுகிய ஆடை அணிவது தவிர்க்கவும்.",
+                "Wear traditional attire. Avoid short or casual clothing inside the temple.",
               )}
             </p>
           </div>
@@ -222,6 +264,19 @@ function NriContent({ t }) {
             {t("சேவை பார்க்க", "View Sevas")}
           </Link>
         </div>
+        <div className="darshan-nri-card card">
+          <span className="darshan-nri-card__icon">📸</span>
+          <h4>{t("படத் தொகுப்பு", "Temple Gallery")}</h4>
+          <p>
+            {t(
+              "திருவிழாக்கள் மற்றும் சிறப்பு நிகழ்வுகளின் படங்களை பாருங்கள்.",
+              "Relive temple festivals and events through our photo gallery.",
+            )}
+          </p>
+          <Link to="/gallery" className="btn btn-outline btn--sm">
+            {t("படங்கள் காண →", "View Gallery →")}
+          </Link>
+        </div>
       </div>
     </div>
   );
@@ -252,18 +307,7 @@ function ElderContent({ t, pulseData }) {
           </div>
         )}
         <div className="darshan-highlight darshan-highlight--elder card">
-          <span className="darshan-highlight__icon">🕉️</span>
-          <div>
-            <p className="darshan-highlight__label">
-              {t("இன்றைய விசேஷம்", "Today's Special")}
-            </p>
-            <p className="darshan-highlight__value">
-              {t("சிவ அபிஷேகம்", "Shiva Abhishekam")}
-            </p>
-          </div>
-        </div>
-        <div className="darshan-highlight darshan-highlight--elder card">
-          <span className="darshan-highlight__icon">📞</span>
+          <span className="darshan-highlight__icon"></span>
           <div>
             <p className="darshan-highlight__label">
               {t("தொடர்பு கொள்ள", "Call Temple")}
@@ -274,6 +318,27 @@ function ElderContent({ t, pulseData }) {
             >
               +91 99999 99999
             </a>
+          </div>
+        </div>
+        <div className="darshan-highlight darshan-highlight--elder card">
+          <span className="darshan-highlight__icon">⏰</span>
+          <div>
+            <p className="darshan-highlight__label">
+              {t("கோயில் நேரம்", "Temple Hours")}
+            </p>
+            <p className="darshan-highlight__value">6:00 AM – 12:30 PM</p>
+            <p className="darshan-highlight__value">4:00 PM – 9:00 PM</p>
+          </div>
+        </div>
+        <div className="darshan-highlight darshan-highlight--elder card">
+          <span className="darshan-highlight__icon">♿</span>
+          <div>
+            <p className="darshan-highlight__label">
+              {t("வசதிகள்", "Accessibility")}
+            </p>
+            <p className="darshan-highlight__value">
+              {t("சக்கர நாற்காலி வசதி உள்ளது", "Wheelchair access available")}
+            </p>
           </div>
         </div>
       </div>
@@ -289,11 +354,159 @@ function ElderContent({ t, pulseData }) {
   );
 }
 
+function VolunteerContent({ t }) {
+  return (
+    <div className="darshan-mode-block">
+      <div className="darshan-volunteer-grid">
+        <div className="darshan-volunteer-card card darshan-volunteer-card--1">
+          <span className="darshan-volunteer-card__icon">🌸</span>
+          <h4>{t("பூ அலங்காரம்", "Flower Decoration")}</h4>
+          <p>
+            {t(
+              "திருவிழா நாட்களில் கோவில் அலங்கரிக்க உதவுங்கள்.",
+              "Help decorate the temple on festival days.",
+            )}
+          </p>
+        </div>
+        <div className="darshan-volunteer-card card darshan-volunteer-card--2">
+          <span className="darshan-volunteer-card__icon">🍚</span>
+          <h4>{t("அன்னதானம்", "Annadanam")}</h4>
+          <p>
+            {t(
+              "பக்தர்களுக்கு இலவச உணவு வழங்குவதில் பங்கேற்கலாம்.",
+              "Participate in serving free food to devotees.",
+            )}
+          </p>
+        </div>
+        <div className="darshan-volunteer-card card darshan-volunteer-card--3">
+          <span className="darshan-volunteer-card__icon">🧹</span>
+          <h4>{t("சுத்தம் & பராமரிப்பு", "Cleaning & Upkeep")}</h4>
+          <p>
+            {t(
+              "கோவில் வளாகத்தை சுத்தமாக வைக்க உதவுங்கள்.",
+              "Help keep the temple premises clean and tidy.",
+            )}
+          </p>
+        </div>
+        <div className="darshan-volunteer-card card darshan-volunteer-card--4">
+          <span className="darshan-volunteer-card__icon">📣</span>
+          <h4>{t("நிகழ்வு ஒருங்கிணைப்பு", "Event Coordination")}</h4>
+          <p>
+            {t(
+              "திருவிழாக்கள் மற்றும் சிறப்பு நிகழ்வுகளை ஒருங்கிணைக்க.",
+              "Coordinate festivals and special poojas.",
+            )}
+          </p>
+        </div>
+        <div className="darshan-volunteer-card card darshan-volunteer-card--5">
+          <span className="darshan-volunteer-card__icon">📷</span>
+          <h4>{t("படம் & பதிவு", "Photography & Docs")}</h4>
+          <p>
+            {t(
+              "கோவில் நிகழ்வுகளை படம் எடுத்து பதிவு செய்யுங்கள்.",
+              "Help document and photograph temple events for memory.",
+            )}
+          </p>
+        </div>
+      </div>
+      <div className="darshan-mode-block__cta">
+        <Link to="/contact" className="btn btn-primary">
+          {t("தொடர்பு கொள்ள →", "Get in Touch →")}
+        </Link>
+      </div>
+    </div>
+  );
+}
+
+function SponsorContent({ t }) {
+  return (
+    <div className="darshan-mode-block">
+      <div className="darshan-sponsor-hero">
+        <div className="darshan-sponsor-hero__icon">💛</div>
+        <div className="darshan-sponsor-hero__body">
+          <h3 className="darshan-sponsor-hero__title">
+            {t("சேவையை தானம் செய்யுங்கள்", "Sponsor a Sacred Seva")}
+          </h3>
+          <p className="darshan-sponsor-hero__sub">
+            {t(
+              "உங்கள் பெயரில் அல்லது குடும்பத்தினர் பெயரில் ஒரு பூஜையை நடத்தி ஆசி பெறுங்கள்.",
+              "Offer a pooja in your name or your family's name and receive the blessings of the Goddess.",
+            )}
+          </p>
+        </div>
+      </div>
+      <div className="darshan-sponsor-options">
+        <div className="darshan-sponsor-option card">
+          <span className="darshan-sponsor-option__icon">🛕</span>
+          <div>
+            <p className="darshan-sponsor-option__name">
+              {t("அபிஷேகம்", "Abhishekam")}
+            </p>
+            <p className="darshan-sponsor-option__desc">
+              {t("திருமேனி அலங்காரத்துடன்", "With divine adornment")}
+            </p>
+          </div>
+          <Link to="/sevas" className="btn btn-outline btn--sm">
+            {t("பதிவு →", "Book →")}
+          </Link>
+        </div>
+        <div className="darshan-sponsor-option card">
+          <span className="darshan-sponsor-option__icon">🌺</span>
+          <div>
+            <p className="darshan-sponsor-option__name">
+              {t("அர்ச்சனை", "Archana")}
+            </p>
+            <p className="darshan-sponsor-option__desc">
+              {t("108 நாம ஸ்துதி", "108-name worship")}
+            </p>
+          </div>
+          <Link to="/sevas" className="btn btn-outline btn--sm">
+            {t("பதிவு →", "Book →")}
+          </Link>
+        </div>
+        <div className="darshan-sponsor-option card">
+          <span className="darshan-sponsor-option__icon">🍚</span>
+          <div>
+            <p className="darshan-sponsor-option__name">
+              {t("அன்னதானம்", "Annadanam")}
+            </p>
+            <p className="darshan-sponsor-option__desc">
+              {t("பக்தர்களுக்கு உணவு", "Meal for devotees")}
+            </p>
+          </div>
+          <Link to="/sevas" className="btn btn-outline btn--sm">
+            {t("பதிவு →", "Book →")}
+          </Link>
+        </div>
+      </div>
+      <div className="darshan-mode-block__cta">
+        <Link to="/donations" className="btn btn-primary">
+          {t("நன்கொடை →", "Donate →")}
+        </Link>
+        <Link to="/sevas" className="btn btn-outline">
+          {t("அனைத்து சேவைகள் →", "All Sevas →")}
+        </Link>
+      </div>
+    </div>
+  );
+}
+
 export default function Home() {
   const [announcements, setAnnouncements] = useState([]);
   const [events, setEvents] = useState([]);
   const [sevas, setSevas] = useState([]);
   const [pulseData, setPulseData] = useState(null);
+  const [widgets, setWidgets] = useState([]);
+  const [widgetsLoading, setWidgetsLoading] = useState(true);
+  const [pournami, setPournami] = useState(null);
+  const [pournamis, setPournamis] = useState([]);
+  const [donors, setDonors] = useState([]);
+  const [nallaTime, setNallaTime] = useState(null); // [[start,end],[start,end]]
+  const [siteSettings, setSiteSettings] = useState({
+    show_pournami_section: true,
+    show_nalla_strip: true,
+    show_donor_ticker: true,
+  });
   const { lang, t } = useLang();
   const [mode, setMode] = useState(() => detectInitialMode(lang));
 
@@ -316,6 +529,65 @@ export default function Home() {
         setPulseData(r.data && typeof r.data === "object" ? r.data : null),
       )
       .catch(() => {});
+    api
+      .get("/homepage_widgets")
+      .then((r) => setWidgets(Array.isArray(r.data) ? r.data : []))
+      .catch(() => {})
+      .finally(() => setWidgetsLoading(false));
+    api
+      .get("/donors")
+      .then((r) => setDonors(Array.isArray(r.data) ? r.data : []))
+      .catch(() => {});
+    api
+      .get("/settings")
+      .then((r) => {
+        if (r.data && typeof r.data === "object")
+          setSiteSettings((prev) => ({ ...prev, ...r.data }));
+      })
+      .catch(() => {});
+
+    // Today's Nalla Neram from calendar
+    const nowD = new Date();
+    api
+      .get(`/calendar?year=${nowD.getFullYear()}&month=${nowD.getMonth() + 1}`)
+      .then((r) => {
+        const slots = r.data?.today?.timings?.nalla_neram;
+        if (Array.isArray(slots) && slots.length) setNallaTime(slots);
+      })
+      .catch(() => {});
+
+    // Find next 3 Pournami dates across 3 months from calendar
+    const todayStr = new Date().toISOString().slice(0, 10);
+    const now = new Date();
+    const monthsToFetch = [0, 1, 2].map((offset) => {
+      const d = new Date(now.getFullYear(), now.getMonth() + offset, 1);
+      return { year: d.getFullYear(), month: d.getMonth() + 1 };
+    });
+    Promise.all(
+      monthsToFetch.map(({ year, month }) =>
+        api
+          .get(`/calendar?year=${year}&month=${month}`)
+          .then((r) => {
+            const found = (r.data?.days ?? []).find(
+              (d) =>
+                d.date >= todayStr &&
+                d.special?.some((s) => s.type === "pournami"),
+            );
+            if (!found) return null;
+            const daysLeft = Math.round(
+              (new Date(found.date + "T00:00:00") -
+                new Date(todayStr + "T00:00:00")) /
+                86400000,
+            );
+            return { ...found, daysLeft };
+          })
+          .catch(() => null),
+      ),
+    ).then((results) => {
+      const found = results.filter(Boolean).slice(0, 3);
+      setPournamis(found);
+      if (found.length > 0) setPournami(found[0]); // keep legacy prop for other callers
+    });
   }, []);
 
   return (
@@ -366,18 +638,88 @@ export default function Home() {
         </div>
       </section>
 
-      {/* Announcements */}
+      {/* Announcements ticker */}
       {announcements.length > 0 && (
         <div className="ticker-bar">
-          <span className="ticker-label">📢 அறிவிப்பு:</span>
-          <div className="ticker-scroll">
-            {announcements.map((a) => (
-              <span key={a.id} className="ticker-item">
-                {a.title}
-              </span>
-            ))}
+          <span className="ticker-label">📢 {t("அறிவிப்பு", "Notice")}:</span>
+          <div className="ticker-track">
+            {/* eslint-disable-next-line react/no-array-index-key */}
+            <div className="ticker-scroll">
+              {[...announcements, ...announcements].map((a, i) => (
+                <span key={i} className="ticker-item">
+                  {a.title}
+                  <span className="ticker-sep">✦</span>
+                </span>
+              ))}
+            </div>
           </div>
         </div>
+      )}
+
+      {/* ── Donor / Sponsor scroll ticker ── */}
+      {siteSettings.show_donor_ticker && donors.length > 0 && (
+        <div className="donor-ticker">
+          <span className="donor-ticker__label">
+            🙏 {t("நன்கொடையாளர்கள்", "Our Donors")}
+          </span>
+          <div className="donor-ticker__track">
+            <div className="donor-ticker__inner">
+              {/* eslint-disable-next-line react/no-array-index-key */}
+              {[...donors, ...donors].map((d, i) => (
+                <span key={i} className="donor-ticker__item">
+                  <span className="donor-ticker__name">
+                    {d.type === "sponsor" ? "💛 " : "🌸 "}
+                    {d.name}
+                  </span>
+                  {d.label && (
+                    <span className="donor-ticker__sub"> — {d.label}</span>
+                  )}
+                </span>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Daily Nalla Neram strip ── */}
+      {siteSettings.show_nalla_strip && nallaTime && (
+        <div className="nalla-strip">
+          <span className="nalla-strip__icon">✨</span>
+          <span className="nalla-strip__label">
+            {t("இன்றைய நல்ல நேரம்", "Today's Nalla Neram")}
+          </span>
+          <span className="nalla-strip__divider">|</span>
+          {nallaTime.map((slot, i) => (
+            <span key={i} className="nalla-strip__slot">
+              {slot[0]} – {slot[1]}
+              {i < nallaTime.length - 1 && (
+                <span className="nalla-strip__sep">&nbsp;&amp;&nbsp;</span>
+              )}
+            </span>
+          ))}
+          <span className="nalla-strip__suffix">
+            {t("(இட்ட நேரம் நல்லது)", "(Auspicious Time)")}
+          </span>
+        </div>
+      )}
+
+      {/* ── Upcoming Events & Pournami (merged) ── */}
+      {(widgetsLoading || widgets.length > 0 || pournamis.length > 0) && (
+        <section className="section" style={{ paddingBottom: 0 }}>
+          <div className="container">
+            <h2 className="section-title">
+              {t("அடுத்த நிகழ்வுகள்", "Upcoming Events & Announcements")}
+            </h2>
+            <div className="divider" />
+            <HomepageWidgets
+              widgets={widgets}
+              loading={widgetsLoading}
+              pournami={pournami}
+              pournamis={pournamis}
+              lang={lang}
+            />
+          </div>
+        </section>
       )}
 
       {/* ── Digital Darshan Flow: Mode Switcher ── */}
@@ -408,11 +750,18 @@ export default function Home() {
             className={`darshan-content${mode === "elder" ? " darshan-content--elder" : ""}`}
           >
             {mode === "devotee" && (
-              <DevoteeContent t={t} pulseData={pulseData} />
+              <DevoteeContent
+                t={t}
+                pulseData={pulseData}
+                nallaTime={nallaTime}
+                pournami={pournami}
+              />
             )}
             {mode === "first-visit" && <FirstVisitContent t={t} />}
             {mode === "nri" && <NriContent t={t} />}
             {mode === "elder" && <ElderContent t={t} pulseData={pulseData} />}
+            {mode === "volunteer" && <VolunteerContent t={t} />}
+            {mode === "sponsor" && <SponsorContent t={t} />}
           </div>
         </div>
       </section>
@@ -434,20 +783,18 @@ export default function Home() {
                   <div key={s.id} className="seva-card card">
                     <div className="seva-card__body">
                       <h3>{lang === "ta" ? s.name_ta : s.name_en}</h3>
-                      <div className="seva-card__price">₹{s.amount}</div>
                     </div>
                   </div>
                 ))
               : [
-                  ["அபிஷேகம்", "Abhishekam", "₹251"],
-                  ["அர்ச்சனை", "Archana", "₹51"],
-                  ["தீபாராதனை", "Deepa Aradhana", "₹101"],
-                  ["அன்னதானம்", "Annadanam", "₹501"],
-                ].map(([ta, en, price]) => (
+                  ["அபிஷேகம்", "Abhishekam"],
+                  ["அர்ச்சனை", "Archana"],
+                  ["தீபாராதனை", "Deepa Aradhana"],
+                  ["அன்னதானம்", "Annadanam"],
+                ].map(([ta, en]) => (
                   <div key={ta} className="seva-card card">
                     <div className="seva-card__body">
                       <h3>{t(ta, en)}</h3>
-                      <div className="seva-card__price">{price}</div>
                     </div>
                   </div>
                 ))}
@@ -518,11 +865,11 @@ export default function Home() {
             </Link>
             <Link to="/gallery" className="quick-link-card card">
               <span className="quick-link-card__icon">🖼️</span>
-              <h3>{t("தொகுப்பு", "Gallery")}</h3>
+              <h3>{t("படத் தொகுப்பு", "Gallery")}</h3>
               <p>
                 {t(
-                  "திருவிழாக்கள் மற்றும் நாளாந்த வழிபாட்டின் படங்களைப் பாருங்கள்",
-                  "View photos from festivals and daily rituals",
+                  "கோயிலையும் திருவிழாகளின் நினைவுமிக துணிப்படங்களைக் காணுங்கள்",
+                  "Browse photos of the temple and its festivals",
                 )}
               </p>
             </Link>
