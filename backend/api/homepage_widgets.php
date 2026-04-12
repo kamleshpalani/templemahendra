@@ -135,6 +135,7 @@ foreach ($rows as $row) {
         'description_en' => $row['description_en'],
         'is_pinned'      => (bool) $row['is_pinned'],
         'priority'       => (int) $row['priority'],
+        'event_date'     => $row['start_date'] ?? null, // used by upcoming_event type
     ];
 
     // Attach pooja info
@@ -242,6 +243,44 @@ if (empty($widgets)) {
             ];
         }
         $widgets[] = $fb;
+    }
+}
+
+// ── Step 6: Augment with upcoming Events from events table if fewer than 3 ──
+if (count($widgets) < 3) {
+    // Collect dates already represented to avoid duplicates
+    $coveredDates = [];
+    foreach ($widgets as $w) {
+        if (!empty($w['event_date']))      $coveredDates[] = $w['event_date'];
+        if (!empty($w['pooja']['date']))   $coveredDates[] = $w['pooja']['date'];
+    }
+
+    $stmtEv = $db->prepare(
+        "SELECT id, title_ta, title_en, description, event_date
+           FROM events
+          WHERE is_active = 1
+            AND event_date >= :today
+          ORDER BY event_date ASC
+          LIMIT 5"
+    );
+    $stmtEv->execute([':today' => $today]);
+    $upEvents = $stmtEv->fetchAll();
+
+    foreach ($upEvents as $ev) {
+        if (count($widgets) >= 3) break;
+        if (in_array($ev['event_date'], $coveredDates)) continue;
+        $widgets[] = [
+            'id'             => 0,
+            'content_type'   => 'upcoming_event',
+            'title_ta'       => $ev['title_ta'],
+            'title_en'       => $ev['title_en'],
+            'description_ta' => $ev['description'],
+            'description_en' => $ev['description'],
+            'is_pinned'      => false,
+            'priority'       => 99,
+            'event_date'     => $ev['event_date'],
+        ];
+        $coveredDates[] = $ev['event_date'];
     }
 }
 

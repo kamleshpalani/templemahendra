@@ -524,7 +524,41 @@ export default function Home() {
   const [pournami, setPournami] = useState(null);
   const [pournamis, setPournamis] = useState([]);
   const [donors, setDonors] = useState([]);
-  const [nallaTime, setNallaTime] = useState(null); // [[start,end],[start,end]]
+  // Nalla Neram by IST weekday (0=Sun … 6=Sat) — same table as backend
+  const IST_NALLA_NERAM = [
+    [
+      ["07:30", "09:00"],
+      ["22:30", "24:00"],
+    ], // Sun
+    [
+      ["06:00", "07:30"],
+      ["15:00", "16:30"],
+    ], // Mon
+    [
+      ["07:30", "09:00"],
+      ["22:30", "24:00"],
+    ], // Tue
+    [
+      ["07:30", "09:00"],
+      ["12:00", "13:30"],
+    ], // Wed
+    [
+      ["10:30", "12:00"],
+      ["19:30", "21:00"],
+    ], // Thu
+    [
+      ["10:30", "12:00"],
+      ["16:30", "18:00"],
+    ], // Fri
+    [
+      ["06:00", "07:30"],
+      ["19:30", "21:00"],
+    ], // Sat
+  ];
+  const istWeekday = new Date(
+    new Date().toLocaleString("en-US", { timeZone: "Asia/Kolkata" }),
+  ).getDay();
+  const [nallaTime, setNallaTime] = useState(IST_NALLA_NERAM[istWeekday]);
   const [nowIST, setNowIST] = useState(() => new Date());
   const [siteSettings, setSiteSettings] = useState({
     show_pournami_section: true,
@@ -573,16 +607,6 @@ export default function Home() {
       .then((r) => {
         if (r.data && typeof r.data === "object")
           setSiteSettings((prev) => ({ ...prev, ...r.data }));
-      })
-      .catch(() => {});
-
-    // Today's Nalla Neram from calendar
-    const nowD = new Date();
-    api
-      .get(`/calendar?year=${nowD.getFullYear()}&month=${nowD.getMonth() + 1}`)
-      .then((r) => {
-        const slots = r.data?.today?.timings?.nalla_neram;
-        if (Array.isArray(slots) && slots.length) setNallaTime(slots);
       })
       .catch(() => {});
 
