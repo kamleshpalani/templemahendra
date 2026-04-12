@@ -12,7 +12,7 @@ $sql = 'SELECT id, title_ta, title_en, description, event_date
          WHERE is_active = 1';
 
 if ($upcoming) {
-    $sql .= ' AND event_date >= CURDATE()';
+    $sql .= ' AND event_date >= CURRENT_DATE';
 }
 
 $sql .= ' ORDER BY event_date ASC LIMIT :limit';

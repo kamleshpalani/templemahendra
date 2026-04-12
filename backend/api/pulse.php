@@ -74,7 +74,7 @@ try {
         'SELECT title_ta, title_en, event_date
            FROM events
           WHERE is_active = 1
-            AND event_date >= CURDATE()
+            AND event_date >= CURRENT_DATE
           ORDER BY event_date ASC
           LIMIT 3'
     );

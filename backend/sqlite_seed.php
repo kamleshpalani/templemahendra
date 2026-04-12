@@ -1,11 +1,13 @@
 <?php
-// sqlite_seed.php — creates and seeds a local SQLite DB for development.
-// Run once: php sqlite_seed.php
+// sqlite_seed.php — creates and seeds the SQLite DB.
+// Used automatically by docker-entrypoint.sh on first boot.
+// Also run manually for local dev: php sqlite_seed.php
 
-$dbPath = __DIR__ . '/dev.sqlite';
+// Accept path from DB_PATH env var (Docker/Render) or default to dev.sqlite
+$dbPath = getenv('DB_PATH') ?: ($_ENV['DB_PATH'] ?? (__DIR__ . '/dev.sqlite'));
 
-if (file_exists($dbPath)) {
-    echo "dev.sqlite already exists. Delete it first to re-seed.\n";
+if (file_exists($dbPath) && filesize($dbPath) > 0) {
+    echo "Database already exists at {$dbPath}. Delete it first to re-seed.\n";
     exit(0);
 }
 

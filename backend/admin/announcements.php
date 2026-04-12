@@ -25,7 +25,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                ->execute([':t' => $title, ':b' => $body, ':a' => $is_active, ':id' => $id]);
             $msg = '<p class="alert alert--success">Updated.</p>';
         } else {
-            $db->prepare('INSERT INTO announcements (title, body, is_active, created_at) VALUES (:t,:b,:a,NOW())')
+            $db->prepare('INSERT INTO announcements (title, body, is_active, created_at) VALUES (:t,:b,:a,CURRENT_TIMESTAMP)')
                ->execute([':t' => $title, ':b' => $body, ':a' => $is_active]);
             $msg = '<p class="alert alert--success">Created.</p>';
         }

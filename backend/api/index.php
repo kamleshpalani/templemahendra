@@ -29,6 +29,7 @@ $routes = [
         '/donations'      => 'donations.php',
         '/contact'        => 'contact.php',
         '/seva-bookings'  => 'seva_bookings.php',
+        '/chat'           => 'chat.php',
     ],
 ];
 
