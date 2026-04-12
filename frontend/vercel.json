@@ -1,4 +1,11 @@
 {
+  "redirects": [
+    {
+      "source": "/admin/:path*",
+      "destination": "https://templemahendra.onrender.com/admin/:path*",
+      "permanent": false
+    }
+  ],
   "rewrites": [{ "source": "/(.*)", "destination": "/index.html" }],
   "headers": [
     {
