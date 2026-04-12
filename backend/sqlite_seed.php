@@ -159,6 +159,28 @@ $pdo->exec("INSERT INTO poojas (name_ta, name_en, pooja_date, pooja_time, pooja_
 ('பௌர்ணமி பூஜை', 'Pournami Poojai', '2026-05-12', '16:00', 'pournami', 1),
 ('பௌர்ணமி பூஜை', 'Pournami Poojai', '2026-06-11', '16:00', 'pournami', 1)");
 
+$pdo->exec("INSERT INTO homepage_widgets
+  (content_type, source_type, title_ta, title_en, description_ta, description_en,
+   linked_pooja_id, linked_sponsor_id, show_sponsor, show_nalla_neram,
+   start_date, end_date, priority, is_pinned, is_active)
+VALUES
+  ('upcoming_event', 'manual', 'தமிழ் புத்தாண்டு', 'Tamil New Year',
+   'அனைவருக்கும் புதிய தமிழ் வருட நல்வாழ்த்துக்கள்! கோவிலில் சிறப்பு பூஜை நடைபெறும்.',
+   'Wishing all a joyful Tamil New Year! Special poojas will be held at the temple.',
+   NULL, NULL, 0, 0, '2026-04-14', '2026-04-15', 1, 1, 1),
+  ('upcoming_event', 'manual', 'வைகாசி விசாகம்', 'Vaikasi Visakam',
+   'முருகன் பிறந்த நட்சத்திர திருநாள் — சிறப்பு அபிஷேகம் மற்றும் அலங்காரம்.',
+   'Birth star festival of Lord Murugan — Special Abhishekam and Alankaram.',
+   NULL, NULL, 0, 0, '2026-05-28', '2026-05-29', 2, 0, 1),
+  ('upcoming_event', 'manual', 'ஆடி பூரம்', 'Aadi Pooram',
+   'ஆண்டாள் நாச்சியார் திருநாள் — சிறப்பு திருவிழா.',
+   'Festival of Goddess Andal — special celebrations.',
+   NULL, NULL, 0, 0, '2026-07-28', '2026-07-29', 3, 0, 1),
+  ('calendar_pooja', 'calendar', 'பௌர்ணமி பூஜை', 'Pournami Poojai',
+   'மாதந்தோறும் நடைபெறும் சிறப்பு பௌர்ணமி பூஜை — மாலை 4 மணி முதல் 9 மணி வரை.',
+   'Monthly full moon special pooja — 4 PM to 9 PM. All are welcome.',
+   1, NULL, 0, 0, NULL, NULL, 4, 0, 1)");
+
 $pdo->exec("INSERT INTO sponsors (name, note, is_active) VALUES
 ('குமார் குடும்பம்', 'பௌர்ணமி பூஜை நிதியுதவி', 1),
 ('செல்வி அம்மாள்',   'அன்னதான நிதியுதவி',       1)");

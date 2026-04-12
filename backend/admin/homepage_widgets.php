@@ -16,7 +16,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if ($action === 'save') {
         $content_type = in_array($_POST['content_type'] ?? '', [
             'announcement','coming_soon','upcoming_pooja',
-            'calendar_pooja','nalla_neram','sponsor'
+            'calendar_pooja','nalla_neram','sponsor','upcoming_event'
         ], true) ? $_POST['content_type'] : 'announcement';
 
         $source_type = ($_POST['source_type'] ?? 'manual') === 'calendar' ? 'calendar' : 'manual';
@@ -121,6 +121,7 @@ $sponsors = $db->query(
 // ── Labels ───────────────────────────────────────────────────────────────────
 $typeLabels = [
     'announcement'    => '📢 அறிவிப்பு (Announcement)',
+    'upcoming_event'  => '🎉 நிகழ்வு (Upcoming Event)',
     'coming_soon'     => '⏳ விரைவில் (Coming Soon)',
     'upcoming_pooja'  => '🛕 அடுத்த பூஜை (Upcoming Pooja)',
     'calendar_pooja'  => '🌕 பௌர்ணமி பூஜை (Calendar Pooja)',
@@ -219,8 +220,10 @@ echo $msg;
 
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.75rem">
       <label>Start Date
+        <small style="display:block;color:#888;font-size:0.75rem">For 🎉 Upcoming Event: this is the <strong>event date shown on the card</strong></small>
         <input type="date" name="start_date"
                value="<?= htmlspecialchars($editing['start_date'] ?? '') ?>" />
+      </label>
       </label>
       <label>End Date
         <input type="date" name="end_date"

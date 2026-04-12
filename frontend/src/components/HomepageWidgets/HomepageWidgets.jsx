@@ -5,6 +5,7 @@ import "./HomepageWidgets.css";
 // ── Icon + label map ──────────────────────────────────────────────────────────
 const TYPE_META = {
   announcement: { icon: "📢", ta: "அறிவிப்பு", en: "Announcement" },
+  upcoming_event: { icon: "🎉", ta: "நிகழ்வு", en: "Upcoming Event" },
   coming_soon: { icon: "⏳", ta: "விரைவில்", en: "Coming Soon" },
   upcoming_pooja: { icon: "🛕", ta: "அடுத்த பூஜை", en: "Upcoming Pooja" },
   calendar_pooja: { icon: "🌕", ta: "பௌர்ணமி பூஜை", en: "Pournami Pooja" },
@@ -17,11 +18,27 @@ function WidgetCard({ widget, pournami, lang, index }) {
   const { t } = useLang();
   const meta = TYPE_META[widget.content_type] ?? TYPE_META.announcement;
   const isCalPooja = widget.content_type === "calendar_pooja";
+  const isUpcomingEvent = widget.content_type === "upcoming_event";
+  const isUpcomingPooja =
+    widget.content_type === "upcoming_pooja" ||
+    widget.content_type === "coming_soon";
+  const isEventLike = isUpcomingEvent || isUpcomingPooja;
+  const isFeatured = index === 0; // first card always gets featured treatment
   // Use panchangam pournami data to enrich calendar_pooja cards
   const richP = isCalPooja && pournami ? pournami : null;
 
   const title = t(widget.title_ta, widget.title_en) || t(meta.ta, meta.en);
   const desc = t(widget.description_ta, widget.description_en);
+
+  // Resolve the display date: upcoming_event uses event_date; upcoming_pooja/coming_soon uses pooja.date
+  const rawDate = widget.event_date ?? widget.pooja?.date ?? null;
+  const displayDateStr =
+    isEventLike && rawDate
+      ? new Date(rawDate + "T00:00:00").toLocaleDateString(
+          lang === "ta" ? "ta-IN" : "en-IN",
+          { weekday: "long", day: "numeric", month: "long", year: "numeric" },
+        )
+      : null;
 
   return (
     <div
@@ -30,22 +47,49 @@ function WidgetCard({ widget, pournami, lang, index }) {
         `hw-card--${widget.content_type}`,
         `hw-card--pos-${(index ?? 0) + 1}`,
         widget.is_pinned ? "hw-card--pinned" : "",
-        isCalPooja ? "hw-card--featured" : "",
+        isFeatured ? "hw-card--featured" : "",
       ]
         .filter(Boolean)
         .join(" ")}
     >
-      {/* Type badge — hidden for upcoming_pooja and calendar_pooja */}
-      {widget.content_type !== "upcoming_pooja" &&
-        widget.content_type !== "calendar_pooja" && (
-          <span className={`hw-badge hw-badge--${widget.content_type}`}>
-            {meta.icon} {t(meta.ta, meta.en)}
-            {widget.is_pinned && " 📌"}
-          </span>
-        )}
+      {/* Type badge — hidden for event-like, calendar, and upcoming_pooja types
+          (they render their own badge inside the rich layout) */}
+      {!isEventLike && widget.content_type !== "calendar_pooja" && (
+        <span className={`hw-badge hw-badge--${widget.content_type}`}>
+          {meta.icon} {t(meta.ta, meta.en)}
+          {widget.is_pinned && " 📌"}
+        </span>
+      )}
 
-      {/* Calendar Pooja: rich panchangam display */}
-      {richP ? (
+      {/* Event-like rich display: upcoming_event, upcoming_pooja, coming_soon */}
+      {isEventLike ? (
+        <div className="hw-event">
+          <div className="hw-event__icon">{meta.icon}</div>
+          <div className="hw-event__body">
+            <span className={`hw-badge hw-badge--${widget.content_type}`}>
+              {t(meta.ta, meta.en)}
+              {widget.is_pinned && " 📌"}
+            </span>
+            <p className="hw-event__title">{title}</p>
+            {displayDateStr && (
+              <p className="hw-event__date">📅 {displayDateStr}</p>
+            )}
+            {desc && <p className="hw-event__desc">{desc}</p>}
+            <div className="hw-card__cta">
+              {isUpcomingPooja ? (
+                <Link to="/sevas" className="btn btn-outline btn--sm">
+                  {t("சேவைகள் →", "View Sevas →")}
+                </Link>
+              ) : (
+                <Link to="/events" className="btn btn-outline btn--sm">
+                  {t("அனைத்து நிகழ்வுகள் →", "All Events →")}
+                </Link>
+              )}
+            </div>
+          </div>
+        </div>
+      ) : richP ? (
+        /* Calendar Pooja: rich panchangam display */
         <div className="hw-pournami">
           <div className="hw-pournami__moon">🌕</div>
           <div className="hw-pournami__body">
@@ -85,7 +129,7 @@ function WidgetCard({ widget, pournami, lang, index }) {
           </div>
         </div>
       ) : (
-        /* Standard title for non-calendar types */
+        /* Standard title for all other types */
         <div className="hw-card__header">
           <span className="hw-card__icon" aria-hidden="true">
             {meta.icon}
@@ -96,8 +140,8 @@ function WidgetCard({ widget, pournami, lang, index }) {
         </div>
       )}
 
-      {/* Description */}
-      {desc && <p className="hw-card__desc">{desc}</p>}
+      {/* Description (only for non-event-like types — event renders desc inline) */}
+      {!isEventLike && desc && <p className="hw-card__desc">{desc}</p>}
 
       {/* Sponsor */}
       {widget.sponsor?.name && (
@@ -184,11 +228,9 @@ export default function HomepageWidgets({
     pournamis && pournamis.length > 0 ? pournamis : pournami ? [pournami] : [];
 
   // Synthesise one calendar_pooja card per pournami that isn't already
-  // covered by a DB widget's linked pooja date
+  // covered by any DB widget that has the same pooja date (any type)
   const dbPoojaDates = new Set(
-    dbWidgets
-      .filter((w) => w.content_type === "calendar_pooja" && w.pooja?.date)
-      .map((w) => w.pooja.date),
+    dbWidgets.filter((w) => w.pooja?.date).map((w) => w.pooja.date),
   );
   const synthCards = calPournamis
     .filter((p) => !dbPoojaDates.has(p.date))
@@ -204,14 +246,13 @@ export default function HomepageWidgets({
       _pournami: p, // carry the panchangam data
     }));
 
-  const allWidgets = [...dbWidgets, ...synthCards];
-  const displayWidgets = allWidgets.slice(1); // hide first card
-  if (displayWidgets.length === 0) return null;
+  const allWidgets = [...dbWidgets, ...synthCards].slice(0, 4);
+  if (allWidgets.length === 0) return null;
 
   return (
     <div className="hw-section">
       <div className="hw-grid">
-        {displayWidgets.map((w, idx) => {
+        {allWidgets.map((w, idx) => {
           // Resolve which pournami object to pass for enrichment:
           // synth cards carry _pournami; DB calendar_pooja cards match by date
           const cardPournami =
@@ -223,7 +264,7 @@ export default function HomepageWidgets({
             (w.content_type === "calendar_pooja" ? calPournamis[0] : null);
           return (
             <WidgetCard
-              key={w.id || w.content_type}
+              key={w.id ? String(w.id) : `${w.content_type}-${idx}`}
               widget={w}
               pournami={cardPournami}
               lang={lang}

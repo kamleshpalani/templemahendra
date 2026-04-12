@@ -13,7 +13,14 @@ const POOJA_SCHEDULE = [
   { name: "அர்த்த ஜாமம்", nameEn: "Ardha Jamam", h: 20, m: 30 },
 ];
 
-// Morning: 6:00–12:30 | Evening: 16:00–21:00
+// Always use IST (Asia/Kolkata, UTC+5:30) regardless of visitor's local timezone
+function getISTNow() {
+  return new Date(
+    new Date().toLocaleString("en-US", { timeZone: "Asia/Kolkata" }),
+  );
+}
+
+// Morning: 6:00–12:30 | Evening: 16:00–21:00 (IST)
 const isOpen = (h, m) => {
   const t = h * 60 + m;
   return (t >= 360 && t < 750) || (t >= 960 && t < 1260);
@@ -81,10 +88,10 @@ export default function TemplePulseHeader() {
     return () => window.removeEventListener("scroll", onScroll);
   }, [lastScroll]);
 
-  const now = new Date();
+  const now = getISTNow(); // always IST regardless of visitor's local timezone
   const open = isOpen(now.getHours(), now.getMinutes());
   const { pooja, diffSec } = getNextPooja(now);
-  const weekday = now.getDay(); // 0=Sun
+  const weekday = now.getDay(); // 0=Sun (in IST)
   const [special, specialEn] = DAILY_SPECIAL[weekday];
 
   return (

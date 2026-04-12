@@ -192,6 +192,9 @@ function specialDays(int $tithi, int $wd, int $m, int $d): array
 
 // ── Build response ────────────────────────────────────────────────────────────
 
+// Use IST for today matching (same as pulse.php)
+$todayIST = new DateTime('now', new DateTimeZone('Asia/Kolkata'));
+
 $daysInMonth = cal_days_in_month(CAL_GREGORIAN, $month, $year);
 $days        = [];
 
@@ -223,7 +226,7 @@ for ($d = 1; $d <= $daysInMonth; $d++) {
     ];
 }
 
-$todayStr  = date('Y-m-d');
+$todayStr  = $todayIST->format('Y-m-d');
 $todayData = null;
 foreach ($days as $day) {
     if ($day['date'] === $todayStr) { $todayData = $day; break; }
