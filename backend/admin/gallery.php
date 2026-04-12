@@ -28,7 +28,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $dest     = UPLOAD_DIR . $filename;
 
             if (move_uploaded_file($file['tmp_name'], $dest)) {
-                $db->prepare('INSERT INTO gallery (filename, caption, is_active, created_at) VALUES (:f,:c,1,NOW())')
+                $db->prepare('INSERT INTO gallery (filename, caption, is_active, created_at) VALUES (:f,:c,1,CURRENT_TIMESTAMP)')
                    ->execute([':f' => $filename, ':c' => $caption]);
                 $msg = '<p class="alert alert--success">Image uploaded.</p>';
             } else {

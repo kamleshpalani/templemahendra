@@ -25,7 +25,7 @@ if (!preg_match('/^\d{7,15}$/', $phone)) {
 $db   = getDB();
 $stmt = $db->prepare(
     'INSERT INTO contact_messages (name, phone, message, created_at)
-          VALUES (:name, :phone, :message, NOW())'
+          VALUES (:name, :phone, :message, CURRENT_TIMESTAMP)'
 );
 $stmt->execute([':name' => $name, ':phone' => $phone, ':message' => $message]);
 

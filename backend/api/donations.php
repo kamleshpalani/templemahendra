@@ -32,7 +32,7 @@ if (!preg_match('/^\d{7,15}$/', $phone)) {
 $db   = getDB();
 $stmt = $db->prepare(
     'INSERT INTO donations (name, phone, amount, purpose, message, created_at)
-          VALUES (:name, :phone, :amount, :purpose, :message, NOW())'
+          VALUES (:name, :phone, :amount, :purpose, :message, CURRENT_TIMESTAMP)'
 );
 $stmt->execute([
     ':name'    => $name,

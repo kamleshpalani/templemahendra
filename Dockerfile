@@ -4,10 +4,13 @@ FROM php:8.2-apache
 # Enable Apache modules
 RUN a2enmod rewrite headers
 
-# Install PDO MySQL extension + curl (needed for healthcheck)
-RUN apt-get update && apt-get install -y --no-install-recommends curl \
+# Install PDO SQLite extension + curl (needed for healthcheck)
+RUN apt-get update && apt-get install -y --no-install-recommends curl libsqlite3-dev \
     && rm -rf /var/lib/apt/lists/* \
-    && docker-php-ext-install pdo pdo_mysql
+    && docker-php-ext-install pdo pdo_sqlite
+
+# Persistent data directory for SQLite database file
+RUN mkdir -p /data && chown www-data:www-data /data
 
 # Copy backend source into web root
 COPY backend/ /var/www/html/

@@ -1,0 +1,8 @@
+# Ensure shell scripts always use LF in the repo (required for Linux containers)
+*.sh        text eol=lf
+
+# Dockerfile and entrypoint must be LF for Linux Docker builds
+Dockerfile  text eol=lf
+
+# Everything else: normalise to LF in repo, checkout as native on Windows
+*           text=auto

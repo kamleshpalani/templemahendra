@@ -13,23 +13,22 @@ services:
     dockerfilePath: ./Dockerfile
 
     # Render free tier: auto-sleeps after 15 min inactivity
-    # Upgrade to "Starter" ($7/mo) for always-on
-    plan: free
+    # Upgrade to "Starter" ($7/mo) for always-on + persistent disk support
+    plan: starter
+
+    # Persistent disk — mounts at /data so the SQLite file survives deploys/restarts
+    # NOTE: persistent disks require the "Starter" plan or higher
+    disk:
+      name: temple-sqlite-data
+      mountPath: /data
+      sizeGB: 1
 
     # Render assigns a random port; we tell Apache to bind $PORT
     # (Apache listens on 80 by default; Render proxies 80 → $PORT automatically)
     envVars:
-      # ── Database (external MySQL — e.g. Aiven, PlanetScale, Railway) ─────────────
-      - key: DB_HOST
-        sync: false # ← fill in Render dashboard after creating MySQL service
-      - key: DB_PORT
-        sync: false # e.g. 15884 for Aiven
-      - key: DB_NAME
-        sync: false
-      - key: DB_USER
-        sync: false
-      - key: DB_PASS
-        sync: false
+      # ── Database — SQLite (file on persistent disk) ───────────────────────────────
+      - key: DB_PATH
+        value: /data/temple.sqlite
 
       # ── CORS — set to your Vercel frontend URL ────────────────────────────────────
       # Example: https://temple-mahendra.vercel.app

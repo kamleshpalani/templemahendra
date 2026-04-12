@@ -28,7 +28,20 @@ const MODES = [
 ];
 
 /* ─── Mode content blocks ─────────────────────────────────── */
+const BLESSING_KEY = "temple_blessing_hidden";
+
 function DevoteeContent({ t, pulseData, nallaTime, pournami }) {
+  const [blessingHidden, setBlessingHidden] = useState(() => {
+    const today = new Date().toISOString().slice(0, 10);
+    return localStorage.getItem(BLESSING_KEY) === today;
+  });
+
+  const hideBlessing = () => {
+    const today = new Date().toISOString().slice(0, 10);
+    localStorage.setItem(BLESSING_KEY, today);
+    setBlessingHidden(true);
+  };
+
   // Use live pulse data if available, else sensible fallbacks
   const nextPoojaName = pulseData?.nextPooja
     ? t(pulseData.nextPooja.name_ta, pulseData.nextPooja.name_en) +
@@ -137,20 +150,30 @@ function DevoteeContent({ t, pulseData, nallaTime, pournami }) {
             </div>
           </div>
         )}
-        <div className="darshan-highlight card">
-          <span className="darshan-highlight__icon">📿</span>
-          <div>
-            <p className="darshan-highlight__label">
-              {t("தினசரி ஆசி", "Daily Blessings")}
-            </p>
-            <p className="darshan-highlight__value">
-              {t(
-                "காலை 6 மணிக்கு கோவிலில் வாருங்கள்",
-                "Visit at 6 AM for morning aarti",
-              )}
-            </p>
+        {!blessingHidden && (
+          <div className="darshan-highlight darshan-highlight--dismissible card">
+            <span className="darshan-highlight__icon">📿</span>
+            <div className="darshan-highlight__body">
+              <p className="darshan-highlight__label">
+                {t("தினசரி ஆசி", "Daily Blessings")}
+              </p>
+              <p className="darshan-highlight__value">
+                {t(
+                  "காலை 6 மணிக்கு கோவிலில் வாருங்கள்",
+                  "Visit at 6 AM for morning aarti",
+                )}
+              </p>
+            </div>
+            <button
+              className="darshan-highlight__dismiss"
+              onClick={hideBlessing}
+              aria-label={t("மறைக்க", "Hide this")}
+              title={t("மறைக்க", "Hide this")}
+            >
+              {t("மறை", "Hide")}
+            </button>
           </div>
-        </div>
+        )}
       </div>
     </div>
   );
@@ -523,7 +546,7 @@ export default function Home() {
       .then((r) => setAnnouncements(Array.isArray(r.data) ? r.data : []))
       .catch(() => {});
     api
-      .get("/events?limit=3&upcoming=1")
+      .get("/events?limit=4&upcoming=1")
       .then((r) => setEvents(Array.isArray(r.data) ? r.data : []))
       .catch(() => {});
     api
@@ -848,19 +871,26 @@ export default function Home() {
               "Upcoming festivals and special occasions",
             )}
           </p>
-          <div className="grid-3">
+          <div className="grid-4">
             {events.length > 0
               ? events.map((e) => (
                   <div key={e.id} className="event-card card">
-                    <div className="event-card__date">{e.event_date}</div>
+                    <div className="event-card__date">
+                      {new Date(e.event_date + "T00:00:00").toLocaleDateString(
+                        lang === "ta" ? "ta-IN" : "en-IN",
+                        { day: "numeric", month: "short", year: "numeric" },
+                      )}
+                    </div>
                     <div className="event-card__body">
                       <h3>{lang === "ta" ? e.title_ta : e.title_en}</h3>
+                      {e.description && <p>{e.description}</p>}
                     </div>
                   </div>
                 ))
               : [
-                  ["பங்குனி உத்திரம்", "Panguni Uthiram", "Mar 2026"],
-                  ["திருவிழா", "Annual Festival", "Apr 2026"],
+                  ["தமிழ் புத்தாண்டு", "Tamil New Year", "Apr 2026"],
+                  ["வைகாசி விசாகம்", "Vaikasi Visakam", "May 2026"],
+                  ["ஆடி பூரம்", "Aadi Pooram", "Jul 2026"],
                   ["கார்த்திகை", "Karthigai Deepam", "Nov 2026"],
                 ].map(([ta, en, date]) => (
                   <div key={ta} className="event-card card">

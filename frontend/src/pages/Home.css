@@ -718,6 +718,39 @@
   font-size: 1.1rem;
 }
 
+/* Dismissible Daily Blessings card */
+.darshan-highlight--dismissible {
+  position: relative;
+  align-items: flex-start;
+}
+.darshan-highlight__body {
+  flex: 1;
+  min-width: 0;
+}
+.darshan-highlight__dismiss {
+  flex-shrink: 0;
+  align-self: flex-start;
+  background: none;
+  border: 1px solid rgba(107, 15, 15, 0.2);
+  border-radius: 50px;
+  color: var(--text-3);
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  padding: 0.18rem 0.6rem;
+  cursor: pointer;
+  transition:
+    background var(--transition),
+    color var(--transition);
+  white-space: nowrap;
+  line-height: 1.6;
+}
+.darshan-highlight__dismiss:hover {
+  background: rgba(107, 15, 15, 0.08);
+  color: var(--maroon);
+  border-color: var(--maroon);
+}
+
 /* Numbered list (First Visit) */
 .darshan-info-list {
   display: grid;

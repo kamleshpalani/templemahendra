@@ -25,5 +25,14 @@ for _var in DB_HOST DB_PORT DB_NAME DB_USER DB_PASS CORS_ORIGIN \
     fi
 done
 
+# ── SQLite: initialise database on first boot ─────────────────────────────────
+DB_PATH="${DB_PATH:-/data/temple.sqlite}"
+if [ ! -f "$DB_PATH" ]; then
+    echo "SQLite database not found at ${DB_PATH}. Initialising..."
+    DB_PATH="$DB_PATH" php /var/www/html/sqlite_seed.php && \
+        echo "Database initialised." || echo "WARNING: DB init failed."
+    chown www-data:www-data "$DB_PATH" 2>/dev/null || true
+fi
+
 echo "Starting Apache on port ${PORT}..."
 exec apache2-foreground
