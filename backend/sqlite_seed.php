@@ -155,7 +155,7 @@ $pdo->exec("INSERT INTO events (title_ta, title_en, description, event_date, is_
 ('கார்த்திகை',       'Karthigai Deepam',   'Festival of lights.',                 '2026-11-27', 1)");
 
 $pdo->exec("INSERT INTO poojas (name_ta, name_en, pooja_date, pooja_time, pooja_type, is_active) VALUES
-('பௌர்ணமி பூஜை', 'Pournami Poojai', '2026-04-13', '16:00', 'pournami', 1),
+('பௌர்ணமி பூஜை', 'Pournami Poojai', '2026-04-30', '16:00', 'pournami', 1),
 ('பௌர்ணமி பூஜை', 'Pournami Poojai', '2026-05-12', '16:00', 'pournami', 1),
 ('பௌர்ணமி பூஜை', 'Pournami Poojai', '2026-06-11', '16:00', 'pournami', 1)");
 
