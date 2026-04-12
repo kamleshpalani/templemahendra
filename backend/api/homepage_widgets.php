@@ -246,8 +246,8 @@ if (empty($widgets)) {
     }
 }
 
-// ── Step 6: Augment with upcoming Events from events table if fewer than 3 ──
-if (count($widgets) < 3) {
+// ── Step 6: Augment with upcoming Events from events table if fewer than 4 ──
+if (count($widgets) < 4) {
     // Collect dates already represented to avoid duplicates
     $coveredDates = [];
     foreach ($widgets as $w) {
@@ -267,7 +267,7 @@ if (count($widgets) < 3) {
     $upEvents = $stmtEv->fetchAll();
 
     foreach ($upEvents as $ev) {
-        if (count($widgets) >= 3) break;
+        if (count($widgets) >= 4) break;
         if (in_array($ev['event_date'], $coveredDates)) continue;
         $widgets[] = [
             'id'             => 0,
