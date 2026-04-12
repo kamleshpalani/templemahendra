@@ -150,6 +150,8 @@ $pdo->exec("INSERT INTO events (title_ta, title_en, description, event_date, is_
 ('மகா சிவராத்திரி','Maha Shivaratri',     'All-night vigil and abhishekam.',      '2026-02-26', 1),
 ('பங்குனி உத்திரம்','Panguni Uthiram',   'Festival of divine celestial unions.',  '2026-03-31', 1),
 ('ஆடி பூரம்',        'Aadi Pooram',        'Celebration of Goddess Andal.',       '2026-07-28', 1),
+('தமிழ் புத்தாண்டு', 'Tamil New Year',      'Puthandu — Tamil New Year celebrations.',              '2026-04-14', 1),
+('வைகாசி விசாகம்',  'Vaikasi Visakam',    'Grand celestial birth star festival of Lord Murugan.', '2026-05-28', 1),
 ('கார்த்திகை',       'Karthigai Deepam',   'Festival of lights.',                 '2026-11-27', 1)");
 
 $pdo->exec("INSERT INTO poojas (name_ta, name_en, pooja_date, pooja_time, pooja_type, is_active) VALUES
