@@ -10,6 +10,28 @@ if (str_starts_with($uri, '/api')) {
     return true;
 }
 
-// Not found for everything else (no static files needed here)
+// Resolve the file path
+$file = __DIR__ . $uri;
+
+// If it's a directory, look for index.php inside it
+if (is_dir($file)) {
+    $indexFile = rtrim($file, '/') . '/index.php';
+    if (file_exists($indexFile)) {
+        require $indexFile;
+        return true;
+    }
+}
+
+// Serve existing .php files directly
+if (file_exists($file) && str_ends_with($file, '.php')) {
+    require $file;
+    return true;
+}
+
+// Let built-in server handle static files (css, js, images, etc.)
+if (file_exists($file) && !is_dir($file)) {
+    return false;
+}
+
 http_response_code(404);
 echo json_encode(['error' => 'Not found']);
