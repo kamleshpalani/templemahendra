@@ -502,6 +502,7 @@ export default function Home() {
   const [pournamis, setPournamis] = useState([]);
   const [donors, setDonors] = useState([]);
   const [nallaTime, setNallaTime] = useState(null); // [[start,end],[start,end]]
+  const [nowIST, setNowIST] = useState(() => new Date());
   const [siteSettings, setSiteSettings] = useState({
     show_pournami_section: true,
     show_nalla_strip: true,
@@ -509,6 +510,12 @@ export default function Home() {
   });
   const { lang, t } = useLang();
   const [mode, setMode] = useState(() => detectInitialMode(lang));
+
+  // Live IST clock — ticks every second
+  useEffect(() => {
+    const id = setInterval(() => setNowIST(new Date()), 1000);
+    return () => clearInterval(id);
+  }, []);
 
   useEffect(() => {
     api
@@ -682,26 +689,49 @@ export default function Home() {
       )}
 
       {/* ── Daily Nalla Neram strip ── */}
-      {siteSettings.show_nalla_strip && nallaTime && (
-        <div className="nalla-strip">
-          <span className="nalla-strip__icon">✨</span>
-          <span className="nalla-strip__label">
-            {t("இன்றைய நல்ல நேரம்", "Today's Nalla Neram")}
-          </span>
-          <span className="nalla-strip__divider">|</span>
-          {nallaTime.map((slot, i) => (
-            <span key={i} className="nalla-strip__slot">
-              {slot[0]} – {slot[1]}
-              {i < nallaTime.length - 1 && (
-                <span className="nalla-strip__sep">&nbsp;&amp;&nbsp;</span>
-              )}
-            </span>
-          ))}
-          <span className="nalla-strip__suffix">
-            {t("(இட்ட நேரம் நல்லது)", "(Auspicious Time)")}
-          </span>
-        </div>
-      )}
+      {siteSettings.show_nalla_strip &&
+        nallaTime &&
+        (() => {
+          const locale = lang === "ta" ? "ta-IN" : "en-IN";
+          const istOpts = { timeZone: "Asia/Kolkata" };
+          const dateStr = nowIST.toLocaleDateString(locale, {
+            ...istOpts,
+            weekday: "short",
+            day: "numeric",
+            month: "short",
+            year: "numeric",
+          });
+          const timeStr = nowIST.toLocaleTimeString(locale, {
+            ...istOpts,
+            hour: "2-digit",
+            minute: "2-digit",
+            second: "2-digit",
+          });
+          return (
+            <div className="nalla-strip">
+              <span className="nalla-strip__date">
+                📅 {dateStr} &nbsp;🕐 {timeStr}
+              </span>
+              <span className="nalla-strip__divider">|</span>
+              <span className="nalla-strip__icon">✨</span>
+              <span className="nalla-strip__label">
+                {t("இன்றைய நல்ல நேரம்", "Today's Nalla Neram")}
+              </span>
+              <span className="nalla-strip__divider">|</span>
+              {nallaTime.map((slot, i) => (
+                <span key={i} className="nalla-strip__slot">
+                  {slot[0]} – {slot[1]}
+                  {i < nallaTime.length - 1 && (
+                    <span className="nalla-strip__sep">&nbsp;&amp;&nbsp;</span>
+                  )}
+                </span>
+              ))}
+              <span className="nalla-strip__suffix">
+                {t("(இட்ட நேரம் நல்லது)", "(Auspicious Time)")}
+              </span>
+            </div>
+          );
+        })()}
 
       {/* ── Upcoming Events & Pournami (merged) ── */}
       {(widgetsLoading || widgets.length > 0 || pournamis.length > 0) && (
