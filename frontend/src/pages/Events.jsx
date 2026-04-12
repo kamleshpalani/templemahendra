@@ -5,7 +5,7 @@ import { useLang } from "../context/LangContext";
 import "./PageCommon.css";
 import "./Events.css";
 
-// Badge colours per calendar event type
+// Badge colours per event type
 const BADGE_META = {
   pournami: { ta: "பௌர்ணமி", en: "Pournami", color: "#7c3aed" },
   amavasai: { ta: "அமாவாசை", en: "Amavasai", color: "#1d4ed8" },
@@ -17,72 +17,80 @@ const BADGE_META = {
   temple: { ta: "கோயில்", en: "Temple", color: "#92400e" },
 };
 
-function calendarEventsFromMonth(data, todayStr) {
-  const items = [];
-  (data.days ?? []).forEach((day) => {
-    if (day.date < todayStr) return;
-    (day.special ?? []).forEach((sp) => {
-      const isPournami = sp.type === "pournami";
-      const tamMonthTa = day.tamil_month?.ta ?? "";
-      const tamMonthEn = day.tamil_month?.en ?? "";
-      const pournamiTitleTa = tamMonthTa
-        ? "பௌர்ணமி பூஜை — " + tamMonthTa
-        : "பௌர்ணமி பூஜை";
-      const pournamiTitleEn = tamMonthEn
-        ? "Pournami Poojai — " + tamMonthEn
-        : "Pournami Poojai";
-      items.push({
-        id: `cal-${day.date}-${sp.type}`,
-        title_ta: isPournami ? pournamiTitleTa : sp.ta,
-        title_en: isPournami ? pournamiTitleEn : sp.en,
-        event_date: day.date,
-        description_ta: isPournami
-          ? `${day.weekday_ta} | திதி: ${day.tithi_ta} | தமிழ் மாதம்: ${tamMonthTa}`
-          : `${day.tithi_ta} | ${day.weekday_ta}`,
-        description_en: isPournami
-          ? `${day.weekday_en} | Tithi: ${day.tithi_en} | Tamil Month: ${tamMonthEn}`
-          : `${day.tithi_en} | ${day.weekday_en}`,
-        time: isPournami ? "4:00 PM – 9:00 PM" : null,
-        badge: sp.type,
-        isCalendar: true,
-      });
-    });
-  });
-  return items;
+// ── Pournami dates strip ─────────────────────────────────────────────────────
+function PournamiStrip({ pournamis, lang, t }) {
+  if (!pournamis || pournamis.length === 0) return null;
+  return (
+    <div className="pournami-section">
+      <div className="pournami-section__header">
+        <span className="pournami-section__moon">🌕</span>
+        <div>
+          <h3 className="pournami-section__title">
+            {t(
+              "பௌர்ணமி பூஜை — அடுத்த திகதிகள்",
+              "Pournami Poojai — Upcoming Dates",
+            )}
+          </h3>
+          <p className="pournami-section__sub">
+            {t(
+              "பஞ்சாங்கம் படி கணக்கிடப்பட்டது · மாலை 4:00 – 9:00 மணி",
+              "Computed from Panchangam · Evening 4:00 PM – 9:00 PM",
+            )}
+          </p>
+        </div>
+      </div>
+      <div className="pournami-cards">
+        {pournamis.map((p) => {
+          const d = new Date(p.date + "T00:00:00");
+          const dayNum = d.getDate();
+          const monthStr = d.toLocaleDateString(
+            lang === "ta" ? "ta-IN" : "en-IN",
+            { month: "short" },
+          );
+          const yearNum = d.getFullYear();
+          const tamMonth =
+            lang === "ta" ? p.tamil_month?.ta : p.tamil_month?.en;
+          const weekday = lang === "ta" ? p.weekday_ta : p.weekday_en;
+          return (
+            <div key={p.date} className="pournami-card">
+              <div className="pournami-card__date">
+                <span className="pournami-card__day">{dayNum}</span>
+                <span className="pournami-card__month">{monthStr}</span>
+                <span className="pournami-card__year">{yearNum}</span>
+              </div>
+              <div className="pournami-card__info">
+                <p className="pournami-card__tammonth">🪔 {tamMonth}</p>
+                <p className="pournami-card__weekday">{weekday}</p>
+                <p className="pournami-card__time">🕓 4:00 PM – 9:00 PM</p>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
 }
 
 export default function Events() {
   const [templeEvents, setTempleEvents] = useState([]);
-  const [calItems, setCalItems] = useState([]);
+  const [pournamis, setPournamis] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [filter, setFilter] = useState("all"); // all | temple | calendar
+  const [filter, setFilter] = useState("all"); // all | pournami | temple
   const { lang, t } = useLang();
 
   useEffect(() => {
-    const today = new Date();
-    const todayStr = today.toISOString().slice(0, 10);
-
-    // Build list of year-month pairs: current + next 23 months (2 full years)
-    const months = Array.from({ length: 24 }, (_, offset) => {
-      const d = new Date(today.getFullYear(), today.getMonth() + offset, 1);
-      return { year: d.getFullYear(), month: d.getMonth() + 1 };
-    });
-
     const eventsReq = api
       .get("/events")
       .then((r) => setTempleEvents(Array.isArray(r.data) ? r.data : []))
       .catch(() => {});
 
-    const calReqs = Promise.all(
-      months.map((m) =>
-        api
-          .get(`/calendar?year=${m.year}&month=${m.month}`)
-          .then((r) => calendarEventsFromMonth(r.data, todayStr))
-          .catch(() => []),
-      ),
-    ).then((results) => setCalItems(results.flat()));
+    // Single call for all pournami dates (replaces 24 separate /calendar calls)
+    const pournamiReq = api
+      .get("/pournamis?months=13")
+      .then((r) => setPournamis(Array.isArray(r.data) ? r.data : []))
+      .catch(() => {});
 
-    Promise.all([eventsReq, calReqs]).finally(() => setLoading(false));
+    Promise.all([eventsReq, pournamiReq]).finally(() => setLoading(false));
   }, []);
 
   const todayStr = new Date().toISOString().slice(0, 10);
@@ -126,27 +134,42 @@ export default function Events() {
       ? templeEvents.map((e) => ({ ...e, badge: "temple", isCalendar: false }))
       : fallbackTemple;
 
+  // Convert pournamis API data to event-row format for the merged list
+  const pournamiEvents = useMemo(
+    () =>
+      pournamis.map((p) => ({
+        id: `pournami-${p.date}`,
+        title_ta: p.title_ta,
+        title_en: p.title_en,
+        event_date: p.date,
+        description_ta: p.desc_ta,
+        description_en: p.desc_en,
+        time: p.time,
+        badge: "pournami",
+        isCalendar: true,
+      })),
+    [pournamis],
+  );
+
   // Merged + sorted list, today onwards only
   const merged = useMemo(() => {
     const all = [
       ...templeSource.filter((e) => e.event_date >= todayStr),
-      ...calItems,
+      ...pournamiEvents,
     ];
-    // Deduplicate calendar items with same date+type
     const seen = new Set();
     return all
       .filter((e) => {
-        const key = `${e.event_date}-${e.badge}-${e.title_en}`;
+        const key = `${e.event_date}-${e.badge}`;
         if (seen.has(key)) return false;
         seen.add(key);
         return true;
       })
       .sort((a, b) => a.event_date.localeCompare(b.event_date));
-  }, [templeSource, calItems, todayStr]);
+  }, [templeSource, pournamiEvents, todayStr]);
 
   const filtered = useMemo(() => {
     if (filter === "temple") return merged.filter((e) => !e.isCalendar);
-    if (filter === "calendar") return merged.filter((e) => e.isCalendar);
     if (filter === "pournami")
       return merged.filter((e) => e.badge === "pournami");
     return merged;
@@ -177,13 +200,17 @@ export default function Events() {
           </h2>
           <div className="divider" />
 
+          {/* Pournami dates from Panchangam — always visible at top */}
+          {!loading && (
+            <PournamiStrip pournamis={pournamis} lang={lang} t={t} />
+          )}
+
           {/* Filter tabs */}
           <div className="events-filter">
             {[
               { key: "all", ta: "அனைத்தும்", en: "All" },
               { key: "pournami", ta: "பௌர்ணமி பூஜை", en: "Pournami Poojai" },
               { key: "temple", ta: "கோயில் நிகழ்வு", en: "Temple Events" },
-              { key: "calendar", ta: "பஞ்சாங்கம்", en: "Panchangam" },
             ].map((tab) => (
               <button
                 key={tab.key}

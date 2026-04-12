@@ -488,9 +488,19 @@
 .hw-card--pos-2 .hw-sponsor__note {
   color: #fde68a;
 }
+.hw-card--pos-2 .hw-event__title {
+  color: #fef9c3;
+}
+.hw-card--pos-2 .hw-event__date {
+  color: #fcd34d;
+}
+.hw-card--pos-2 .hw-event__desc {
+  color: #fde68a;
+}
 .hw-card--pos-2 .hw-card__cta .btn {
   border-color: #fbbf24;
-  color: #fbbf24;
+  color: #78350f;
+  background: #fbbf24;
 }
 
 /* ── Card 3 — Night Cosmos ──────────────────────────────── */
@@ -550,9 +560,19 @@
 .hw-card--pos-3 .hw-sponsor__note {
   color: #c4b5fd;
 }
-.hw-card--pos-3 .hw-card__cta .btn {
-  border-color: #8b5cf6;
+.hw-card--pos-3 .hw-event__title {
+  color: #f5f3ff;
+}
+.hw-card--pos-3 .hw-event__date {
   color: #c4b5fd;
+}
+.hw-card--pos-3 .hw-event__desc {
+  color: #ddd6fe;
+}
+.hw-card--pos-3 .hw-card__cta .btn {
+  border-color: #a78bfa;
+  color: #1e1b4b;
+  background: #a78bfa;
 }
 
 /* ── Skeleton loader ─────────────────────────────────────── */

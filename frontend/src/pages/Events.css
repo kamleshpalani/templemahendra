@@ -6,6 +6,155 @@
   margin-bottom: 1.5rem;
 }
 
+/* ── Pournami Panchangam Section ─────────────────────── */
+.pournami-section {
+  background: linear-gradient(135deg, #1a0533 0%, #2d0b5a 50%, #4c1d95 100%);
+  border-radius: 16px;
+  padding: 1.25rem 1.5rem;
+  margin-bottom: 2rem;
+  overflow: hidden;
+}
+
+.pournami-section__header {
+  display: flex;
+  align-items: center;
+  gap: 0.85rem;
+  margin-bottom: 1.1rem;
+}
+
+.pournami-section__moon {
+  font-size: 2.4rem;
+  line-height: 1;
+  filter: drop-shadow(0 0 12px rgba(196, 181, 253, 0.7));
+  flex-shrink: 0;
+}
+
+.pournami-section__title {
+  font-family: var(--font-tamil);
+  font-size: 1.1rem;
+  font-weight: 800;
+  color: #f5f3ff;
+  margin: 0 0 0.2rem;
+  line-height: 1.3;
+}
+
+.pournami-section__sub {
+  font-size: 0.78rem;
+  color: #c4b5fd;
+  margin: 0;
+  opacity: 0.85;
+}
+
+/* Horizontal scroll row of cards */
+.pournami-cards {
+  display: flex;
+  gap: 0.75rem;
+  overflow-x: auto;
+  padding-bottom: 0.4rem;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(167, 139, 250, 0.4) transparent;
+}
+
+.pournami-cards::-webkit-scrollbar {
+  height: 4px;
+}
+.pournami-cards::-webkit-scrollbar-track {
+  background: transparent;
+}
+.pournami-cards::-webkit-scrollbar-thumb {
+  background: rgba(167, 139, 250, 0.4);
+  border-radius: 4px;
+}
+
+.pournami-card {
+  flex: 0 0 auto;
+  background: rgba(255, 255, 255, 0.07);
+  border: 1.5px solid rgba(167, 139, 250, 0.35);
+  border-radius: 12px;
+  padding: 0.75rem 1rem;
+  display: flex;
+  gap: 0.8rem;
+  align-items: center;
+  min-width: 180px;
+  transition: background 0.15s;
+}
+
+.pournami-card:hover {
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.pournami-card__date {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  background: rgba(124, 58, 237, 0.5);
+  border-radius: 8px;
+  padding: 0.4rem 0.65rem;
+  min-width: 46px;
+  flex-shrink: 0;
+}
+
+.pournami-card__day {
+  font-size: 1.5rem;
+  font-weight: 900;
+  color: #f5f3ff;
+  line-height: 1;
+}
+
+.pournami-card__month {
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: #c4b5fd;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  line-height: 1.4;
+}
+
+.pournami-card__year {
+  font-size: 0.65rem;
+  color: #a78bfa;
+  line-height: 1.4;
+}
+
+.pournami-card__info {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.pournami-card__tammonth {
+  font-family: var(--font-tamil);
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: #fde68a;
+  margin: 0;
+}
+
+.pournami-card__weekday {
+  font-size: 0.78rem;
+  color: #ddd6fe;
+  margin: 0;
+}
+
+.pournami-card__time {
+  font-size: 0.75rem;
+  color: #a78bfa;
+  margin: 0;
+  font-weight: 600;
+}
+
+@media (max-width: 600px) {
+  .pournami-section {
+    padding: 1rem;
+  }
+  .pournami-section__title {
+    font-size: 0.95rem;
+  }
+  .pournami-card {
+    min-width: 155px;
+  }
+}
+
 .events-filter__btn {
   padding: 0.4rem 1rem;
   border: 1.5px solid var(--gold, #d4a435);

@@ -22,6 +22,7 @@ $routes = [
         '/donors'          => 'donors.php',
         '/reviews'         => 'reviews.php',
         '/calendar'        => 'calendar.php',
+        '/pournamis'       => 'pournamis.php',
         '/homepage_widgets'=> 'homepage_widgets.php',
         '/settings'        => 'settings.php',
     ],
