@@ -4,6 +4,7 @@
 backend/.env
 backend/**/.env
 frontend/.env.local
+.env.local
 frontend/.env.*.local
 .env
 

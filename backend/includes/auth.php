@@ -3,6 +3,17 @@
 
 session_start();
 
+// Load .env.local for local development if it exists
+$_envFile = __DIR__ . '/../../.env.local';
+if (file_exists($_envFile)) {
+    foreach (file($_envFile, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES) as $_line) {
+        if (str_starts_with(trim($_line), '#') || !str_contains($_line, '=')) continue;
+        [$_k, $_v] = explode('=', $_line, 2);
+        putenv(trim($_k) . '=' . trim($_v));
+    }
+}
+unset($_envFile, $_line, $_k, $_v);
+
 function requireAdminAuth(): void
 {
     if (empty($_SESSION['admin_logged_in'])) {
