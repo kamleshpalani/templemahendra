@@ -8,6 +8,7 @@ import Events from "./pages/Events";
 import Gallery from "./pages/Gallery";
 import Donations from "./pages/Donations";
 import Contact from "./pages/Contact";
+import PanchangCalendar from "./pages/PanchangCalendar";
 import NotFound from "./pages/NotFound";
 
 function ScrollToTop() {
@@ -28,9 +29,10 @@ function App() {
           <Route path="about" element={<About />} />
           <Route path="sevas" element={<Sevas />} />
           <Route path="events" element={<Events />} />
-          <Route path="gallery" element={<Gallery />} />
+          {/* Gallery hidden: <Route path="gallery" element={<Gallery />} /> */}
           <Route path="donations" element={<Donations />} />
           <Route path="contact" element={<Contact />} />
+          <Route path="panchangam" element={<PanchangCalendar />} />
           <Route path="*" element={<NotFound />} />
         </Route>
       </Routes>

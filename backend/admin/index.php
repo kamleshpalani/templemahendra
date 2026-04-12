@@ -7,7 +7,7 @@ require_once __DIR__ . '/includes/admin_layout.php';
 $db = getDB();
 
 $counts = [];
-foreach (['sevas', 'events', 'announcements', 'donations', 'gallery', 'seva_bookings'] as $tbl) {
+foreach (['sevas', 'events', 'announcements', 'donations', 'gallery', 'seva_bookings', 'poojas', 'sponsors', 'homepage_widgets'] as $tbl) {
     $counts[$tbl] = (int) $db->query("SELECT COUNT(*) FROM $tbl")->fetchColumn();
 }
 
@@ -21,12 +21,15 @@ adminHeader('Dashboard');
 
 <div class="stats-grid">
   <?php foreach ([
-    ['Sevas',          $counts['sevas'],         '🙏'],
-    ['Events',         $counts['events'],         '📅'],
-    ['Announcements',  $counts['announcements'],  '📢'],
-    ['Gallery Photos', $counts['gallery'],        '🖼️'],
-    ['Seva Bookings',  $counts['seva_bookings'],  '📋'],
-    ['Total Donations','₹' . number_format($donations_total, 2), '💰'],
+    ['Sevas',           $counts['sevas'],            '🙏'],
+    ['Events',          $counts['events'],           '📅'],
+    ['Announcements',   $counts['announcements'],    '📢'],
+    ['Gallery Photos',  $counts['gallery'],          '🖼️'],
+    ['Seva Bookings',   $counts['seva_bookings'],    '📋'],
+    ['Poojas',          $counts['poojas'],           '🛕'],
+    ['Sponsors',        $counts['sponsors'],         '💛'],
+    ['Homepage Widgets',$counts['homepage_widgets'], '🏮'],
+    ['Total Donations', '₹' . number_format($donations_total, 2), '💰'],
   ] as [$label, $val, $icon]): ?>
   <div class="stat-card">
     <span class="stat-card__icon"><?= $icon ?></span>

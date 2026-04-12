@@ -2,7 +2,7 @@ import { NavLink } from "react-router-dom";
 import {
   FaHome,
   FaHandsHelping,
-  FaCalendarAlt,
+  FaMoon,
   FaHeart,
   FaPhoneAlt,
 } from "react-icons/fa";
@@ -12,7 +12,7 @@ import "./BottomNav.css";
 const tabs = [
   { to: "/", Icon: FaHome, ta: "முகப்பு", en: "Home" },
   { to: "/sevas", Icon: FaHandsHelping, ta: "சேவைகள்", en: "Sevas" },
-  { to: "/events", Icon: FaCalendarAlt, ta: "நிகழ்வுகள்", en: "Events" },
+  { to: "/panchangam", Icon: FaMoon, ta: "பஞ்சாங்கம்", en: "Panchangam" },
   { to: "/donations", Icon: FaHeart, ta: "நன்கொடை", en: "Donate" },
   { to: "/contact", Icon: FaPhoneAlt, ta: "தொடர்பு", en: "Contact" },
 ];

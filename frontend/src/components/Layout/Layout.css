@@ -156,7 +156,6 @@
   color: var(--maroon);
   background: rgba(153, 27, 27, 0.07);
 }
-
 /* Hamburger â€” hidden on desktop */
 .navbar__toggle {
   display: none;

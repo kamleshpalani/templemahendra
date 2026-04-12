@@ -5,171 +5,9 @@ import { useLang } from "../context/LangContext";
 import "./PageCommon.css";
 import "./Sevas.css";
 
-/* ── Seva Booking Modal ─────────────────────────────────────────── */
-function BookingModal({ seva, onClose, t, lang }) {
-  const [form, setForm] = useState({
-    devotee_name: "",
-    phone: "",
-    preferred_date: "",
-    message: "",
-  });
-  const [status, setStatus] = useState("idle"); // idle | loading | success | error
-  const [errMsg, setErrMsg] = useState("");
-
-  function handleChange(e) {
-    setForm((f) => ({ ...f, [e.target.name]: e.target.value }));
-  }
-
-  async function handleSubmit(e) {
-    e.preventDefault();
-    setStatus("loading");
-    setErrMsg("");
-    try {
-      await api.post("/seva-bookings", {
-        seva_id: seva.id,
-        seva_name: lang === "ta" ? seva.name_ta : seva.name_en,
-        devotee_name: form.devotee_name,
-        phone: form.phone,
-        preferred_date: form.preferred_date || null,
-        message: form.message,
-      });
-      setStatus("success");
-    } catch (err) {
-      setErrMsg(
-        err?.response?.data?.error ||
-          t(
-            "சமர்ப்பிக்க இயலவில்லை. மீண்டும் முயற்சிக்கவும்.",
-            "Submission failed. Please try again.",
-          ),
-      );
-      setStatus("error");
-    }
-  }
-
-  return (
-    <div
-      className="booking-overlay"
-      onClick={onClose}
-      role="dialog"
-      aria-modal="true"
-    >
-      <div className="booking-modal card" onClick={(e) => e.stopPropagation()}>
-        <button
-          className="booking-modal__close"
-          onClick={onClose}
-          aria-label="Close"
-        >
-          ✕
-        </button>
-
-        {status === "success" ? (
-          <div className="booking-modal__success">
-            <span className="booking-modal__success-icon">🙏</span>
-            <h3>{t("பதிவு வெற்றி!", "Booking Received!")}</h3>
-            <p>
-              {t(
-                "உங்கள் சேவை பதிவு பெறப்பட்டது. கோயில் அலுவலகம் விரைவில் தொடர்பு கொள்ளும்.",
-                "Your seva request has been received. The temple office will contact you shortly.",
-              )}
-            </p>
-            <button className="btn btn-primary" onClick={onClose}>
-              {t("மூடு", "Close")}
-            </button>
-          </div>
-        ) : (
-          <>
-            <h3 className="booking-modal__title">
-              {t("சேவை பதிவு", "Book Seva")}
-              <span className="booking-modal__seva-name">
-                — {lang === "ta" ? seva.name_ta : seva.name_en}
-              </span>
-            </h3>
-            <p className="booking-modal__amount">₹{seva.amount}</p>
-
-            <form className="booking-form" onSubmit={handleSubmit} noValidate>
-              <div className="booking-form__row">
-                <label>
-                  {t("உங்கள் பெயர்", "Your Name")} *
-                  <input
-                    type="text"
-                    name="devotee_name"
-                    value={form.devotee_name}
-                    onChange={handleChange}
-                    required
-                    minLength={2}
-                    maxLength={200}
-                    placeholder={t("முழு பெயர்", "Full name")}
-                  />
-                </label>
-              </div>
-              <div className="booking-form__row">
-                <label>
-                  {t("தொலைபேசி", "Phone Number")} *
-                  <input
-                    type="tel"
-                    name="phone"
-                    value={form.phone}
-                    onChange={handleChange}
-                    required
-                    pattern="[0-9]{7,15}"
-                    maxLength={15}
-                    placeholder="9999999999"
-                    inputMode="numeric"
-                  />
-                </label>
-              </div>
-              <div className="booking-form__row">
-                <label>
-                  {t("விரும்பும் தேதி", "Preferred Date")}
-                  <input
-                    type="date"
-                    name="preferred_date"
-                    value={form.preferred_date}
-                    onChange={handleChange}
-                    min={new Date().toISOString().slice(0, 10)}
-                  />
-                </label>
-              </div>
-              <div className="booking-form__row">
-                <label>
-                  {t("குறிப்பு", "Note (optional)")}
-                  <textarea
-                    name="message"
-                    value={form.message}
-                    onChange={handleChange}
-                    rows={2}
-                    maxLength={500}
-                    placeholder={t(
-                      "சிறப்பு கோரிக்கை எதாவது இருந்தால்…",
-                      "Any special request…",
-                    )}
-                  />
-                </label>
-              </div>
-
-              {errMsg && <p className="booking-form__error">{errMsg}</p>}
-
-              <button
-                type="submit"
-                className="btn btn-primary booking-form__submit"
-                disabled={status === "loading"}
-              >
-                {status === "loading"
-                  ? t("சமர்ப்பிக்கிறது…", "Submitting…")
-                  : t("பதிவு செய்யுங்கள்", "Submit Booking")}
-              </button>
-            </form>
-          </>
-        )}
-      </div>
-    </div>
-  );
-}
-
 export default function Sevas() {
   const [sevas, setSevas] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [selectedSeva, setSelectedSeva] = useState(null);
   const { lang, t } = useLang();
 
   useEffect(() => {
@@ -260,8 +98,8 @@ export default function Sevas() {
           <div className="divider" />
           <p className="section-subtitle">
             {t(
-              "விரும்பிய சேவையில் 'பதிவு செய்' அழுத்தி ஆன்லைனில் கோரிக்கை அனுப்புங்கள்",
-              "Click 'Book' on any seva to submit your request online",
+              "எங்கள் கோயிலில் கிடைக்கும் சேவைகள் மற்றும் பூஜைகள்",
+              "Sevas and poojas available at our temple",
             )}
           </p>
 
@@ -283,15 +121,6 @@ export default function Sevas() {
                       </p>
                     ) : null}
                   </div>
-                  <div className="seva-row__right">
-                    <div className="seva-row__amount">₹{s.amount}</div>
-                    <button
-                      className="btn btn-primary btn--sm seva-row__book-btn"
-                      onClick={() => setSelectedSeva(s)}
-                    >
-                      {t("பதிவு செய் →", "Book →")}
-                    </button>
-                  </div>
                 </div>
               ))}
             </div>
@@ -307,15 +136,6 @@ export default function Sevas() {
           </div>
         </div>
       </section>
-
-      {selectedSeva && (
-        <BookingModal
-          seva={selectedSeva}
-          onClose={() => setSelectedSeva(null)}
-          t={t}
-          lang={lang}
-        />
-      )}
     </>
   );
 }

@@ -14,9 +14,9 @@ const navLinks = [
   { to: "/about", label: "பற்றி", labelEn: "About" },
   { to: "/sevas", label: "சேவைகள்", labelEn: "Sevas" },
   { to: "/events", label: "நிகழ்வுகள்", labelEn: "Events" },
-  { to: "/gallery", label: "தொகுப்பு", labelEn: "Gallery" },
   { to: "/donations", label: "நன்கொடை", labelEn: "Donate" },
   { to: "/contact", label: "தொடர்பு", labelEn: "Contact" },
+  { to: "/panchangam", label: "பஞ்சாங்கம்", labelEn: "Panchangam" },
 ];
 
 export default function Layout() {

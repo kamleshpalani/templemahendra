@@ -1,0 +1,407 @@
+/* ══════════════════════════════════════════════════════════
+   PanchangCalendar.css — Hindu Panchangam Calendar Page
+   ══════════════════════════════════════════════════════════ */
+
+/* ── Page shell ─────────────────────────────────────────── */
+.panchang {
+  padding: 1.5rem 1rem 6rem;
+  max-width: 960px;
+  margin: 0 auto;
+}
+.panchang__title {
+  font-size: 1.55rem;
+  font-weight: 800;
+  color: var(--maroon);
+  text-align: center;
+  margin-bottom: 0.25rem;
+}
+.panchang__subtitle {
+  text-align: center;
+  font-size: 0.88rem;
+  color: var(--text-muted, #7a5c3c);
+  margin-bottom: 1.5rem;
+}
+
+/* ── Month navigator ────────────────────────────────────── */
+.panchang__nav {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 1rem;
+  margin-bottom: 1.25rem;
+}
+.panchang__nav-btn {
+  background: var(--maroon);
+  color: #fff;
+  border: none;
+  border-radius: 50%;
+  width: 2.2rem;
+  height: 2.2rem;
+  font-size: 1.1rem;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.2s;
+}
+.panchang__nav-btn:hover {
+  background: var(--maroon-light);
+}
+.panchang__nav-label {
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: var(--maroon-deep);
+  min-width: 14rem;
+  text-align: center;
+}
+
+/* ── Legend ─────────────────────────────────────────────── */
+.panchang__legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1rem;
+  justify-content: center;
+  margin-bottom: 1.25rem;
+}
+.legend-item {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.78rem;
+  color: var(--text-body, #3d2a1e);
+}
+.legend-dot {
+  width: 0.75rem;
+  height: 0.75rem;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.legend-dot--pournami {
+  background: #7c3aed;
+}
+.legend-dot--amavasai {
+  background: #1e3a5f;
+}
+.legend-dot--ekadasi {
+  background: #047857;
+}
+.legend-dot--sashti {
+  background: #b45309;
+}
+.legend-dot--pradosham {
+  background: #c2410c;
+}
+.legend-dot--festival {
+  background: #be185d;
+}
+.legend-dot--chaturthi {
+  background: #0e7490;
+}
+
+/* ── Grid header (week names) ───────────────────────────── */
+.panchang__grid {
+  border-radius: 14px;
+  overflow: hidden;
+  box-shadow: 0 2px 18px rgba(153, 27, 27, 0.09);
+  background: var(--bg-root);
+  border: 1.5px solid var(--gold-light, #fbbf24);
+}
+.panchang__wdays {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  background: var(--maroon);
+}
+.panchang__wday {
+  text-align: center;
+  padding: 0.6rem 0;
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: #fff;
+  letter-spacing: 0.03em;
+}
+.panchang__wday--sun {
+  color: #fca5a5;
+}
+.panchang__wday--sat {
+  color: #fca5a5;
+}
+
+/* ── Calendar cells ─────────────────────────────────────── */
+.panchang__cells {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+}
+.panchang__cell {
+  min-height: 5rem;
+  padding: 0.45rem 0.4rem 0.3rem;
+  border-right: 1px solid var(--bg-alt, #fff3e8);
+  border-bottom: 1px solid var(--bg-alt, #fff3e8);
+  cursor: pointer;
+  transition: background 0.15s;
+  position: relative;
+  /* reset <button> defaults */
+  background: transparent;
+  border-top: none;
+  border-left: none;
+  text-align: left;
+  font-family: inherit;
+  font-size: inherit;
+  width: 100%;
+}
+.panchang__cell:nth-child(7n) {
+  border-right: none;
+}
+.panchang__cell:hover {
+  background: var(--bg-deep, #fff8f0);
+}
+.panchang__cell--empty {
+  cursor: default;
+  background: transparent;
+}
+.panchang__cell--today {
+  background: linear-gradient(135deg, #fff3e8 60%, #ffe4b8);
+  outline: 2px solid var(--saffron);
+  outline-offset: -2px;
+}
+.panchang__cell--selected {
+  background: linear-gradient(135deg, #fef3c7 50%, #fde68a);
+  outline: 2.5px solid var(--gold, #d97706);
+  outline-offset: -2px;
+}
+.panchang__cell--weekend .panchang__cell-day {
+  color: var(--maroon-light);
+}
+
+.panchang__cell-day {
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: var(--text-heading, #3d0707);
+  line-height: 1;
+}
+.panchang__cell-tithi {
+  font-size: 0.66rem;
+  color: var(--text-muted, #7a5c3c);
+  margin-top: 0.18rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.panchang__cell-dots {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px;
+  margin-top: 0.3rem;
+}
+.panchang__dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.panchang__dot--pournami {
+  background: #7c3aed;
+}
+.panchang__dot--amavasai {
+  background: #1e3a5f;
+}
+.panchang__dot--ekadasi {
+  background: #047857;
+}
+.panchang__dot--sashti {
+  background: #b45309;
+}
+.panchang__dot--pradosham {
+  background: #c2410c;
+}
+.panchang__dot--festival {
+  background: #be185d;
+}
+.panchang__dot--chaturthi {
+  background: #0e7490;
+}
+.panchang__dot--pratipada {
+  background: #c084fc;
+}
+
+/* ── Detail panel ───────────────────────────────────────── */
+.panchang__detail {
+  margin-top: 1.5rem;
+  background: var(--bg-deep);
+  border: 1.5px solid var(--gold-light, #fbbf24);
+  border-radius: 14px;
+  padding: 1.25rem 1.4rem;
+}
+.panchang__detail-title {
+  font-size: 1.05rem;
+  font-weight: 800;
+  color: var(--maroon);
+  margin-bottom: 0.2rem;
+}
+.panchang__detail-tithi {
+  font-size: 0.9rem;
+  color: var(--text-body, #3d2a1e);
+  margin-bottom: 1rem;
+}
+.panchang__detail-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  margin-bottom: 1.1rem;
+}
+.panchang__badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.3rem 0.75rem;
+  border-radius: 20px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #fff;
+}
+.panchang__badge--pournami {
+  background: #7c3aed;
+}
+.panchang__badge--amavasai {
+  background: #1e3a5f;
+}
+.panchang__badge--ekadasi {
+  background: #047857;
+}
+.panchang__badge--sashti {
+  background: #b45309;
+}
+.panchang__badge--pradosham {
+  background: #c2410c;
+}
+.panchang__badge--festival {
+  background: #be185d;
+}
+.panchang__badge--chaturthi {
+  background: #0e7490;
+}
+.panchang__badge--pratipada {
+  background: #8b5cf6;
+}
+
+/* ── Timings grid ───────────────────────────────────────── */
+.panchang__timings {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(12rem, 1fr));
+  gap: 0.7rem;
+}
+.timing-card {
+  border-radius: 10px;
+  padding: 0.7rem 0.9rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+.timing-card--good {
+  background: linear-gradient(135deg, #d1fae5, #a7f3d0);
+  border: 1px solid #059669;
+}
+.timing-card--bad {
+  background: linear-gradient(135deg, #fee2e2, #fecaca);
+  border: 1px solid #dc2626;
+}
+.timing-card--neutral {
+  background: linear-gradient(135deg, #fef3c7, #fde68a);
+  border: 1px solid #d97706;
+}
+.timing-card__label {
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.timing-card--good .timing-card__label {
+  color: #065f46;
+}
+.timing-card--bad .timing-card__label {
+  color: #991b1b;
+}
+.timing-card--neutral .timing-card__label {
+  color: #92400e;
+}
+.timing-card__time {
+  font-size: 0.92rem;
+  font-weight: 700;
+  color: #1f2937;
+}
+.timing-card__note {
+  font-size: 0.7rem;
+  color: #6b7280;
+}
+
+/* ── Upcoming specials ───────────────────────────────────── */
+.panchang__upcoming {
+  margin-top: 1.5rem;
+}
+.panchang__upcoming-title {
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--maroon);
+  margin-bottom: 0.75rem;
+}
+.upcoming-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+}
+.upcoming-item {
+  display: flex;
+  align-items: center;
+  gap: 0.8rem;
+  background: var(--bg-deep);
+  border: 1px solid var(--bg-alt);
+  border-radius: 10px;
+  padding: 0.65rem 1rem;
+  cursor: pointer;
+  transition: background 0.15s;
+  /* reset <button> defaults */
+  font-family: inherit;
+  font-size: inherit;
+  text-align: left;
+  width: 100%;
+}
+.upcoming-item:hover {
+  background: var(--bg-alt);
+}
+.upcoming-item__date {
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--maroon);
+  min-width: 5rem;
+}
+.upcoming-item__special {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+}
+.upcoming-item__tithi {
+  font-size: 0.78rem;
+  color: var(--text-muted, #7a5c3c);
+  margin-left: auto;
+  white-space: nowrap;
+}
+
+/* ── Responsive ─────────────────────────────────────────── */
+@media (max-width: 480px) {
+  .panchang__cell {
+    min-height: 4rem;
+    padding: 0.3rem 0.2rem;
+  }
+  .panchang__cell-tithi {
+    display: none;
+  }
+  .panchang__cell-day {
+    font-size: 0.9rem;
+  }
+  .panchang__timings {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  .panchang__wday {
+    font-size: 0.68rem;
+    padding: 0.45rem 0;
+  }
+}

@@ -126,11 +126,6 @@ export default function TemplePulseHeader() {
           </span>
           <span className="pulse-bar__value">{t(special, specialEn)}</span>
         </span>
-
-        {/* CTA */}
-        <Link to="/sevas" className="pulse-bar__cta">
-          {t("சேவை பதிவு →", "Book Seva →")}
-        </Link>
       </div>
     </div>
   );

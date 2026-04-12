@@ -9,7 +9,6 @@ export default function Footer() {
   const quickLinks = [
     { to: "/sevas", ta: "சேவைகள் & பூஜைகள்", en: "Sevas & Poojas" },
     { to: "/events", ta: "நிகழ்வுகள் & திருவிழா", en: "Events & Festivals" },
-    { to: "/gallery", ta: "தொகுப்பு", en: "Gallery" },
     { to: "/donations", ta: "நன்கொடை", en: "Donate" },
     { to: "/contact", ta: "தொடர்பு கொள்ளுங்கள்", en: "Contact Us" },
   ];

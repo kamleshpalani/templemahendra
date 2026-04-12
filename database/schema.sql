@@ -98,6 +98,70 @@ CREATE TABLE IF NOT EXISTS `seva_bookings` (
     FOREIGN KEY (`seva_id`) REFERENCES `sevas` (`id`) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+-- ── Poojas ────────────────────────────────────────────────
+-- Monthly/special poojas (Pournami, Amavasai, etc.)
+CREATE TABLE IF NOT EXISTS `poojas` (
+  `id`              INT UNSIGNED   NOT NULL AUTO_INCREMENT,
+  `name_ta`         VARCHAR(200)   NOT NULL,
+  `name_en`         VARCHAR(200)   NOT NULL,
+  `description_ta`  TEXT           NULL,
+  `description_en`  TEXT           NULL,
+  `pooja_date`      DATE           NOT NULL,
+  `pooja_time`      VARCHAR(20)    NULL COMMENT '07:00 AM',
+  `pooja_type`      ENUM('pournami','amavasai','ekadasi','sashti','special','monthly','daily')
+                                   NOT NULL DEFAULT 'special',
+  `is_active`       TINYINT(1)     NOT NULL DEFAULT 1,
+  `created_at`      DATETIME       NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  KEY `idx_active_date` (`is_active`, `pooja_date`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ── Sponsors ──────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS `sponsors` (
+  `id`         INT UNSIGNED   NOT NULL AUTO_INCREMENT,
+  `name`       VARCHAR(200)   NOT NULL,
+  `phone`      VARCHAR(30)    NULL,
+  `note`       TEXT           NULL,
+  `pooja_id`   INT UNSIGNED   NULL COMMENT 'optional link to a specific pooja',
+  `is_active`  TINYINT(1)     NOT NULL DEFAULT 1,
+  `created_at` DATETIME       NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  KEY `idx_pooja` (`pooja_id`),
+  CONSTRAINT `fk_sponsor_pooja`
+    FOREIGN KEY (`pooja_id`) REFERENCES `poojas` (`id`) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ── Homepage Widgets ──────────────────────────────────────
+-- Flexible homepage content blocks (announcement, coming_soon, upcoming_pooja, etc.)
+CREATE TABLE IF NOT EXISTS `homepage_widgets` (
+  `id`                 INT UNSIGNED   NOT NULL AUTO_INCREMENT,
+  `content_type`       ENUM('announcement','coming_soon','upcoming_pooja',
+                             'calendar_pooja','nalla_neram','sponsor')
+                                      NOT NULL DEFAULT 'announcement',
+  `title_ta`           VARCHAR(300)   NULL,
+  `title_en`           VARCHAR(300)   NULL,
+  `description_ta`     TEXT           NULL,
+  `description_en`     TEXT           NULL,
+  `source_type`        ENUM('manual','calendar') NOT NULL DEFAULT 'manual',
+  `linked_pooja_id`    INT UNSIGNED   NULL,
+  `linked_sponsor_id`  INT UNSIGNED   NULL,
+  `show_sponsor`       TINYINT(1)     NOT NULL DEFAULT 0,
+  `show_nalla_neram`   TINYINT(1)     NOT NULL DEFAULT 0,
+  `start_date`         DATE           NULL,
+  `end_date`           DATE           NULL,
+  `priority`           INT            NOT NULL DEFAULT 10,
+  `is_pinned`          TINYINT(1)     NOT NULL DEFAULT 0,
+  `is_active`          TINYINT(1)     NOT NULL DEFAULT 1,
+  `created_at`         DATETIME       NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at`         DATETIME       NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  KEY `idx_active_priority` (`is_active`, `priority`),
+  CONSTRAINT `fk_widget_pooja`
+    FOREIGN KEY (`linked_pooja_id`)   REFERENCES `poojas`   (`id`) ON DELETE SET NULL,
+  CONSTRAINT `fk_widget_sponsor`
+    FOREIGN KEY (`linked_sponsor_id`) REFERENCES `sponsors` (`id`) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 -- ── Seed Data (sample) ────────────────────────────────────
 INSERT INTO `announcements` (title, body, is_active) VALUES
 ('கோயில் திறக்கும் நேரம் மாற்றம்', 'இனி காலை 6 மணிக்கு திறக்கும். Morning opening time changed to 6 AM.', 1),
@@ -117,3 +181,5 @@ INSERT INTO `events` (title_ta, title_en, description, event_date, is_active) VA
 ('பங்குனி உத்திரம்', 'Panguni Uthiram',  'Festival of divine celestial unions.', '2026-03-31', 1),
 ('ஆடி பூரம்',        'Aadi Pooram',       'Celebration of Goddess Andal.',       '2026-07-28', 1),
 ('கார்த்திகை',       'Karthigai Deepam',  'Festival of lights.',                 '2026-11-27', 1);
+
+-- \u2500\u2500 Homepage Settings \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n-- Key/value switches for homepage section visibility\nCREATE TABLE IF NOT EXISTS \homepage_settings\ (\n  \key_name\  VARCHAR(80)    NOT NULL,\n  \al\       VARCHAR(10)    NOT NULL DEFAULT '1',\n  \label\     VARCHAR(300)   NULL,\n  PRIMARY KEY (\key_name\)\n) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;\n\nINSERT IGNORE INTO \homepage_settings\ (key_name, val, label) VALUES\n('show_pournami_section', '1', 'Show Pournami Poojai section on homepage'),\n('show_nalla_strip',      '1', 'Show Nalla Neram strip on homepage'),\n('show_donor_ticker',     '1', 'Show donor scroll ticker');
