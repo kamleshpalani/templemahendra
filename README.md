@@ -122,9 +122,21 @@ OR create `public_html/includes/.env` (outside public reach) and load with `pute
 
 Values needed:
 
-- `DB_HOST`, `DB_NAME`, `DB_USER`, `DB_PASS`
-- `ADMIN_USERNAME`, `ADMIN_PASS_HASH`
-- `CORS_ORIGIN` (e.g. `https://www.templemahendra.in`)
+| Variable          | Description                                              |
+| ----------------- | -------------------------------------------------------- |
+| `DB_HOST`         | MySQL host from hPanel (usually `localhost`)             |
+| `DB_PORT`         | MySQL port (default `3306`)                              |
+| `DB_NAME`         | Database name created in hPanel                          |
+| `DB_USER`         | Database user                                            |
+| `DB_PASS`         | Database password                                        |
+| `ADMIN_USERNAME`  | Admin panel login                                        |
+| `ADMIN_PASS_HASH` | bcrypt hash of the admin password (see Step 5)           |
+| `CORS_ORIGIN`     | Allowed origin, e.g. `https://www.templemahendra.in`     |
+
+The backend is **MySQL-only**. There is no SQLite, MongoDB or Render/Docker
+fallback: `backend/includes/db.php` always connects to MySQL using the
+variables above. Do not upload `*.sqlite`, `Dockerfile`, `render.yaml` or
+`docker-entrypoint.sh` to Hostinger (they are git-ignored).
 
 ### Step 5 — Generate admin password hash
 

@@ -20,6 +20,13 @@ _setup_*.php
 # Stray SQLite files — the app is MySQL-only, these should never come back
 *.sqlite
 *.sqlite3
+backend/dev.sqlite
+backend/sqlite_seed.php
+
+# Legacy Render/Docker artifacts — not used on Hostinger shared hosting
+Dockerfile
+render.yaml
+docker-entrypoint.sh
 
 # Editor/tool scratch
 .codebuddy/

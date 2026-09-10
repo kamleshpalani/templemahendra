@@ -54,12 +54,12 @@ $stmt = $db->prepare("
     LEFT   JOIN poojas   p ON p.id = w.linked_pooja_id
     LEFT   JOIN sponsors s ON s.id = w.linked_sponsor_id
     WHERE  w.is_active = 1
-      AND  (w.start_date IS NULL OR w.start_date <= :today)
-      AND  (w.end_date   IS NULL OR w.end_date   >= :today)
+      AND  (w.start_date IS NULL OR w.start_date <= :today_start)
+      AND  (w.end_date   IS NULL OR w.end_date   >= :today_end)
     ORDER  BY w.is_pinned DESC, w.priority ASC
     LIMIT  15
 ");
-$stmt->execute([':today' => $today]);
+$stmt->execute([':today_start' => $today, ':today_end' => $today]);
 $rows = $stmt->fetchAll();
 
 // ── Step 2: Determine if any calendar-driven widget needs auto-pooja ────────
