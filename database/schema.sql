@@ -9,6 +9,8 @@ CREATE DATABASE IF NOT EXISTS `templemahendra`
 
 USE `templemahendra`;
 
+SET NAMES utf8mb4;
+
 -- ── Announcements ─────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS `announcements` (
   `id`         INT UNSIGNED    NOT NULL AUTO_INCREMENT,

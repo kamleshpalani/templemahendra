@@ -15,12 +15,16 @@ if ($_SERVER['REQUEST_METHOD'] !== 'GET') {
 $db = getDB();
 
 // Ensure table exists (safety net if database/schema.sql was not imported)
-$db->exec("CREATE TABLE IF NOT EXISTS `homepage_settings` (
-  `key_name` VARCHAR(80)  NOT NULL,
-  `val`      VARCHAR(10)  NOT NULL DEFAULT '1',
-  `label`    VARCHAR(300) NULL,
-  PRIMARY KEY (`key_name`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+try {
+    $db->exec("CREATE TABLE IF NOT EXISTS `homepage_settings` (
+      `key_name` VARCHAR(80)  NOT NULL,
+      `val`      VARCHAR(10)  NOT NULL DEFAULT '1',
+      `label`    VARCHAR(300) NULL,
+      PRIMARY KEY (`key_name`)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+} catch (PDOException $e) {
+    // Table already exists or DB user lacks CREATE privilege — schema.sql is the source of truth
+}
 
 // Seed defaults if missing
 $defaults = [
