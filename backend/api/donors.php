@@ -16,14 +16,10 @@ if ($_SERVER['REQUEST_METHOD'] !== 'GET') {
 $db = getDB();
 
 // ── Recent donors from the donations table (last 30 days, approved) ──────────
-$isSQLite   = $db->getAttribute(PDO::ATTR_DRIVER_NAME) === 'sqlite';
-$dateFilter = $isSQLite
-    ? "datetime('now', '-30 days')"
-    : "DATE_SUB(NOW(), INTERVAL 30 DAY)";
 $donations = $db->query(
     "SELECT name, purpose, created_at
        FROM donations
-      WHERE created_at >= $dateFilter
+      WHERE created_at >= DATE_SUB(NOW(), INTERVAL 30 DAY)
       ORDER BY created_at DESC
       LIMIT 50"
 )->fetchAll(PDO::FETCH_ASSOC);

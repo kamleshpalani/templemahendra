@@ -63,7 +63,7 @@ export default function Gallery() {
                   }
                 >
                   <img
-                    src={`/api/uploads/${img.filename}`}
+                    src={`/uploads/${img.filename}`}
                     alt={img.caption || ""}
                     loading="lazy"
                   />
@@ -86,7 +86,7 @@ export default function Gallery() {
             ✕
           </button>
           <img
-            src={`/api/uploads/${lightbox.filename}`}
+            src={`/uploads/${lightbox.filename}`}
             alt={lightbox.caption || ""}
             onClick={(e) => e.stopPropagation()}
           />

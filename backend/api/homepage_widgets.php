@@ -74,19 +74,8 @@ foreach ($rows as $row) {
     }
 }
 
-// ── Helper: driver-safe ORDER BY for pooja type priority ────────────────────
-$isSQLite      = $db->getAttribute(PDO::ATTR_DRIVER_NAME) === 'sqlite';
-$typeOrderExpr = $isSQLite
-    ? "CASE p.pooja_type
-           WHEN 'pournami'  THEN 1
-           WHEN 'amavasai'  THEN 2
-           WHEN 'ekadasi'   THEN 3
-           WHEN 'special'   THEN 4
-           WHEN 'monthly'   THEN 5
-           WHEN 'sashti'    THEN 6
-           ELSE 7
-       END"
-    : "FIELD(p.pooja_type,'pournami','amavasai','ekadasi','special','monthly','sashti','daily')";
+// ── ORDER BY expression for pooja type priority ─────────────────────────────
+$typeOrderExpr = "FIELD(p.pooja_type,'pournami','amavasai','ekadasi','special','monthly','sashti','daily')";
 
 // ── Step 3: Auto-select the next upcoming pooja (Pournami first, then any) ──
 $autoPooja = null;

@@ -17,6 +17,13 @@ _seed_aiven.mjs
 _seed_*.mjs
 _setup_*.php
 
+# Stray SQLite files — the app is MySQL-only, these should never come back
+*.sqlite
+*.sqlite3
+
+# Editor/tool scratch
+.codebuddy/
+
 # Node
 frontend/node_modules/
 frontend/dist/
