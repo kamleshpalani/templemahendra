@@ -781,7 +781,9 @@ export default function Home() {
         })()}
 
       {/* ── Upcoming Events & Pournami (merged) ── */}
-      {(widgetsLoading || widgets.length > 0 || pournamis.length > 0) && (
+      {(widgetsLoading ||
+        widgets.length > 0 ||
+        (siteSettings.show_pournami_section && pournamis.length > 0)) && (
         <section className="section" style={{ paddingBottom: 0 }}>
           <div className="container">
             <h2 className="section-title">
@@ -791,8 +793,8 @@ export default function Home() {
             <HomepageWidgets
               widgets={widgets}
               loading={widgetsLoading}
-              pournami={pournami}
-              pournamis={pournamis}
+              pournami={siteSettings.show_pournami_section ? pournami : null}
+              pournamis={siteSettings.show_pournami_section ? pournamis : []}
               lang={lang}
             />
           </div>
