@@ -182,4 +182,16 @@ INSERT INTO `events` (title_ta, title_en, description, event_date, is_active) VA
 ('ஆடி பூரம்',        'Aadi Pooram',       'Celebration of Goddess Andal.',       '2026-07-28', 1),
 ('கார்த்திகை',       'Karthigai Deepam',  'Festival of lights.',                 '2026-11-27', 1);
 
--- \u2500\u2500 Homepage Settings \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n-- Key/value switches for homepage section visibility\nCREATE TABLE IF NOT EXISTS \homepage_settings\ (\n  \key_name\  VARCHAR(80)    NOT NULL,\n  \al\       VARCHAR(10)    NOT NULL DEFAULT '1',\n  \label\     VARCHAR(300)   NULL,\n  PRIMARY KEY (\key_name\)\n) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;\n\nINSERT IGNORE INTO \homepage_settings\ (key_name, val, label) VALUES\n('show_pournami_section', '1', 'Show Pournami Poojai section on homepage'),\n('show_nalla_strip',      '1', 'Show Nalla Neram strip on homepage'),\n('show_donor_ticker',     '1', 'Show donor scroll ticker');
+-- ── Homepage Settings ─────────────────────────────────────
+-- Key/value switches for homepage section visibility
+CREATE TABLE IF NOT EXISTS `homepage_settings` (
+  `key_name`  VARCHAR(80)    NOT NULL,
+  `val`       VARCHAR(10)    NOT NULL DEFAULT '1',
+  `label`     VARCHAR(300)   NULL,
+  PRIMARY KEY (`key_name`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+INSERT IGNORE INTO `homepage_settings` (`key_name`, `val`, `label`) VALUES
+('show_pournami_section', '1', 'Show Pournami Poojai section on homepage'),
+('show_nalla_strip',      '1', 'Show Nalla Neram strip on homepage'),
+('show_donor_ticker',     '1', 'Show donor scroll ticker');

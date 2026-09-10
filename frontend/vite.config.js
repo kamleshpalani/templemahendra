@@ -40,11 +40,9 @@ export default defineConfig({
         cacheId: "temple-v2",
         runtimeCaching: [
           {
-            // API calls — network-first with 5s timeout, then cache
-            // Matches both relative /api (dev) and absolute Render URL (prod)
-            urlPattern: ({ url }) =>
-              url.pathname.startsWith("/api") ||
-              url.hostname.endsWith(".onrender.com"),
+            // API calls — network-first with 5s timeout, then cache.
+            // Same-origin /api on Hostinger, and via the Vite proxy in dev.
+            urlPattern: ({ url }) => url.pathname.startsWith("/api"),
             handler: "NetworkFirst",
             options: {
               cacheName: "temple-api",

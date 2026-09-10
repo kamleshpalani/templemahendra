@@ -24,7 +24,7 @@ function requireAdminAuth(): void
 
 /**
  * Read an env var from getenv(), $_ENV, or $_SERVER — whichever has it.
- * Apache + Docker sometimes only exposes vars via $_SERVER.
+ * Hostinger's PHP config sometimes only exposes vars via $_SERVER.
  */
 function readEnv(string $key, string $default = ''): string
 {

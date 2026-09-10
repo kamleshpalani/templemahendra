@@ -5,7 +5,8 @@
 if (!function_exists('dbEnv')) {
     /**
      * Read an env var from getenv(), $_ENV, or $_SERVER.
-     * Apache + Docker sometimes only exposes vars via $_SERVER.
+     * Hostinger's PHP config exposes variables inconsistently across these
+     * three, so check all of them before falling back to the default.
      */
     function dbEnv(string $key, string $default = ''): string
     {
