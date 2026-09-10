@@ -36,6 +36,7 @@
   content: "";
   position: absolute;
   inset: 0;
+  pointer-events: none;
   background: linear-gradient(
     135deg,
     rgba(251, 191, 36, 0.04) 0%,
