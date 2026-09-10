@@ -1,30 +1,18 @@
 import { useState } from "react";
 import { Helmet } from "react-helmet-async";
-import { QRCodeSVG } from "qrcode.react";
+import { Link } from "react-router-dom";
 import { useLang } from "../context/LangContext";
+import { useToast } from "../context/ToastContext";
+import { TEMPLE, TRUST, KUMBABHISHEKAM_APPEAL } from "../data/temple";
+import TrustDetails from "../components/TrustDetails/TrustDetails";
 import "./PageCommon.css";
 import "./Donations.css";
 
-const UPI_ID = "dhabbalavaartemple@upi";
-const UPI_URI = `upi://pay?pa=${UPI_ID}&pn=Dhabbalavaar%20Renuka%20Devi%20Lingamma%20Sinnammal%20Temple%20Trust&cu=INR`;
-
-function CopyButton({ text, t }) {
-  const [copied, setCopied] = useState(false);
-  const handleCopy = () => {
-    navigator.clipboard.writeText(text).then(() => {
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    });
-  };
-  return (
-    <button className="copy-btn" onClick={handleCopy} type="button">
-      {copied ? t("நகலெடுக்கப்பட்டது ✓", "Copied ✓") : t("நகலெடு", "Copy")}
-    </button>
-  );
-}
+const QUICK_AMOUNTS = [501, 1001, 2001, 5001];
 
 export default function Donations() {
   const { t } = useLang();
+  const toast = useToast();
   const [form, setForm] = useState({
     name: "",
     phone: "",
@@ -32,13 +20,29 @@ export default function Donations() {
     purpose: "",
     message: "",
   });
+  const [errors, setErrors] = useState({});
   const [status, setStatus] = useState(null);
 
-  const handleChange = (e) =>
-    setForm((f) => ({ ...f, [e.target.name]: e.target.value }));
+  const handleChange = (e) => {
+    const { name, value } = e.target;
+    setForm((f) => ({ ...f, [name]: value }));
+    if (errors[name]) setErrors((er) => ({ ...er, [name]: undefined }));
+  };
+
+  const validate = () => {
+    const next = {};
+    if (form.name.trim().length < 2) next.name = t("பெயரை உள்ளிடவும்", "Please enter your name");
+    if (!/^[0-9]{10}$/.test(form.phone))
+      next.phone = t("10 இலக்க தொலைபேசி எண் தேவை", "Enter a 10-digit phone number");
+    if (!(Number(form.amount) >= 1))
+      next.amount = t("தொகையை உள்ளிடவும்", "Enter a donation amount");
+    setErrors(next);
+    return Object.keys(next).length === 0;
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (!validate()) return;
     setStatus("sending");
     try {
       const res = await fetch("/api/donations", {
@@ -49,8 +53,13 @@ export default function Donations() {
       if (!res.ok) throw new Error();
       setStatus("success");
       setForm({ name: "", phone: "", amount: "", purpose: "", message: "" });
+      toast.success(
+        t("உங்கள் நன்கொடை பதிவு செய்யப்பட்டது.", "Your donation has been recorded."),
+        t("நன்றி!", "Thank you!"),
+      );
     } catch {
       setStatus("error");
+      toast.error(t("பிழை ஏற்பட்டது. நேரடியாக அழைக்கவும்.", "Something went wrong. Please call us to confirm."));
     }
   };
 
@@ -58,23 +67,22 @@ export default function Donations() {
     <>
       <Helmet>
         <title>
-          {t("நன்கொடை", "Donations")} —{" "}
-          {t(
-            "தபலவார் ரேணுகா தேவி லிங்கம்மா சின்னம்மாள் கோவில்",
-            "Dhabbalavaar Renuka Devi Lingamma Sinnammal Temple",
-          )}
+          {t("நன்கொடை", "Donations")} — {t(TEMPLE.name.ta, TEMPLE.name.en)}
         </title>
       </Helmet>
 
       <div className="page-hero page-hero--donations">
         <div className="page-hero__content">
-          <h1>{t("நன்கொடை", "Donations")}</h1>
+          <span className="page-hero__eyebrow">{TRUST.taxExemption ? t(TRUST.taxExemption.short.ta, TRUST.taxExemption.short.en) : t("நன்கொடை", "Donate")}</span>
+          <h1>{t("நன்கொடை", "Donations")}</h1>
+          <p>{t(TRUST.name.ta, TRUST.name.en)}</p>
         </div>
       </div>
 
       <section className="section">
         <div className="container donations-layout">
           <div className="donations-info">
+            <p className="eyebrow">{t("ஆதரவு", "Support")}</p>
             <h2>{t("உங்கள் ஆதரவு", "Your Support")}</h2>
             <p>
               {t(
@@ -82,50 +90,47 @@ export default function Donations() {
                 "Your donations help maintain the temple, conduct daily rituals, fund festivals, and support the Annadanam (free meal) programme. Every contribution, however small, is a sacred act of devotion.",
               )}
             </p>
-            <h3>{t("வங்கி பரிமாற்றம்", "Bank Transfer")}</h3>
-            <div className="bank-details">
-              <div>
-                <strong>Account Name:</strong> Dhabbalavaar Renuka Devi Lingamma
-                Sinnammal Temple Trust
-              </div>
-              <div>
-                <strong>Account No:</strong> XXXX XXXX XXXX
-              </div>
-              <div>
-                <strong>IFSC:</strong> XXXXXXXXX
-              </div>
-              <div>
-                <strong>Bank:</strong> State Bank of India
-              </div>
-            </div>
-            <h3>UPI</h3>
-            <div className="upi-block">
-              <div className="upi-qr">
-                <QRCodeSVG
-                  value={UPI_URI}
-                  size={160}
-                  bgColor="#fff8f0"
-                  fgColor="#7B1818"
-                  level="H"
-                  includeMargin={true}
-                />
-                <p className="upi-qr__label">
-                  {t("ஸ்கேன் செய்து பணம் அனுப்புங்கள்", "Scan to pay via UPI")}
-                </p>
-              </div>
-              <div className="upi-id-box">
-                <span className="upi-id__label">{t("UPI ஐடி", "UPI ID")}</span>
-                <strong className="upi-id__value">{UPI_ID}</strong>
-                <CopyButton text={UPI_ID} t={t} />
-              </div>
-            </div>
+
+            {/* Kumbabhishekam + buildings appeal (committee letter, §5i) */}
+            <aside
+              className="donations-appeal"
+              id="kumbabhishekam"
+              aria-labelledby="donations-appeal-title"
+            >
+              <h3 id="donations-appeal-title" className="donations-appeal__title">
+                <span aria-hidden="true">🛕</span>{" "}
+                {t(KUMBABHISHEKAM_APPEAL.heading.ta, KUMBABHISHEKAM_APPEAL.heading.en)}
+              </h3>
+              <p className="donations-appeal__text">
+                {t(KUMBABHISHEKAM_APPEAL.ta, KUMBABHISHEKAM_APPEAL.en)}
+              </p>
+            </aside>
+
+            <h3>{t("வங்கி பரிமாற்றம் / காசோலை", "Bank Transfer / Cheque")}</h3>
+            <TrustDetails variant="bank" showNote id="bank-details" />
+
+            <p className="donations-info__more">
+              <Link to="/about#trust">
+                {t(
+                  "அறக்கட்டளை பதிவு விவரங்கள் முழுமையாக →",
+                  "Full Trust registration details →",
+                )}
+              </Link>
+            </p>
           </div>
 
-          <div className="donations-form card">
+          <div className="donations-form card card--static">
+            <p className="eyebrow">{t("பதிவு", "Pledge")}</p>
             <h3>{t("நன்கொடை பதிவு", "Register Your Donation")}</h3>
+            <p className="donations-form__hint">
+              {t(
+                "ரசீது அனுப்ப உங்கள் முழு முகவரியை செய்தியில் குறிப்பிடவும்.",
+                "Please include your full postal address in the message so a receipt can be sent.",
+              )}
+            </p>
             {status === "success" && (
-              <p className="form-success">
-                🙏{" "}
+              <p className="form-success" role="status" aria-live="polite">
+                <span aria-hidden="true">🙏</span>{" "}
                 {t(
                   "நன்றி! உங்கள் நன்கொடை பதிவு செய்யப்பட்டது.",
                   "Thank you! Your donation has been recorded.",
@@ -133,7 +138,7 @@ export default function Donations() {
               </p>
             )}
             {status === "error" && (
-              <p className="form-error">
+              <p className="form-error" role="alert">
                 {t(
                   "பிழை ஏற்பட்டது. நேரடியாக அழைக்கவும்.",
                   "Something went wrong. Please call us to confirm.",
@@ -141,16 +146,20 @@ export default function Donations() {
               </p>
             )}
             <form onSubmit={handleSubmit} noValidate>
-              <label>
+              <label className={errors.name ? "field--error" : ""}>
                 {t("முழு பெயர் *", "Full Name *")}
                 <input
                   required
                   name="name"
                   value={form.name}
                   onChange={handleChange}
+                  autoComplete="name"
+                  aria-invalid={Boolean(errors.name)}
+                  aria-describedby={errors.name ? "d-err-name" : undefined}
                 />
+                {errors.name && <span id="d-err-name" className="field__error" role="alert">{errors.name}</span>}
               </label>
-              <label>
+              <label className={errors.phone ? "field--error" : ""}>
                 {t("தொலைபேசி எண் *", "Phone Number *")}
                 <input
                   required
@@ -158,10 +167,15 @@ export default function Donations() {
                   name="phone"
                   value={form.phone}
                   onChange={handleChange}
-                  pattern="[0-9]{10}"
+                  inputMode="numeric"
+                  autoComplete="tel"
+                  placeholder="9999999999"
+                  aria-invalid={Boolean(errors.phone)}
+                  aria-describedby={errors.phone ? "d-err-phone" : undefined}
                 />
+                {errors.phone && <span id="d-err-phone" className="field__error" role="alert">{errors.phone}</span>}
               </label>
-              <label>
+              <label className={errors.amount ? "field--error" : ""}>
                 {t("தொகை (₹) *", "Amount (₹) *")}
                 <input
                   required
@@ -170,7 +184,24 @@ export default function Donations() {
                   name="amount"
                   value={form.amount}
                   onChange={handleChange}
+                  inputMode="numeric"
+                  aria-invalid={Boolean(errors.amount)}
+                  aria-describedby={errors.amount ? "d-err-amount" : undefined}
                 />
+                <span className="donations-form__chips" role="group" aria-label={t("விரைவு தொகை", "Quick amounts")}>
+                  {QUICK_AMOUNTS.map((amt) => (
+                    <button
+                      key={amt}
+                      type="button"
+                      className={`donations-form__chip${Number(form.amount) === amt ? " donations-form__chip--active" : ""}`}
+                      onClick={() => handleChange({ target: { name: "amount", value: String(amt) } })}
+                      aria-pressed={Number(form.amount) === amt}
+                    >
+                      ₹{amt}
+                    </button>
+                  ))}
+                </span>
+                {errors.amount && <span id="d-err-amount" className="field__error" role="alert">{errors.amount}</span>}
               </label>
               <label>
                 {t("நோக்கம்", "Purpose")}
@@ -181,6 +212,12 @@ export default function Donations() {
                 >
                   <option value="">
                     {t("— தேர்ந்தெடுக்க —", "— Select —")}
+                  </option>
+                  <option value="kumbabhishekam">
+                    {t("கும்பாபிஷேகம்", "Kumbabhishekam")}
+                  </option>
+                  <option value="annadanam_hall">
+                    {t("அன்னதான கூடம் கட்டுமானம்", "Annadanam Hall construction")}
                   </option>
                   <option value="annadanam">
                     {t("அன்னதானம்", "Annadanam")}
@@ -198,7 +235,7 @@ export default function Donations() {
                 </select>
               </label>
               <label>
-                {t("செய்தி (விருப்பமானால்)", "Message (optional)")}
+                {t("செய்தி / முகவரி (ரசீதுக்கு)", "Message / Address (for receipt)")}
                 <textarea
                   name="message"
                   rows="3"
@@ -208,12 +245,11 @@ export default function Donations() {
               </label>
               <button
                 type="submit"
-                className="btn btn-primary"
+                className={`btn btn-primary btn--block${status === "sending" ? " btn--loading" : ""}`}
                 disabled={status === "sending"}
+                aria-busy={status === "sending"}
               >
-                {status === "sending"
-                  ? t("சமர்ப்பிக்கிறது…", "Submitting…")
-                  : t("சமர்ப்பி", "Submit")}
+                {t("சமர்ப்பி", "Submit")}
               </button>
             </form>
           </div>

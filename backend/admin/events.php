@@ -45,7 +45,7 @@ if (isset($_GET['edit'])) {
     $editing = $stmt->fetch();
 }
 
-adminHeader('Events');
+adminHeader('Events', 'Worship');
 echo $msg;
 ?>
 
@@ -61,12 +61,15 @@ echo $msg;
     <label>Event Date * <input type="date" name="event_date" required value="<?= htmlspecialchars($editing['event_date'] ?? '') ?>" /></label>
     <label>Description <textarea name="description" rows="4"><?= htmlspecialchars($editing['description'] ?? '') ?></textarea></label>
     <label class="checkbox-label"><input type="checkbox" name="is_active" <?= (!$editing || $editing['is_active']) ? 'checked' : '' ?> /> Active</label>
-    <button type="submit" class="btn btn-primary">Save</button>
-    <?php if ($editing): ?><a href="/admin/events.php" class="btn btn-secondary">Cancel</a><?php endif; ?>
+    <div class="form-actions">
+      <button type="submit" class="btn btn-primary">Save</button>
+      <?php if ($editing): ?><a href="/admin/events.php" class="btn btn-secondary">Cancel</a><?php endif; ?>
+    </div>
   </form>
 </div>
 
 <div class="admin-list">
+  <div class="table-wrap">
   <table class="admin-table">
     <thead><tr><th>Tamil</th><th>English</th><th>Date</th><th>Actions</th></tr></thead>
     <tbody>
@@ -85,8 +88,10 @@ echo $msg;
         </td>
       </tr>
       <?php endforeach; ?>
+      <?php if (!$rows): ?><tr class="table-empty"><td colspan="4">No events yet. Create your first event using the form.</td></tr><?php endif; ?>
     </tbody>
   </table>
+  </div>
 </div>
 
 </div>

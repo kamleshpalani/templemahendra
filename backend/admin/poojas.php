@@ -69,7 +69,7 @@ $typeLabels = [
     'daily'   =>'Daily',
 ];
 
-adminHeader('🛕 Pooja Manager');
+adminHeader('Pooja Manager', 'Worship');
 echo $msg;
 ?>
 
@@ -128,21 +128,22 @@ echo $msg;
 </div>
 
 <div class="admin-list">
+  <div class="table-wrap">
   <table class="admin-table">
     <thead>
       <tr>
         <th>Date</th><th>Tamil Name</th><th>Type</th>
-        <th>Active</th><th>Actions</th>
+        <th>Status</th><th>Actions</th>
       </tr>
     </thead>
     <tbody>
       <?php foreach ($rows as $row): ?>
       <tr>
         <td><?= htmlspecialchars($row['pooja_date']) ?></td>
-        <td><?= htmlspecialchars($row['name_ta']) ?><br>
-            <small style="color:#666"><?= htmlspecialchars($row['name_en']) ?></small></td>
-        <td><span class="badge"><?= htmlspecialchars($typeLabels[$row['pooja_type']] ?? $row['pooja_type']) ?></span></td>
-        <td><?= $row['is_active'] ? '✅' : '❌' ?></td>
+        <td><strong><?= htmlspecialchars($row['name_ta']) ?></strong><br>
+            <small><?= htmlspecialchars($row['name_en']) ?></small></td>
+        <td><span class="badge badge--info"><?= htmlspecialchars($typeLabels[$row['pooja_type']] ?? $row['pooja_type']) ?></span></td>
+        <td><?= $row['is_active'] ? '<span class="badge badge--success">Active</span>' : '<span class="badge badge--muted">Hidden</span>' ?></td>
         <td>
           <a href="/admin/poojas.php?edit=<?= $row['id'] ?>" class="btn btn-sm">Edit</a>
           <form method="POST" action="/admin/poojas.php" style="display:inline">
@@ -154,8 +155,10 @@ echo $msg;
         </td>
       </tr>
       <?php endforeach; ?>
+      <?php if (!$rows): ?><tr class="table-empty"><td colspan="5">No poojas scheduled yet.</td></tr><?php endif; ?>
     </tbody>
   </table>
+  </div>
 </div>
 
 </div>

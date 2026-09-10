@@ -2,6 +2,8 @@ import { useEffect, useState } from "react";
 import { Helmet } from "react-helmet-async";
 import api from "../services/api";
 import { useLang } from "../context/LangContext";
+import { EmptyState } from "../components/ui/Feedback";
+import { TEMPLE } from "../data/temple";
 import "./PageCommon.css";
 import "./Gallery.css";
 
@@ -26,10 +28,7 @@ export default function Gallery() {
       <Helmet>
         <title>
           {t("தொகுப்பு", "Gallery")} —{" "}
-          {t(
-            "தபலவார் ரேணுகா தேவி லிங்கம்மா சின்னம்மாள் கோவில்",
-            "Dhabbalavaar Renuka Devi Lingamma Sinnammal Temple",
-          )}
+          {t(TEMPLE.name.ta, TEMPLE.name.en)}
         </title>
       </Helmet>
 
@@ -45,12 +44,12 @@ export default function Gallery() {
           <div className="divider" />
 
           {images.length === 0 ? (
-            <p className="loading-text" style={{ textAlign: "center" }}>
+            <EmptyState icon="🖼️" title={t("புகைப்படங்கள் விரைவில் வரும்!", "Photos coming soon")}>
               {t(
-                "புகைப்படங்கள் விரைவில் வரும்!",
-                "Photos coming soon. Check back after the next festival!",
+                "அடுத்த திருவிழாவுக்குப் பிறகு மீண்டும் பார்க்கவும்.",
+                "Check back after the next festival!",
               )}
-            </p>
+            </EmptyState>
           ) : (
             <div className="gallery-grid">
               {images.map((img) => (

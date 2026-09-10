@@ -50,23 +50,31 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
 $images = $db->query('SELECT * FROM gallery ORDER BY created_at DESC')->fetchAll();
 
-adminHeader('Gallery');
+adminHeader('Gallery', 'Content');
 echo $msg;
 ?>
 
-<div class="admin-form-box card" style="max-width:480px">
+<div class="admin-form-box card" style="max-width:520px;position:static">
   <h3>Upload Image</h3>
   <form method="POST" action="/admin/gallery.php" enctype="multipart/form-data">
     <input type="hidden" name="action" value="upload" />
-    <label>Image (JPEG/PNG/WebP, max <?= UPLOAD_MAX_MB ?>MB) *
-      <input type="file" name="image" accept="image/jpeg,image/png,image/webp" required />
-    </label>
-    <label>Caption <input name="caption" /></label>
+    <div class="dropzone" tabindex="0">
+      <span class="dropzone__icon" aria-hidden="true">🖼️</span>
+      <span class="dropzone__title">Drag & drop a photo, or click to browse</span>
+      <span class="field__hint">JPEG, PNG or WebP · max <?= UPLOAD_MAX_MB ?> MB</span>
+      <span class="dropzone__file" aria-live="polite"></span>
+      <input type="file" name="image" accept="image/jpeg,image/png,image/webp" required aria-label="Choose image" />
+    </div>
+    <label>Caption <input name="caption" placeholder="e.g. Pournami Abhishekam, March 2026" /></label>
     <button type="submit" class="btn btn-primary">Upload</button>
   </form>
 </div>
 
-<div class="gallery-admin-grid" style="margin-top:2rem">
+<?php if (!$images): ?>
+  <div class="empty-state mt-6"><span class="empty-state__icon">🖼️</span><h3>No photos yet</h3><p class="muted">Uploaded photos appear on the public gallery page.</p></div>
+<?php endif; ?>
+
+<div class="gallery-admin-grid mt-6">
   <?php foreach ($images as $img): ?>
   <div class="gallery-admin-item card">
     <img src="/uploads/<?= htmlspecialchars($img['filename']) ?>" alt="<?= htmlspecialchars($img['caption']) ?>" loading="lazy" />

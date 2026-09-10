@@ -46,7 +46,7 @@ if (isset($_GET['edit'])) {
     $editing = $stmt->fetch();
 }
 
-adminHeader('Announcements');
+adminHeader('Announcements', 'Content');
 echo $msg;
 ?>
 
@@ -62,19 +62,22 @@ echo $msg;
     <label class="checkbox-label">
       <input type="checkbox" name="is_active" <?= (!$editing || $editing['is_active']) ? 'checked' : '' ?> /> Active
     </label>
-    <button type="submit" class="btn btn-primary">Save</button>
-    <?php if ($editing): ?><a href="/admin/announcements.php" class="btn btn-secondary">Cancel</a><?php endif; ?>
+    <div class="form-actions">
+      <button type="submit" class="btn btn-primary">Save</button>
+      <?php if ($editing): ?><a href="/admin/announcements.php" class="btn btn-secondary">Cancel</a><?php endif; ?>
+    </div>
   </form>
 </div>
 
 <div class="admin-list">
+  <div class="table-wrap">
   <table class="admin-table">
-    <thead><tr><th>Title</th><th>Active</th><th>Date</th><th>Actions</th></tr></thead>
+    <thead><tr><th>Title</th><th>Status</th><th>Date</th><th>Actions</th></tr></thead>
     <tbody>
       <?php foreach ($rows as $row): ?>
       <tr>
-        <td><?= htmlspecialchars($row['title']) ?></td>
-        <td><?= $row['is_active'] ? '✅' : '❌' ?></td>
+        <td><strong><?= htmlspecialchars($row['title']) ?></strong></td>
+        <td><?= $row['is_active'] ? '<span class="badge badge--success">Active</span>' : '<span class="badge badge--muted">Hidden</span>' ?></td>
         <td><?= htmlspecialchars($row['created_at']) ?></td>
         <td>
           <a href="/admin/announcements.php?edit=<?= $row['id'] ?>" class="btn btn-sm">Edit</a>
@@ -86,8 +89,10 @@ echo $msg;
         </td>
       </tr>
       <?php endforeach; ?>
+      <?php if (!$rows): ?><tr class="table-empty"><td colspan="4">No announcements yet.</td></tr><?php endif; ?>
     </tbody>
   </table>
+  </div>
 </div>
 
 </div>

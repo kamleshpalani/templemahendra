@@ -1,122 +1,125 @@
+/* ── Contact page ───────────────────────────────────────── */
 .contact-layout {
   display: grid;
-  grid-template-columns: 1fr 1.2fr;
-  gap: 2.5rem;
+  grid-template-columns: 1fr 1.1fr;
+  gap: var(--space-12);
   align-items: flex-start;
 }
 
 .contact-details h2 {
   font-family: var(--font-tamil);
-  font-size: 1.35rem;
+  font-size: var(--text-xl);
   color: var(--maroon);
-  margin-bottom: 0.85rem;
+  margin: var(--space-2) 0 var(--space-4);
 }
-
 .contact-details h3 {
-  font-size: 0.72rem;
-  font-weight: 700;
+  font-size: var(--text-xs);
+  font-weight: var(--weight-bold);
   color: var(--text-3);
-  margin: 1.25rem 0 0.4rem;
+  margin: var(--space-6) 0 var(--space-2);
   text-transform: uppercase;
-  letter-spacing: 0.12em;
+  letter-spacing: var(--tracking-caps);
 }
-
 .contact-details address {
   font-style: normal;
   color: var(--text-2);
-  font-size: 0.9rem;
-  line-height: 1.9;
+  font-size: var(--text-base);
+  line-height: 1.85;
+  padding: var(--space-4) var(--space-5);
+  border-radius: var(--radius);
+  background: var(--glass);
+  border: 1px solid var(--glass-border);
+  backdrop-filter: blur(var(--blur-sm));
 }
-
+.contact-details address p:first-child {
+  font-family: var(--font-tamil);
+  font-weight: var(--weight-bold);
+  color: var(--maroon);
+}
+.contact-details p {
+  font-size: var(--text-base);
+  color: var(--text-2);
+}
 .contact-details a {
   color: var(--maroon);
-  font-size: 0.9rem;
+  font-weight: var(--weight-semibold);
   transition: color var(--transition);
 }
 .contact-details a:hover {
   color: var(--saffron-dark);
 }
 
-.contact-details p {
-  font-size: 0.9rem;
-  color: var(--text-2);
+.contact-details__tel-list {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+.contact-details__tel-list li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.35rem 0.6rem;
+  font-size: var(--text-base);
+  line-height: 1.6;
+}
+.contact-details a.contact-details__tel {
+  font-size: var(--text-md);
+  font-weight: var(--weight-bold);
+  letter-spacing: 0.02em;
+  font-variant-numeric: tabular-nums;
+}
+.contact-details__tel-role {
+  color: var(--text-3);
+  font-size: var(--text-sm);
+}
+.contact-details__more {
+  margin-top: var(--space-2);
+  font-size: var(--text-sm);
+}
+.contact-details__observance {
+  margin-top: var(--space-2);
+  font-size: var(--text-sm);
+  color: var(--text-3);
 }
 
 .map-embed {
-  margin-top: 1.5rem;
-  border-radius: var(--radius);
+  margin-top: var(--space-6);
+  border-radius: var(--radius-lg);
   overflow: hidden;
-  border: 1px solid rgba(153, 27, 27, 0.15);
+  border: 1px solid var(--glass-border);
+  box-shadow: var(--shadow);
+  background: var(--glass);
+}
+.map-embed iframe {
+  display: block;
+  width: 100%;
+  filter: saturate(0.9);
+  transition: filter var(--transition);
+}
+.map-embed:hover iframe {
+  filter: saturate(1.05);
 }
 
 .contact-form {
-  padding: 2rem;
+  padding: var(--space-8);
+  position: sticky;
+  top: calc(var(--header-h) + var(--space-6));
 }
 .contact-form h3 {
   font-family: var(--font-tamil);
-  font-size: 1.15rem;
-  color: var(--gold-light);
-  margin-bottom: 1.3rem;
+  font-size: var(--text-lg);
+  color: var(--maroon);
+  margin: var(--space-2) 0 var(--space-6);
 }
 
-@media (max-width: 720px) {
+@media (max-width: 820px) {
   .contact-layout {
     grid-template-columns: 1fr;
+    gap: var(--space-8);
   }
-}
-
-.contact-details h2 {
-  font-family: var(--font-tamil);
-  font-size: 1.3rem;
-  color: var(--maroon);
-  margin-bottom: 0.75rem;
-}
-
-.contact-details h3 {
-  font-size: 0.9rem;
-  font-weight: 700;
-  color: var(--maroon);
-  margin: 1.1rem 0 0.25rem;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-}
-
-.contact-details address {
-  font-style: normal;
-  color: var(--text-mid);
-  font-size: 0.9rem;
-  line-height: 1.8;
-}
-.contact-details a {
-  color: var(--saffron);
-  font-size: 0.9rem;
-}
-.contact-details a:hover {
-  text-decoration: underline;
-}
-.contact-details p {
-  font-size: 0.9rem;
-  color: var(--text-mid);
-}
-
-.map-embed {
-  margin-top: 1.5rem;
-  border-radius: var(--radius);
-  overflow: hidden;
-  border: 1px solid rgba(153, 27, 27, 0.15);
-}
-
-.contact-form {
-  padding: 1.75rem;
-}
-.contact-form h3 {
-  font-size: 1.1rem;
-  color: var(--maroon);
-  margin-bottom: 1.1rem;
-}
-
-@media (max-width: 720px) {
-  .contact-layout {
-    grid-template-columns: 1fr;
+  .contact-form {
+    position: static;
+    padding: var(--space-6);
   }
 }

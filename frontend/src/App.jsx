@@ -1,21 +1,47 @@
-import { Routes, Route, useLocation } from "react-router-dom";
-import { useEffect } from "react";
+import { Routes, Route, useLocation, Outlet } from "react-router-dom";
+import { Suspense, lazy, useEffect } from "react";
 import Layout from "./components/Layout/Layout";
 import Home from "./pages/Home";
-import About from "./pages/About";
-import Sevas from "./pages/Sevas";
-import Events from "./pages/Events";
-import Gallery from "./pages/Gallery";
-import Donations from "./pages/Donations";
-import Contact from "./pages/Contact";
-import PanchangCalendar from "./pages/PanchangCalendar";
-import NotFound from "./pages/NotFound";
+import { PageLoader } from "./components/ui/Feedback";
+import { useLang } from "./context/LangContext";
+
+// Home stays eager for LCP; every other route is code-split.
+const About = lazy(() => import("./pages/About"));
+const Sevas = lazy(() => import("./pages/Sevas"));
+const Events = lazy(() => import("./pages/Events"));
+const Donations = lazy(() => import("./pages/Donations"));
+const Contact = lazy(() => import("./pages/Contact"));
+const PanchangCalendar = lazy(() => import("./pages/PanchangCalendar"));
+const NotFound = lazy(() => import("./pages/NotFound"));
+
+/** Re-mounts on every path change so CSS `page-in` plays; Suspense shows the glass loader. */
+function PageTransition() {
+  const { pathname } = useLocation();
+  const { t } = useLang();
+  return (
+    <div key={pathname} className="page-enter">
+      <Suspense fallback={<PageLoader label={t("ஏற்றுகிறது…", "Loading…")} />}>
+        <Outlet />
+      </Suspense>
+    </div>
+  );
+}
 
 function ScrollToTop() {
-  const { pathname } = useLocation();
+  const { pathname, hash } = useLocation();
   useEffect(() => {
+    // In-page anchors (/about#trust, /donations#bank-details): scroll to the
+    // target once it has rendered. The sticky 70px navbar is offset via
+    // scroll-margin-top on [id] sections in index.css.
+    if (hash) {
+      const target = document.getElementById(hash.slice(1));
+      if (target) {
+        target.scrollIntoView({ behavior: "smooth", block: "start" });
+        return;
+      }
+    }
     window.scrollTo({ top: 0, left: 0, behavior: "instant" });
-  }, [pathname]);
+  }, [pathname, hash]);
   return null;
 }
 
@@ -25,15 +51,17 @@ function App() {
       <ScrollToTop />
       <Routes>
         <Route path="/" element={<Layout />}>
-          <Route index element={<Home />} />
-          <Route path="about" element={<About />} />
-          <Route path="sevas" element={<Sevas />} />
-          <Route path="events" element={<Events />} />
-          {/* Gallery hidden: <Route path="gallery" element={<Gallery />} /> */}
-          <Route path="donations" element={<Donations />} />
-          <Route path="contact" element={<Contact />} />
-          <Route path="panchangam" element={<PanchangCalendar />} />
-          <Route path="*" element={<NotFound />} />
+          <Route element={<PageTransition />}>
+            <Route index element={<Home />} />
+            <Route path="about" element={<About />} />
+            <Route path="sevas" element={<Sevas />} />
+            <Route path="events" element={<Events />} />
+            {/* Gallery hidden: <Route path="gallery" element={<Gallery />} /> */}
+            <Route path="donations" element={<Donations />} />
+            <Route path="contact" element={<Contact />} />
+            <Route path="panchangam" element={<PanchangCalendar />} />
+            <Route path="*" element={<NotFound />} />
+          </Route>
         </Route>
       </Routes>
     </>

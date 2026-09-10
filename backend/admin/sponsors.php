@@ -60,7 +60,7 @@ $poojas = $db->query(
       WHERE is_active=1 ORDER BY pooja_date DESC LIMIT 50"
 )->fetchAll();
 
-adminHeader('💛 Sponsor Manager');
+adminHeader('Sponsor Manager', 'Worship');
 echo $msg;
 ?>
 
@@ -108,19 +108,20 @@ echo $msg;
 </div>
 
 <div class="admin-list">
+  <div class="table-wrap">
   <table class="admin-table">
     <thead>
       <tr>
-        <th>Name</th><th>Phone</th><th>Linked Pooja</th><th>Active</th><th>Actions</th>
+        <th>Name</th><th>Phone</th><th>Linked Pooja</th><th>Status</th><th>Actions</th>
       </tr>
     </thead>
     <tbody>
       <?php foreach ($rows as $row): ?>
       <tr>
-        <td><?= htmlspecialchars($row['name']) ?></td>
+        <td><strong><?= htmlspecialchars($row['name']) ?></strong></td>
         <td><?= htmlspecialchars($row['phone'] ?: '—') ?></td>
         <td><?= htmlspecialchars($row['pooja_name'] ?: '—') ?></td>
-        <td><?= $row['is_active'] ? '✅' : '❌' ?></td>
+        <td><?= $row['is_active'] ? '<span class="badge badge--success">Active</span>' : '<span class="badge badge--muted">Hidden</span>' ?></td>
         <td>
           <a href="/admin/sponsors.php?edit=<?= $row['id'] ?>" class="btn btn-sm">Edit</a>
           <form method="POST" action="/admin/sponsors.php" style="display:inline">
@@ -132,8 +133,10 @@ echo $msg;
         </td>
       </tr>
       <?php endforeach; ?>
+      <?php if (!$rows): ?><tr class="table-empty"><td colspan="5">No sponsors yet.</td></tr><?php endif; ?>
     </tbody>
   </table>
+  </div>
 </div>
 
 </div>

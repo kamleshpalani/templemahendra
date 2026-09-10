@@ -1,0 +1,206 @@
+/* About page — additions for the committee-supplied content.
+   Loaded after PageCommon.css so these rules win the cascade. */
+
+/* Anchor targets sit below the 70px sticky navbar */
+.page-prose [id] {
+  scroll-margin-top: 84px;
+}
+
+/* Sub-headings inside prose (PageCommon styles only h2) */
+.page-prose h3 {
+  font-family: var(--font-tamil);
+  font-size: 1.1rem;
+  color: var(--maroon);
+  margin: 1.4rem 0 0.5rem;
+}
+
+/* ── Sanctum photograph ─────────────────────────────────────── */
+.page-figure {
+  margin: 0 0 2rem;
+  border-radius: var(--radius);
+  overflow: hidden;
+  box-shadow: var(--shadow-md);
+  border: 1px solid var(--border);
+  background: var(--bg-alt);
+}
+.page-figure img {
+  width: 100%;
+  max-height: 520px;
+  object-fit: cover;
+  display: block;
+}
+.page-figure figcaption {
+  padding: 0.75rem 1.1rem;
+  font-size: 0.9rem;
+  color: var(--text-2);
+  text-align: center;
+  font-family: var(--font-tamil);
+}
+
+/* ── Deity list ─────────────────────────────────────────────── */
+.about-deities {
+  list-style: none;
+  padding: 0;
+  margin: 0.75rem 0 0.5rem;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0.85rem;
+}
+.about-deities__item {
+  background: rgba(255, 255, 255, 0.85);
+  border: 1px solid var(--border);
+  border-left: 4px solid var(--saffron);
+  border-radius: 0 var(--radius) var(--radius) 0;
+  padding: 0.85rem 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+.about-deities__ta {
+  font-family: var(--font-tamil);
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: var(--maroon);
+}
+.about-deities__en {
+  font-size: 0.85rem;
+  color: var(--text-3);
+}
+.about-link {
+  margin-top: 0.25rem;
+}
+.about-link a,
+.page-prose a {
+  color: var(--maroon);
+  font-weight: 600;
+}
+.page-prose a:hover,
+.page-prose a:focus-visible {
+  color: var(--saffron-dark);
+  text-decoration: underline;
+}
+.page-prose a:focus-visible {
+  outline: 3px solid rgba(249, 115, 22, 0.45);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* ── Land-donor acknowledgement (mirrors the amber sponsor block) ── */
+.about-donor {
+  margin: 0.75rem 0 0.5rem;
+  padding: 0.9rem 1.1rem;
+  background: rgba(251, 191, 36, 0.12);
+  border: 1px solid rgba(251, 191, 36, 0.4);
+  border-radius: var(--radius-sm);
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+.about-donor--static:hover {
+  transform: none;
+  box-shadow: var(--shadow-sm);
+  border-color: rgba(251, 191, 36, 0.4);
+}
+.about-donor__label {
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #92400e;
+  margin: 0;
+}
+.about-donor__name {
+  font-family: var(--font-tamil);
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: #78350f;
+  margin: 0;
+}
+.about-donor__detail,
+.about-donor__names {
+  font-size: 0.88rem;
+  color: var(--text-2);
+  margin: 0;
+}
+
+/* ── Kumbabhishekam appeal (mirrors the crimson "pos-2" widget) ── */
+.about-appeal {
+  margin: 1.75rem 0 0.5rem;
+  padding: 1.4rem 1.6rem;
+  border-radius: var(--radius);
+  background: linear-gradient(145deg, #450a0a 0%, #7f1d1d 55%, #991b1b 100%);
+  border: 1.5px solid #b91c1c;
+  position: relative;
+  overflow: hidden;
+  box-shadow: var(--shadow-md);
+}
+.about-appeal::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 4px;
+  background: #fbbf24;
+}
+.about-appeal__title {
+  font-family: var(--font-tamil);
+  font-size: 1.15rem;
+  font-weight: 800;
+  color: #fef9c3;
+  margin: 0 0 0.5rem;
+  border: none;
+  padding: 0;
+}
+.about-appeal__title::after {
+  display: none;
+}
+.about-appeal__text {
+  color: #fde68a;
+  font-size: 0.95rem;
+  line-height: 1.75;
+  margin-bottom: 1rem;
+}
+.about-appeal .btn-primary {
+  background: #fbbf24;
+  color: #78350f;
+  box-shadow: none;
+}
+.about-appeal .btn-primary:hover,
+.about-appeal .btn-primary:focus-visible {
+  background: #fde68a;
+  color: #78350f;
+}
+.about-appeal .btn:focus-visible {
+  outline: 3px solid #fde68a;
+  outline-offset: 2px;
+}
+
+/* ── Table wrapper for narrow screens ───────────────────────── */
+.table-scroll {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+@media (max-width: 600px) {
+  .about-deities {
+    grid-template-columns: 1fr;
+  }
+  .about-appeal {
+    padding: 1.1rem 1.2rem;
+  }
+  .page-figure img {
+    max-height: 360px;
+  }
+}
