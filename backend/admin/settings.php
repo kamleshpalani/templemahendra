@@ -52,48 +52,55 @@ foreach ($settings as $s) {
     $map[$s['key_name']] = $s;
 }
 
-adminHeader('⚙️ Homepage Settings');
+adminHeader('Homepage Settings', 'Data & System');
 echo $msg;
 ?>
 
-<div class="card" style="max-width:640px;padding:2rem">
-  <h3 style="margin-bottom:1.5rem">Homepage Section Visibility</h3>
-  <p style="color:var(--text-3);font-size:0.9rem;margin-bottom:1.5rem">
+<div class="card" style="max-width:680px">
+  <div class="card__head">
+    <h3>Homepage Section Visibility</h3>
+    <span class="badge badge--info">Live</span>
+  </div>
+  <div class="card__body">
+  <p class="muted mb-4">
     Toggle which sections appear on the public homepage.
     Changes take effect immediately for all visitors.
   </p>
 
   <form method="POST" action="/admin/settings.php">
 
-    <fieldset style="border:1px solid #e5e7eb;border-radius:10px;padding:1rem 1.25rem;margin-bottom:1rem">
-      <legend style="font-weight:700;padding:0 0.4rem">🌕 Pournami Pooja Section</legend>
-      <label class="checkbox-label" style="font-size:1rem">
+    <fieldset>
+      <legend>🌕 Pournami Pooja Section</legend>
+      <label class="checkbox-label">
         <input type="checkbox" name="show_pournami_section"
                <?= ($map['show_pournami_section']['val'] ?? '1') === '1' ? 'checked' : '' ?> />
         Show Pournami Poojai countdown + donor ticker on homepage
       </label>
     </fieldset>
 
-    <fieldset style="border:1px solid #e5e7eb;border-radius:10px;padding:1rem 1.25rem;margin-bottom:1rem">
-      <legend style="font-weight:700;padding:0 0.4rem">✨ Nalla Neram Strip</legend>
-      <label class="checkbox-label" style="font-size:1rem">
+    <fieldset>
+      <legend>✨ Nalla Neram Strip</legend>
+      <label class="checkbox-label">
         <input type="checkbox" name="show_nalla_strip"
                <?= ($map['show_nalla_strip']['val'] ?? '1') === '1' ? 'checked' : '' ?> />
         Show daily Nalla Neram (auspicious time) green strip below announcements
       </label>
     </fieldset>
 
-    <fieldset style="border:1px solid #e5e7eb;border-radius:10px;padding:1rem 1.25rem;margin-bottom:1.5rem">
-      <legend style="font-weight:700;padding:0 0.4rem">🙏 Donor Ticker</legend>
-      <label class="checkbox-label" style="font-size:1rem">
+    <fieldset>
+      <legend>🙏 Donor Ticker</legend>
+      <label class="checkbox-label">
         <input type="checkbox" name="show_donor_ticker"
                <?= ($map['show_donor_ticker']['val'] ?? '1') === '1' ? 'checked' : '' ?> />
         Show scrolling donor/sponsor names inside Pournami section
       </label>
     </fieldset>
 
-    <button type="submit" class="btn btn-primary">💾 Save Settings</button>
+    <div class="form-actions">
+      <button type="submit" class="btn btn-primary">Save Settings</button>
+    </div>
   </form>
+  </div>
 </div>
 
 <?php adminFooter(); ?>

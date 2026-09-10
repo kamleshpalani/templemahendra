@@ -1,18 +1,20 @@
-/* ── Events Filter Tabs ──────────────────────────────── */
+/* ── Events Filter Tabs (styling from .tabs/.tab in index.css) ── */
 .events-filter {
-  display: flex;
-  gap: 0.5rem;
-  flex-wrap: wrap;
-  margin-bottom: 1.5rem;
+  margin-bottom: var(--space-6);
 }
 
 /* ── Pournami Panchangam Section ─────────────────────── */
 .pournami-section {
-  background: linear-gradient(135deg, #1a0533 0%, #2d0b5a 50%, #4c1d95 100%);
-  border-radius: 16px;
-  padding: 1.25rem 1.5rem;
-  margin-bottom: 2rem;
+  position: relative;
+  background:
+    radial-gradient(ellipse 60% 100% at 100% 0%, rgba(167, 139, 250, 0.3), transparent 60%),
+    linear-gradient(135deg, #1a0533 0%, #2d0b5a 50%, #4c1d95 100%);
+  border: 1px solid rgba(196, 181, 253, 0.3);
+  border-radius: var(--radius-lg);
+  padding: var(--space-6);
+  margin-bottom: var(--space-8);
   overflow: hidden;
+  box-shadow: 0 16px 44px rgba(45, 11, 90, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.15);
 }
 
 .pournami-section__header {
@@ -68,19 +70,23 @@
 
 .pournami-card {
   flex: 0 0 auto;
-  background: rgba(255, 255, 255, 0.07);
-  border: 1.5px solid rgba(167, 139, 250, 0.35);
-  border-radius: 12px;
-  padding: 0.75rem 1rem;
+  background: rgba(255, 255, 255, 0.08);
+  backdrop-filter: blur(var(--blur-sm));
+  -webkit-backdrop-filter: blur(var(--blur-sm));
+  border: 1px solid rgba(196, 181, 253, 0.35);
+  border-radius: var(--radius);
+  padding: 0.8rem 1rem;
   display: flex;
   gap: 0.8rem;
   align-items: center;
-  min-width: 180px;
-  transition: background 0.15s;
+  min-width: 190px;
+  transition: background var(--transition), transform var(--transition), border-color var(--transition);
 }
 
 .pournami-card:hover {
-  background: rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.14);
+  border-color: rgba(253, 230, 138, 0.5);
+  transform: translateY(-2px);
 }
 
 .pournami-card__date {
@@ -155,28 +161,10 @@
   }
 }
 
-.events-filter__btn {
-  padding: 0.4rem 1rem;
-  border: 1.5px solid var(--gold, #d4a435);
-  border-radius: 999px;
-  background: transparent;
-  color: var(--gold, #d4a435);
-  font-size: 0.85rem;
-  cursor: pointer;
-  transition:
-    background 0.18s,
-    color 0.18s;
-  font-family: inherit;
-}
-
-.events-filter__btn:hover {
-  background: rgba(212, 164, 53, 0.12);
-}
-
+.events-filter__btn,
+.events-filter__btn:hover,
 .events-filter__btn--active {
-  background: var(--gold, #d4a435);
-  color: #1a0a00;
-  font-weight: 600;
+  /* intentionally empty: .tab / .tab--active carry the visual style */
 }
 
 /* ── Event Row ───────────────────────────────────────── */

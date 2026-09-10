@@ -2,26 +2,47 @@ import { useEffect, useState } from "react";
 import { Helmet } from "react-helmet-async";
 import api from "../services/api";
 import { useLang } from "../context/LangContext";
+import { useToast } from "../context/ToastContext";
+import Modal from "../components/ui/Modal";
+import { SkeletonCards } from "../components/ui/Feedback";
+import { TEMPLE, SECONDARY_CONTACT, formatPhone } from "../data/temple";
 import "./PageCommon.css";
 import "./Sevas.css";
 
+const SEVA_ICONS = ["🪔", "🌺", "🔥", "📿", "🍚", "🐘"];
+
 /* ── Seva Booking Modal ─────────────────────────────────────────── */
 function BookingModal({ seva, onClose, t, lang }) {
+  const toast = useToast();
   const [form, setForm] = useState({
     devotee_name: "",
     phone: "",
     preferred_date: "",
     message: "",
   });
+  const [errors, setErrors] = useState({});
   const [status, setStatus] = useState("idle"); // idle | loading | success | error
   const [errMsg, setErrMsg] = useState("");
 
   function handleChange(e) {
-    setForm((f) => ({ ...f, [e.target.name]: e.target.value }));
+    const { name, value } = e.target;
+    setForm((f) => ({ ...f, [name]: value }));
+    if (errors[name]) setErrors((er) => ({ ...er, [name]: undefined }));
+  }
+
+  function validate() {
+    const next = {};
+    if (form.devotee_name.trim().length < 2)
+      next.devotee_name = t("பெயரை உள்ளிடவும்", "Please enter your name");
+    if (!/^[0-9]{7,15}$/.test(form.phone))
+      next.phone = t("சரியான தொலைபேசி எண் தேவை", "Enter a valid phone number");
+    setErrors(next);
+    return Object.keys(next).length === 0;
   }
 
   async function handleSubmit(e) {
     e.preventDefault();
+    if (!validate()) return;
     setStatus("loading");
     setErrMsg("");
     try {
@@ -34,6 +55,10 @@ function BookingModal({ seva, onClose, t, lang }) {
         message: form.message,
       });
       setStatus("success");
+      toast.success(
+        t("உங்கள் சேவை பதிவு பெறப்பட்டது.", "Your seva request has been received."),
+        t("பதிவு வெற்றி", "Booking received"),
+      );
     } catch (err) {
       setErrMsg(
         err?.response?.data?.error ||
@@ -46,123 +71,124 @@ function BookingModal({ seva, onClose, t, lang }) {
     }
   }
 
+  const sevaName = lang === "ta" ? seva.name_ta : seva.name_en;
+
   return (
-    <div
-      className="booking-overlay"
-      onClick={onClose}
-      role="dialog"
-      aria-modal="true"
-    >
-      <div className="booking-modal card" onClick={(e) => e.stopPropagation()}>
-        <button
-          className="booking-modal__close"
-          onClick={onClose}
-          aria-label="Close"
-        >
-          ✕
-        </button>
+    <Modal open onClose={onClose} labelledBy="booking-title">
+      {status === "success" ? (
+        <div className="booking-modal__success">
+          <span className="booking-modal__success-icon" aria-hidden="true">🙏</span>
+          <h3 id="booking-title">{t("பதிவு வெற்றி!", "Booking Received!")}</h3>
+          <p>
+            {t(
+              "உங்கள் சேவை பதிவு பெறப்பட்டது. கோயில் அலுவலகம் விரைவில் தொடர்பு கொள்ளும்.",
+              "Your seva request has been received. The temple office will contact you shortly.",
+            )}
+          </p>
+          <button type="button" className="btn btn-primary" onClick={onClose}>
+            {t("மூடு", "Close")}
+          </button>
+        </div>
+      ) : (
+        <>
+          <p className="eyebrow">{t("சேவை பதிவு", "Book Seva")}</p>
+          <h3 id="booking-title" className="modal__title">{sevaName}</h3>
+          <p className="booking-modal__amount">
+            ₹{seva.amount}
+            <span>{t("சமர்ப்பணம்", "offering")}</span>
+          </p>
 
-        {status === "success" ? (
-          <div className="booking-modal__success">
-            <span className="booking-modal__success-icon">🙏</span>
-            <h3>{t("பதிவு வெற்றி!", "Booking Received!")}</h3>
-            <p>
-              {t(
-                "உங்கள் சேவை பதிவு பெறப்பட்டது. கோயில் அலுவலகம் விரைவில் தொடர்பு கொள்ளும்.",
-                "Your seva request has been received. The temple office will contact you shortly.",
+          <form className="booking-form" onSubmit={handleSubmit} noValidate>
+            <label className={errors.devotee_name ? "field--error" : ""}>
+              {t("உங்கள் பெயர்", "Your Name")} *
+              <input
+                type="text"
+                name="devotee_name"
+                value={form.devotee_name}
+                onChange={handleChange}
+                required
+                minLength={2}
+                maxLength={200}
+                autoComplete="name"
+                placeholder={t("முழு பெயர்", "Full name")}
+                aria-invalid={Boolean(errors.devotee_name)}
+                aria-describedby={errors.devotee_name ? "err-name" : undefined}
+              />
+              {errors.devotee_name && (
+                <span id="err-name" className="field__error" role="alert">
+                  {errors.devotee_name}
+                </span>
               )}
-            </p>
-            <button className="btn btn-primary" onClick={onClose}>
-              {t("மூடு", "Close")}
-            </button>
-          </div>
-        ) : (
-          <>
-            <h3 className="booking-modal__title">
-              {t("சேவை பதிவு", "Book Seva")}
-              <span className="booking-modal__seva-name">
-                — {lang === "ta" ? seva.name_ta : seva.name_en}
+            </label>
+            <label className={errors.phone ? "field--error" : ""}>
+              {t("தொலைபேசி", "Phone Number")} *
+              <input
+                type="tel"
+                name="phone"
+                value={form.phone}
+                onChange={handleChange}
+                required
+                maxLength={15}
+                placeholder="9999999999"
+                inputMode="numeric"
+                autoComplete="tel"
+                aria-invalid={Boolean(errors.phone)}
+                aria-describedby={errors.phone ? "err-phone" : undefined}
+              />
+              {errors.phone && (
+                <span id="err-phone" className="field__error" role="alert">
+                  {errors.phone}
+                </span>
+              )}
+            </label>
+            <label>
+              {t("விரும்பும் தேதி", "Preferred Date")}
+              <input
+                type="date"
+                name="preferred_date"
+                value={form.preferred_date}
+                onChange={handleChange}
+                min={new Date().toISOString().slice(0, 10)}
+              />
+              <span className="field__hint">
+                {t("விருப்பத்தேர்வு — அலுவலகம் உறுதி செய்யும்", "Optional — the office will confirm")}
               </span>
-            </h3>
-            <p className="booking-modal__amount">₹{seva.amount}</p>
+            </label>
+            <label>
+              {t("குறிப்பு", "Note (optional)")}
+              <textarea
+                name="message"
+                value={form.message}
+                onChange={handleChange}
+                rows={2}
+                maxLength={500}
+                placeholder={t("சிறப்பு கோரிக்கை எதாவது இருந்தால்…", "Any special request…")}
+              />
+            </label>
 
-            <form className="booking-form" onSubmit={handleSubmit} noValidate>
-              <div className="booking-form__row">
-                <label>
-                  {t("உங்கள் பெயர்", "Your Name")} *
-                  <input
-                    type="text"
-                    name="devotee_name"
-                    value={form.devotee_name}
-                    onChange={handleChange}
-                    required
-                    minLength={2}
-                    maxLength={200}
-                    placeholder={t("முழு பெயர்", "Full name")}
-                  />
-                </label>
-              </div>
-              <div className="booking-form__row">
-                <label>
-                  {t("தொலைபேசி", "Phone Number")} *
-                  <input
-                    type="tel"
-                    name="phone"
-                    value={form.phone}
-                    onChange={handleChange}
-                    required
-                    pattern="[0-9]{7,15}"
-                    maxLength={15}
-                    placeholder="9999999999"
-                    inputMode="numeric"
-                  />
-                </label>
-              </div>
-              <div className="booking-form__row">
-                <label>
-                  {t("விரும்பும் தேதி", "Preferred Date")}
-                  <input
-                    type="date"
-                    name="preferred_date"
-                    value={form.preferred_date}
-                    onChange={handleChange}
-                    min={new Date().toISOString().slice(0, 10)}
-                  />
-                </label>
-              </div>
-              <div className="booking-form__row">
-                <label>
-                  {t("குறிப்பு", "Note (optional)")}
-                  <textarea
-                    name="message"
-                    value={form.message}
-                    onChange={handleChange}
-                    rows={2}
-                    maxLength={500}
-                    placeholder={t(
-                      "சிறப்பு கோரிக்கை எதாவது இருந்தால்…",
-                      "Any special request…",
-                    )}
-                  />
-                </label>
-              </div>
+            {errMsg && (
+              <p className="form-error" role="alert">
+                {errMsg}
+              </p>
+            )}
 
-              {errMsg && <p className="booking-form__error">{errMsg}</p>}
-
+            <div className="modal__actions">
+              <button type="button" className="btn btn-ghost" onClick={onClose}>
+                {t("ரத்து", "Cancel")}
+              </button>
               <button
                 type="submit"
-                className="btn btn-primary booking-form__submit"
+                className={`btn btn-primary${status === "loading" ? " btn--loading" : ""}`}
                 disabled={status === "loading"}
+                aria-busy={status === "loading"}
               >
-                {status === "loading"
-                  ? t("சமர்ப்பிக்கிறது…", "Submitting…")
-                  : t("பதிவு செய்யுங்கள்", "Submit Booking")}
+                {t("பதிவு செய்யுங்கள்", "Submit Booking")}
               </button>
-            </form>
-          </>
-        )}
-      </div>
-    </div>
+            </div>
+          </form>
+        </>
+      )}
+    </Modal>
   );
 }
 
@@ -239,16 +265,20 @@ export default function Sevas() {
       <Helmet>
         <title>
           {t("சேவைகள்", "Sevas")} —{" "}
-          {t(
-            "தபலவார் ரேணுகா தேவி லிங்கம்மா சின்னம்மாள் கோவில்",
-            "Dhabbalavaar Renuka Devi Lingamma Sinnammal Temple",
-          )}
+          {t(TEMPLE.name.ta, TEMPLE.name.en)}
         </title>
       </Helmet>
 
       <div className="page-hero page-hero--sevas">
         <div className="page-hero__content">
+          <span className="page-hero__eyebrow">{t("ஆன்லைன் பதிவு", "Online booking")}</span>
           <h1>{t("சேவைகள் & பூஜைகள்", "Sevas & Poojas")}</h1>
+          <p>
+            {t(
+              "உங்கள் பெயரில் அல்லது குடும்பத்தினர் பெயரில் ஒரு பூஜையை நடத்தி ஆசி பெறுங்கள்.",
+              "Offer a pooja in your name or your family's name and receive the blessings of the Goddess.",
+            )}
+          </p>
         </div>
       </div>
 
@@ -266,11 +296,14 @@ export default function Sevas() {
           </p>
 
           {loading ? (
-            <p className="loading-text">{t("ஏற்றுகிறது…", "Loading…")}</p>
+            <SkeletonCards count={4} className="seva-list" />
           ) : (
             <div className="seva-list">
-              {items.map((s) => (
-                <div key={s.id} className="seva-row card">
+              {items.map((s, i) => (
+                <article key={s.id} className="seva-row card" style={{ "--i": i }}>
+                  <span className="seva-row__icon" aria-hidden="true">
+                    {SEVA_ICONS[i % SEVA_ICONS.length]}
+                  </span>
                   <div className="seva-row__info">
                     <h3 className="seva-row__name-ta">
                       {lang === "ta" ? s.name_ta : s.name_en}
@@ -286,22 +319,25 @@ export default function Sevas() {
                   <div className="seva-row__right">
                     <div className="seva-row__amount">₹{s.amount}</div>
                     <button
+                      type="button"
                       className="btn btn-primary btn--sm seva-row__book-btn"
                       onClick={() => setSelectedSeva(s)}
+                      aria-label={`${t("பதிவு செய்", "Book")} — ${lang === "ta" ? s.name_ta : s.name_en}`}
                     >
                       {t("பதிவு செய் →", "Book →")}
                     </button>
                   </div>
-                </div>
+                </article>
               ))}
             </div>
           )}
 
           <div className="seva-note">
+            <span aria-hidden="true">☎️</span>
             <p>
               {t(
-                "சேவை பதிவு செய்ய +91 00000 00000 என்ற எண்ணில் அழைக்கவும் அல்லது காலை 8 – 12 மணி, மாலை 4 – 8 மணி நேரத்தில் கோயில் அலுவலகத்தை நேரில் அணுகவும்.",
-                "To book a seva, call us at +91 00000 00000 or visit the temple office between 8 AM – 12 PM and 4 PM – 8 PM.",
+                `சேவை பதிவு செய்ய ${SECONDARY_CONTACT.role.ta} ${SECONDARY_CONTACT.name.ta} – ${formatPhone(SECONDARY_CONTACT.phone)} என்ற எண்ணில் அழைக்கவும் அல்லது காலை 8 – 12 மணி, மாலை 4 – 8 மணி நேரத்தில் கோயில் அலுவலகத்தை நேரில் அணுகவும்.`,
+                `To book a seva, call ${SECONDARY_CONTACT.role.en} ${SECONDARY_CONTACT.name.en} at ${formatPhone(SECONDARY_CONTACT.phone)} or visit the temple office between 8 AM – 12 PM and 4 PM – 8 PM.`,
               )}
             </p>
           </div>

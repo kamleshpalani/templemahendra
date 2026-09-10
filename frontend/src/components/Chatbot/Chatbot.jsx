@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { FaRobot, FaTimes, FaPaperPlane, FaChevronDown } from "react-icons/fa";
 import { useLang } from "../../context/LangContext";
+import { PRIMARY_CONTACT, SECONDARY_CONTACT } from "../../data/temple";
 import "./Chatbot.css";
 
 const WELCOME_TA =
@@ -79,8 +80,8 @@ export default function Chatbot() {
         {
           role: "assistant",
           text: t(
-            "மன்னிக்கவும். சேவை தற்போது இல்லை. நேரடியாக அழைக்கவும்:\n+91 00000 00000",
-            "Sorry, service unavailable. Please call us directly:\n+91 00000 00000",
+            `மன்னிக்கவும். சேவை தற்போது இல்லை. நேரடியாக அழைக்கவும்:\n${PRIMARY_CONTACT.role.ta} ${PRIMARY_CONTACT.name.ta} – ${PRIMARY_CONTACT.phone}\n${SECONDARY_CONTACT.role.ta} ${SECONDARY_CONTACT.name.ta} – ${SECONDARY_CONTACT.phone}`,
+            `Sorry, service unavailable. Please call us directly:\n${PRIMARY_CONTACT.role.en} ${PRIMARY_CONTACT.name.en} – ${PRIMARY_CONTACT.phone}\n${SECONDARY_CONTACT.role.en} ${SECONDARY_CONTACT.name.en} – ${SECONDARY_CONTACT.phone}`,
           ),
         },
       ]);

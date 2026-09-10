@@ -47,7 +47,7 @@ if (isset($_GET['edit'])) {
     $editing = $stmt->fetch();
 }
 
-adminHeader('Sevas');
+adminHeader('Sevas', 'Worship');
 echo $msg;
 ?>
 
@@ -65,12 +65,15 @@ echo $msg;
     <label>Sort Order <input type="number" name="sort_order" value="<?= htmlspecialchars($editing['sort_order'] ?? '0') ?>" /></label>
     <label class="checkbox-label"><input type="checkbox" name="is_featured" <?= (!$editing || $editing['is_featured']) ? 'checked' : '' ?> /> Featured on Homepage</label>
     <label class="checkbox-label"><input type="checkbox" name="is_active"   <?= (!$editing || $editing['is_active'])   ? 'checked' : '' ?> /> Active</label>
-    <button type="submit" class="btn btn-primary">Save</button>
-    <?php if ($editing): ?><a href="/admin/sevas.php" class="btn btn-secondary">Cancel</a><?php endif; ?>
+    <div class="form-actions">
+      <button type="submit" class="btn btn-primary">Save</button>
+      <?php if ($editing): ?><a href="/admin/sevas.php" class="btn btn-secondary">Cancel</a><?php endif; ?>
+    </div>
   </form>
 </div>
 
 <div class="admin-list">
+  <div class="table-wrap">
   <table class="admin-table">
     <thead><tr><th>Tamil</th><th>English</th><th>Amount</th><th>Featured</th><th>Actions</th></tr></thead>
     <tbody>
@@ -79,7 +82,7 @@ echo $msg;
         <td><?= htmlspecialchars($row['name_ta']) ?></td>
         <td><?= htmlspecialchars($row['name_en']) ?></td>
         <td>₹<?= number_format($row['amount'], 2) ?></td>
-        <td><?= $row['is_featured'] ? '⭐' : '' ?></td>
+        <td><?= $row['is_featured'] ? '<span class="badge badge--gold">⭐ Featured</span>' : '<span class="badge badge--muted">—</span>' ?></td>
         <td>
           <a href="/admin/sevas.php?edit=<?= $row['id'] ?>" class="btn btn-sm">Edit</a>
           <form method="POST" style="display:inline">
@@ -90,8 +93,10 @@ echo $msg;
         </td>
       </tr>
       <?php endforeach; ?>
+      <?php if (!$rows): ?><tr class="table-empty"><td colspan="5">No sevas yet. Add one using the form.</td></tr><?php endif; ?>
     </tbody>
   </table>
+  </div>
 </div>
 
 </div>

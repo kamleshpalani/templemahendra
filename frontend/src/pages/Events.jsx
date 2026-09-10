@@ -2,6 +2,8 @@ import { useEffect, useState, useMemo } from "react";
 import { Helmet } from "react-helmet-async";
 import api from "../services/api";
 import { useLang } from "../context/LangContext";
+import { EmptyState, SkeletonCards } from "../components/ui/Feedback";
+import { TEMPLE, OBSERVANCES } from "../data/temple";
 import "./PageCommon.css";
 import "./Events.css";
 
@@ -36,6 +38,9 @@ function PournamiStrip({ pournamis, lang, t }) {
               "பஞ்சாங்கம் படி கணக்கிடப்பட்டது · மாலை 4:00 – 9:00 மணி",
               "Computed from Panchangam · Evening 4:00 PM – 9:00 PM",
             )}
+          </p>
+          <p className="pournami-section__sub">
+            {t(OBSERVANCES.pournami.desc.ta, OBSERVANCES.pournami.desc.en)}
           </p>
         </div>
       </div>
@@ -113,8 +118,9 @@ export default function Events() {
       title_en: "Maha Shivaratri",
       event_date: "2026-02-26",
       description_ta:
-        "சிவபெருமானுக்கு இரவு முழுவதும் விழிப்பு மற்றும் அபிஷேகம்.",
-      description_en: "All night vigil and abhishekam for Lord Shiva.",
+        "ஒவ்வொரு மஹா சிவராத்திரி அன்று நமது குல மக்கள் வந்து தரிசனம் செய்து வருகின்றார்கள். அன்று அன்னதானமும் நடைபெற்று வருகின்றது.",
+      description_en:
+        "Every Maha Shivaratri, our clan members gather for darshan, and annadanam is offered on that day.",
       badge: "temple",
     },
     {
@@ -180,16 +186,15 @@ export default function Events() {
       <Helmet>
         <title>
           {t("நிகழ்வுகள்", "Events")} —{" "}
-          {t(
-            "தபலவார் ரேணுகா தேவி லிங்கம்மா சின்னம்மாள் கோவில்",
-            "Dhabbalavaar Renuka Devi Lingamma Sinnammal Temple",
-          )}
+          {t(TEMPLE.name.ta, TEMPLE.name.en)}
         </title>
       </Helmet>
 
       <div className="page-hero page-hero--events">
         <div className="page-hero__content">
+          <span className="page-hero__eyebrow">{t("பஞ்சாங்க அடிப்படையில்", "Panchangam-based calendar")}</span>
           <h1>{t("நிகழ்வுகள் & திருவிழாக்கள்", "Events & Festivals")}</h1>
+          <p>{t("பவுர்ணமி பூஜைகள், திருவிழாக்கள் மற்றும் சிறப்பு நிகழ்வுகள் — ஒரே இடத்தில்.", "Pournami poojas, festivals and special occasions — all in one place.")}</p>
         </div>
       </div>
 
@@ -206,7 +211,7 @@ export default function Events() {
           )}
 
           {/* Filter tabs */}
-          <div className="events-filter">
+          <div className="events-filter tabs" role="tablist" aria-label="Filter events">
             {[
               { key: "all", ta: "அனைத்தும்", en: "All" },
               { key: "pournami", ta: "பௌர்ணமி பூஜை", en: "Pournami Poojai" },
@@ -214,7 +219,10 @@ export default function Events() {
             ].map((tab) => (
               <button
                 key={tab.key}
-                className={`events-filter__btn${filter === tab.key ? " events-filter__btn--active" : ""}`}
+                type="button"
+                role="tab"
+                aria-selected={filter === tab.key}
+                className={`tab events-filter__btn${filter === tab.key ? " events-filter__btn--active" : ""}`}
                 onClick={() => setFilter(tab.key)}
               >
                 {t(tab.ta, tab.en)}
@@ -223,13 +231,16 @@ export default function Events() {
           </div>
 
           {loading ? (
-            <p className="loading-text">{t("ஏற்றுகிறது…", "Loading…")}</p>
+            <SkeletonCards count={4} className="events-list" />
           ) : (
             <>
               {filtered.length === 0 && (
-                <p className="loading-text">
-                  {t("நிகழ்வுகள் இல்லை.", "No upcoming events.")}
-                </p>
+                <EmptyState icon="📅" title={t("நிகழ்வுகள் இல்லை", "No upcoming events")}>
+                  {t(
+                    "புதிய நிகழ்வுகள் அறிவிக்கப்படும் போது இங்கே காண்பிக்கப்படும்.",
+                    "New events will appear here as soon as they are announced.",
+                  )}
+                </EmptyState>
               )}
               {filtered.length > 0 && (
                 <div className="events-list">

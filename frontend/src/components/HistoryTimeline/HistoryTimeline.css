@@ -1,0 +1,196 @@
+/* ══════════════════════════════════════════════════════════
+   HistoryTimeline.css — About-page history prose + milestone
+   timeline. Renders inside .page-prose; narrative paragraphs
+   inherit .page-prose p (margin/colour/line-height) untouched.
+
+   NOTE: .page-prose p has specificity (0,1,1). Every rule here
+   that must beat it on a <p> is scoped as `.history .x` or
+   `.timeline .x` (0,2,0) on purpose — do not "simplify" them.
+   ══════════════════════════════════════════════════════════ */
+
+.history {
+  /* Geometry shared by the rail and the marker dots */
+  --timeline-indent: 2.25rem; /* ol padding-left */
+  --timeline-rail-x: 0.6rem; /* rail left edge inside the ol */
+  --timeline-rail-w: 3px;
+  --timeline-dot: 12px;
+  min-width: 0;
+}
+
+/* Keyboard affordance for any link that lands inside the prose */
+.history a:focus-visible {
+  outline: 3px solid rgba(249, 115, 22, 0.45);
+  outline-offset: 2px;
+}
+
+/* ── Prose ───────────────────────────────────────────────── */
+.history .history__salutation {
+  font-style: italic;
+  color: var(--text-3);
+}
+
+/* ── Timeline rail ───────────────────────────────────────── */
+.timeline {
+  position: relative;
+  list-style: none;
+  margin: 0.5rem 0 0;
+  padding-left: var(--timeline-indent);
+}
+.timeline::before {
+  content: "";
+  position: absolute;
+  left: var(--timeline-rail-x);
+  top: 0.4rem;
+  bottom: 0.4rem;
+  width: var(--timeline-rail-w);
+  background: linear-gradient(180deg, var(--saffron), var(--gold-light));
+  border-radius: 2px;
+}
+
+/* ── Item + marker dot ───────────────────────────────────── */
+.timeline__item {
+  position: relative;
+  min-width: 0;
+}
+/* Dot centred on the rail: rail centre minus half the dot, pulled back
+   by the ol indent because the li box starts after the padding. */
+.timeline__item::before {
+  content: "";
+  position: absolute;
+  top: 1.5rem;
+  left: calc(
+    var(--timeline-rail-x) + var(--timeline-rail-w) / 2 - var(--timeline-dot) /
+      2 - var(--timeline-indent)
+  );
+  width: var(--timeline-dot);
+  height: var(--timeline-dot);
+  border-radius: 50%;
+  background: var(--maroon);
+  border: 3px solid var(--bg-root);
+  box-shadow: 0 0 0 2px var(--gold-light);
+  z-index: 1;
+}
+/* Colour is paired with the status pill text — never colour alone */
+.timeline__item--in-progress::before {
+  background: #16a34a;
+}
+.timeline__item--planned::before {
+  background: #ea580c;
+  box-shadow: none;
+  outline: 2px dashed #ea580c;
+  outline-offset: 1px;
+}
+
+/* ── Card ────────────────────────────────────────────────── */
+.timeline__card {
+  padding: 1.1rem 1.3rem;
+  margin-bottom: 0.9rem;
+  min-width: 0;
+}
+.timeline__item:last-child .timeline__card {
+  margin-bottom: 0;
+}
+/* Not interactive — neutralise the global .card hover lift/glow */
+.timeline .timeline__card--static,
+.timeline .timeline__card--static:hover {
+  transform: none;
+  border-color: rgba(153, 27, 27, 0.1);
+  box-shadow: var(--shadow-sm);
+}
+
+/* ── Head row: year + pills ──────────────────────────────── */
+.timeline__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem 0.6rem;
+  margin-bottom: 0.4rem;
+}
+.timeline .timeline__year {
+  margin: 0;
+  font-family: var(--font-tamil);
+  font-size: 1.15rem;
+  font-weight: 800;
+  line-height: 1.3;
+  color: var(--maroon);
+  overflow-wrap: anywhere;
+}
+
+/* Pill — mirrors .hw-badge */
+.timeline__pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.2rem 0.65rem;
+  border-radius: 20px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  line-height: 1.4;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+/* Amber — the Tamil-calendar date. It is a value, not a category label,
+   so it keeps its natural case and wraps on narrow screens. */
+.timeline__pill--tamil-date {
+  background: #fde68a;
+  color: #78350f;
+  font-size: 0.78rem;
+  text-transform: none;
+  letter-spacing: 0.01em;
+}
+/* Green — in progress */
+.timeline__pill--in-progress {
+  background: #bbf7d0;
+  color: #14532d;
+}
+/* Orange — planned */
+.timeline__pill--planned {
+  background: #fed7aa;
+  color: #9a3412;
+}
+
+/* ── Title + description ─────────────────────────────────── */
+.timeline .timeline__title {
+  margin: 0 0 0.3rem;
+  font-family: var(--font-tamil);
+  font-size: 1.05rem;
+  font-weight: 700;
+  line-height: 1.4;
+  color: var(--text-1);
+  overflow-wrap: anywhere;
+}
+.timeline .timeline__desc {
+  margin: 0;
+  font-size: 0.9rem;
+  line-height: 1.7;
+  color: var(--text-2);
+  overflow-wrap: anywhere;
+}
+
+/* ── Motion ──────────────────────────────────────────────── */
+@media (prefers-reduced-motion: reduce) {
+  .timeline .timeline__card--static {
+    transition: none;
+  }
+}
+
+/* ── Responsive ──────────────────────────────────────────── */
+@media (max-width: 600px) {
+  .history {
+    --timeline-indent: 1.75rem;
+  }
+  .timeline__card {
+    padding: 1rem 1.1rem;
+  }
+  .timeline__item::before {
+    top: 1.4rem;
+  }
+  /* Year and each pill take their own line */
+  .timeline__head {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.35rem;
+  }
+}

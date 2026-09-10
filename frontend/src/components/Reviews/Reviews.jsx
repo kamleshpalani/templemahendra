@@ -98,7 +98,7 @@ const FALLBACK_REVIEWS = [
     author: "Rajesh Naidu",
     rating: 5,
     time: "1 year ago",
-    text: "This temple holds a very special place in our Kammavar Naidu community. The Pournami pooja is conducted with great devotion and discipline. The premises are always kept clean and the management is very welcoming to all devotees.",
+    text: "This temple holds a very special place in our Dhabbalaar community. The Pournami pooja is conducted with great devotion and discipline. The premises are always kept clean and the management is very welcoming to all devotees.",
     avatar: "",
   },
 ];

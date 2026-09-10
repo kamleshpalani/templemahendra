@@ -3,6 +3,17 @@ import { Helmet } from "react-helmet-async";
 import { Link } from "react-router-dom";
 import api from "../services/api";
 import { useLang } from "../context/LangContext";
+import {
+  TEMPLE,
+  ADDRESS,
+  TRUST,
+  HISTORY,
+  OBSERVANCES,
+  FACILITIES,
+  PRIMARY_CONTACT,
+  formatPhone,
+  telHref,
+} from "../data/temple";
 import Reviews from "../components/Reviews/Reviews";
 import HomepageWidgets from "../components/HomepageWidgets/HomepageWidgets";
 import "./Home.css";
@@ -155,13 +166,10 @@ function DevoteeContent({ t, pulseData, nallaTime, pournami }) {
             <span className="darshan-highlight__icon">📿</span>
             <div className="darshan-highlight__body">
               <p className="darshan-highlight__label">
-                {t("தினசரி ஆசி", "Daily Blessings")}
+                {t("மஹா சிவராத்திரி", "Maha Shivaratri")}
               </p>
               <p className="darshan-highlight__value">
-                {t(
-                  "காலை 6 மணிக்கு கோவிலில் வாருங்கள்",
-                  "Visit at 6 AM for morning aarti",
-                )}
+                {t(OBSERVANCES.shivaratri.desc.ta, OBSERVANCES.shivaratri.desc.en)}
               </p>
             </div>
             <button
@@ -187,12 +195,7 @@ function FirstVisitContent({ t }) {
           <span className="darshan-info-item__num">01</span>
           <div>
             <h4>{t("கோயிலை பற்றி", "About the Temple")}</h4>
-            <p>
-              {t(
-                "தபலவார் ரேணுகா தேவி லிங்கம்மா சின்னம்மாள் கோவில் — பக்தி, பாரம்பரியம் மற்றும் கம்மவார் நாயுடு சமூகத்தின் புனிதத் தலம்.",
-                "Dhabbalavaar Renuka Devi Lingamma Sinnammal Temple — a sacred centre of devotion and Kammavar Naidu community tradition.",
-              )}
-            </p>
+            <p>{t(HISTORY.summary.ta, HISTORY.summary.en)}</p>
           </div>
         </div>
         <div className="darshan-info-item card">
@@ -266,11 +269,11 @@ function NriContent({ t }) {
           <h4>{t("ஆன்லைன் நன்கொடை", "Online Donation")}</h4>
           <p>
             {t(
-              "உலகின் எங்கிருந்தும் பணம் அனுப்பலாம்.",
-              "Support the temple via online transfer from anywhere.",
+              `அறக்கட்டளை வங்கிக் கணக்கிற்கு நேரடி பரிமாற்றம் · ${TRUST.taxExemption.short.ta} · ரசீதுக்கு முழு முகவரி தேவை`,
+              `Direct transfer to the Trust's bank account · ${TRUST.taxExemption.short.en} · full address required for a receipt`,
             )}
           </p>
-          <Link to="/donations" className="btn btn-primary btn--sm">
+          <Link to="/donations#bank-details" className="btn btn-primary btn--sm">
             {t("நன்கொடை →", "Donate Online →")}
           </Link>
         </div>
@@ -333,13 +336,15 @@ function ElderContent({ t, pulseData }) {
           <span className="darshan-highlight__icon"></span>
           <div>
             <p className="darshan-highlight__label">
-              {t("தொடர்பு கொள்ள", "Call Temple")}
+              {t("தொடர்பு கொள்ள", "Call Temple")} —{" "}
+              {t(PRIMARY_CONTACT.role.ta, PRIMARY_CONTACT.role.en)}
             </p>
             <a
-              href="tel:+919999999999"
+              href={telHref(PRIMARY_CONTACT.phone)}
               className="darshan-highlight__value darshan-highlight__value--link"
+              aria-label={`${t(PRIMARY_CONTACT.name.ta, PRIMARY_CONTACT.name.en)}, ${t(PRIMARY_CONTACT.role.ta, PRIMARY_CONTACT.role.en)}`}
             >
-              +91 99999 99999
+              {formatPhone(PRIMARY_CONTACT.phone)}
             </a>
           </div>
         </div>
@@ -354,13 +359,13 @@ function ElderContent({ t, pulseData }) {
           </div>
         </div>
         <div className="darshan-highlight darshan-highlight--elder card">
-          <span className="darshan-highlight__icon">♿</span>
+          <span className="darshan-highlight__icon">🏗️</span>
           <div>
             <p className="darshan-highlight__label">
-              {t("வசதிகள்", "Accessibility")}
+              {t(FACILITIES.label.ta, FACILITIES.label.en)}
             </p>
             <p className="darshan-highlight__value">
-              {t("சக்கர நாற்காலி வசதி உள்ளது", "Wheelchair access available")}
+              {t(FACILITIES.status.ta, FACILITIES.status.en)}
             </p>
           </div>
         </div>
@@ -648,11 +653,7 @@ export default function Home() {
     <>
       <Helmet>
         <title>
-          {t("முகப்பு", "Home")} —{" "}
-          {t(
-            "தபலவார் ரேணுகா தேவி லிங்கம்மா சின்னம்மாள் கோவில்",
-            "Dhabbalavaar Renuka Devi Lingamma Sinnammal Temple",
-          )}
+          {t("முகப்பு", "Home")} — {t(TEMPLE.name.ta, TEMPLE.name.en)}
         </title>
       </Helmet>
 
@@ -660,36 +661,85 @@ export default function Home() {
       <section className="hero">
         <div className="hero__overlay" />
         <div className="container hero__content">
-          <p className="hero__tagline">
-            ஓம் சக்தி ஓம் · ஸ்ரீ ரேணுகாம்பிகை சரணம்
-          </p>
-          <h1 className="hero__title">
-            {t(
-              "தபலவார் ரேணுகா தேவி லிங்கம்மா சின்னம்மாள் கோவில்",
-              "Dhabbalavaar Renuka Devi Lingamma Sinnammal Temple",
-            )}
-          </h1>
-          <h2 className="hero__subtitle">
-            {t(
-              "Dhabbalavaar Renuka Devi Lingamma Sinnammal Temple",
-              "தபலவார் ரேணுகா தேவி லிங்கம்மா சின்னம்மாள் கோவில்",
-            )}
-          </h2>
-          <p className="hero__desc">
-            {t(
-              "பக்தி, பாரம்பரியம் மற்றும் சமூகம் — ஒரு புனிதத் தலம்",
-              "A sacred place of devotion, tradition, and community",
-            )}
-          </p>
-          <div className="hero__actions">
-            <Link to="/sevas" className="btn btn-primary">
-              {t("சேவைகள் பார்க்க", "View Sevas")}
-            </Link>
-            <Link to="/contact" className="btn btn-outline">
-              {t("வழி அறிய", "Get Directions")}
-            </Link>
+          <div className="hero__copy">
+            <p className="hero__tagline">
+              {t(TEMPLE.invocation.ta, TEMPLE.invocation.en)}
+            </p>
+            <h1 className="hero__title">{t(TEMPLE.name.ta, TEMPLE.name.en)}</h1>
+            <p className="hero__subtitle">
+              {t(TEMPLE.descriptor.ta, TEMPLE.descriptor.en)} ·{" "}
+              {t(ADDRESS.printed.ta, ADDRESS.printed.en)}
+            </p>
+            <p className="hero__desc">
+              {t(
+                "பக்தி, பாரம்பரியம் மற்றும் சமூகம் — ஒரு புனிதத் தலம்",
+                "A sacred place of devotion, tradition, and community",
+              )}
+            </p>
+            <div className="hero__actions">
+              <Link to="/sevas" className="btn btn-gold btn--lg">
+                {t("சேவை பதிவு செய்ய", "Book a Seva")}
+              </Link>
+              <Link to="/contact" className="btn btn-outline--light btn btn--lg">
+                {t("வழி அறிய", "Get Directions")}
+              </Link>
+            </div>
           </div>
+
+          {/* Live glass status panel */}
+          <aside className="hero__panel card card--ink card--static" aria-label={t("இன்றைய நிலை", "Today at the temple")}>
+            <div className="hero__panel-head">
+              <span className={`badge badge--live ${pulseData?.open ? "badge--success" : "badge--gold"}`}>
+                {pulseData?.open == null
+                  ? t("நேரலை", "Live")
+                  : pulseData.open
+                    ? t("கோயில் திறந்துள்ளது", "Temple Open")
+                    : t("கோயில் மூடியுள்ளது", "Temple Closed")}
+              </span>
+              <span className="hero__panel-date">
+                {nowIST.toLocaleDateString(lang === "ta" ? "ta-IN" : "en-IN", {
+                  timeZone: "Asia/Kolkata",
+                  weekday: "short",
+                  day: "numeric",
+                  month: "short",
+                })}
+              </span>
+            </div>
+            <dl className="hero__panel-list">
+              <div>
+                <dt>{t("அடுத்த பூஜை", "Next Pooja")}</dt>
+                <dd>
+                  {pulseData?.nextPooja
+                    ? `${t(pulseData.nextPooja.name_ta, pulseData.nextPooja.name_en)} · ${pulseData.nextPooja.time}`
+                    : t("தினசரி பூஜை", "Daily Pooja")}
+                </dd>
+              </div>
+              <div>
+                <dt>{t("கோயில் நேரம்", "Temple Hours")}</dt>
+                <dd>6:00 AM – 12:30 PM · 4:00 PM – 9:00 PM</dd>
+              </div>
+              {pournami && (
+                <div>
+                  <dt>{t("அடுத்த பௌர்ணமி", "Next Pournami")}</dt>
+                  <dd>
+                    {new Date(pournami.date + "T00:00:00").toLocaleDateString(
+                      lang === "ta" ? "ta-IN" : "en-IN",
+                      { day: "numeric", month: "short" },
+                    )}
+                    {pournami.daysLeft === 0
+                      ? ` · ${t("இன்று", "Today")}`
+                      : ` · ${t(`${pournami.daysLeft} நாட்களில்`, `in ${pournami.daysLeft} days`)}`}
+                  </dd>
+                </div>
+              )}
+            </dl>
+            <a href={telHref(PRIMARY_CONTACT.phone)} className="hero__panel-call">
+              <span aria-hidden="true">📞</span> {formatPhone(PRIMARY_CONTACT.phone)}
+              <small>{t(PRIMARY_CONTACT.role.ta, PRIMARY_CONTACT.role.en)}</small>
+            </a>
+          </aside>
         </div>
+        <div className="hero__scroll-hint" aria-hidden="true" />
       </section>
 
       {/* Announcements ticker */}
@@ -858,24 +908,31 @@ export default function Home() {
           </p>
           <div className="grid-4">
             {sevas.length > 0
-              ? sevas.map((s) => (
-                  <div key={s.id} className="seva-card card">
+              ? sevas.map((s, i) => (
+                  <Link to="/sevas" key={s.id} className="seva-card card" style={{ "--i": i }}>
+                    <span className="seva-card__icon" aria-hidden="true">
+                      {["🪔", "🌺", "🔥", "🍚"][i % 4]}
+                    </span>
                     <div className="seva-card__body">
                       <h3>{lang === "ta" ? s.name_ta : s.name_en}</h3>
+                      {s.amount != null && <p className="seva-card__price">₹{s.amount}</p>}
+                      <span className="seva-card__cta">{t("பதிவு →", "Book →")}</span>
                     </div>
-                  </div>
+                  </Link>
                 ))
               : [
-                  ["அபிஷேகம்", "Abhishekam"],
-                  ["அர்ச்சனை", "Archana"],
-                  ["தீபாராதனை", "Deepa Aradhana"],
-                  ["அன்னதானம்", "Annadanam"],
-                ].map(([ta, en]) => (
-                  <div key={ta} className="seva-card card">
+                  ["அபிஷேகம்", "Abhishekam", "🪔"],
+                  ["அர்ச்சனை", "Archana", "🌺"],
+                  ["தீபாராதனை", "Deepa Aradhana", "🔥"],
+                  ["அன்னதானம்", "Annadanam", "🍚"],
+                ].map(([ta, en, icon], i) => (
+                  <Link to="/sevas" key={ta} className="seva-card card" style={{ "--i": i }}>
+                    <span className="seva-card__icon" aria-hidden="true">{icon}</span>
                     <div className="seva-card__body">
                       <h3>{t(ta, en)}</h3>
+                      <span className="seva-card__cta">{t("பதிவு →", "Book →")}</span>
                     </div>
-                  </div>
+                  </Link>
                 ))}
           </div>
           <div className="section-cta">
@@ -914,15 +971,14 @@ export default function Home() {
                   </div>
                 ))
               : [
-                  ["தமிழ் புத்தாண்டு", "Tamil New Year", "Apr 2026"],
-                  ["வைகாசி விசாகம்", "Vaikasi Visakam", "May 2026"],
-                  ["ஆடி பூரம்", "Aadi Pooram", "Jul 2026"],
-                  ["கார்த்திகை", "Karthigai Deepam", "Nov 2026"],
-                ].map(([ta, en, date]) => (
-                  <div key={ta} className="event-card card">
-                    <div className="event-card__date">{date}</div>
+                  OBSERVANCES.pournami,
+                  OBSERVANCES.shivaratri,
+                  OBSERVANCES.kumbabhishekamAnniversary,
+                ].map(({ label, when }) => (
+                  <div key={label.en} className="event-card card">
+                    <div className="event-card__date">{t(when.ta, when.en)}</div>
                     <div className="event-card__body">
-                      <h3>{t(ta, en)}</h3>
+                      <h3>{t(label.ta, label.en)}</h3>
                     </div>
                   </div>
                 ))}
@@ -944,8 +1000,8 @@ export default function Home() {
               <h3>{t("நன்கொடை", "Donate")}</h3>
               <p>
                 {t(
-                  "உங்கள் தாராளமான பங்களிப்பால் கோயிலை ஆதரியுங்கள்",
-                  "Support the temple through your generous contribution",
+                  `கும்பாபிஷேகம் & அன்னதான கூடத்திற்கு நன்கொடை · அறக்கட்டளை பெயரில் வங்கி / காசோலை · ${TRUST.taxExemption.short.ta}`,
+                  `Donate for the Kumbabhishekam & annadanam hall · Bank transfer or cheque in the Trust's name · ${TRUST.taxExemption.short.en}`,
                 )}
               </p>
             </Link>

@@ -1,11 +1,12 @@
 import { FaWhatsapp, FaPhone } from "react-icons/fa";
 import { useLang } from "../../context/LangContext";
+import { TEMPLE, PRIMARY_CONTACT } from "../../data/temple";
 import "./FloatingActions.css";
 
-// Replace these with the actual temple numbers before going live
-const PHONE_NUMBER = "+910000000000";
+// President's number (first on the committee's printed list). wa.me wants digits only.
+const PHONE_NUMBER = `+91${PRIMARY_CONTACT.phone}`;
 const WHATSAPP_MSG = encodeURIComponent(
-  "வணக்கம் 🙏 தபலவார் ரேணுகா தேவி லிங்கம்மா சின்னம்மாள் கோவில் பற்றி மேலும் அறிய விரும்புகிறேன்.\nNamaskar 🙏 I would like to know more about Dhabbalavaar Renuka Devi Lingamma Sinnammal Temple.",
+  `வணக்கம் 🙏 ${TEMPLE.name.ta} பற்றி மேலும் அறிய விரும்புகிறேன்.\nNamaskar 🙏 I would like to know more about ${TEMPLE.name.en}.`,
 );
 
 export default function FloatingActions() {

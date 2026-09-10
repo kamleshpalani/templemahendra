@@ -51,3 +51,23 @@ function adminLogout(): void
     $_SESSION = [];
     session_destroy();
 }
+
+/** Per-session CSRF token for admin forms. */
+function csrfToken(): string
+{
+    if (empty($_SESSION['csrf_token'])) {
+        $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
+    }
+    return $_SESSION['csrf_token'];
+}
+
+function csrfField(): string
+{
+    return '<input type="hidden" name="_csrf" value="' . htmlspecialchars(csrfToken()) . '" />';
+}
+
+function csrfValid(): bool
+{
+    $sent = (string) ($_POST['_csrf'] ?? '');
+    return $sent !== '' && hash_equals(csrfToken(), $sent);
+}

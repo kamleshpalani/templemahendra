@@ -32,30 +32,29 @@ $stmt = $db->prepare($sql);
 $stmt->execute($params);
 $rows = $stmt->fetchAll();
 
-// Status badge colours
+// Status badge variants
 $badge = [
-    'pending'   => 'background:#fef3c7;color:#92400e;',
-    'confirmed' => 'background:#d1fae5;color:#065f46;',
-    'completed' => 'background:#dbeafe;color:#1e40af;',
-    'cancelled' => 'background:#fee2e2;color:#991b1b;',
+    'pending'   => 'warning',
+    'confirmed' => 'info',
+    'completed' => 'success',
+    'cancelled' => 'danger',
 ];
 
-adminHeader('Seva Bookings');
+adminHeader('Seva Bookings', 'Devotees');
 ?>
 
-<div style="display:flex;align-items:center;gap:1rem;flex-wrap:wrap;margin-bottom:1.25rem;">
-  <strong>Filter:</strong>
-  <?php foreach (['', 'pending', 'confirmed', 'completed', 'cancelled'] as $s): ?>
-  <a href="?status=<?= urlencode($s) ?>"
-     style="padding:.3rem .8rem;border-radius:50px;text-decoration:none;font-size:.82rem;font-weight:600;
-            <?= $filterStatus === $s ? 'background:var(--maroon,#991b1b);color:#fff;' : 'background:#f3f4f6;color:#374151;' ?>">
-    <?= $s === '' ? 'All' : ucfirst($s) ?>
-  </a>
-  <?php endforeach; ?>
-  <span style="margin-left:auto;color:#6b7280;font-size:.82rem;"><?= count($rows) ?> record(s)</span>
+<div class="table-toolbar">
+  <nav class="stepper" style="margin:0" aria-label="Filter by status">
+    <?php foreach (['', 'pending', 'confirmed', 'completed', 'cancelled'] as $s): ?>
+    <a href="?status=<?= urlencode($s) ?>" class="step <?= $filterStatus === $s ? 'step--active' : '' ?>" <?= $filterStatus === $s ? 'aria-current="page"' : '' ?>>
+      <?= $s === '' ? 'All' : ucfirst($s) ?>
+    </a>
+    <?php endforeach; ?>
+  </nav>
+  <span class="table-toolbar__count"><?= count($rows) ?> record(s)</span>
 </div>
 
-<div style="overflow-x:auto;">
+<div class="table-wrap">
 <table class="admin-table">
   <thead>
     <tr>
@@ -72,34 +71,31 @@ adminHeader('Seva Bookings');
   </thead>
   <tbody>
     <?php if (empty($rows)): ?>
-    <tr><td colspan="9" style="text-align:center;padding:2rem;color:#6b7280;">No bookings found.</td></tr>
+    <tr class="table-empty"><td colspan="9">No bookings found.</td></tr>
     <?php else: ?>
     <?php foreach ($rows as $i => $row): ?>
     <tr>
       <td><?= $i + 1 ?></td>
-      <td><?= htmlspecialchars($row['devotee_name']) ?></td>
+      <td><strong><?= htmlspecialchars($row['devotee_name']) ?></strong></td>
       <td>
-        <a href="tel:<?= htmlspecialchars($row['phone']) ?>" style="text-decoration:none;color:inherit;">
+        <a href="tel:<?= htmlspecialchars($row['phone']) ?>">
           <?= htmlspecialchars($row['phone']) ?>
         </a>
       </td>
       <td><?= htmlspecialchars($row['seva_name']) ?></td>
       <td><?= htmlspecialchars($row['preferred_date'] ?? '—') ?></td>
-      <td style="max-width:200px;white-space:normal;font-size:.82rem;">
-        <?= htmlspecialchars($row['message'] ?? '') ?>
-      </td>
-      <td style="white-space:nowrap;font-size:.82rem;"><?= htmlspecialchars($row['created_at']) ?></td>
+      <td style="max-width:220px;white-space:normal;"><small><?= htmlspecialchars($row['message'] ?? '') ?></small></td>
+      <td style="white-space:nowrap;"><small><?= htmlspecialchars($row['created_at']) ?></small></td>
       <td>
-        <span style="padding:.25rem .65rem;border-radius:50px;font-size:.75rem;font-weight:700;
-                     <?= $badge[$row['status']] ?? '' ?>">
+        <span class="badge badge--<?= $badge[$row['status']] ?? 'muted' ?>">
           <?= htmlspecialchars(ucfirst($row['status'])) ?>
         </span>
       </td>
       <td>
-        <form method="POST" style="display:inline">
+        <form method="POST">
           <input type="hidden" name="id" value="<?= (int)$row['id'] ?>">
-          <select name="status" onchange="this.form.submit()"
-                  style="font-size:.8rem;padding:.25rem .4rem;border-radius:.4rem;border:1px solid #d1d5db;cursor:pointer;">
+          <label class="sr-only" for="st-<?= (int)$row['id'] ?>">Change status</label>
+          <select id="st-<?= (int)$row['id'] ?>" name="status" onchange="this.form.submit()" style="min-height:34px;padding:.25rem 2rem .25rem .6rem;font-size:.8rem;">
             <?php foreach (['pending','confirmed','completed','cancelled'] as $s): ?>
             <option value="<?= $s ?>" <?= $row['status'] === $s ? 'selected' : '' ?>>
               <?= ucfirst($s) ?>

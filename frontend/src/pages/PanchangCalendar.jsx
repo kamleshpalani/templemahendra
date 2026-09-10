@@ -3,6 +3,7 @@ import { Helmet } from "react-helmet-async";
 import { FaChevronLeft, FaChevronRight } from "react-icons/fa";
 import api from "../services/api";
 import { useLang } from "../context/LangContext";
+import { TEMPLE } from "../data/temple";
 import "./PanchangCalendar.css";
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
@@ -411,14 +412,11 @@ export default function PanchangCalendar() {
       <Helmet>
         <title>
           {t("பஞ்சாங்கம்", "Panchangam")} —{" "}
-          {t(
-            "தபலவார் ரேணுகா தேவி லிங்கம்மா சின்னம்மாள் கோவில்",
-            "Dhabbalavaar Renuka Devi Lingamma Sinnammal Temple",
-          )}
+          {t(TEMPLE.name.ta, TEMPLE.name.en)}
         </title>
       </Helmet>
 
-      <main className="panchang">
+      <div className="panchang">
         <h1 className="panchang__title">
           {t("பஞ்சாங்க நாட்காட்டி", "Panchangam Calendar")}
         </h1>
@@ -498,7 +496,7 @@ export default function PanchangCalendar() {
                   // eslint-disable-next-line react/no-array-index-key
                   <div
                     key={`loading-${i}`}
-                    className="panchang__cell panchang__cell--empty"
+                    className="panchang__cell panchang__cell--empty skeleton"
                   />
                 ))
               : data?.days.map((day) => {
@@ -580,7 +578,7 @@ export default function PanchangCalendar() {
             </div>
           </section>
         )}
-      </main>
+      </div>
     </>
   );
 }

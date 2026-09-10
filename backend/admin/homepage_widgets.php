@@ -129,7 +129,7 @@ $typeLabels = [
     'sponsor'         => '💛 ஸ்பான்சர் (Sponsor)',
 ];
 
-adminHeader('🏮 Homepage Content Manager');
+adminHeader('Homepage Content Manager', 'Content');
 echo $msg;
 ?>
 
@@ -256,6 +256,7 @@ echo $msg;
 
 <!-- ── LIST ──────────────────────────────────────────────────────────── -->
 <div class="admin-list">
+  <div class="table-wrap">
   <table class="admin-table">
     <thead>
       <tr>
@@ -289,9 +290,9 @@ echo $msg;
             <input type="hidden" name="action" value="toggle" />
             <input type="hidden" name="id" value="<?= $row['id'] ?>" />
             <input type="hidden" name="val" value="<?= $row['is_active'] ?>" />
-            <button class="btn btn-sm <?= $row['is_active'] ? 'btn-success' : 'btn-secondary' ?>"
-                    title="Toggle active">
-              <?= $row['is_active'] ? '✅' : '❌' ?>
+            <button class="btn btn-sm <?= $row['is_active'] ? 'btn-secondary' : 'btn-ghost' ?>"
+                    title="Toggle active" aria-label="<?= $row['is_active'] ? 'Deactivate' : 'Activate' ?> widget">
+              <span class="badge <?= $row['is_active'] ? 'badge--success' : 'badge--muted' ?>"><?= $row['is_active'] ? 'Active' : 'Off' ?></span>
             </button>
           </form>
         </td>
@@ -312,18 +313,18 @@ echo $msg;
       </tr>
       <?php endforeach; ?>
       <?php if (empty($rows)): ?>
-        <tr><td colspan="9" style="text-align:center;color:#888;padding:2rem">
-          No widgets yet. Create one above.
-        </td></tr>
+        <tr class="table-empty"><td colspan="9">No widgets yet. Create one above.</td></tr>
       <?php endif; ?>
     </tbody>
   </table>
+  </div>
 
-  <div style="margin-top:1rem;padding:1rem;background:#fff8f0;border-radius:8px;font-size:0.85rem;color:#7a5c3c">
-    <strong>Priority Rules:</strong>
-    📌 Pinned items appear first → 📢 Announcements → 🛕 Upcoming Poojas →
+  <div class="alert alert--info mt-4" style="margin-bottom:0">
+    <span aria-hidden="true">ℹ️</span>
+    <div><strong>Priority rules:</strong>
+    📌 Pinned items appear first → 📢 Announcements → 🖕 Upcoming Poojas →
     🌕 Calendar Poojas → 💛 Sponsors → ⏰ Nalla Neram.
-    Expired widgets (past end date) are automatically hidden.
+    Expired widgets (past end date) are automatically hidden.</div>
   </div>
 </div>
 

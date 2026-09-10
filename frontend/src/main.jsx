@@ -2,10 +2,12 @@ import React from "react";
 import ReactDOM from "react-dom/client";
 import { BrowserRouter } from "react-router-dom";
 import { HelmetProvider } from "react-helmet-async";
+// Design system first so component stylesheets can override primitives
+import "./index.css";
 import { LangProvider } from "./context/LangContext";
+import { ToastProvider } from "./context/ToastContext";
 import App from "./App";
 import ErrorBoundary from "./components/ErrorBoundary";
-import "./index.css";
 
 ReactDOM.createRoot(document.getElementById("root")).render(
   <React.StrictMode>
@@ -13,7 +15,9 @@ ReactDOM.createRoot(document.getElementById("root")).render(
       <HelmetProvider>
         <BrowserRouter>
           <LangProvider>
-            <App />
+            <ToastProvider>
+              <App />
+            </ToastProvider>
           </LangProvider>
         </BrowserRouter>
       </HelmetProvider>
