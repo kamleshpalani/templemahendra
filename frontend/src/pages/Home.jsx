@@ -6,6 +6,7 @@ import {
   LuCalendarDays,
   LuCamera,
   LuChevronDown,
+  LuCircleUser,
   LuClock,
   LuConstruction,
   LuCreditCard,
@@ -29,12 +30,14 @@ import {
   LuSparkles,
   LuSun,
   LuTv,
+  LuUserPlus,
   LuUsers,
   LuUtensils,
   LuX,
 } from "react-icons/lu";
 import api from "../services/api";
 import { useLang } from "../context/LangContext";
+import { useAuth } from "../context/AuthContext";
 import {
   TEMPLE,
   ADDRESS,
@@ -470,6 +473,7 @@ export default function Home() {
     show_donor_ticker: true,
   });
   const { lang, t } = useLang();
+  const { user, accountsEnabled } = useAuth();
   const [mode, setMode] = useState(() => detectInitialMode(lang));
 
   // Live IST clock — ticks every second
@@ -615,10 +619,28 @@ export default function Home() {
               <Button to="/sevas" variant="gold" size="lg" icon={<LuSparkles aria-hidden="true" />}>
                 {t("சேவை பதிவு செய்ய", "Book a Seva")}
               </Button>
+              {/* Shown to a guest only, and only once accounts are switched on.
+                  A signed-in devotee gets the route to their own records. */}
+              {accountsEnabled && !user && (
+                <Button to="/register" variant="primary" size="lg" icon={<LuUserPlus aria-hidden="true" />}>
+                  {t("கணக்கு தொடங்க", "Get Started")}
+                </Button>
+              )}
+              {user && (
+                <Button to="/account" variant="primary" size="lg" icon={<LuCircleUser aria-hidden="true" />}>
+                  {t("என் கணக்கு", "My Account")}
+                </Button>
+              )}
               <Button to="/contact" variant="outline-light" size="lg" icon={<LuMapPin aria-hidden="true" />}>
                 {t("வழி அறிய", "Get Directions")}
               </Button>
             </div>
+            {accountsEnabled && !user && (
+              <p className="home-hero__signin">
+                {t("ஏற்கனவே கணக்கு உள்ளதா?", "Already have an account?")}{" "}
+                <Link to="/login">{t("உள்நுழையுங்கள்", "Sign in")}</Link>
+              </p>
+            )}
             <ul className="home-hero__proof" aria-label={t("கோயில் சிறப்புகள்", "Temple highlights")}>
               {PROOF.map(({ Icon, ta, en }) => (
                 <li key={en} className="home-hero__chip">
@@ -783,7 +805,7 @@ export default function Home() {
       {(widgetsLoading ||
         widgets.length > 0 ||
         (siteSettings.show_pournami_section && pournamis.length > 0)) && (
-        <section className="section section--flush-bottom home-upcoming reveal" aria-labelledby="home-upcoming-title">
+        <section className="section section--flush-bottom reveal" aria-labelledby="home-upcoming-title">
           <div className="container">
             <SectionHeader
               id="home-upcoming-title"
@@ -854,7 +876,7 @@ export default function Home() {
       </section>
 
       {/* ── Featured Sevas ── */}
-      <section className="section home-sevas reveal" aria-labelledby="home-sevas-title">
+      <section className="section reveal" aria-labelledby="home-sevas-title">
         <div className="container">
           <SectionHeader
             id="home-sevas-title"
@@ -912,7 +934,7 @@ export default function Home() {
       </section>
 
       {/* ── Upcoming Events ── */}
-      <section className="section section--alt home-events reveal" aria-labelledby="home-events-title">
+      <section className="section section--alt reveal" aria-labelledby="home-events-title">
         <div className="container">
           <SectionHeader
             id="home-events-title"
@@ -966,7 +988,7 @@ export default function Home() {
       </section>
 
       {/* ── Quick actions ── */}
-      <section className="section home-quick reveal" aria-label={t("விரைவு இணைப்புகள்", "Quick links")}>
+      <section className="section reveal" aria-label={t("விரைவு இணைப்புகள்", "Quick links")}>
         <div className="container">
           <div className="grid-3">
             <Link to="/donations" className="home-quick__card card card--interactive rise" style={{ "--i": 0 }}>

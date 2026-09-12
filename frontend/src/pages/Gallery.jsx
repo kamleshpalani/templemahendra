@@ -100,7 +100,7 @@ export default function Gallery() {
         }
       />
 
-      <section className="section gallery">
+      <section className="section">
         <div className="container">
           <SectionHeader
             eyebrow={t("தொகுப்பு", "Gallery")}

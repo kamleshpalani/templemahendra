@@ -14,7 +14,17 @@ const Gallery = lazy(() => import("./pages/Gallery"));
 const Donations = lazy(() => import("./pages/Donations"));
 const Contact = lazy(() => import("./pages/Contact"));
 const PanchangCalendar = lazy(() => import("./pages/PanchangCalendar"));
+const Search = lazy(() => import("./pages/Search"));
 const NotFound = lazy(() => import("./pages/NotFound"));
+
+// Accounts: one chunk each, so a visitor who never signs in never downloads them.
+const Login = lazy(() => import("./pages/Login"));
+const Register = lazy(() => import("./pages/Register"));
+const ForgotPassword = lazy(() => import("./pages/ForgotPassword"));
+const ResetPassword = lazy(() => import("./pages/ResetPassword"));
+const VerifyEmail = lazy(() => import("./pages/VerifyEmail"));
+const Account = lazy(() => import("./pages/Account"));
+const RequireAuth = lazy(() => import("./components/Auth/RequireAuth"));
 
 /** Re-mounts on every path change so CSS `page-in` plays; Suspense shows the glass loader. */
 function PageTransition() {
@@ -66,6 +76,18 @@ function App() {
             <Route path="donations" element={<Donations />} />
             <Route path="contact" element={<Contact />} />
             <Route path="panchangam" element={<PanchangCalendar />} />
+            <Route path="search" element={<Search />} />
+
+            {/* Accounts */}
+            <Route path="login" element={<Login />} />
+            <Route path="register" element={<Register />} />
+            <Route path="forgot-password" element={<ForgotPassword />} />
+            <Route path="reset-password" element={<ResetPassword />} />
+            <Route path="verify-email" element={<VerifyEmail />} />
+            <Route element={<RequireAuth />}>
+              <Route path="account" element={<Account />} />
+            </Route>
+
             <Route path="*" element={<NotFound />} />
           </Route>
         </Route>

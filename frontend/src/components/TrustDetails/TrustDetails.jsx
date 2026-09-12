@@ -143,7 +143,7 @@ export default function TrustDetails({
       )}
 
       {isBank ? (
-        <dl className="trust__list trust__list--bank">
+        <dl className="trust__list">
           {/* The beneficiary name is what a donor types into a bank form, so the
               registered English form is always primary; Tamil shown beneath. */}
           <TrustRow

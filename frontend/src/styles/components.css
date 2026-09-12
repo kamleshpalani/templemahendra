@@ -270,8 +270,15 @@ label,
 }
 .field__label {
   display: inline-flex;
+  /* The element rule above matches every <label>, including this one, and sets
+     flex-direction: column and a bottom margin. Without resetting both, the
+     required asterisk stacks under the label text and centres itself, and the
+     label floats 16px away from its own input. Both were visible on every
+     required field on the site. */
+  flex-direction: row;
   align-items: center;
   gap: 0.35rem;
+  margin-bottom: 0;
 }
 .field__required {
   color: var(--accent-ink);
@@ -474,7 +481,9 @@ label.checkbox-label {
   left: 0.95rem;
   display: grid;
   place-items: center;
-  color: var(--text-muted);
+  /* Matches .input-affix__btn on the other side of the field. At --text-muted
+     the glyph read as a smudge rather than an icon. */
+  color: var(--text-3);
   pointer-events: none;
 }
 .input-affix__icon > svg {

@@ -48,7 +48,7 @@ export default function HistoryTimeline({
             {t(HISTORY.salutation.ta, HISTORY.salutation.en)}
           </p>
           {HISTORY.paragraphs.map((p) => (
-            <p key={p.key} className="history__para">
+            <p key={p.key}>
               {t(p.ta, p.en)}
             </p>
           ))}

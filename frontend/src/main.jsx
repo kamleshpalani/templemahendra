@@ -6,6 +6,7 @@ import { HelmetProvider } from "react-helmet-async";
 import "./index.css";
 import { LangProvider } from "./context/LangContext";
 import { ToastProvider } from "./context/ToastContext";
+import { AuthProvider } from "./context/AuthContext";
 import App from "./App";
 import ErrorBoundary from "./components/ErrorBoundary";
 
@@ -16,7 +17,9 @@ ReactDOM.createRoot(document.getElementById("root")).render(
         <BrowserRouter>
           <LangProvider>
             <ToastProvider>
-              <App />
+              <AuthProvider>
+                <App />
+              </AuthProvider>
             </ToastProvider>
           </LangProvider>
         </BrowserRouter>
