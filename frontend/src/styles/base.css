@@ -228,7 +228,7 @@ kbd {
     --glass-0: rgba(255, 255, 255, 0.9);
     --glass-1: rgba(255, 255, 255, 0.94);
     --glass-2: rgba(255, 255, 255, 0.97);
-    --glass-3: #ffffff;
+    --glass-3: var(--white);
     --glass-ink-1: rgba(26, 6, 6, 0.86);
     --glass-ink-2: rgba(26, 6, 6, 0.9);
     --glass-ink-3: rgba(26, 6, 6, 0.94);
@@ -242,7 +242,7 @@ kbd {
     display: none;
   }
   html {
-    background: #fff;
+    background: var(--white);
   }
   .card,
   .modal,

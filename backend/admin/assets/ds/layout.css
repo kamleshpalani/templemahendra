@@ -41,7 +41,7 @@
   background:
     radial-gradient(ellipse 60% 50% at 0% 0%, rgba(249, 115, 22, 0.16), transparent 60%),
     radial-gradient(ellipse 50% 50% at 100% 100%, rgba(217, 119, 6, 0.14), transparent 60%),
-    linear-gradient(160deg, var(--maroon-800) 0%, var(--maroon-700) 55%, #4a0c0c 100%);
+    linear-gradient(160deg, var(--maroon-800) 0%, var(--maroon-700) 55%, var(--ink-4) 100%);
   color: var(--text-on-dark);
 }
 .section-cta {
@@ -120,7 +120,7 @@
   font-weight: var(--weight-bold);
   letter-spacing: var(--tracking-caps);
   text-transform: uppercase;
-  color: var(--saffron-600);
+  color: var(--accent-ink);
 }
 .eyebrow::before {
   content: "";
@@ -275,7 +275,7 @@
   background:
     radial-gradient(ellipse 55% 80% at 88% 18%, color-mix(in srgb, var(--hero-a) 34%, transparent), transparent 66%),
     radial-gradient(ellipse 45% 70% at 8% 92%, color-mix(in srgb, var(--hero-b) 26%, transparent), transparent 66%),
-    linear-gradient(135deg, #1a0606 0%, #3d0a0a 52%, #240707 100%);
+    linear-gradient(135deg, var(--ink-1) 0%, var(--ink-3) 52%, var(--ink-2) 100%);
 }
 /* Kolam lattice — ultra-light SVG pattern for identity */
 .page-hero::before {
@@ -390,8 +390,8 @@
   font-weight: var(--weight-bold);
   line-height: 1.18;
   padding-bottom: 0.08em;
-  color: #fff;
-  background: linear-gradient(135deg, #ffffff 30%, var(--gold-200) 78%);
+  color: var(--white);
+  background: linear-gradient(135deg, var(--white) 30%, var(--gold-200) 78%);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;

@@ -60,7 +60,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         if ($title_ta === '')                                     $errors['title_ta']   = true;
         if ($title_en === '')                                     $errors['title_en']   = true;
-        if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $event_date))    $errors['event_date'] = true;
+        if (!isValidDate($event_date))                            $errors['event_date'] = true;
 
         if ($errors) {
             $msg     = '<p class="alert alert--error">All fields are required and date must be YYYY-MM-DD.</p>';

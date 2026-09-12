@@ -239,14 +239,27 @@ $counts = $db->query('SELECT COUNT(*) AS total,
                         FROM homepage_widgets')->fetch();
 $chipCounts = ['' => (int) $counts['total'], 'active' => (int) $counts['active'], 'off' => (int) $counts['inactive'], 'pinned' => (int) $counts['pinned']];
 
-$poojas = $db->query(
-    "SELECT id,name_ta,name_en,pooja_date FROM poojas
-      WHERE is_active=1 ORDER BY pooja_date DESC LIMIT 50"
-)->fetchAll();
+// Dropdown options. The currently linked pooja / sponsor is always included — even
+// when it is inactive or outside the newest 50 — otherwise the select would carry no
+// matching <option>, the browser would submit the empty first option and saving the
+// form would silently clear the link. (Runs after $editing is resolved, above.)
+$curPooja = (int) ($editing['linked_pooja_id'] ?? 0);
+$stmt = $db->prepare(
+    'SELECT id, name_ta, name_en, pooja_date, is_active FROM poojas
+      WHERE is_active = 1 OR id = :cur
+      ORDER BY (id = :cur2) DESC, pooja_date DESC LIMIT 51'
+);
+$stmt->execute([':cur' => $curPooja, ':cur2' => $curPooja]);
+$poojas = $stmt->fetchAll();
 
-$sponsors = $db->query(
-    "SELECT id, name FROM sponsors WHERE is_active=1 ORDER BY name ASC LIMIT 50"
-)->fetchAll();
+$curSponsor = (int) ($editing['linked_sponsor_id'] ?? 0);
+$stmt = $db->prepare(
+    'SELECT id, name, is_active FROM sponsors
+      WHERE is_active = 1 OR id = :cur
+      ORDER BY (id = :cur2) DESC, name ASC LIMIT 51'
+);
+$stmt->execute([':cur' => $curSponsor, ':cur2' => $curSponsor]);
+$sponsors = $stmt->fetchAll();
 
 // ── View helpers ─────────────────────────────────────────────────────────────
 $v   = static fn(string $k, $default = '') => (string) ($editing[$k] ?? $default);
@@ -340,7 +353,7 @@ echo adminPageIntro(
             <select id="hw-pooja" name="linked_pooja_id">
               <option value="">— None —</option>
               <?php foreach ($poojas as $p): ?>
-                <option value="<?= (int) $p['id'] ?>"<?= $sel($v('linked_pooja_id'), $p['id']) ?>><?= h($p['name_ta'] . ' — ' . $p['name_en'] . ' · ' . adminFmtDate($p['pooja_date'])) ?></option>
+                <option value="<?= (int) $p['id'] ?>"<?= $sel($v('linked_pooja_id'), $p['id']) ?>><?= h($p['name_ta'] . ' — ' . $p['name_en'] . ' · ' . adminFmtDate($p['pooja_date']) . ($p['is_active'] ? '' : ' (inactive)')) ?></option>
               <?php endforeach; ?>
             </select>
           </div>
@@ -349,12 +362,12 @@ echo adminPageIntro(
             <select id="hw-sponsor" name="linked_sponsor_id">
               <option value="">— None —</option>
               <?php foreach ($sponsors as $sp): ?>
-                <option value="<?= (int) $sp['id'] ?>"<?= $sel($v('linked_sponsor_id'), $sp['id']) ?>><?= h($sp['name']) ?></option>
+                <option value="<?= (int) $sp['id'] ?>"<?= $sel($v('linked_sponsor_id'), $sp['id']) ?>><?= h($sp['name'] . ($sp['is_active'] ? '' : ' (inactive)')) ?></option>
               <?php endforeach; ?>
             </select>
           </div>
         </div>
-        <span class="field__hint">Active poojas are listed newest first; active sponsors alphabetically. Manage them under Worship.</span>
+        <span class="field__hint">Active poojas are listed newest first; active sponsors alphabetically. A record this widget is already linked to stays in the list even when it is marked <em>(inactive)</em>, so saving never drops the link. Manage them under Worship.</span>
       </fieldset>
 
       <fieldset>

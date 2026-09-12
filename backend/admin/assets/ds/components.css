@@ -99,14 +99,14 @@
 
 .btn-primary {
   --btn-bg: linear-gradient(135deg, var(--maroon-500) 0%, var(--maroon-700) 100%);
-  --btn-fg: #fff;
+  --btn-fg: var(--white);
   --btn-border: rgba(255, 255, 255, 0.14);
   --btn-shadow: 0 6px 22px rgba(153, 27, 27, 0.32), inset 0 1px 0 rgba(255, 255, 255, 0.22);
   --btn-shadow-hover: 0 10px 30px rgba(153, 27, 27, 0.42), inset 0 1px 0 rgba(255, 255, 255, 0.3);
 }
 .btn-gold {
   --btn-bg: linear-gradient(135deg, var(--saffron-500) 0%, var(--gold-500) 100%);
-  --btn-fg: #fff;
+  --btn-fg: var(--white);
   --btn-border: rgba(255, 255, 255, 0.22);
   --btn-shadow: 0 6px 22px rgba(249, 115, 22, 0.34), inset 0 1px 0 rgba(255, 255, 255, 0.3);
   --btn-shadow-hover: 0 10px 30px rgba(249, 115, 22, 0.44), inset 0 1px 0 rgba(255, 255, 255, 0.35);
@@ -126,7 +126,7 @@
 }
 .btn-outline--light {
   --btn-bg: rgba(255, 255, 255, 0.1);
-  --btn-fg: #fff;
+  --btn-fg: var(--white);
   --btn-border: rgba(255, 255, 255, 0.36);
   --btn-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.18);
   backdrop-filter: blur(var(--blur-sm));
@@ -168,12 +168,12 @@
 }
 .btn-danger:hover {
   --btn-bg: linear-gradient(135deg, var(--maroon-300), var(--maroon-400));
-  --btn-fg: #fff;
+  --btn-fg: var(--white);
   --btn-border: transparent;
 }
 .btn-success {
-  --btn-bg: linear-gradient(135deg, #059669, var(--success));
-  --btn-fg: #fff;
+  --btn-bg: linear-gradient(135deg, var(--success), var(--success));
+  --btn-fg: var(--white);
   --btn-border: rgba(255, 255, 255, 0.16);
   --btn-shadow: 0 6px 20px rgba(4, 120, 87, 0.3);
 }
@@ -229,7 +229,7 @@
   height: 18px;
   border-radius: 50%;
   border: 2px solid rgba(255, 255, 255, 0.35);
-  border-top-color: #fff;
+  border-top-color: var(--white);
   animation: spin 0.7s linear infinite;
 }
 .btn-outline.btn--loading::after,
@@ -275,7 +275,7 @@ label,
   gap: 0.35rem;
 }
 .field__required {
-  color: var(--saffron-600);
+  color: var(--accent-ink);
   font-weight: var(--weight-black);
 }
 .field__optional {
@@ -325,7 +325,7 @@ select {
   cursor: pointer;
 }
 select option {
-  background: #fff;
+  background: var(--white);
   color: var(--text-1);
 }
 input:hover,
@@ -337,8 +337,8 @@ input:focus,
 select:focus,
 textarea:focus {
   outline: none;
-  border-color: var(--saffron);
-  background: #fff;
+  border-color: var(--accent-ink);
+  background: var(--white);
   box-shadow: var(--ring), var(--inset-highlight);
 }
 input::placeholder,
@@ -545,7 +545,7 @@ label.checkbox-label {
   width: 20px;
   height: 20px;
   border-radius: 50%;
-  background: #fff;
+  background: var(--white);
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
   transition: transform var(--dur-slow) var(--ease-spring);
 }
@@ -598,7 +598,7 @@ label.checkbox-label {
     box-shadow var(--transition);
 }
 .chip:hover {
-  border-color: var(--saffron);
+  border-color: var(--accent-ink);
   color: var(--maroon-600);
   transform: translateY(-1px);
 }
@@ -607,7 +607,7 @@ label.checkbox-label {
 .chip[aria-current] {
   background: linear-gradient(135deg, var(--saffron-500), var(--gold-500));
   border-color: transparent;
-  color: #fff;
+  color: var(--white);
   box-shadow: 0 4px 12px rgba(249, 115, 22, 0.3);
 }
 .chip__count {
@@ -744,7 +744,7 @@ label.checkbox-label {
   background: linear-gradient(135deg, rgba(249, 115, 22, 0.14), rgba(217, 119, 6, 0.1));
   border: 1px solid rgba(249, 115, 22, 0.25);
   box-shadow: var(--inset-highlight);
-  color: var(--saffron-600);
+  color: var(--accent-ink);
   flex-shrink: 0;
   transition: transform var(--transition-slow);
 }
@@ -1047,7 +1047,7 @@ label.checkbox-label {
 .tab--active,
 .tab[aria-current] {
   background: linear-gradient(135deg, var(--maroon-500), var(--maroon-700));
-  color: #fff;
+  color: var(--white);
   box-shadow: 0 4px 14px rgba(153, 27, 27, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.2);
 }
 .tab__count {
@@ -1082,7 +1082,7 @@ label.checkbox-label {
   background: transparent;
   color: var(--maroon-600);
   box-shadow: none;
-  border-bottom-color: var(--saffron);
+  border-bottom-color: var(--accent-ink);
 }
 
 /* ══════════════════════════════════════════════════════════════════
@@ -1311,7 +1311,7 @@ label.checkbox-label {
 }
 .pagination__btn[aria-current="page"] {
   background: linear-gradient(135deg, var(--maroon-500), var(--maroon-700));
-  color: #fff;
+  color: var(--white);
   box-shadow: 0 4px 12px rgba(153, 27, 27, 0.3);
 }
 .pagination__btn[aria-disabled="true"] {
@@ -1411,7 +1411,7 @@ label.checkbox-label {
   content: "✓";
   margin-left: auto;
   font-weight: var(--weight-bold);
-  color: var(--saffron-600);
+  color: var(--accent-ink);
 }
 .menu__divider {
   height: 1px;
@@ -1945,16 +1945,16 @@ label.checkbox-label {
 }
 .step--done .step__num {
   background: var(--success);
-  color: #fff;
+  color: var(--white);
 }
 .step--active {
   background: linear-gradient(135deg, var(--maroon-500), var(--maroon-700));
-  color: #fff;
+  color: var(--white);
   box-shadow: 0 4px 14px rgba(153, 27, 27, 0.3);
 }
 .step--active .step__num {
   background: rgba(255, 255, 255, 0.2);
-  color: #fff;
+  color: var(--white);
 }
 a.step:hover:not(.step--active) {
   background: rgba(153, 27, 27, 0.06);
@@ -1985,7 +1985,7 @@ a.step:hover:not(.step--active) {
   font-size: 2rem;
   background: linear-gradient(135deg, rgba(249, 115, 22, 0.12), rgba(217, 119, 6, 0.08));
   border: 1px solid rgba(249, 115, 22, 0.22);
-  color: var(--saffron-600);
+  color: var(--accent-ink);
   box-shadow: var(--inset-highlight);
 }
 .empty-state__icon > svg {
@@ -2044,7 +2044,7 @@ a.step:hover:not(.step--active) {
   font-size: 1.4rem;
   background: linear-gradient(135deg, rgba(249, 115, 22, 0.14), rgba(217, 119, 6, 0.1));
   border: 1px solid rgba(249, 115, 22, 0.25);
-  color: var(--saffron-600);
+  color: var(--accent-ink);
   flex-shrink: 0;
 }
 .stat__icon > svg {
@@ -2086,10 +2086,10 @@ a.step:hover:not(.step--active) {
 .stat--accent {
   background: linear-gradient(135deg, var(--maroon-500), var(--maroon-700));
   border-color: rgba(255, 255, 255, 0.15);
-  color: #fff;
+  color: var(--white);
 }
 .stat--accent .stat__val {
-  color: #fff;
+  color: var(--white);
 }
 .stat--accent .stat__label {
   color: var(--gold-200);
@@ -2110,7 +2110,7 @@ a.step:hover:not(.step--active) {
   height: 36px;
   border-radius: 50%;
   background: linear-gradient(135deg, var(--saffron), var(--gold));
-  color: #fff;
+  color: var(--white);
   font-weight: var(--weight-bold);
   font-size: 0.85rem;
   flex-shrink: 0;
@@ -2152,7 +2152,7 @@ kbd,
   padding: 0.3rem 0.6rem;
   border-radius: var(--radius-xs);
   background: var(--maroon-800);
-  color: #fff;
+  color: var(--white);
   font-size: var(--text-2xs);
   font-weight: var(--weight-semibold);
   white-space: nowrap;

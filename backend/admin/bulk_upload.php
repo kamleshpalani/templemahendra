@@ -547,7 +547,8 @@ function bulkCounts(array $rows): array
 
 // ── Request state ──────────────────────────────────────────────────────────
 $entities = bulkEntities();
-$entity   = (string) ($_GET['entity'] ?? $_POST['entity'] ?? '');
+$entityRaw = $_GET['entity'] ?? $_POST['entity'] ?? '';
+$entity    = is_string($entityRaw) ? $entityRaw : '';
 if (!isset($entities[$entity])) $entity = '';
 $def    = $entity ? $entities[$entity] : null;
 $db     = getDB();
@@ -765,14 +766,17 @@ if ($step === 2 && $def && $state && $state['entity'] === $entity && ($_SERVER['
         $msg  .= bulkFlash('info', 'Your previous upload expired after 30 minutes of inactivity. Please upload the file again.');
     } else {
         $step = match ($state['stage']) {
-            'uploaded' => 3,
-            'mapped'   => 4,
-            'importing', 'done' => !empty($state['result']) ? 6 : 2,
-            default    => 2,
+            'uploaded'  => 3,
+            'mapped'    => 4,
+            // An import still in flight goes back to the runner, which resumes
+            // from result.processed instead of being declared interrupted.
+            'importing' => !empty($state['rows']) ? 5 : 2,
+            'done'      => !empty($state['result']) ? 6 : 2,
+            default     => 2,
         };
     }
 }
-if ($def && isset($_GET['done']) && $step !== 6) {
+if ($def && isset($_GET['done']) && $step !== 6 && $step !== 5) {
     $msg .= bulkFlash('info', 'The import has finished, but its summary is no longer available.');
 }
 if ($step === 6 && (!$state || empty($state['result']))) {
@@ -785,7 +789,7 @@ $mapNow  = ($def && $state && isset($state['header'])) ? ($state['map'] ?? bulkA
 $issues  = ($step === 3 && $def) ? bulkMapIssues($mapNow, $def) : ['errors' => [], 'bad' => []];
 $mapPosted = $_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'map';
 $mapBad  = $mapPosted ? array_flip($issues['bad']) : [];
-if ($step === 6 && $state) {
+if ($step === 6 && $state && ($state['stage'] ?? '') === 'done') {
     $_SESSION['bulk']['finished'] = true; // cleared on the next navigation
 }
 
@@ -1043,19 +1047,20 @@ echo adminPageIntro($intro[0], $intro[1]);
 </div>
 
 <?php elseif ($step === 5 && $state && !empty($state['result'])): ?>
-<?php $total = (int) $state['result']['total']; ?>
+<?php $total = (int) $state['result']['total']; $doneRows = min($total, max(0, (int) ($state['result']['processed'] ?? 0))); ?>
 <section class="card card--static" aria-labelledby="import-title">
   <div class="card__head">
     <h2 id="import-title"><?= adminIcon('upload', 'ico--sm') ?> Importing <?= number_format($total) ?> row<?= $total === 1 ? '' : 's' ?>…</h2>
     <?= adminBadge('In progress', 'gold', true) ?>
   </div>
   <div class="import-progress">
-    <div class="progress progress--sm" role="progressbar" aria-label="Import progress" aria-valuemin="0" aria-valuemax="<?= $total ?>" aria-valuenow="0"
+    <div class="progress progress--sm" role="progressbar" aria-label="Import progress" aria-valuemin="0" aria-valuemax="<?= $total ?>" aria-valuenow="<?= $doneRows ?>"
          data-import-runner data-total="<?= $total ?>" data-chunk="<?= BULK_CHUNK ?>" data-entity="<?= h($entity) ?>"
+         data-offset="<?= $doneRows ?>"
          data-csrf="<?= h(csrfToken()) ?>" data-skip-duplicates="<?= !empty($state['skip_duplicates']) ? '1' : '0' ?>">
       <div class="progress__bar"></div>
     </div>
-    <div class="import-progress__count" data-import-count aria-live="polite">0 / <?= $total ?></div>
+    <div class="import-progress__count" data-import-count aria-live="polite"><?= $doneRows ?> / <?= $total ?></div>
     <div class="import-progress__live" data-import-live aria-live="polite"></div>
     <p class="field__hint">Writing <?= h($state['file']) ?> into <?= h($def['label']) ?> in batches of <?= BULK_CHUNK ?>. Keep this tab open — you will be taken to the summary when it finishes.</p>
     <noscript>

@@ -67,7 +67,15 @@ TempleMahendra/
 cd frontend
 npm install
 npm run dev          # http://localhost:5173  (proxies /api → localhost:8000)
+npm run audit        # design-system check: undefined tokens, orphan classes,
+                     # raw colours, stray inline styles
 ```
+
+The design system lives in `frontend/src/styles/` — read
+[`frontend/src/styles/README.md`](frontend/src/styles/README.md) before adding UI.
+`npm run sync-tokens` (automatic before `dev` and `build`) copies those
+stylesheets to `backend/admin/assets/ds/` so the PHP admin renders from exactly
+the same tokens and components.
 
 ### Backend (PHP dev server)
 
@@ -107,13 +115,26 @@ Upload via Hostinger File Manager or FTP:
 | `backend/config/*`            | `public_html/config/`       |
 | `backend/includes/*`          | `public_html/includes/`     |
 | `backend/uploads/`            | `public_html/uploads/`      |
-| `deploy/htaccess_public_html` | `public_html/.htaccess`     |
-| `deploy/htaccess_api`         | `public_html/api/.htaccess` |
+| `deploy/htaccess_public_html` | `public_html/.htaccess`         |
+| `deploy/htaccess_api`         | `public_html/api/.htaccess`     |
+| `deploy/htaccess_uploads`     | `public_html/uploads/.htaccess` |
+
+> `deploy/htaccess_uploads` is **not optional**: it stops Apache executing
+> anything inside the visitor-facing uploads folder. Upload it every time you
+> recreate `public_html/uploads/`.
+
+> `backend/admin/assets/ds/*.css` is **generated** from `frontend/src/styles/` by
+> `npm run sync-tokens` (which `npm run build` runs for you). Always build the
+> frontend before uploading the admin so both surfaces ship the same design system.
 
 ### Step 3 — Database
 
 1. Create database in Hostinger hPanel → Databases → MySQL
 2. Import `database/schema.sql` via phpMyAdmin
+3. Import `database/migrations/001_admin_users.sql` to enable committee
+   accounts, roles and the admin activity log. This is additive and safe to run
+   on an existing database. Skip it and the admin keeps working with the single
+   environment-variable login.
 
 ### Step 4 — Environment variables
 
@@ -169,18 +190,57 @@ chmod 755 public_html/uploads
 
 ## Admin Panel
 
-Access: `https://yourdomain.in/admin/`  
-Login with the credentials set via environment variables.
+Access: `https://yourdomain.in/admin/`
 
-Pages: Dashboard · Announcements · Sevas · Events · Gallery · Donations · Contact Messages
+Pages: Dashboard · Homepage Widgets · Announcements · Gallery · Poojas · Sevas ·
+Events · Sponsors · Seva Bookings · Donations · Messages · Bulk Upload ·
+Settings · Committee Accounts · My Profile
+
+Press <kbd>Ctrl</kbd>+<kbd>K</kbd> anywhere in the admin to jump to a page or run
+a quick action.
+
+### Accounts and roles
+
+Two kinds of sign-in exist, deliberately:
+
+1. **The environment account** (`ADMIN_USERNAME` / `ADMIN_PASS_HASH`). Always
+   works, always an owner, cannot be edited or deleted from the UI. It is the
+   recovery login — the site can never lock the committee out.
+2. **Committee accounts** in the `admin_users` table (see the migration above),
+   created under *Committee Accounts*. Each has a role:
+
+| Role     | Can do                                                                 |
+| -------- | ---------------------------------------------------------------------- |
+| `viewer` | Read dashboards, lists and reports; download CSV exports. No changes.   |
+| `editor` | Everything a viewer can, plus content, poojas, bookings, donations, bulk imports. |
+| `owner`  | Everything, plus committee accounts and system settings.                |
+
+Permissions are enforced centrally in `requireAdminAuth()` (`backend/includes/auth.php`),
+which checks the capability needed to *open* a page and, on POST, the capability
+needed to *change* it. A page cannot forget to opt in.
+
+There is no self-service password reset: the site sends no email, so a reset
+link could not be delivered. Instead an owner issues a new password from
+*Committee Accounts*, and the person is forced to choose their own at next
+sign-in. If nobody can sign in, update `ADMIN_PASS_HASH` in the hosting panel.
 
 ---
 
 ## Security Notes
 
 - Admin is protected by PHP session auth with `password_verify()` (bcrypt)
+- Role-based access is enforced in one place (`requireAdminAuth()`), for both
+  reading a page and posting to it, so `viewer` accounts are genuinely read-only
+- Every admin form carries a per-session CSRF token, checked by `adminCsrfGuard()`
+- Sign-ins, failures and account changes are written to `admin_activity`
+- Sign-in throttles after 5 failures; `?next=` redirects are restricted to `/admin/`
 - All user input is sanitised with `strip_tags` + length limits before DB inserts
 - All DB queries use PDO prepared statements — no SQL injection risk
 - `config/` and `includes/` folders have `.htaccess` denying direct HTTP access
-- File uploads are validated by MIME type, size, and stored with random filenames
+- Image uploads are verified by **decoding the file** (`getimagesize()`), never by
+  the client-supplied `Content-Type`; the stored name and extension are generated
+  by the server (`random_bytes` + the detected JPEG/PNG/WebP type), so an
+  attacker-chosen filename or extension can never reach `uploads/`
+- `deploy/htaccess_uploads` additionally turns the PHP handler off inside
+  `public_html/uploads/`, so nothing in that folder can execute
 - CORS origin is configurable per environment

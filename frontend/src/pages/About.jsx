@@ -160,6 +160,12 @@ export default function About() {
 
           {/* ── Deities ─────────────────────────────────────────── */}
           <h2 id="deities">{t("குலதெய்வங்கள்", "Our Clan Deities")}</h2>
+          <p>
+            {t(
+              "நமது குலதெய்வங்கள் மூவர். ஒவ்வொரு மஹா சிவராத்திரி அன்றும் குலமக்கள் தரிசனம் செய்கின்றனர்; ஒவ்வொரு மாதம் பௌர்ணமி அன்றும் சிறப்பு பூஜையும் அன்னதானமும் நடைபெறுகின்றன.",
+              "Our clan deities are three. Clan members gather for darshan every Maha Shivaratri, and special pooja and annadanam are held every month on Pournami.",
+            )}
+          </p>
           <ul className="about-deities" role="list">
             {TEMPLE.deities.map((d, i) => (
               <li key={d.en} className="about-deities__item card card--static rise" style={{ "--i": i }}>

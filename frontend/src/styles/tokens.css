@@ -58,6 +58,13 @@
   --danger-on-dark: #fecaca;
   --success-on-dark: var(--sage-300);
 
+  /* Saffron you can READ. --saffron-500/600 are display shades: on the ivory
+     ground they only reach 2.7:1 and 3.1:1, so they may tint fills, borders and
+     gradients but must never colour text or a meaningful icon. Use this token
+     for eyebrows, labels, links and icons on light surfaces — 5.0:1 on
+     --bg-root and 4.7:1 on --bg-alt, so it clears WCAG AA at any size. */
+  --accent-ink: var(--saffron-700);
+
   /* Lunar accent — used ONLY for panchangam / pournami content */
   --moon-700: #4c1d95;
   --moon-600: #5b21b6;

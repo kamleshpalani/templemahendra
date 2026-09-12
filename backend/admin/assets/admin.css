@@ -1092,7 +1092,7 @@ textarea {
   color: var(--maroon-600);
 }
 .palette__item[aria-selected="true"] .ico {
-  color: var(--saffron-600);
+  color: var(--accent-ink);
 }
 .palette__item-label {
   font-weight: var(--weight-semibold);
@@ -1305,7 +1305,7 @@ textarea {
 .dropzone:hover,
 .dropzone:focus-within,
 .dropzone--over {
-  border-color: var(--saffron);
+  border-color: var(--accent-ink);
   background: rgba(249, 115, 22, 0.06);
 }
 .dropzone--over {
@@ -1332,7 +1332,7 @@ textarea {
   border-radius: 18px;
   background: linear-gradient(135deg, rgba(249, 115, 22, 0.14), rgba(217, 119, 6, 0.1));
   border: 1px solid rgba(249, 115, 22, 0.25);
-  color: var(--saffron-600);
+  color: var(--accent-ink);
 }
 .dropzone__icon .ico {
   width: 1.5rem;
@@ -1436,7 +1436,7 @@ textarea {
   border-radius: 12px;
   background: linear-gradient(135deg, rgba(249, 115, 22, 0.14), rgba(217, 119, 6, 0.1));
   border: 1px solid rgba(249, 115, 22, 0.25);
-  color: var(--saffron-600);
+  color: var(--accent-ink);
 }
 .entity-card strong {
   color: var(--maroon-600);

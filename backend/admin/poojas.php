@@ -59,8 +59,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $action = $post('action');
 
         if ($action === 'save') {
-            $name_ta   = sanitizeText($post('name_ta'));
-            $name_en   = sanitizeText($post('name_en'));
+            $name_ta   = sanitizeText($post('name_ta'), 200);   // poojas.name_ta is VARCHAR(200)
+            $name_en   = sanitizeText($post('name_en'), 200);   // poojas.name_en is VARCHAR(200)
             $desc_ta   = sanitizeText($post('description_ta'), 2000);
             $desc_en   = sanitizeText($post('description_en'), 2000);
             $date      = sanitizeText($post('pooja_date'));
@@ -98,8 +98,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         } elseif ($action === 'delete') {
             $id = (int) ($_POST['id'] ?? 0);
             if ($id > 0) {
-                $db->prepare('DELETE FROM poojas WHERE id=:id')->execute([':id' => $id]);
-                $redirect($alert('success', 'Pooja deleted.'));
+                $stmt = $db->prepare('DELETE FROM poojas WHERE id=:id');
+                $stmt->execute([':id' => $id]);
+                $redirect($stmt->rowCount()
+                    ? $alert('success', 'Pooja deleted.')
+                    : $alert('warning', 'That pooja no longer exists.'));
             }
         } elseif ($action === 'toggle') {
             $id = (int) ($_POST['id'] ?? 0);
@@ -110,6 +113,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $state = $stmt->fetchColumn();
                 if ($state !== false) {
                     $redirect($alert('success', (int) $state ? 'Pooja is now visible on the website.' : 'Pooja hidden from the website.'));
+                } else {
+                    $redirect($alert('warning', 'That pooja no longer exists.'));
                 }
             }
         }
@@ -141,8 +146,17 @@ $linkedSponsors = (int) $db->query("SELECT COUNT(*) FROM sponsors WHERE pooja_id
 
 $whenSql = $when === 'upcoming' ? 'p.pooja_date >= CURDATE()' : ($when === 'past' ? 'p.pooja_date < CURDATE()' : '');
 
+// Type chip counts — same predicates as the table (minus the type itself) so a chip
+// never advertises rows that clicking it will not produce.
 $typeCounts = [];
-foreach ($db->query('SELECT p.pooja_type, COUNT(*) AS c FROM poojas p' . ($whenSql ? " WHERE $whenSql" : '') . ' GROUP BY p.pooja_type')->fetchAll() as $r) {
+$cntWhere   = [];
+$cntParams  = [];
+if ($whenSql)   $cntWhere[] = $whenSql;
+if ($q !== '') { $cntWhere[] = '(p.name_ta LIKE ? OR p.name_en LIKE ?)'; $cntParams[] = "%$q%"; $cntParams[] = "%$q%"; }
+$cnt = $db->prepare('SELECT p.pooja_type, COUNT(*) AS c FROM poojas p'
+     . ($cntWhere ? ' WHERE ' . implode(' AND ', $cntWhere) : '') . ' GROUP BY p.pooja_type');
+$cnt->execute($cntParams);
+foreach ($cnt->fetchAll() as $r) {
     $typeCounts[$r['pooja_type']] = (int) $r['c'];
 }
 $allCount = array_sum($typeCounts);

@@ -60,10 +60,24 @@ if ($to !== '') {
 $whereSql = $where ? ' WHERE ' . implode(' AND ', $where) : '';
 $orderSql = ' ORDER BY created_at ' . strtoupper($dir) . ', id ' . strtoupper($dir);
 
+/**
+ * Deleting an enquiry is an editor capability (ADMIN_CAPABILITIES['devotees.edit']).
+ * A viewer keeps read + CSV export, so the gate is on the write path, not the page.
+ */
+$canDelete = adminCan('devotees.edit');
+
 // ── POST actions (delete / bulk_delete) → flash + redirect ──────────────────
 $msg = adminCsrfGuard();
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && $msg === '') {
     $action = is_string($_POST['action'] ?? null) ? $_POST['action'] : '';
+
+    // Second line of defence behind requireAdminAuth()'s page write policy:
+    // no destructive action runs for a role that cannot delete messages.
+    if (!$canDelete) {
+        $_SESSION['flash_contact_messages'] = ['error', 'Your role cannot delete messages.'];
+        header('Location: ' . $selfUrl);
+        exit;
+    }
 
     if ($action === 'delete') {
         $id = is_scalar($_POST['id'] ?? null) ? (int) $_POST['id'] : 0;
@@ -109,9 +123,11 @@ if ($str('export') === 'csv') {
     header('Content-Disposition: attachment; filename="contact-messages-' . date('Y-m-d') . '.csv"');
     $out = fopen('php://output', 'w');
     fwrite($out, "\xEF\xBB\xBF"); // BOM so Excel reads Tamil correctly
-    fputcsv($out, ['id', 'name', 'phone', 'message', 'created_at'], ',', '"', '\\');
+    // Empty escape string = strict RFC 4180 (quotes doubled, no backslash special
+    // case) so a message containing \" is not mis-parsed by Excel / pandas.
+    fputcsv($out, ['id', 'name', 'phone', 'message', 'created_at'], ',', '"', '');
     while ($r = $stmt->fetch()) {
-        fputcsv($out, [$r['id'], $r['name'], $r['phone'], $r['message'], $r['created_at']], ',', '"', '\\');
+        fputcsv($out, [$r['id'], $r['name'], $r['phone'], $r['message'], $r['created_at']], ',', '"', '');
     }
     fclose($out);
     exit;
@@ -152,7 +168,7 @@ adminHeader('Contact Messages', 'Devotees', [
 ]);
 echo $msg;
 echo adminPageIntro(
-    'Enquiries sent through the public contact form — ' . $totalAll . ' message' . ($totalAll === 1 ? '' : 's') . ' in total, ' . $week . ' in the last 7 days. Call or WhatsApp a devotee from the row menu, delete what has been handled, or export the inbox as CSV.',
+    'Enquiries sent through the public contact form — ' . $totalAll . ' message' . ($totalAll === 1 ? '' : 's') . ' in total, ' . $week . ' in the last 7 days. Call or WhatsApp a devotee from the row menu, ' . ($canDelete ? 'delete what has been handled, ' : '') . 'or export the inbox as CSV.',
     '<a href="' . h($exportHref) . '" class="btn btn-primary btn--sm">' . adminIcon('download') . ($hasFilters ? 'Export filtered CSV' : 'Export CSV') . '</a>'
 );
 ?>
@@ -187,10 +203,10 @@ echo adminPageIntro(
 
 <?php if ($rows): ?>
 <div class="table-wrap">
-  <table class="table" data-bulk="bulk-form" data-no-search>
+  <table class="table"<?= $canDelete ? ' data-bulk="bulk-form"' : '' ?> data-no-search>
     <thead>
       <tr>
-        <th scope="col" class="cell-select"><input type="checkbox" data-select-all aria-label="Select all messages on this page" /></th>
+        <?php if ($canDelete): ?><th scope="col" class="cell-select"><input type="checkbox" data-select-all aria-label="Select all messages on this page" /></th><?php endif; ?>
         <th scope="col">Devotee</th>
         <th scope="col">Message</th>
         <?= adminSortLink('created_at', 'Received', $query) ?>
@@ -206,11 +222,13 @@ echo adminPageIntro(
         $menu  = [];
         if ($tel !== '') $menu[] = ['label' => 'Call', 'href' => 'tel:' . $tel, 'icon' => 'phone'];
         if ($wa !== '')  $menu[] = ['label' => 'WhatsApp', 'href' => 'https://wa.me/' . $wa . '?text=' . rawurlencode($greet), 'icon' => 'external'];
-        if ($menu) $menu[] = 'divider';
-        $menu[] = ['label' => 'Delete', 'form' => ['action' => 'delete', 'id' => $id], 'icon' => 'trash', 'danger' => true, 'confirm' => 'Delete this message?', 'confirmLabel' => 'Delete'];
+        if ($canDelete) {
+            if ($menu) $menu[] = 'divider';
+            $menu[] = ['label' => 'Delete', 'form' => ['action' => 'delete', 'id' => $id], 'icon' => 'trash', 'danger' => true, 'confirm' => 'Delete this message?', 'confirmLabel' => 'Delete'];
+        }
       ?>
       <tr>
-        <td class="cell-select"><input type="checkbox" name="ids[]" value="<?= $id ?>" aria-label="Select message from <?= h($row['name']) ?>" /></td>
+        <?php if ($canDelete): ?><td class="cell-select"><input type="checkbox" name="ids[]" value="<?= $id ?>" aria-label="Select message from <?= h($row['name']) ?>" /></td><?php endif; ?>
         <td>
           <span class="cell-title"><?= h($row['name']) ?></span>
           <?php if ($tel !== ''): ?><a class="cell-sub" href="tel:<?= h($tel) ?>"><?= h($row['phone']) ?></a><?php else: ?><span class="cell-sub"><?= h($row['phone']) ?></span><?php endif; ?>
@@ -220,13 +238,14 @@ echo adminPageIntro(
           <time datetime="<?= h($row['created_at']) ?>"><?= adminFmtDate($row['created_at'], true) ?></time>
           <span class="cell-sub"><?= h(adminAgo($row['created_at'])) ?></span>
         </td>
-        <td class="cell-actions"><?= adminMenu($menu, 'Actions for message from ' . $row['name']) ?></td>
+        <td class="cell-actions"><?= $menu ? adminMenu($menu, 'Actions for message from ' . $row['name']) : '' ?></td>
       </tr>
       <?php endforeach; ?>
     </tbody>
   </table>
 </div>
 
+<?php if ($canDelete): ?>
 <form method="POST" action="<?= h($selfUrl) ?>" id="bulk-form" class="bulk-bar" hidden aria-label="Bulk actions">
   <?= csrfField() ?>
   <input type="hidden" name="action" value="bulk_delete" />
@@ -234,6 +253,7 @@ echo adminPageIntro(
   <button type="submit" class="btn btn-danger btn--sm" data-confirm="Delete the selected messages? This cannot be undone." data-confirm-label="Delete"><?= adminIcon('trash') ?> Delete selected</button>
   <button type="button" class="btn btn-ghost btn--sm" data-bulk-clear><?= adminIcon('x') ?> Clear selection</button>
 </form>
+<?php endif; ?>
 
 <?= adminPagination($result['page'], $result['pages'], $query, $result['total'], $perPage) ?>
 <?php elseif ($hasFilters): ?>

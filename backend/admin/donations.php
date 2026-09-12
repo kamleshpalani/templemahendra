@@ -89,9 +89,11 @@ if ($str('export') === 'csv') {
     header('Content-Disposition: attachment; filename="donations-' . date('Y-m-d') . '.csv"');
     $out = fopen('php://output', 'w');
     fwrite($out, "\xEF\xBB\xBF"); // BOM so Excel reads Tamil correctly
-    fputcsv($out, ['id', 'name', 'phone', 'amount', 'purpose', 'message', 'created_at'], ',', '"', '\\');
+    // Empty escape string = strict RFC 4180 (quotes doubled, no backslash special
+    // case) so a message containing \" is not mis-parsed by Excel / pandas.
+    fputcsv($out, ['id', 'name', 'phone', 'amount', 'purpose', 'message', 'created_at'], ',', '"', '');
     while ($r = $stmt->fetch()) {
-        fputcsv($out, [$r['id'], $r['name'], $r['phone'], $r['amount'], $r['purpose'], $r['message'], $r['created_at']], ',', '"', '\\');
+        fputcsv($out, [$r['id'], $r['name'], $r['phone'], $r['amount'], $r['purpose'], $r['message'], $r['created_at']], ',', '"', '');
     }
     fclose($out);
     exit;

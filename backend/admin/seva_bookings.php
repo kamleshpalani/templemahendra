@@ -67,14 +67,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $msg === '') {
     if (isset($_POST['id'], $_POST['status'])) {
         $newStatus = in_array($_POST['status'], $statuses, true) ? $_POST['status'] : 'pending';
         $id        = (int) $_POST['id'];
-        $stmt = $db->prepare('UPDATE seva_bookings SET status = :s WHERE id = :id');
-        $stmt->execute([':s' => $newStatus, ':id' => $id]);
-        $name = $db->prepare('SELECT devotee_name FROM seva_bookings WHERE id = :id');
-        $name->execute([':id' => $id]);
-        $who = (string) $name->fetchColumn();
-        sbFlash('success', $who !== ''
-            ? "Booking #$id for $who marked " . ucfirst($newStatus) . '.'
-            : "Booking #$id not found.");
+        // Existence check first, so a stale or forged id never reports a write that never happened.
+        $look = $db->prepare('SELECT devotee_name FROM seva_bookings WHERE id = :id');
+        $look->execute([':id' => $id]);
+        $found = $look->fetch();
+        if (!$found) {
+            sbFlash('error', "Booking #$id no longer exists.");
+        } else {
+            $stmt = $db->prepare('UPDATE seva_bookings SET status = :s WHERE id = :id');
+            $stmt->execute([':s' => $newStatus, ':id' => $id]);
+            $who = trim((string) $found['devotee_name']);
+            sbFlash('success', 'Booking #' . $id . ($who !== '' ? " for $who" : '') . ' marked ' . ucfirst($newStatus) . '.');
+        }
         header('Location: ' . sbBackUrl());
         exit;
     }
@@ -153,13 +157,14 @@ if (($_GET['export'] ?? '') === 'csv') {
 }
 
 // ── Flash from the previous request (after export so a download never eats it) ─
+// Consumed only when it is actually rendered — a CSRF-guard alert must not eat a queued flash.
 if ($msg === '' && !empty($_SESSION['flash_seva_bookings'])) {
     [$fType, $fText] = $_SESSION['flash_seva_bookings'];
+    unset($_SESSION['flash_seva_bookings']);
     $msg = '<p class="alert alert--' . h($fType === 'error' ? 'error' : 'success') . '" role="' . ($fType === 'error' ? 'alert' : 'status') . '">' . h($fText) . '</p>';
 }
-unset($_SESSION['flash_seva_bookings']);
 
-// Filter feedback (also flagged on the offending field with aria-invalid)
+// Filter feedback (also flagged on the offending field with aria-invalid + aria-describedby)
 $filterNotes = [];
 if ($badFrom) $filterNotes[] = 'The “From” date was not a valid date and has been ignored.';
 if ($badTo)   $filterNotes[] = 'The “To” date was not a valid date and has been ignored.';
@@ -229,8 +234,10 @@ echo adminKpi([
     <input type="search" id="q" name="q" value="<?= h($q) ?>" placeholder="Search devotee, phone or seva…" autocomplete="off" />
   </div>
   <div class="toolbar__group">
-    <label for="from">From <input type="date" id="from" name="from" value="<?= h($from) ?>"<?= $badFrom ? ' aria-invalid="true"' : '' ?> /></label>
-    <label for="to">To <input type="date" id="to" name="to" value="<?= h($to) ?>"<?= $badTo ? ' aria-invalid="true"' : '' ?> /></label>
+    <label for="from">From <input type="date" id="from" name="from" value="<?= h($from) ?>"<?= $badFrom ? ' aria-invalid="true" aria-describedby="from-err"' : '' ?> /></label>
+    <?php if ($badFrom): ?><span class="field__hint" id="from-err">Not a valid date — ignored.</span><?php endif; ?>
+    <label for="to">To <input type="date" id="to" name="to" value="<?= h($to) ?>"<?= $badTo ? ' aria-invalid="true" aria-describedby="to-err"' : '' ?> /></label>
+    <?php if ($badTo): ?><span class="field__hint" id="to-err">Not a valid date — ignored.</span><?php endif; ?>
     <button type="submit" class="btn btn--sm"><?= adminIcon('filter') ?> Filter</button>
     <?php if ($filtersActive): ?>
       <a href="<?= SB_BASE ?>" class="btn btn-ghost btn--sm"><?= adminIcon('x') ?> Clear</a>
@@ -302,16 +309,17 @@ echo adminKpi([
         <td class="cell-date"><time datetime="<?= h(str_replace(' ', 'T', (string) $row['created_at'])) ?>"><?= adminFmtDate($row['created_at'], true) ?></time></td>
         <td><?= adminBadge(ucfirst($row['status']), adminStatusTone($row['status'])) ?></td>
         <td>
-          <form method="POST" action="<?= SB_BASE ?>">
+          <form method="POST" action="<?= SB_BASE ?>" class="cluster">
             <?= csrfField() ?>
+            <input type="hidden" name="action" value="set_status" />
             <input type="hidden" name="id" value="<?= $id ?>" />
             <label class="sr-only" for="st-<?= $id ?>">Change status for <?= h($row['devotee_name']) ?></label>
-            <select id="st-<?= $id ?>" class="inline-status" name="status" data-autosubmit>
+            <select id="st-<?= $id ?>" class="inline-status" name="status">
               <?php foreach ($statuses as $s): ?>
                 <option value="<?= $s ?>"<?= $row['status'] === $s ? ' selected' : '' ?>><?= ucfirst($s) ?></option>
               <?php endforeach; ?>
             </select>
-            <noscript><button type="submit" class="btn btn--xs">Save</button></noscript>
+            <button type="submit" class="btn btn--xs" aria-label="Save status for <?= h($row['devotee_name']) ?>"><?= adminIcon('check') ?> Save</button>
           </form>
         </td>
         <td class="cell-actions"><?= adminMenu($menu, 'Actions for booking #' . $id) ?></td>

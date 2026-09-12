@@ -21,6 +21,9 @@
 
 session_start();
 
+// One safety net for every admin page: errors are logged, never printed.
+require_once __DIR__ . '/errors.php';
+
 // Load .env.local for local development if it exists
 $_envFile = __DIR__ . '/../../.env.local';
 if (file_exists($_envFile)) {

@@ -88,7 +88,7 @@
 }
 .contact-card__link:hover,
 .contact-card__more a:hover {
-  color: var(--saffron-600);
+  color: var(--accent-ink);
 }
 .contact-card__link {
   font-size: var(--text-md);
@@ -201,7 +201,7 @@
   border-radius: 11px;
   background: var(--glass-tint-gold);
   border: 1px solid var(--glass-border);
-  color: var(--saffron-600);
+  color: var(--accent-ink);
 }
 .contact-hours dt > svg {
   width: 1.05rem;
@@ -288,7 +288,7 @@
   flex-shrink: 0;
   width: 1rem;
   height: 1rem;
-  color: var(--saffron-600);
+  color: var(--accent-ink);
 }
 
 /* ── Message form (sticky on desktop via .split__sticky) ─────────── */

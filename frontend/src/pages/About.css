@@ -116,7 +116,7 @@
 .about-nav .about-nav__chip > svg {
   width: 0.95rem;
   height: 0.95rem;
-  color: var(--saffron-600);
+  color: var(--accent-ink);
   flex-shrink: 0;
 }
 .about-nav .about-nav__chip[aria-current] > svg {
@@ -209,7 +209,7 @@
 }
 .about-deities__glyph {
   font-size: var(--text-xs);
-  color: var(--saffron-500);
+  color: var(--accent-ink);
   margin-bottom: var(--space-1);
 }
 .about-deities__ta {

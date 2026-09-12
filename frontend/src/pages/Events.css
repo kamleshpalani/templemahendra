@@ -512,7 +512,7 @@
 .events-item__time > svg {
   width: 0.95rem;
   height: 0.95rem;
-  color: var(--saffron-600);
+  color: var(--accent-ink);
 }
 
 /* ── Responsive ──────────────────────────────────────────────────── */

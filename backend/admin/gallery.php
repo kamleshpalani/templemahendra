@@ -25,7 +25,16 @@ if (isset($_SESSION['admin_flash'])) {
 
 // ── Handle POST ──────────────────────────────────────────────────────────────
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $msg = adminCsrfGuard();
+    // A multipart body larger than post_max_size reaches PHP with $_POST and
+    // $_FILES emptied, which would otherwise trip the CSRF guard and wrongly
+    // blame the admin's session. Detect it before the guard runs.
+    if (!$_POST && !$_FILES && (int) ($_SERVER['CONTENT_LENGTH'] ?? 0) > 0) {
+        $uploadFailed = true;
+        $msg = '<p class="alert alert--error" role="alert">That photo was too large for the server (limit '
+             . h((string) ini_get('post_max_size')) . '). Resize it and try again.</p>';
+    } else {
+        $msg = adminCsrfGuard();
+    }
     if ($msg === '') {
         $action = $_POST['action'] ?? '';
 
@@ -33,27 +42,40 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $caption    = sanitizeText($_POST['caption'] ?? '', 255);
             $captionVal = $caption;
             $file       = $_FILES['image'] ?? null;
+            $err        = (int) ($file['error'] ?? UPLOAD_ERR_NO_FILE);
 
-            if (!$file || $file['error'] !== UPLOAD_ERR_OK) {
-                $fieldError = 'No file uploaded or upload error.';
-            } elseif (!in_array($file['type'], ALLOWED_IMAGE_TYPES, true)) {
-                $fieldError = 'Only JPEG, PNG and WebP images are allowed.';
+            if (!$file || $err !== UPLOAD_ERR_OK) {
+                $fieldError = match ($err) {
+                    UPLOAD_ERR_INI_SIZE, UPLOAD_ERR_FORM_SIZE =>
+                        'That photo is larger than the server upload limit (' . (string) ini_get('upload_max_filesize') . ').',
+                    UPLOAD_ERR_NO_FILE  => 'Choose a photo to upload.',
+                    UPLOAD_ERR_PARTIAL  => 'The upload was interrupted — try again.',
+                    default             => 'No file uploaded or upload error.',
+                };
             } elseif ($file['size'] > UPLOAD_MAX_MB * 1024 * 1024) {
                 $fieldError = 'File exceeds ' . UPLOAD_MAX_MB . ' MB limit.';
             } else {
-                $ext      = pathinfo($file['name'], PATHINFO_EXTENSION);
-                $filename = bin2hex(random_bytes(12)) . '.' . strtolower($ext);
-                $dest     = UPLOAD_DIR . $filename;
+                // Type and stored extension come from the decoded image itself —
+                // never from $file['type'] or the attacker-supplied filename.
+                $info = @getimagesize($file['tmp_name']);
+                $kind = [IMAGETYPE_JPEG => 'jpg', IMAGETYPE_PNG => 'png', IMAGETYPE_WEBP => 'webp'][$info[2] ?? 0] ?? null;
 
-                if (move_uploaded_file($file['tmp_name'], $dest)) {
-                    $db->prepare('INSERT INTO gallery (filename, caption, is_active, created_at) VALUES (:f,:c,1,CURRENT_TIMESTAMP)')
-                       ->execute([':f' => $filename, ':c' => $caption]);
-                    $_SESSION['admin_flash'] = ['type' => 'success', 'text' => 'Image uploaded.'];
-                    header('Location: /admin/gallery.php', true, 303);
-                    exit;
+                if (!$info || $kind === null) {
+                    $fieldError = 'Only JPEG, PNG and WebP images are allowed.';
+                } else {
+                    $filename = bin2hex(random_bytes(12)) . '.' . $kind;
+                    $dest     = UPLOAD_DIR . $filename;
+
+                    if (move_uploaded_file($file['tmp_name'], $dest)) {
+                        $db->prepare('INSERT INTO gallery (filename, caption, is_active, created_at) VALUES (:f,:c,1,CURRENT_TIMESTAMP)')
+                           ->execute([':f' => $filename, ':c' => $caption]);
+                        $_SESSION['admin_flash'] = ['type' => 'success', 'text' => 'Image uploaded.'];
+                        header('Location: /admin/gallery.php', true, 303);
+                        exit;
+                    }
+                    $uploadFailed = true;
+                    $msg = '<p class="alert alert--error" role="alert">Failed to move uploaded file.</p>';
                 }
-                $uploadFailed = true;
-                $msg = '<p class="alert alert--error" role="alert">Failed to move uploaded file.</p>';
             }
             if ($fieldError !== '') {
                 $uploadFailed = true;
@@ -95,13 +117,14 @@ echo adminPageIntro(
       <input type="hidden" name="action" value="upload" />
 
       <div class="field<?= $fieldError !== '' ? ' field--error' : '' ?>">
-        <label for="image" class="field__label">Photo <span class="field__required" aria-hidden="true">*</span></label>
-        <div class="dropzone" role="group" aria-labelledby="dropzone-title" aria-describedby="dropzone-hint">
+        <span class="field__label" id="image-label">Photo <span class="field__required" aria-hidden="true">*</span></span>
+        <div class="dropzone" role="group" aria-labelledby="image-label dropzone-title" aria-describedby="dropzone-hint">
           <span class="dropzone__icon" aria-hidden="true"><?= adminIcon('image') ?></span>
           <span class="dropzone__title" id="dropzone-title">Drag &amp; drop a photo, or click to browse</span>
           <span class="field__hint" id="dropzone-hint">JPEG, PNG or WebP · max <?= (int) UPLOAD_MAX_MB ?> MB</span>
           <span class="dropzone__file" aria-live="polite"></span>
           <input type="file" id="image" name="image" accept="image/jpeg,image/png,image/webp" required aria-required="true"
+                 aria-labelledby="image-label"
                  aria-describedby="dropzone-hint<?= $fieldError !== '' ? ' image-error' : '' ?>"<?= $fieldError !== '' ? ' aria-invalid="true"' : '' ?> />
         </div>
         <?php if ($fieldError !== ''): ?>

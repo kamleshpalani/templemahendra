@@ -1,0 +1,35 @@
+# public_html/uploads/.htaccess
+# Uploads are visitor-supplied files. They are served, never executed.
+#
+# The admin upload handler (backend/admin/gallery.php) already verifies the
+# image by decoding it with getimagesize() and names the stored file itself,
+# so no attacker-chosen extension can reach this folder. This file is the
+# second layer: even if a script ever landed here, Apache must not run it.
+
+Options -Indexes -ExecCGI
+
+# Turn the PHP handler off for this folder (mod_php)
+<IfModule mod_php.c>
+  php_flag engine off
+</IfModule>
+<IfModule mod_php7.c>
+  php_flag engine off
+</IfModule>
+<IfModule mod_php5.c>
+  php_flag engine off
+</IfModule>
+
+# Hostinger runs PHP via FastCGI/LSAPI, where php_flag is not available:
+# strip the handlers instead, then deny the extensions outright.
+RemoveHandler .php .phar .phtml .php3 .php4 .php5 .php7 .php8 .phps .pl .py .cgi .shtml
+RemoveType    .php .phar .phtml .php3 .php4 .php5 .php7 .php8 .phps .pl .py .cgi .shtml
+
+<FilesMatch "\.(php|phar|phtml|php[0-9]|phps|pl|py|cgi|shtml|htaccess)$">
+  <IfModule mod_authz_core.c>
+    Require all denied
+  </IfModule>
+  <IfModule !mod_authz_core.c>
+    Order Allow,Deny
+    Deny from all
+  </IfModule>
+</FilesMatch>

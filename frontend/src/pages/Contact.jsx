@@ -142,7 +142,7 @@ export default function Contact() {
         }
       />
 
-      <section className="section contact">
+      <section className="section">
         <div className="container split contact-split">
           {/* ── Visit us ─────────────────────────────────────────── */}
           <div className="contact-visit">
@@ -196,7 +196,7 @@ export default function Contact() {
                             <span className="contact-tel__num">{formatPhone(c.phone)}</span>
                             <span className="contact-tel__meta">
                               <Badge tone="gold">{t(c.role.ta, c.role.en)}</Badge>
-                              <span className="contact-tel__name">{t(c.name.ta, c.name.en)}</span>
+                              <span>{t(c.name.ta, c.name.en)}</span>
                             </span>
                           </span>
                           <span className="contact-tel__cta" aria-hidden="true">

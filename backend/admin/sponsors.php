@@ -57,7 +57,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $action = $post('action');
 
         if ($action === 'save') {
-            $name      = sanitizeText($post('name'));
+            $name      = sanitizeText($post('name'), 200);      // sponsors.name is VARCHAR(200)
             $phone     = sanitizeText($post('phone'), 30);
             $note      = sanitizeText($post('note'), 1000);
             $pooja_id  = ((int) ($_POST['pooja_id'] ?? 0)) ?: null;
@@ -65,9 +65,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $id        = (int) ($_POST['id'] ?? 0);
 
             if ($name === '') $errors['name'] = 'Sponsor name is required.';
+            // The pooja may have been deleted after the select was rendered — check it
+            // before the write so fk_sponsor_pooja cannot raise an uncaught PDOException.
+            if ($pooja_id !== null) {
+                $chk = $db->prepare('SELECT 1 FROM poojas WHERE id = :id');
+                $chk->execute([':id' => $pooja_id]);
+                if (!$chk->fetchColumn()) $errors['pooja_id'] = 'That pooja no longer exists — pick another or choose "None".';
+            }
 
             if ($errors) {
-                $msg = $alert('error', 'Sponsor name is required.');
+                $msg = $alert('error', $errors['name'] ?? $errors['pooja_id']);
                 $old = ['id' => $id, 'name' => $name, 'phone' => $phone, 'note' => $note, 'pooja_id' => $pooja_id, 'is_active' => $is_active];
             } elseif ($id > 0) {
                 $db->prepare('UPDATE sponsors SET name=:n,phone=:ph,note=:nt,pooja_id=:pid,is_active=:a WHERE id=:id')
@@ -81,8 +88,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         } elseif ($action === 'delete') {
             $id = (int) ($_POST['id'] ?? 0);
             if ($id > 0) {
-                $db->prepare('DELETE FROM sponsors WHERE id=:id')->execute([':id' => $id]);
-                $redirect($alert('success', 'Sponsor deleted.'));
+                $stmt = $db->prepare('DELETE FROM sponsors WHERE id=:id');
+                $stmt->execute([':id' => $id]);
+                $redirect($stmt->rowCount()
+                    ? $alert('success', 'Sponsor deleted.')
+                    : $alert('warning', 'That sponsor no longer exists.'));
             }
         } elseif ($action === 'toggle') {
             $id = (int) ($_POST['id'] ?? 0);
@@ -93,6 +103,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $state = $stmt->fetchColumn();
                 if ($state !== false) {
                     $redirect($alert('success', (int) $state ? 'Sponsor is now active.' : 'Sponsor hidden.'));
+                } else {
+                    $redirect($alert('warning', 'That sponsor no longer exists.'));
                 }
             }
         }
@@ -201,12 +213,13 @@ echo adminKpi([
 
       <label for="s-pooja">
         Linked pooja
-        <select id="s-pooja" name="pooja_id">
+        <select id="s-pooja" name="pooja_id"<?= $fieldAttrs('pooja_id') ?>>
           <option value="">— None —</option>
           <?php foreach ($poojas as $p): ?>
             <option value="<?= (int) $p['id'] ?>"<?= $selectedPooja === (int) $p['id'] ? ' selected' : '' ?>><?= h($p['name_ta'] . ' (' . $p['name_en'] . ') · ' . adminFmtDate($p['pooja_date'])) ?></option>
           <?php endforeach; ?>
         </select>
+        <?= $fieldError('pooja_id') ?>
         <span class="field__hint">Optional. Only active poojas are listed (latest 50).</span>
       </label>
 

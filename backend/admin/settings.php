@@ -78,9 +78,15 @@ foreach (array_keys($sections) as $key) {
     if (($map[$key]['val'] ?? '1') === '1') $visibleCount++;
 }
 
-// Account details from the session
-$user    = (string) ($_SESSION['admin_user'] ?? 'admin');
-$loginAt = (int) ($_SESSION['admin_login_at'] ?? 0);
+// Account details of the signed-in administrator
+$me        = currentAdmin() ?? [];
+$user      = (string) ($me['username'] ?? 'admin');
+$name      = trim((string) ($me['display_name'] ?? '')) !== '' ? (string) $me['display_name'] : $user;
+$email     = trim((string) ($me['email'] ?? ''));
+$role      = (string) ($me['role'] ?? adminRole());
+$roleTone  = ['owner' => 'gold', 'editor' => 'info', 'viewer' => 'muted'][$role] ?? 'muted';
+$isEnvUser = !empty($me['is_env']);
+$loginAt   = (int) ($_SESSION['admin_login_at'] ?? 0);
 
 // Public pages (React routes) for the quick-open card
 $publicPages = [
@@ -134,12 +140,18 @@ echo adminPageIntro(
     <section class="card card--static" aria-labelledby="account-title">
       <div class="card__head">
         <h2 id="account-title"><?= adminIcon('user', 'ico--sm') ?> Account</h2>
-        <?= adminBadge('Administrator', 'gold') ?>
+        <?= adminBadge($isEnvUser ? 'Environment account' : 'Committee account', $isEnvUser ? 'info' : 'muted') ?>
       </div>
       <div class="card__body">
         <dl class="dl-grid">
+          <dt>Name</dt>
+          <dd><?= h($name) ?></dd>
           <dt>Username</dt>
           <dd><?= h($user) ?></dd>
+          <?php if ($email !== ''): ?>
+            <dt>Email</dt>
+            <dd><a href="mailto:<?= h($email) ?>"><?= h($email) ?></a></dd>
+          <?php endif; ?>
           <dt>Signed in</dt>
           <dd>
             <?php if ($loginAt > 0): ?>
@@ -149,16 +161,26 @@ echo adminPageIntro(
             <?php endif; ?>
           </dd>
           <dt>Role</dt>
-          <dd>Committee administrator</dd>
+          <dd><?= adminBadge(ucfirst($role), $roleTone) ?></dd>
         </dl>
         <div class="callout mt-4">
           <?= adminIcon('key') ?>
-          <p>Passwords are not stored in the database. To change it, set the <code>ADMIN_PASS_HASH</code> environment
-             variable in the hosting panel to a new bcrypt hash — generate one with
-             <code>php -r "echo password_hash('new-password', PASSWORD_BCRYPT);"</code> — then sign in again with the new password.</p>
+          <?php if ($isEnvUser): ?>
+            <p>You are signed in with the environment account, whose password is not stored in the database. To change
+               it, set the <code>ADMIN_PASS_HASH</code> environment variable in the hosting panel to a new bcrypt hash —
+               generate one with <code>php -r "echo password_hash('new-password', PASSWORD_BCRYPT);"</code> — then sign
+               in again with the new password.</p>
+          <?php else: ?>
+            <p>Change your password, name and email on your profile page. Your password is stored as a bcrypt hash in
+               the <code>admin_users</code> table — there is nothing to edit in the hosting panel.</p>
+          <?php endif; ?>
         </div>
       </div>
       <div class="card__foot">
+        <a href="/admin/profile.php" class="btn btn--sm"><?= adminIcon('user') ?> My profile</a>
+        <?php if (adminCan('users.manage')): ?>
+          <a href="/admin/users.php" class="btn btn--sm"><?= adminIcon('users') ?> Committee accounts</a>
+        <?php endif; ?>
         <a href="/admin/logout.php" class="btn btn-danger btn--sm"><?= adminIcon('logout') ?> Sign out</a>
       </div>
     </section>

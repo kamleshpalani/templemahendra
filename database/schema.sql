@@ -79,7 +79,8 @@ CREATE TABLE IF NOT EXISTS `contact_messages` (
   `phone`      VARCHAR(20)     NOT NULL,
   `message`    TEXT            NOT NULL,
   `created_at` DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  PRIMARY KEY (`id`)
+  PRIMARY KEY (`id`),
+  KEY `idx_created` (`created_at`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ── Seva Bookings ─────────────────────────────────────────

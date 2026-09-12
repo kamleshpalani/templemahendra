@@ -115,7 +115,7 @@
   transition: color var(--transition), border-color var(--transition);
 }
 .donations__more-link:hover {
-  color: var(--saffron-600);
+  color: var(--accent-ink);
   border-bottom-color: var(--saffron-400);
 }
 
@@ -211,7 +211,7 @@
 .donations-next__step-title > svg {
   width: 0.95em;
   height: 0.95em;
-  color: var(--saffron-600);
+  color: var(--accent-ink);
   flex-shrink: 0;
 }
 .donations-next__step-desc {

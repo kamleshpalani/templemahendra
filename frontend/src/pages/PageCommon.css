@@ -75,8 +75,8 @@
 }
 .page-prose a:not(.btn):not(.chip):hover,
 .page-prose a:not(.btn):not(.chip):focus-visible {
-  color: var(--saffron-600);
-  text-decoration-color: var(--saffron);
+  color: var(--accent-ink);
+  text-decoration-color: var(--accent-ink);
 }
 
 /* ── Timings table (glass) ───────────────────────────────────────── */
