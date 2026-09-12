@@ -43,6 +43,17 @@ function sanitizeText(string $value, int $maxLen = 500): string
     return mb_substr(strip_tags(trim($value)), 0, $maxLen);
 }
 
+/**
+ * True when $value is a real calendar date in YYYY-MM-DD form.
+ * A regex alone is not enough: "9999-99-99" matches the shape but MySQL
+ * rejects it, which would surface as an uncaught PDOException.
+ */
+function isValidDate(string $value): bool
+{
+    if (!preg_match('/^(\d{4})-(\d{2})-(\d{2})$/', $value, $m)) return false;
+    return checkdate((int) $m[2], (int) $m[3], (int) $m[1]);
+}
+
 function intParam(string $key, int $default = 0): int
 {
     return isset($_GET[$key]) ? (int) $_GET[$key] : $default;

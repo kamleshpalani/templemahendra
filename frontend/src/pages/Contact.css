@@ -1,125 +1,401 @@
-/* ── Contact page ───────────────────────────────────────── */
-.contact-layout {
-  display: grid;
-  grid-template-columns: 1fr 1.1fr;
-  gap: var(--space-12);
-  align-items: flex-start;
+/* ══════════════════════════════════════════════════════════════════
+   Contact.css — Sacred Light v3 · Contact page
+   Composes the system primitives (.page-hero via <PageHero>, .split,
+   .card, .btn, .field, .alert, .badge, .section--alt). Only page-level
+   layout and the few Contact-specific blocks live here. Tokens only;
+   --moon-* is used solely for the Pournami (full-moon) note.
+   ══════════════════════════════════════════════════════════════════ */
+
+/* ── Split: info column a touch wider than the sticky form ───────── */
+.contact-split {
+  grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr);
+}
+.contact-visit,
+.contact-form-col {
+  min-width: 0;
+}
+.contact-visit .section-head {
+  margin-bottom: var(--space-6);
+}
+.contact-visit__stack {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
 }
 
-.contact-details h2 {
-  font-family: var(--font-tamil);
-  font-size: var(--text-xl);
-  color: var(--maroon);
-  margin: var(--space-2) 0 var(--space-4);
+/* ── Info card: icon tile + body ─────────────────────────────────── */
+.contact-card {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-4);
+  padding: var(--space-5);
 }
-.contact-details h3 {
+.contact-card__body {
+  flex: 1;
+  min-width: 0;
+}
+/* (0,2,0) so the body-font label beats the :lang(ta) h3 family rule */
+.contact-card .contact-card__title {
+  font-family: var(--font-body);
   font-size: var(--text-xs);
   font-weight: var(--weight-bold);
-  color: var(--text-3);
-  margin: var(--space-6) 0 var(--space-2);
-  text-transform: uppercase;
   letter-spacing: var(--tracking-caps);
+  text-transform: uppercase;
+  color: var(--text-3);
+  line-height: 1.4;
+  margin: 0.4rem 0 var(--space-3);
 }
-.contact-details address {
-  font-style: normal;
-  color: var(--text-2);
-  font-size: var(--text-base);
-  line-height: 1.85;
-  padding: var(--space-4) var(--space-5);
-  border-radius: var(--radius);
-  background: var(--glass);
-  border: 1px solid var(--glass-border);
-  backdrop-filter: blur(var(--blur-sm));
-}
-.contact-details address p:first-child {
-  font-family: var(--font-tamil);
-  font-weight: var(--weight-bold);
-  color: var(--maroon);
-}
-.contact-details p {
-  font-size: var(--text-base);
-  color: var(--text-2);
-}
-.contact-details a {
-  color: var(--maroon);
-  font-weight: var(--weight-semibold);
-  transition: color var(--transition);
-}
-.contact-details a:hover {
-  color: var(--saffron-dark);
+.contact-card__hint {
+  margin-top: var(--space-2);
+  font-size: var(--text-xs);
+  color: var(--text-muted);
 }
 
-.contact-details__tel-list {
+/* Address */
+.contact-address {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  font-style: normal;
+  font-size: var(--text-base);
+  line-height: var(--leading-normal);
+  color: var(--text-2);
+}
+.contact-address__name {
+  font-family: var(--font-display);
+  font-size: var(--text-md);
+  font-weight: var(--weight-bold);
+  line-height: var(--leading-snug);
+  color: var(--maroon-600);
+  margin-bottom: var(--space-1);
+  overflow-wrap: anywhere;
+}
+:lang(ta) .contact-address__name {
+  font-family: var(--font-tamil);
+}
+
+/* Plain links inside cards (email, "full committee below") */
+.contact-card__link,
+.contact-card__more a {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  min-height: 44px;
+  color: var(--maroon-600);
+  font-weight: var(--weight-semibold);
+  overflow-wrap: anywhere;
+  transition: color var(--transition);
+}
+.contact-card__link:hover,
+.contact-card__more a:hover {
+  color: var(--accent-ink);
+}
+.contact-card__link {
+  font-size: var(--text-md);
+}
+.contact-card__link > svg {
+  flex-shrink: 0;
+  width: 1em;
+  height: 1em;
+}
+.contact-card__more {
+  margin-top: var(--space-1);
+  font-size: var(--text-sm);
+}
+
+/* Tap-to-call rows */
+.contact-tel {
   list-style: none;
   display: flex;
   flex-direction: column;
-  gap: 0.5rem;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
 }
-.contact-details__tel-list li {
+.contact-tel__row {
   display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  gap: 0.35rem 0.6rem;
-  font-size: var(--text-base);
-  line-height: 1.6;
+  align-items: center;
+  gap: var(--space-3);
+  min-height: 60px;
+  padding: 0.6rem 0.75rem 0.6rem 0.9rem;
+  border-radius: var(--radius);
+  background: var(--glass-1);
+  border: 1px solid var(--glass-border);
+  box-shadow: var(--inset-highlight);
+  color: var(--text-2);
+  transition:
+    background var(--transition),
+    border-color var(--transition),
+    box-shadow var(--transition),
+    transform var(--transition);
 }
-.contact-details a.contact-details__tel {
+.contact-tel__row:hover {
+  background: var(--glass-3);
+  border-color: var(--glass-border-strong);
+  box-shadow: var(--shadow-sm), var(--inset-highlight);
+  transform: translateX(3px);
+}
+.contact-tel__body {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+.contact-tel__num {
   font-size: var(--text-md);
   font-weight: var(--weight-bold);
+  color: var(--maroon-600);
   letter-spacing: 0.02em;
   font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
-.contact-details__tel-role {
-  color: var(--text-3);
-  font-size: var(--text-sm);
-}
-.contact-details__more {
-  margin-top: var(--space-2);
-  font-size: var(--text-sm);
-}
-.contact-details__observance {
-  margin-top: var(--space-2);
+.contact-tel__meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.3rem 0.5rem;
   font-size: var(--text-sm);
   color: var(--text-3);
+}
+.contact-tel__cta {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  flex-shrink: 0;
+  border-radius: 12px;
+  background: var(--glass-tint-maroon);
+  border: 1px solid var(--glass-border);
+  color: var(--maroon-600);
+  transition:
+    background var(--transition),
+    color var(--transition),
+    border-color var(--transition),
+    transform var(--transition);
+}
+.contact-tel__cta > svg {
+  width: 1.05rem;
+  height: 1.05rem;
+}
+.contact-tel__row:hover .contact-tel__cta {
+  background: linear-gradient(135deg, var(--maroon-500), var(--maroon-700));
+  border-color: transparent;
+  color: var(--text-on-dark);
+  transform: scale(1.06);
 }
 
-.map-embed {
-  margin-top: var(--space-6);
-  border-radius: var(--radius-lg);
-  overflow: hidden;
-  border: 1px solid var(--glass-border);
-  box-shadow: var(--shadow);
-  background: var(--glass);
+/* Timings — table-free definition list (sunrise / sunset tiles) */
+.contact-hours {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: var(--space-2) var(--space-3);
+  margin: 0;
 }
-.map-embed iframe {
+.contact-hours dt {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 11px;
+  background: var(--glass-tint-gold);
+  border: 1px solid var(--glass-border);
+  color: var(--accent-ink);
+}
+.contact-hours dt > svg {
+  width: 1.05rem;
+  height: 1.05rem;
+}
+.contact-hours dd {
+  margin: 0;
+  font-size: var(--text-base);
+  font-weight: var(--weight-semibold);
+  color: var(--text-1);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Pournami note — lunar content, so the moon accent is appropriate here */
+.contact-observance {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+  margin-top: var(--space-4);
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius);
+  background: color-mix(in srgb, var(--moon-100) 70%, transparent);
+  border: 1px solid color-mix(in srgb, var(--moon-300) 55%, transparent);
+  color: var(--moon-700);
+  font-size: var(--text-sm);
+  line-height: var(--leading-normal);
+}
+.contact-observance > svg {
+  flex-shrink: 0;
+  width: 1.1rem;
+  height: 1.1rem;
+  margin-top: 0.2rem;
+  color: var(--moon-500);
+}
+.contact-observance a {
+  font-weight: var(--weight-bold);
+  color: var(--moon-600);
+  white-space: nowrap;
+  text-decoration: underline;
+  text-decoration-thickness: 2px;
+  text-underline-offset: 3px;
+  text-decoration-color: color-mix(in srgb, var(--moon-500) 35%, transparent);
+  transition: text-decoration-color var(--transition);
+}
+.contact-observance a:hover {
+  text-decoration-color: currentColor;
+}
+
+/* ── Map card ────────────────────────────────────────────────────── */
+.contact-map {
+  padding: 0;
+}
+.contact-map__frame {
   display: block;
   width: 100%;
+  height: 260px;
+  border: 0;
   filter: saturate(0.9);
   transition: filter var(--transition);
 }
-.map-embed:hover iframe {
+.contact-map:hover .contact-map__frame {
   filter: saturate(1.05);
 }
+.contact-map__foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border-top: 1px solid var(--glass-border);
+  background: var(--glass-tint-gold);
+}
+.contact-map__addr {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  flex: 1 1 220px;
+  min-width: 0;
+  font-size: var(--text-sm);
+  color: var(--text-3);
+}
+.contact-map__addr > svg {
+  flex-shrink: 0;
+  width: 1rem;
+  height: 1rem;
+  color: var(--accent-ink);
+}
 
+/* ── Message form (sticky on desktop via .split__sticky) ─────────── */
 .contact-form {
   padding: var(--space-8);
-  position: sticky;
-  top: calc(var(--header-h) + var(--space-6));
 }
-.contact-form h3 {
-  font-family: var(--font-tamil);
-  font-size: var(--text-lg);
-  color: var(--maroon);
-  margin: var(--space-2) 0 var(--space-6);
+.contact-form__head {
+  margin-bottom: var(--space-6);
+}
+.contact-form__title {
+  font-size: var(--text-xl);
+  color: var(--maroon-600);
+  margin: var(--space-3) 0 var(--space-2);
+}
+.contact-form__lead {
+  font-size: var(--text-sm);
+  line-height: var(--leading-normal);
+  color: var(--text-3);
+  max-width: 48ch;
+}
+.contact-form__alt {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 0.25rem var(--space-2);
+  margin-top: var(--space-5);
+  padding-top: var(--space-4);
+  border-top: 1px dashed var(--border);
+  font-size: var(--text-sm);
+  color: var(--text-3);
+}
+.contact-form__alt .btn {
+  font-variant-numeric: tabular-nums;
 }
 
-@media (max-width: 820px) {
-  .contact-layout {
-    grid-template-columns: 1fr;
+/* Height guard: the pinned card (head + 3 fields + lg button + alt-call
+   row) is ~720-840px tall. Below the sticky offset of
+   var(--header-h) + var(--space-6) it only fits on viewports taller than
+   ~940px; on shorter screens (1366x768 laptops, 13-inch displays) a stuck
+   column would clip the Send button below the fold until the whole left
+   column had scrolled past. Fall back to normal flow there, exactly as
+   .split__sticky already does at ≤820px width. */
+@media (max-height: 940px) {
+  /* (0,2,0) so it beats .split__sticky regardless of stylesheet order */
+  .contact-split .contact-form-col {
+    position: static;
+  }
+}
+
+/* ── Committee band ──────────────────────────────────────────────── */
+.contact-committee .section-cta {
+  margin-top: var(--space-8);
+}
+
+/* ── Responsive (1024 · 820 · 640 · 480) ─────────────────────────── */
+@media (max-width: 1024px) {
+  .contact-split {
     gap: var(--space-8);
   }
   .contact-form {
-    position: static;
     padding: var(--space-6);
+  }
+}
+@media (max-width: 820px) {
+  .contact-split {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+@media (max-width: 640px) {
+  .contact-card {
+    gap: var(--space-3);
+    padding: var(--space-4);
+  }
+  .contact-card .card__icon {
+    width: 44px;
+    height: 44px;
+    border-radius: 14px;
+  }
+  .contact-card .card__icon > svg {
+    width: 1.2rem;
+    height: 1.2rem;
+  }
+  .contact-form {
+    padding: var(--space-5) var(--space-4);
+  }
+  .contact-map__frame {
+    height: 220px;
+  }
+}
+@media (max-width: 480px) {
+  .contact-hero__btn {
+    flex: 1 1 auto;
+  }
+  .contact-card {
+    flex-direction: column;
+  }
+  .contact-card .contact-card__title {
+    margin-top: 0;
+  }
+  .contact-tel__row {
+    padding-inline: 0.75rem;
+  }
+  .contact-tel__num {
+    font-size: var(--text-base);
+  }
+  .contact-map__foot .btn {
+    width: 100%;
   }
 }

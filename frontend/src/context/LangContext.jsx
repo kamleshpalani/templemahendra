@@ -1,9 +1,15 @@
-import { createContext, useContext, useState } from "react";
+import { createContext, useContext, useEffect, useState } from "react";
 
 const LangContext = createContext();
 
 export function LangProvider({ children }) {
   const [lang, setLang] = useState("ta"); // 'ta' = Tamil, 'en' = English
+
+  // Keep <html lang> in step with the toggle so screen readers switch voice
+  // for the whole document, not just components that set lang themselves.
+  useEffect(() => {
+    document.documentElement.lang = lang;
+  }, [lang]);
 
   return (
     <LangContext.Provider value={{ lang, setLang }}>

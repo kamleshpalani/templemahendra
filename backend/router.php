@@ -33,5 +33,17 @@ if (file_exists($file) && !is_dir($file)) {
     return false;
 }
 
+// Dev convenience: serve public frontend assets (logo.svg, favicon.svg, icons/)
+// that live in public_html/ on Hostinger but in frontend/public/ locally.
+$publicAsset = realpath(__DIR__ . '/../frontend/public' . $uri);
+$publicRoot  = realpath(__DIR__ . '/../frontend/public');
+if ($publicAsset && $publicRoot && str_starts_with($publicAsset, $publicRoot) && is_file($publicAsset)) {
+    $types = ['svg' => 'image/svg+xml', 'png' => 'image/png', 'jpg' => 'image/jpeg', 'jpeg' => 'image/jpeg', 'webp' => 'image/webp', 'ico' => 'image/x-icon', 'webmanifest' => 'application/manifest+json', 'json' => 'application/json'];
+    $ext = strtolower(pathinfo($publicAsset, PATHINFO_EXTENSION));
+    header('Content-Type: ' . ($types[$ext] ?? 'application/octet-stream'));
+    readfile($publicAsset);
+    return true;
+}
+
 http_response_code(404);
 echo json_encode(['error' => 'Not found']);

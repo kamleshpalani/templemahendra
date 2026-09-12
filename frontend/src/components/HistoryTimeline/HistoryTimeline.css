@@ -1,196 +1,176 @@
-/* ══════════════════════════════════════════════════════════
-   HistoryTimeline.css — About-page history prose + milestone
-   timeline. Renders inside .page-prose; narrative paragraphs
-   inherit .page-prose p (margin/colour/line-height) untouched.
+/* ══════════════════════════════════════════════════════════════════
+   HistoryTimeline.css — About-page history prose + milestone timeline.
+   Renders inside .page-prose; narrative paragraphs inherit .page-prose p
+   (margin / colour / line-height) untouched.
 
-   NOTE: .page-prose p has specificity (0,1,1). Every rule here
-   that must beat it on a <p> is scoped as `.history .x` or
+   NOTE: .page-prose p / h3 have specificity (0,1,1). Every rule here that
+   must beat them on a <p> or <h3> is scoped as `.history .x` or
    `.timeline .x` (0,2,0) on purpose — do not "simplify" them.
-   ══════════════════════════════════════════════════════════ */
+   Tokens only — no raw colours. Status colour is always paired with a
+   text badge, never colour alone.
+   ══════════════════════════════════════════════════════════════════ */
 
 .history {
   /* Geometry shared by the rail and the marker dots */
-  --timeline-indent: 2.25rem; /* ol padding-left */
-  --timeline-rail-x: 0.6rem; /* rail left edge inside the ol */
-  --timeline-rail-w: 3px;
-  --timeline-dot: 12px;
+  --tl-indent: 2.75rem; /* ol padding-left */
+  --tl-rail-x: 0.8rem; /* rail left edge inside the ol */
+  --tl-rail-w: 2px;
+  --tl-dot: 14px;
   min-width: 0;
 }
 
-/* Keyboard affordance for any link that lands inside the prose */
-.history a:focus-visible {
-  outline: 3px solid rgba(249, 115, 22, 0.45);
-  outline-offset: 2px;
-}
-
-/* ── Prose ───────────────────────────────────────────────── */
+/* ── Prose ───────────────────────────────────────────────────────── */
 .history .history__salutation {
+  font-family: var(--font-display);
   font-style: italic;
-  color: var(--text-3);
+  font-size: var(--text-lg);
+  color: var(--maroon-600);
 }
 
-/* ── Timeline rail ───────────────────────────────────────── */
+/* ── Timeline rail ───────────────────────────────────────────────── */
 .timeline {
   position: relative;
   list-style: none;
-  margin: 0.5rem 0 0;
-  padding-left: var(--timeline-indent);
+  margin: var(--space-6) 0 0;
+  padding: 0 0 0 var(--tl-indent);
+  display: grid;
+  gap: var(--space-4);
 }
 .timeline::before {
   content: "";
   position: absolute;
-  left: var(--timeline-rail-x);
-  top: 0.4rem;
-  bottom: 0.4rem;
-  width: var(--timeline-rail-w);
-  background: linear-gradient(180deg, var(--saffron), var(--gold-light));
+  left: var(--tl-rail-x);
+  top: var(--space-4);
+  bottom: var(--space-4);
+  width: var(--tl-rail-w);
   border-radius: 2px;
+  background: linear-gradient(180deg, var(--saffron) 0%, var(--gold-300) 60%, color-mix(in srgb, var(--gold-300) 30%, transparent) 100%);
 }
 
-/* ── Item + marker dot ───────────────────────────────────── */
+/* ── Item + marker dot ───────────────────────────────────────────── */
 .timeline__item {
   position: relative;
   min-width: 0;
 }
-/* Dot centred on the rail: rail centre minus half the dot, pulled back
-   by the ol indent because the li box starts after the padding. */
+/* Dot centred on the rail: rail centre minus half the dot, pulled back by
+   the ol indent because the li box starts after the padding. */
 .timeline__item::before {
   content: "";
   position: absolute;
-  top: 1.5rem;
-  left: calc(
-    var(--timeline-rail-x) + var(--timeline-rail-w) / 2 - var(--timeline-dot) /
-      2 - var(--timeline-indent)
-  );
-  width: var(--timeline-dot);
-  height: var(--timeline-dot);
+  top: var(--space-6);
+  left: calc(var(--tl-rail-x) + var(--tl-rail-w) / 2 - var(--tl-dot) / 2 - var(--tl-indent));
+  width: var(--tl-dot);
+  height: var(--tl-dot);
   border-radius: 50%;
-  background: var(--maroon);
+  background: var(--maroon-500);
   border: 3px solid var(--bg-root);
-  box-shadow: 0 0 0 2px var(--gold-light);
+  box-shadow: 0 0 0 2px var(--gold-300), var(--glow-saffron);
   z-index: 1;
 }
-/* Colour is paired with the status pill text — never colour alone */
 .timeline__item--in-progress::before {
-  background: #16a34a;
+  background: var(--sage-500);
+  box-shadow: 0 0 0 2px var(--sage-300);
 }
 .timeline__item--planned::before {
-  background: #ea580c;
+  background: var(--bg-root);
+  border-color: var(--warning);
+  border-style: dashed;
+  border-width: 2px;
   box-shadow: none;
-  outline: 2px dashed #ea580c;
-  outline-offset: 1px;
 }
 
-/* ── Card ────────────────────────────────────────────────── */
+/* ── Card ────────────────────────────────────────────────────────── */
 .timeline__card {
-  padding: 1.1rem 1.3rem;
-  margin-bottom: 0.9rem;
+  padding: var(--space-5) var(--space-6);
   min-width: 0;
 }
-.timeline__item:last-child .timeline__card {
-  margin-bottom: 0;
-}
-/* Not interactive — neutralise the global .card hover lift/glow */
-.timeline .timeline__card--static,
-.timeline .timeline__card--static:hover {
-  transform: none;
-  border-color: rgba(153, 27, 27, 0.1);
-  box-shadow: var(--shadow-sm);
+.timeline__item--planned .timeline__card {
+  border-style: dashed;
+  border-color: var(--warning-border);
+  background: var(--glass-1);
 }
 
-/* ── Head row: year + pills ──────────────────────────────── */
+/* ── Head row: year + badges ─────────────────────────────────────── */
 .timeline__head {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 0.4rem 0.6rem;
-  margin-bottom: 0.4rem;
+  gap: var(--space-2) var(--space-3);
+  margin-bottom: var(--space-2);
 }
 .timeline .timeline__year {
   margin: 0;
-  font-family: var(--font-tamil);
-  font-size: 1.15rem;
-  font-weight: 800;
-  line-height: 1.3;
-  color: var(--maroon);
+  max-width: none;
+  font-family: var(--font-display);
+  font-size: var(--text-lg);
+  font-weight: var(--weight-bold);
+  line-height: var(--leading-snug);
+  color: var(--maroon-600);
+  letter-spacing: var(--tracking-tight);
+  font-variant-numeric: tabular-nums;
   overflow-wrap: anywhere;
+}
+:lang(ta) .timeline .timeline__year {
+  font-family: var(--font-tamil);
+  letter-spacing: 0;
 }
 
-/* Pill — mirrors .hw-badge */
-.timeline__pill {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.3rem;
-  padding: 0.2rem 0.65rem;
-  border-radius: 20px;
-  font-size: 0.72rem;
-  font-weight: 700;
-  line-height: 1.4;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
+/* Badges wrap on narrow screens; the Tamil-calendar date is a value, not a
+   category label, so it keeps natural case. */
+.timeline .timeline__pill {
   max-width: 100%;
+  white-space: normal;
   overflow-wrap: anywhere;
+  line-height: 1.45;
 }
-/* Amber — the Tamil-calendar date. It is a value, not a category label,
-   so it keeps its natural case and wraps on narrow screens. */
-.timeline__pill--tamil-date {
-  background: #fde68a;
-  color: #78350f;
-  font-size: 0.78rem;
-  text-transform: none;
+.timeline .timeline__pill--tamil-date {
+  font-weight: var(--weight-semibold);
   letter-spacing: 0.01em;
 }
-/* Green — in progress */
-.timeline__pill--in-progress {
-  background: #bbf7d0;
-  color: #14532d;
-}
-/* Orange — planned */
-.timeline__pill--planned {
-  background: #fed7aa;
-  color: #9a3412;
+.timeline .timeline__pill--in-progress,
+.timeline .timeline__pill--planned {
+  text-transform: uppercase;
+  font-size: var(--text-2xs);
 }
 
-/* ── Title + description ─────────────────────────────────── */
+/* ── Title + description ─────────────────────────────────────────── */
 .timeline .timeline__title {
-  margin: 0 0 0.3rem;
-  font-family: var(--font-tamil);
-  font-size: 1.05rem;
-  font-weight: 700;
-  line-height: 1.4;
+  margin: 0 0 var(--space-2);
+  font-size: var(--text-md);
+  line-height: var(--leading-snug);
   color: var(--text-1);
   overflow-wrap: anywhere;
 }
 .timeline .timeline__desc {
   margin: 0;
-  font-size: 0.9rem;
-  line-height: 1.7;
+  font-size: var(--text-base);
+  line-height: var(--leading-normal);
   color: var(--text-2);
   overflow-wrap: anywhere;
 }
 
-/* ── Motion ──────────────────────────────────────────────── */
-@media (prefers-reduced-motion: reduce) {
-  .timeline .timeline__card--static {
-    transition: none;
-  }
-}
-
-/* ── Responsive ──────────────────────────────────────────── */
-@media (max-width: 600px) {
+/* ── Responsive ──────────────────────────────────────────────────── */
+@media (max-width: 640px) {
   .history {
-    --timeline-indent: 1.75rem;
+    --tl-indent: 2rem;
+    --tl-rail-x: 0.45rem;
   }
   .timeline__card {
-    padding: 1rem 1.1rem;
+    padding: var(--space-4) var(--space-5);
   }
   .timeline__item::before {
-    top: 1.4rem;
+    top: var(--space-5);
   }
-  /* Year and each pill take their own line */
+  /* Year and each badge take their own line */
   .timeline__head {
     flex-direction: column;
     align-items: flex-start;
-    gap: 0.35rem;
+    gap: var(--space-2);
+  }
+}
+@media (max-width: 480px) {
+  .history {
+    --tl-indent: 1.6rem;
+    --tl-rail-x: 0.3rem;
   }
 }

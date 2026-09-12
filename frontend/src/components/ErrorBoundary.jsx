@@ -1,5 +1,12 @@
 import { Component } from "react";
+import { LuHouse, LuRefreshCw, LuTriangleAlert } from "react-icons/lu";
+import Button from "./ui/Button";
+import "./ErrorBoundary.css";
 
+/**
+ * Top-level crash screen. Mounted OUTSIDE the router and language provider
+ * (see main.jsx), so it renders plain anchors and English copy only.
+ */
 export default class ErrorBoundary extends Component {
   constructor(props) {
     super(props);
@@ -19,42 +26,34 @@ export default class ErrorBoundary extends Component {
     if (this.state.error) {
       const showDetails = import.meta.env.DEV;
       return (
-        <main className="section" role="alert">
+        <main className="section errorboundary" role="alert">
           <div className="container container--narrow">
-            <div className="empty-state card card--static" style={{ padding: "var(--space-12) var(--space-6)" }}>
-              <span className="empty-state__icon" aria-hidden="true">🙏</span>
-              <h1 className="empty-state__title" style={{ fontSize: "var(--text-xl)" }}>
-                Something went wrong
-              </h1>
+            <div className="empty-state empty-state--error errorboundary__panel">
+              <span className="empty-state__icon" aria-hidden="true">
+                <LuTriangleAlert />
+              </span>
+              <h1 className="empty-state__title errorboundary__title">Something went wrong</h1>
               <p>The page could not load. Please refresh; if the problem continues, contact the temple office.</p>
-              <div className="cluster" style={{ justifyContent: "center" }}>
-                <button type="button" className="btn btn-primary" onClick={() => window.location.reload()}>
+              <div className="empty-state__actions">
+                <Button variant="primary" icon={<LuRefreshCw aria-hidden="true" />} onClick={() => window.location.reload()}>
                   Reload page
-                </button>
-                <a href="/" className="btn btn-outline">Go home</a>
+                </Button>
+                <Button href="/" variant="outline" icon={<LuHouse aria-hidden="true" />}>
+                  Go home
+                </Button>
               </div>
+
               {showDetails && (
-                <pre
-                  style={{
-                    marginTop: "var(--space-6)",
-                    padding: "var(--space-4)",
-                    textAlign: "left",
-                    background: "var(--danger-bg)",
-                    border: "1px solid var(--danger-border)",
-                    borderRadius: "var(--radius-sm)",
-                    fontSize: "0.75rem",
-                    overflowX: "auto",
-                    whiteSpace: "pre-wrap",
-                    color: "var(--danger)",
-                    wordBreak: "break-all",
-                  }}
-                >
-                  {this.state.error.toString()}
-                  {"\n\n"}
-                  {this.state.error.stack}
-                  {"\n\nComponent Stack:"}
-                  {this.state.info?.componentStack}
-                </pre>
+                <details className="errorboundary__details">
+                  <summary className="errorboundary__summary">Error details (development only)</summary>
+                  <pre className="errorboundary__stack">
+                    {this.state.error.toString()}
+                    {"\n\n"}
+                    {this.state.error.stack}
+                    {"\n\nComponent Stack:"}
+                    {this.state.info?.componentStack}
+                  </pre>
+                </details>
               )}
             </div>
           </div>

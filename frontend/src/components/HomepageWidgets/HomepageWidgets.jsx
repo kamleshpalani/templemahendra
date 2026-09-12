@@ -1,22 +1,29 @@
-import { Link } from "react-router-dom";
+import { LuCalendarDays, LuClock, LuFlame, LuHeart, LuHourglass, LuMegaphone, LuMoon, LuPartyPopper, LuPin } from "react-icons/lu";
 import { useLang } from "../../context/LangContext";
+import Badge from "../ui/Badge";
+import Button from "../ui/Button";
+import { SkeletonCards } from "../ui/Feedback";
 import "./HomepageWidgets.css";
 
-// ── Icon + label map ──────────────────────────────────────────────────────────
+// ── Icon · badge tone · label per content_type ────────────────────────────────
+// Accent tone drives the left stripe (.hw-card--tone-*) and the Badge tone.
+// moon = lunar/panchangam content only · sage = auspicious-time content only.
 const TYPE_META = {
-  announcement: { icon: "📢", ta: "அறிவிப்பு", en: "Announcement" },
-  upcoming_event: { icon: "🎉", ta: "நிகழ்வு", en: "Upcoming Event" },
-  coming_soon: { icon: "⏳", ta: "விரைவில்", en: "Coming Soon" },
-  upcoming_pooja: { icon: "🛕", ta: "அடுத்த பூஜை", en: "Upcoming Pooja" },
-  calendar_pooja: { icon: "🌕", ta: "பௌர்ணமி பூஜை", en: "Pournami Pooja" },
-  nalla_neram: { icon: "⏰", ta: "நல்ல நேரம்", en: "Nalla Neram" },
-  sponsor: { icon: "💛", ta: "ஸ்பான்சர்", en: "Sponsor" },
+  announcement: { Icon: LuMegaphone, tone: "gold", ta: "அறிவிப்பு", en: "Announcement" },
+  upcoming_event: { Icon: LuPartyPopper, tone: "default", ta: "நிகழ்வு", en: "Upcoming Event" },
+  coming_soon: { Icon: LuHourglass, tone: "sage", ta: "விரைவில்", en: "Coming Soon" },
+  upcoming_pooja: { Icon: LuFlame, tone: "moon", ta: "அடுத்த பூஜை", en: "Upcoming Pooja" },
+  calendar_pooja: { Icon: LuMoon, tone: "moon", ta: "பௌர்ணமி பூஜை", en: "Pournami Pooja" },
+  nalla_neram: { Icon: LuClock, tone: "sage", ta: "நல்ல நேரம்", en: "Nalla Neram" },
+  sponsor: { Icon: LuHeart, tone: "gold", ta: "ஸ்பான்சர்", en: "Sponsor" },
 };
+const STRIPE_TONE = { default: "maroon", gold: "gold", sage: "sage", moon: "moon" };
 
 // ── Individual card ───────────────────────────────────────────────────────────
 function WidgetCard({ widget, pournami, lang, index }) {
   const { t } = useLang();
   const meta = TYPE_META[widget.content_type] ?? TYPE_META.announcement;
+  const { Icon } = meta;
   const isCalPooja = widget.content_type === "calendar_pooja";
   const isUpcomingEvent = widget.content_type === "upcoming_event";
   const isUpcomingPooja =
@@ -40,104 +47,100 @@ function WidgetCard({ widget, pournami, lang, index }) {
         )
       : null;
 
+  const ctaVariant = isFeatured ? "outline-light" : "outline";
+
   return (
-    <div
+    <article
       className={[
+        "card",
         "hw-card",
         `hw-card--${widget.content_type}`,
-        `hw-card--pos-${(index ?? 0) + 1}`,
+        `hw-card--tone-${STRIPE_TONE[meta.tone] ?? "maroon"}`,
+        isFeatured ? "card--ink hw-card--featured span-6" : "span-3",
         widget.is_pinned ? "hw-card--pinned" : "",
-        isFeatured ? "hw-card--featured" : "",
+        "rise",
       ]
         .filter(Boolean)
         .join(" ")}
+      style={{ "--i": index ?? 0 }}
     >
-      {/* Type badge — hidden for event-like, calendar, and upcoming_pooja types
-          (they render their own badge inside the rich layout) */}
-      {!isEventLike && widget.content_type !== "calendar_pooja" && (
-        <span className={`hw-badge hw-badge--${widget.content_type}`}>
-          {meta.icon} {t(meta.ta, meta.en)}
-          {widget.is_pinned && " 📌"}
+      {isFeatured && (
+        <span className="hw-card__glyph" aria-hidden="true">
+          <Icon />
         </span>
       )}
+
+      {/* Type badge */}
+      <Badge tone={meta.tone} className="hw-card__badge">
+        <Icon aria-hidden="true" />
+        {t(meta.ta, meta.en)}
+        {widget.is_pinned && (
+          <>
+            <LuPin aria-hidden="true" />
+            <span className="sr-only">{t("பின் செய்யப்பட்டது", "Pinned")}</span>
+          </>
+        )}
+      </Badge>
 
       {/* Event-like rich display: upcoming_event, upcoming_pooja, coming_soon */}
       {isEventLike ? (
         <div className="hw-event">
-          <div className="hw-event__icon">{meta.icon}</div>
-          <div className="hw-event__body">
-            <span className={`hw-badge hw-badge--${widget.content_type}`}>
-              {t(meta.ta, meta.en)}
-              {widget.is_pinned && " 📌"}
-            </span>
-            <p className="hw-event__title">{title}</p>
-            {displayDateStr && (
-              <p className="hw-event__date">📅 {displayDateStr}</p>
+          <h3 className="hw-card__title">{title}</h3>
+          {displayDateStr && (
+            <p className="hw-card__date">
+              <LuCalendarDays aria-hidden="true" />
+              {displayDateStr}
+            </p>
+          )}
+          {desc && <p className="hw-card__desc">{desc}</p>}
+          <div className="hw-card__cta">
+            {isUpcomingPooja ? (
+              <Button to="/sevas" variant={ctaVariant} size="sm">
+                {t("சேவைகள் →", "View Sevas →")}
+              </Button>
+            ) : (
+              <Button to="/events" variant={ctaVariant} size="sm">
+                {t("அனைத்து நிகழ்வுகள் →", "All Events →")}
+              </Button>
             )}
-            {desc && <p className="hw-event__desc">{desc}</p>}
-            <div className="hw-card__cta">
-              {isUpcomingPooja ? (
-                <Link to="/sevas" className="btn btn-outline btn--sm">
-                  {t("சேவைகள் →", "View Sevas →")}
-                </Link>
-              ) : (
-                <Link to="/events" className="btn btn-outline btn--sm">
-                  {t("அனைத்து நிகழ்வுகள் →", "All Events →")}
-                </Link>
-              )}
-            </div>
           </div>
         </div>
       ) : richP ? (
         /* Calendar Pooja: rich panchangam display */
         <div className="hw-pournami">
-          <div className="hw-pournami__moon">🌕</div>
-          <div className="hw-pournami__body">
-            <p className="hw-pournami__name">{title}</p>
-            <p className="hw-pournami__date">
-              {new Date(richP.date + "T00:00:00").toLocaleDateString(
-                lang === "ta" ? "ta-IN" : "en-IN",
-                {
-                  weekday: "long",
-                  day: "numeric",
-                  month: "long",
-                  year: "numeric",
-                },
-              )}
-            </p>
-            {richP.tamil_month && (
-              <p className="hw-pournami__meta">
-                {t(richP.tamil_month.ta, richP.tamil_month.en)}
-                {richP.tithi_ta && <> – {t(richP.tithi_ta, richP.tithi_en)}</>}
-              </p>
+          <h3 className="hw-card__title">{title}</h3>
+          <p className="hw-pournami__date">
+            {new Date(richP.date + "T00:00:00").toLocaleDateString(
+              lang === "ta" ? "ta-IN" : "en-IN",
+              {
+                weekday: "long",
+                day: "numeric",
+                month: "long",
+                year: "numeric",
+              },
             )}
-            <span
-              className={`hw-pournami__badge${richP.daysLeft === 0 ? " hw-pournami__badge--today" : ""}`}
-            >
-              {richP.daysLeft === 0
-                ? t("இன்று!", "Today!")
-                : richP.daysLeft === 1
-                  ? t("நாளை", "Tomorrow")
-                  : t(
-                      `${richP.daysLeft} நாட்களில்`,
-                      `In ${richP.daysLeft} days`,
-                    )}
-            </span>
-            <p className="hw-pournami__timing">
-              ⏰ {t("நேரம்", "Timings")}: 04:00 PM – 09:00 PM
+          </p>
+          {richP.tamil_month && (
+            <p className="hw-pournami__meta">
+              {t(richP.tamil_month.ta, richP.tamil_month.en)}
+              {richP.tithi_ta && <> – {t(richP.tithi_ta, richP.tithi_en)}</>}
             </p>
-          </div>
+          )}
+          <Badge tone={richP.daysLeft === 0 ? "gold" : "moon"} className="hw-pournami__badge">
+            {richP.daysLeft === 0
+              ? t("இன்று!", "Today!")
+              : richP.daysLeft === 1
+                ? t("நாளை", "Tomorrow")
+                : t(`${richP.daysLeft} நாட்களில்`, `In ${richP.daysLeft} days`)}
+          </Badge>
+          <p className="hw-pournami__timing">
+            <LuClock aria-hidden="true" />
+            {t("நேரம்", "Timings")}: 04:00 PM – 09:00 PM
+          </p>
         </div>
       ) : (
         /* Standard title for all other types */
-        <div className="hw-card__header">
-          <span className="hw-card__icon" aria-hidden="true">
-            {meta.icon}
-          </span>
-          <div>
-            <p className="hw-card__title">{title}</p>
-          </div>
-        </div>
+        <h3 className="hw-card__title">{title}</h3>
       )}
 
       {/* Description (only for non-event-like types — event renders desc inline) */}
@@ -146,40 +149,28 @@ function WidgetCard({ widget, pournami, lang, index }) {
       {/* Sponsor */}
       {widget.sponsor?.name && (
         <div className="hw-sponsor">
-          <span className="hw-sponsor__icon">💛</span>
-          <div>
-            <p className="hw-sponsor__label">
-              {t("நன்கொடையாளர்", "Sponsored by")}
-            </p>
+          <span className="hw-sponsor__icon" aria-hidden="true">
+            <LuHeart />
+          </span>
+          <div className="hw-sponsor__body">
+            <p className="hw-sponsor__label">{t("நன்கொடையாளர்", "Sponsored by")}</p>
             <p className="hw-sponsor__name">{widget.sponsor.name}</p>
-            {widget.sponsor.note && (
-              <p className="hw-sponsor__note">{widget.sponsor.note}</p>
-            )}
+            {widget.sponsor.note && <p className="hw-sponsor__note">{widget.sponsor.note}</p>}
           </div>
         </div>
       )}
 
       {/* Nalla Neram slots */}
       {widget.nalla_neram && (
-        <div>
-          <p
-            style={{
-              fontSize: "0.72rem",
-              fontWeight: 700,
-              textTransform: "uppercase",
-              letterSpacing: "0.04em",
-              color: "#065f46",
-              marginBottom: "0.3rem",
-            }}
-          >
-            {t("இன்றைய நல்ல நேரம்", "Today's Nalla Neram")}
-          </p>
-          <div className="hw-nalla">
+        <div className="hw-nalla">
+          <p className="hw-nalla__label">{t("இன்றைய நல்ல நேரம்", "Today's Nalla Neram")}</p>
+          <div className="hw-nalla__slots">
             {widget.nalla_neram.map((slot, i) => (
               // eslint-disable-next-line react/no-array-index-key
-              <span key={i} className="hw-nalla__slot">
-                ⏰ {slot[0]} – {slot[1]}
-              </span>
+              <Badge key={i} tone="sage">
+                <LuClock aria-hidden="true" />
+                {slot[0]} – {slot[1]}
+              </Badge>
             ))}
           </div>
         </div>
@@ -188,22 +179,12 @@ function WidgetCard({ widget, pournami, lang, index }) {
       {/* Panchangam CTA for calendar_pooja */}
       {isCalPooja && (
         <div className="hw-card__cta">
-          <Link to="/panchangam" className="btn btn-outline btn--sm">
+          <Button to="/panchangam" variant={ctaVariant} size="sm">
             {t("பஞ்சாங்கம் காண்க →", "View Panchangam →")}
-          </Link>
+          </Button>
         </div>
       )}
-    </div>
-  );
-}
-
-// ── Skeleton placeholder ──────────────────────────────────────────────────────
-function WidgetSkeleton() {
-  return (
-    <div className="hw-grid">
-      <div className="hw-skeleton" />
-      <div className="hw-skeleton" />
-    </div>
+    </article>
   );
 }
 
@@ -211,8 +192,11 @@ function WidgetSkeleton() {
 /**
  * HomepageWidgets
  * Props:
- *   widgets  — array of widget objects from /api/homepage_widgets
- *   loading  — boolean
+ *   widgets   — array of widget objects from /api/homepage_widgets
+ *   loading   — boolean
+ *   pournami  — nearest pournami (legacy single prop)
+ *   pournamis — next pournamis from the panchangam calendar
+ *   lang      — "ta" | "en"
  */
 export default function HomepageWidgets({
   widgets,
@@ -221,7 +205,7 @@ export default function HomepageWidgets({
   pournamis,
   lang,
 }) {
-  if (loading) return <WidgetSkeleton />;
+  if (loading) return <SkeletonCards count={4} />;
 
   const dbWidgets = widgets && widgets.length > 0 ? widgets : [];
   const calPournamis =
@@ -250,29 +234,27 @@ export default function HomepageWidgets({
   if (allWidgets.length === 0) return null;
 
   return (
-    <div className="hw-section">
-      <div className="hw-grid">
-        {allWidgets.map((w, idx) => {
-          // Resolve which pournami object to pass for enrichment:
-          // synth cards carry _pournami; DB calendar_pooja cards match by date
-          const cardPournami =
-            w._pournami ??
-            calPournamis.find(
-              (p) =>
-                w.content_type === "calendar_pooja" && w.pooja?.date === p.date,
-            ) ??
-            (w.content_type === "calendar_pooja" ? calPournamis[0] : null);
-          return (
-            <WidgetCard
-              key={w.id ? String(w.id) : `${w.content_type}-${idx}`}
-              widget={w}
-              pournami={cardPournami}
-              lang={lang}
-              index={idx}
-            />
-          );
-        })}
-      </div>
+    <div className={`bento hw-bento hw-bento--${allWidgets.length}`}>
+      {allWidgets.map((w, idx) => {
+        // Resolve which pournami object to pass for enrichment:
+        // synth cards carry _pournami; DB calendar_pooja cards match by date
+        const cardPournami =
+          w._pournami ??
+          calPournamis.find(
+            (p) =>
+              w.content_type === "calendar_pooja" && w.pooja?.date === p.date,
+          ) ??
+          (w.content_type === "calendar_pooja" ? calPournamis[0] : null);
+        return (
+          <WidgetCard
+            key={w.id ? String(w.id) : `${w.content_type}-${idx}`}
+            widget={w}
+            pournami={cardPournami}
+            lang={lang}
+            index={idx}
+          />
+        );
+      })}
     </div>
   );
 }

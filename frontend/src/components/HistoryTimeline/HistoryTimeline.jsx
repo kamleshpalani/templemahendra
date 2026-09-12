@@ -1,17 +1,24 @@
+import { LuCalendarClock, LuHammer } from "react-icons/lu";
 import { useLang } from "../../context/LangContext";
 import { HISTORY } from "../../data/temple";
+import Badge from "../ui/Badge";
 import "./HistoryTimeline.css";
 
-// ── Milestone status → BEM modifier + pill label ─────────────────────────────
+// ── Milestone status → BEM modifier + badge tone + pill label ─────────────────
 // Keys match the `status` values used in data/temple.js HISTORY.timeline.
+// Tones: in-progress → sage (work under way), planned → warning (still to come).
 const STATUS_META = {
   inProgress: {
     mod: "in-progress",
+    tone: "sage",
+    Icon: LuHammer,
     ta: "கட்டப்பட்டு வருகிறது",
     en: "Under construction",
   },
   planned: {
     mod: "planned",
+    tone: "warning",
+    Icon: LuCalendarClock,
     ta: "திட்டமிடப்பட்டுள்ளது",
     en: "Planned",
   },
@@ -56,7 +63,7 @@ export default function HistoryTimeline({
           role="list"
           aria-label={t("கால வரிசை", "Timeline")}
         >
-          {HISTORY.timeline.map((m) => {
+          {HISTORY.timeline.map((m, i) => {
             const status = m.status ? STATUS_META[m.status] : null;
             const year = t(m.year.ta, m.year.en);
             const itemClass = [
@@ -68,24 +75,23 @@ export default function HistoryTimeline({
 
             return (
               <li key={m.key} className={itemClass}>
-                <div className="timeline__card card timeline__card--static">
+                <div className="timeline__card card card--static rise" style={{ "--i": i }}>
                   <div className="timeline__head">
                     <p className="timeline__year">
                       {m.date ? <time dateTime={m.date}>{year}</time> : year}
                     </p>
 
                     {m.tamilDate && (
-                      <span className="timeline__pill timeline__pill--tamil-date">
+                      <Badge tone="gold" className="timeline__pill timeline__pill--tamil-date">
                         {t(m.tamilDate.ta, m.tamilDate.en)}
-                      </span>
+                      </Badge>
                     )}
 
                     {status && (
-                      <span
-                        className={`timeline__pill timeline__pill--${status.mod}`}
-                      >
+                      <Badge tone={status.tone} className={`timeline__pill timeline__pill--${status.mod}`}>
+                        <status.Icon aria-hidden="true" />
                         {t(status.ta, status.en)}
-                      </span>
+                      </Badge>
                     )}
                   </div>
 

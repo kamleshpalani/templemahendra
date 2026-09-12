@@ -1,5 +1,6 @@
-/* Floating Action Buttons - WhatsApp & Phone (bottom-left) */
-
+/* Floating quick-contact actions — WhatsApp & Call (bottom-left).
+   Compact circles that expand to reveal their label on hover / focus so
+   they never sit as wide pills over hero content. */
 .fab-group {
   position: fixed;
   left: 20px;
@@ -12,66 +13,76 @@
 }
 
 .fab {
+  position: relative;
   display: flex;
   align-items: center;
-  gap: 9px;
-  height: 54px;
-  padding: 0 18px 0 15px;
-  border-radius: 27px;
+  gap: 0;
+  height: 52px;
+  min-width: 52px;
+  padding: 0 0 0 15px;
+  border-radius: var(--radius-pill);
   text-decoration: none;
-  font-size: 1.2rem;
-  font-weight: 700;
-  font-family: var(--font-body);
-  color: #fff;
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.35);
-  transition: transform var(--transition), box-shadow var(--transition);
+  color: var(--white);
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  box-shadow: 0 8px 26px rgba(0, 0, 0, 0.28), inset 0 1px 0 rgba(255, 255, 255, 0.3);
   overflow: hidden;
   white-space: nowrap;
-  position: relative;
+  isolation: isolate;
+  transition: transform var(--transition), box-shadow var(--transition), padding var(--transition-slow), gap var(--transition-slow);
 }
-
+.fab > svg {
+  width: 1.3rem;
+  height: 1.3rem;
+  flex-shrink: 0;
+}
+.fab__label {
+  max-width: 0;
+  opacity: 0;
+  font-size: 0.82rem;
+  font-weight: var(--weight-bold);
+  letter-spacing: 0.02em;
+  overflow: hidden;
+  transition: max-width var(--transition-slow), opacity var(--transition), padding var(--transition-slow);
+}
+.fab:hover,
+.fab:focus-visible {
+  gap: 0.55rem;
+  padding-right: 1.1rem;
+  transform: translateY(-2px);
+}
+.fab:hover .fab__label,
+.fab:focus-visible .fab__label {
+  max-width: 160px;
+  opacity: 1;
+}
 /* shimmer sweep */
 .fab::before {
   content: "";
   position: absolute;
   inset: 0;
-  background: rgba(255, 255, 255, 0.12);
-  transform: translateX(-100%);
-  transition: transform 0.38s var(--ease);
+  z-index: -1;
+  background: linear-gradient(105deg, transparent 30%, rgba(255, 255, 255, 0.28) 50%, transparent 70%);
+  transform: translateX(-130%);
+  transition: transform 0.5s var(--ease);
 }
 .fab:hover::before {
-  transform: translateX(100%);
+  transform: translateX(130%);
 }
-
-.fab:hover {
-  transform: translateY(-3px) scale(1.04);
-  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.4);
+/* labels are revealed on hover, so the generic tooltip is redundant */
+.fab[data-tip]::after {
+  display: none;
 }
 
 .fab--whatsapp {
-  background: linear-gradient(135deg, #25d366 0%, #1da851 100%);
-  box-shadow: 0 4px 20px rgba(37, 211, 102, 0.35);
+  background: linear-gradient(135deg, var(--brand-whatsapp) 0%, var(--brand-whatsapp-deep) 100%);
+  box-shadow: 0 8px 26px rgba(18, 140, 126, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.3);
 }
-.fab--whatsapp:hover {
-  box-shadow: 0 8px 28px rgba(37, 211, 102, 0.5);
-}
-
 .fab--phone {
-  background: linear-gradient(135deg, #0ea5e9 0%, #0369a1 100%);
-  box-shadow: 0 4px 20px rgba(14, 165, 233, 0.35);
-}
-.fab--phone:hover {
-  box-shadow: 0 8px 28px rgba(14, 165, 233, 0.5);
+  background: linear-gradient(135deg, var(--maroon-500) 0%, var(--maroon-700) 100%);
+  box-shadow: 0 8px 26px rgba(153, 27, 27, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.25);
 }
 
-.fab__label {
-  font-size: 0.82rem;
-  letter-spacing: 0.03em;
-}
-
-/* Mobile: icon-only circles above BottomNav */
+/* Mobile: icon-only circles above the bottom nav */
 @media (max-width: 768px) {
   .fab-group {
     bottom: calc(var(--bottom-nav-h) + 1.4rem + env(safe-area-inset-bottom, 0px));
@@ -80,12 +91,23 @@
   }
   .fab {
     height: 46px;
+    min-width: 46px;
     width: 46px;
     padding: 0;
     border-radius: 50%;
     justify-content: center;
   }
+  .fab:hover,
+  .fab:focus-visible {
+    padding: 0;
+    gap: 0;
+  }
   .fab__label {
     display: none;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .fab__label {
+    transition: none;
   }
 }

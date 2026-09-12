@@ -1,6 +1,9 @@
 import { useEffect, useId, useState } from "react";
+import { LuBadgeCheck, LuCheck, LuCopy, LuInfo } from "react-icons/lu";
 import { useLang } from "../../context/LangContext";
 import { TRUST, DONATION_NOTE } from "../../data/temple";
+import Button from "../ui/Button";
+import Badge from "../ui/Badge";
 import "./TrustDetails.css";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -39,16 +42,22 @@ function CopyButton({ value, fieldLabel }) {
   };
 
   return (
-    <button
-      type="button"
+    <Button
+      variant="soft"
+      size="xs"
       className={`trust__copy${copied ? " trust__copy--copied" : ""}`}
       onClick={handleCopy}
-      aria-label={t(`${fieldLabel} நகலெடு`, `Copy ${fieldLabel}`)}
+      icon={copied ? <LuCheck aria-hidden="true" /> : <LuCopy aria-hidden="true" />}
+      aria-label={
+        copied
+          ? t(`${fieldLabel} நகலெடுக்கப்பட்டது`, `${fieldLabel} copied`)
+          : t(`${fieldLabel} நகலெடு`, `Copy ${fieldLabel}`)
+      }
     >
       <span aria-live="polite">
         {copied ? t("நகலெடுக்கப்பட்டது ✓", "Copied ✓") : t("நகலெடு", "Copy")}
       </span>
-    </button>
+    </Button>
   );
 }
 
@@ -81,10 +90,10 @@ function TrustRow({ label, value, code = false, copyable = false }) {
 function TaxBadge() {
   const { t } = useLang();
   return (
-    <span className="trust__badge">
-      <span aria-hidden="true">✅</span>
+    <Badge tone="gold" className="trust__badge">
+      <LuBadgeCheck aria-hidden="true" />
       {t(TRUST.taxExemption.short.ta, TRUST.taxExemption.short.en)}
-    </span>
+    </Badge>
   );
 }
 
@@ -115,10 +124,14 @@ export default function TrustDetails({
   const noteId = `${baseId}-note`;
   // Full variant owns its heading → a labelled <section>; otherwise a plain <div>
   const Root = ownsHeading ? "section" : "div";
+  // Bank variant is a solid glass card (Donations panel); full variant sits in prose
+  const rootClass = isBank
+    ? "trust trust--bank card card--solid card--static"
+    : "trust trust--full";
 
   return (
     <Root
-      className={`trust trust--${isBank ? "bank" : "full"}`}
+      className={rootClass}
       id={id}
       lang={lang}
       aria-labelledby={ownsHeading ? headingId : undefined}
@@ -131,9 +144,19 @@ export default function TrustDetails({
 
       {isBank ? (
         <dl className="trust__list trust__list--bank">
+          {/* The beneficiary name is what a donor types into a bank form, so the
+              registered English form is always primary; Tamil shown beneath. */}
           <TrustRow
             label={t("கணக்கு பெயர்", "Account Name")}
-            value={t(TRUST.name.ta, TRUST.name.en)}
+            value={
+              <>
+                {TRUST.name.en}
+                <span className="trust__text-sub" lang="ta">
+                  {TRUST.name.ta}
+                </span>
+              </>
+            }
+            code
           />
           <TrustRow
             label={t("வங்கி", "Bank")}
@@ -194,16 +217,19 @@ export default function TrustDetails({
       </div>
 
       {showNote && (
-        <aside className="trust__note" aria-labelledby={noteId}>
-          <h4 id={noteId} className="trust__note-title">
-            {t(DONATION_NOTE.heading.ta, DONATION_NOTE.heading.en)}
-          </h4>
-          <p className="trust__note-text">
-            {t(DONATION_NOTE.methods.ta, DONATION_NOTE.methods.en)}
-          </p>
-          <p className="trust__note-text">
-            {t(DONATION_NOTE.receipt.ta, DONATION_NOTE.receipt.en)}
-          </p>
+        <aside className="trust__note callout callout--maroon" aria-labelledby={noteId}>
+          <LuInfo aria-hidden="true" />
+          <div className="trust__note-body">
+            <h4 id={noteId} className="trust__note-title">
+              {t(DONATION_NOTE.heading.ta, DONATION_NOTE.heading.en)}
+            </h4>
+            <p className="trust__note-text">
+              {t(DONATION_NOTE.methods.ta, DONATION_NOTE.methods.en)}
+            </p>
+            <p className="trust__note-text">
+              {t(DONATION_NOTE.receipt.ta, DONATION_NOTE.receipt.en)}
+            </p>
+          </div>
         </aside>
       )}
     </Root>

@@ -1,42 +1,105 @@
 <?php
-// backend/admin/includes/admin_layout.php
-// Usage: call adminHeader($pageTitle) at top of each page, adminFooter() at bottom.
+// backend/admin/includes/admin_layout.php — Control-center shell.
+// Usage: adminHeader($pageTitle, $crumb, ['actions' => '<html>', 'wide' => bool]) … adminFooter()
 
-/** Grouped sidebar navigation: [group => [file => [icon, label]]] */
+require_once __DIR__ . '/admin_ui.php';
+
+/** Grouped sidebar navigation: [group => [file => [icon, label, description]]] */
 function adminNavGroups(): array
 {
     return [
         'Overview' => [
-            'index.php'            => ['📊', 'Dashboard'],
+            'index.php'            => ['dashboard',   'Dashboard',        'KPIs, analytics and recent activity'],
         ],
         'Content' => [
-            'homepage_widgets.php' => ['🏮', 'Homepage Widgets'],
-            'announcements.php'    => ['📢', 'Announcements'],
-            'gallery.php'          => ['🖼️', 'Gallery'],
+            'homepage_widgets.php' => ['layers',      'Homepage Widgets', 'Cards shown on the public homepage'],
+            'announcements.php'    => ['megaphone',   'Announcements',    'Notices in the homepage ticker'],
+            'gallery.php'          => ['image',       'Gallery',          'Photos for the public gallery'],
         ],
         'Worship' => [
-            'poojas.php'           => ['🛕', 'Poojas'],
-            'sevas.php'            => ['🙏', 'Sevas'],
-            'events.php'           => ['📅', 'Events'],
-            'sponsors.php'         => ['💛', 'Sponsors'],
+            'poojas.php'           => ['flame',       'Poojas',           'Pournami, Amavasai and special poojas'],
+            'sevas.php'            => ['sparkles',    'Sevas',            'Bookable sevas and prices'],
+            'events.php'           => ['calendar',    'Events',           'Festivals and temple events'],
+            'sponsors.php'         => ['heart-hands', 'Sponsors',         'Devotees sponsoring poojas'],
         ],
         'Devotees' => [
-            'seva_bookings.php'    => ['📋', 'Seva Bookings'],
-            'donations.php'        => ['💰', 'Donations'],
-            'contact_messages.php' => ['✉️', 'Messages'],
+            'seva_bookings.php'    => ['clipboard',   'Seva Bookings',    'Online seva requests'],
+            'donations.php'        => ['banknote',    'Donations',        'Pledges, totals and CSV reports'],
+            'contact_messages.php' => ['mail',        'Messages',         'Enquiries from the contact form'],
         ],
         'Data & System' => [
-            'bulk_upload.php'      => ['📤', 'Bulk Upload'],
-            'settings.php'         => ['⚙️', 'Settings'],
+            'bulk_upload.php'      => ['upload',      'Bulk Upload',      'Import CSV / Excel data'],
+            'settings.php'         => ['settings',    'Settings',         'Homepage sections and account'],
+        ],
+        'People' => [
+            'users.php'            => ['users',       'Committee Accounts', 'Sign-ins and roles'],
+            'profile.php'          => ['user',        'My Profile',         'Your details and password'],
         ],
     ];
 }
 
-function adminHeader(string $pageTitle, string $crumb = 'Temple Admin'): void
+// adminPageCapability() / adminPageWriteCapability() live in includes/auth.php
+// so requireAdminAuth() can enforce them before a page runs any POST handler.
+
+/** Quick actions surfaced in the command palette and dashboard. */
+function adminQuickActions(): array
+{
+    $all = [
+        ['label' => 'New event',              'href' => '/admin/events.php#new',         'icon' => 'plus',        'can' => 'content.edit'],
+        ['label' => 'New announcement',       'href' => '/admin/announcements.php#new',  'icon' => 'plus',        'can' => 'content.edit'],
+        ['label' => 'New seva',               'href' => '/admin/sevas.php#new',          'icon' => 'plus',        'can' => 'content.edit'],
+        ['label' => 'Add pooja',              'href' => '/admin/poojas.php#new',         'icon' => 'plus',        'can' => 'content.edit'],
+        ['label' => 'Upload photo',           'href' => '/admin/gallery.php#new',        'icon' => 'upload',      'can' => 'content.edit'],
+        ['label' => 'Bulk upload CSV / Excel','href' => '/admin/bulk_upload.php',        'icon' => 'spreadsheet', 'can' => 'import'],
+        ['label' => 'Export donations CSV',   'href' => '/admin/donations.php?export=csv','icon' => 'download',   'can' => 'export'],
+        ['label' => 'Export bookings CSV',    'href' => '/admin/seva_bookings.php?export=csv','icon' => 'download','can' => 'export'],
+        ['label' => 'Committee accounts',     'href' => '/admin/users.php',              'icon' => 'users',       'can' => 'users.manage'],
+        ['label' => 'My profile',             'href' => '/admin/profile.php',            'icon' => 'user',        'can' => 'view'],
+        ['label' => 'View public site',       'href' => '/',                             'icon' => 'external',    'can' => 'view', 'external' => true],
+        ['label' => 'Sign out',               'href' => '/admin/logout.php',             'icon' => 'logout',      'can' => 'view'],
+    ];
+    return array_values(array_filter($all, fn($a) => adminCan($a['can'])));
+}
+
+/** Sidebar groups with pages the signed-in role cannot reach removed. */
+function adminVisibleNavGroups(): array
+{
+    $out = [];
+    foreach (adminNavGroups() as $group => $items) {
+        $keep = array_filter($items, fn($_, $file) => adminCan(adminPageCapability($file)), ARRAY_FILTER_USE_BOTH);
+        if ($keep) $out[$group] = $keep;
+    }
+    return $out;
+}
+
+/** Pages + quick actions for the Ctrl+K palette, filtered by role. */
+function adminPaletteItems(): array
+{
+    $palette = [];
+    foreach (adminVisibleNavGroups() as $group => $items) {
+        foreach ($items as $file => [$icon, $label, $desc]) {
+            $palette[] = ['type' => 'page', 'group' => $group, 'label' => $label, 'desc' => $desc,
+                          'href' => '/admin/' . ($file === 'index.php' ? '' : $file), 'icon' => $icon];
+        }
+    }
+    foreach (adminQuickActions() as $a) {
+        $palette[] = ['type' => 'action', 'group' => 'Quick actions', 'label' => $a['label'], 'desc' => '',
+                      'href' => $a['href'], 'icon' => $a['icon'], 'external' => !empty($a['external'])];
+    }
+    return $palette;
+}
+
+function adminHeader(string $pageTitle, string $crumb = 'Temple Admin', array $opts = []): void
 {
     $current  = basename($_SERVER['PHP_SELF']);
-    $user     = (string) ($_SESSION['admin_user'] ?? 'admin');
-    $initials = strtoupper(mb_substr($user, 0, 1));
+    $me       = function_exists('currentAdmin') ? (currentAdmin() ?? []) : [];
+    $user     = (string) ($me['username'] ?? $_SESSION['admin_user'] ?? 'admin');
+    $name     = (string) ($me['display_name'] ?? $user);
+    $role     = (string) ($me['role'] ?? 'owner');
+    $initials = strtoupper(mb_substr($name, 0, 1));
+    $actions  = (string) ($opts['actions'] ?? '');
+    $wide     = !empty($opts['wide']);
+    $roleTone = ['owner' => 'gold', 'editor' => 'info', 'viewer' => 'muted'][$role] ?? 'muted';
     ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -45,63 +108,141 @@ function adminHeader(string $pageTitle, string $crumb = 'Temple Admin'): void
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
 <meta name="robots" content="noindex, nofollow" />
 <meta name="theme-color" content="#3d0707" />
-<title><?= htmlspecialchars($pageTitle) ?> — Temple Admin</title>
+<meta name="color-scheme" content="light" />
+<title><?= h($pageTitle) ?> — Temple Admin</title>
+<link rel="icon" type="image/svg+xml" href="/favicon.svg" />
 <link rel="preconnect" href="https://fonts.googleapis.com" />
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Serif+Tamil:wght@600;700&family=Noto+Sans+Tamil:wght@400;500;600&display=swap" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700&family=Inter:wght@400;500;600;700&family=Noto+Serif+Tamil:wght@600;700&family=Noto+Sans+Tamil:wght@400;500;600&display=swap" />
+<link rel="stylesheet" href="/admin/assets/ds/tokens.css" />
+<link rel="stylesheet" href="/admin/assets/ds/base.css" />
+<link rel="stylesheet" href="/admin/assets/ds/layout.css" />
+<link rel="stylesheet" href="/admin/assets/ds/components.css" />
+<link rel="stylesheet" href="/admin/assets/ds/utilities.css" />
 <link rel="stylesheet" href="/admin/assets/admin.css" />
+<script>
+  // Restore sidebar collapse state before paint to avoid a flash
+  try { if (localStorage.getItem('admin.sidebar') === 'collapsed') document.documentElement.classList.add('sidebar-collapsed'); } catch (e) {}
+</script>
 </head>
 <body class="admin-body">
 <a href="#admin-content" class="skip-link">Skip to content</a>
 <div class="sidebar-backdrop" aria-hidden="true"></div>
+
 <aside class="sidebar" id="sidebar" aria-label="Admin navigation">
   <div class="sidebar__brand">
-    <span class="sidebar__logo" aria-hidden="true">🛕</span>
-    <div>
-      <strong>தபலவார் கோவில்</strong>
+    <a href="/admin/" class="sidebar__logo" aria-label="Dashboard">
+      <img src="/logo.svg" alt="" width="40" height="40" />
+    </a>
+    <div class="sidebar__brand-text">
+      <strong lang="ta">தபலவார் கோவில்</strong>
       <small>Control Center</small>
     </div>
+    <button type="button" class="sidebar__collapse" data-sidebar-collapse aria-label="Collapse sidebar" data-tip="Collapse">
+      <?= adminIcon('chevrons-left') ?>
+    </button>
   </div>
+
+  <button type="button" class="sidebar__search" data-palette-open aria-label="Search pages and actions (Ctrl+K)">
+    <?= adminIcon('search') ?>
+    <span class="sidebar__search-label">Search…</span>
+    <kbd class="sidebar__kbd">Ctrl K</kbd>
+  </button>
+
   <nav class="sidebar__nav">
-    <?php foreach (adminNavGroups() as $group => $items): ?>
-      <span class="sidebar__group"><?= htmlspecialchars($group) ?></span>
-      <?php foreach ($items as $file => [$icon, $label]): ?>
+    <?php foreach (adminVisibleNavGroups() as $group => $items): ?>
+      <span class="sidebar__group"><?= h($group) ?></span>
+      <?php foreach ($items as $file => [$icon, $label, $desc]): $active = $current === $file; ?>
         <a href="/admin/<?= $file === 'index.php' ? '' : $file ?>"
-           class="<?= $current === $file ? 'active' : '' ?>"
-           <?= $current === $file ? 'aria-current="page"' : '' ?>>
-          <span class="ico" aria-hidden="true"><?= $icon ?></span><?= htmlspecialchars($label) ?>
+           class="sidebar__link<?= $active ? ' is-active' : '' ?>"
+           <?= $active ? 'aria-current="page"' : '' ?>
+           data-tip="<?= h($label) ?>">
+          <?= adminIcon($icon) ?><span class="sidebar__link-label"><?= h($label) ?></span>
         </a>
       <?php endforeach; ?>
     <?php endforeach; ?>
   </nav>
+
   <div class="sidebar__footer">
+    <a href="/" target="_blank" rel="noopener" class="sidebar__link" data-tip="View site">
+      <?= adminIcon('external') ?><span class="sidebar__link-label">View public site</span>
+    </a>
     <div class="sidebar__user">
-      <span class="sidebar__avatar" aria-hidden="true"><?= htmlspecialchars($initials) ?></span>
-      <span><?= htmlspecialchars($user) ?></span>
+      <span class="avatar" aria-hidden="true"><?= h($initials) ?></span>
+      <span class="sidebar__user-name">
+        <?= h($name) ?>
+        <small class="sidebar__user-role"><?= h(ucfirst($role)) ?></small>
+      </span>
+      <a href="/admin/logout.php" class="sidebar__logout" data-tip="Sign out" aria-label="Sign out"><?= adminIcon('logout') ?></a>
     </div>
-    <a href="/admin/logout.php" class="sidebar__logout">Sign out ↗</a>
   </div>
 </aside>
-<main class="admin-main">
-<header class="admin-topbar">
-  <button type="button" class="sidebar-toggle" aria-label="Open navigation" aria-controls="sidebar" aria-expanded="false">☰</button>
-  <h1>
-    <span class="admin-topbar__crumb"><?= htmlspecialchars($crumb) ?></span>
-    <?= htmlspecialchars($pageTitle) ?>
-  </h1>
-  <div class="admin-topbar__actions">
-    <a href="/" class="btn btn-ghost btn-sm" target="_blank" rel="noopener">View site ↗</a>
-  </div>
-  <span>Signed in as <strong><?= htmlspecialchars($user) ?></strong></span>
-</header>
-<div class="admin-content" id="admin-content" tabindex="-1">
+
+<div class="admin-main">
+  <header class="admin-topbar">
+    <button type="button" class="btn btn-ghost btn--icon sidebar-toggle" aria-label="Open navigation" aria-controls="sidebar" aria-expanded="false"><?= adminIcon('menu') ?></button>
+    <div class="admin-topbar__title">
+      <nav class="admin-crumbs" aria-label="Breadcrumb">
+        <a href="/admin/">Admin</a><span aria-hidden="true">/</span><span><?= h($crumb) ?></span>
+      </nav>
+      <h1><?= h($pageTitle) ?></h1>
+    </div>
+    <div class="admin-topbar__actions">
+      <?= $actions ?>
+      <button type="button" class="btn btn-ghost btn--icon" data-palette-open aria-label="Search (Ctrl+K)" data-tip="Search · Ctrl K"><?= adminIcon('search') ?></button>
+      <div class="dropdown">
+        <button type="button" class="topbar-user" data-menu-toggle aria-haspopup="menu" aria-expanded="false" aria-controls="user-menu">
+          <span class="avatar" aria-hidden="true"><?= h($initials) ?></span>
+          <span class="topbar-user__name"><?= h($name) ?></span>
+          <?= adminIcon('chevron-down', 'ico--sm') ?>
+        </button>
+        <div class="menu" id="user-menu" role="menu" hidden>
+          <div class="menu__label">Signed in as <?= h($user) ?> · <?= h(ucfirst($role)) ?></div>
+          <a class="menu__item" role="menuitem" href="/admin/profile.php"><?= adminIcon('user') ?>My profile</a>
+          <?php if (adminCan('users.manage')): ?>
+            <a class="menu__item" role="menuitem" href="/admin/users.php"><?= adminIcon('users') ?>Committee accounts</a>
+            <a class="menu__item" role="menuitem" href="/admin/settings.php"><?= adminIcon('settings') ?>Settings</a>
+          <?php endif; ?>
+          <a class="menu__item" role="menuitem" href="/" target="_blank" rel="noopener"><?= adminIcon('external') ?>View public site</a>
+          <div class="menu__divider" role="separator"></div>
+          <a class="menu__item menu__item--danger" role="menuitem" href="/admin/logout.php"><?= adminIcon('logout') ?>Sign out</a>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <main class="admin-content<?= $wide ? ' admin-content--wide' : '' ?>" id="admin-content" tabindex="-1">
 <?php
 }
 
 function adminFooter(): void
 {
+    $palette = adminPaletteItems();
     ?>
-</div><!-- /admin-content -->
-</main><!-- /admin-main -->
+  </main><!-- /admin-content -->
+</div><!-- /admin-main -->
+
+<!-- Command palette -->
+<div class="palette" id="palette" hidden>
+  <div class="palette__panel" role="dialog" aria-modal="true" aria-label="Search pages and actions">
+    <div class="palette__search">
+      <?= adminIcon('search') ?>
+      <input type="search" id="palette-input" placeholder="Jump to a page or run an action…" autocomplete="off" spellcheck="false" aria-label="Search pages and actions" aria-controls="palette-list" aria-expanded="true" role="combobox" />
+      <kbd>Esc</kbd>
+    </div>
+    <ul class="palette__list" id="palette-list" role="listbox"></ul>
+    <div class="palette__hint"><kbd>↑</kbd><kbd>↓</kbd> navigate · <kbd>↵</kbd> open</div>
+  </div>
+</div>
+<script type="application/json" id="palette-data"><?= json_encode($palette, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_HEX_TAG) ?></script>
+<script type="application/json" id="icon-sprite"><?= json_encode([
+    'dashboard' => adminIcon('dashboard'), 'layers' => adminIcon('layers'), 'megaphone' => adminIcon('megaphone'), 'image' => adminIcon('image'),
+    'flame' => adminIcon('flame'), 'sparkles' => adminIcon('sparkles'), 'calendar' => adminIcon('calendar'), 'heart-hands' => adminIcon('heart-hands'),
+    'clipboard' => adminIcon('clipboard'), 'banknote' => adminIcon('banknote'), 'mail' => adminIcon('mail'), 'upload' => adminIcon('upload'),
+    'settings' => adminIcon('settings'), 'plus' => adminIcon('plus'), 'download' => adminIcon('download'), 'external' => adminIcon('external'),
+    'logout' => adminIcon('logout'), 'spreadsheet' => adminIcon('spreadsheet'), 'trash' => adminIcon('trash'), 'alert' => adminIcon('alert'),
+    'check-circle' => adminIcon('check-circle'), 'alert-circle' => adminIcon('alert-circle'), 'info' => adminIcon('info'), 'x' => adminIcon('x'),
+], JSON_UNESCAPED_SLASHES | JSON_HEX_TAG) ?></script>
 <script src="/admin/assets/admin.js" defer></script>
 </body>
 </html>
