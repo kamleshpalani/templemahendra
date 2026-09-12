@@ -1,16 +1,21 @@
-import { useCallback, useEffect, useRef, useState } from "react";
-import { NavLink, Outlet, useLocation } from "react-router-dom";
+import { Suspense, lazy, useCallback, useEffect, useRef, useState } from "react";
+import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import {
   LuCalendarDays,
+  LuCircleUser,
   LuFlame,
   LuHeartHandshake,
   LuHouse,
   LuLandmark,
+  LuLogIn,
+  LuLogOut,
   LuMapPin,
   LuMenu,
   LuMoon,
   LuPhone,
+  LuSearch,
   LuSparkles,
+  LuUserPlus,
   LuX,
 } from "react-icons/lu";
 import Footer from "./Footer";
@@ -19,9 +24,14 @@ import BottomNav from "../BottomNav/BottomNav";
 import Chatbot from "../Chatbot/Chatbot";
 import TemplePulseHeader from "../TemplePulseHeader/TemplePulseHeader";
 import { useLang } from "../../context/LangContext";
+import { useAuth } from "../../context/AuthContext";
+import { useToast } from "../../context/ToastContext";
 import { TEMPLE, PRIMARY_CONTACT, telHref, formatPhone } from "../../data/temple";
 import { getISTNow, getNextPooja, isTempleOpen } from "../../lib/templeTime";
 import "./Layout.css";
+
+// The palette is only needed once someone reaches for it.
+const SearchDialog = lazy(() => import("../Search/SearchDialog"));
 
 export const NAV_LINKS = [
   { to: "/", ta: "முகப்பு", en: "Home", Icon: LuHouse },
@@ -33,44 +43,38 @@ export const NAV_LINKS = [
   { to: "/contact", ta: "தொடர்பு", en: "Contact", Icon: LuMapPin },
 ];
 
-/** Compact live pill for the navbar; re-checks every minute (no seconds shown). */
-function LivePill() {
-  const { t } = useLang();
-  const [now, setNow] = useState(getISTNow);
-  useEffect(() => {
-    const id = setInterval(() => setNow(getISTNow()), 60_000);
-    return () => clearInterval(id);
-  }, []);
-  const open = isTempleOpen(now);
-  const { pooja } = getNextPooja(now);
-  return (
-    <NavLink
-      to="/about#timings"
-      className={`navbar__live${open ? " navbar__live--open" : ""}`}
-      aria-label={
-        open
-          ? t(`கோயில் திறந்துள்ளது · அடுத்த பூஜை ${pooja.ta}`, `Temple open · next pooja ${pooja.en}`)
-          : t(`கோயில் மூடியுள்ளது · அடுத்த பூஜை ${pooja.ta}`, `Temple closed · next pooja ${pooja.en}`)
-      }
-    >
-      <span className="navbar__live-dot" aria-hidden="true" />
-      <span className="navbar__live-text">{open ? t("திறந்துள்ளது", "Open") : t("மூடியுள்ளது", "Closed")}</span>
-      <span className="navbar__live-next" aria-hidden="true">
-        · {t(pooja.ta, pooja.en)} {String(pooja.h).padStart(2, "0")}:{String(pooja.m).padStart(2, "0")}
-      </span>
-    </NavLink>
-  );
-}
-
 export default function Layout() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
+  const [searchOpen, setSearchOpen] = useState(false);
   const { lang, setLang, t } = useLang();
   const { pathname } = useLocation();
   const toggleRef = useRef(null);
   const drawerRef = useRef(null);
 
   const closeMenu = useCallback(() => setMenuOpen(false), []);
+  const closeSearch = useCallback(() => setSearchOpen(false), []);
+
+  // Ctrl/Cmd+K anywhere, and "/" when the visitor is not already typing.
+  useEffect(() => {
+    const onKey = (e) => {
+      const k = e.key.toLowerCase();
+      if ((e.ctrlKey || e.metaKey) && k === "k") {
+        e.preventDefault();
+        setSearchOpen(true);
+        return;
+      }
+      if (e.key !== "/" || e.ctrlKey || e.metaKey || e.altKey) return;
+      const el = document.activeElement;
+      const typing =
+        el && (el.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(el.tagName));
+      if (typing) return;
+      e.preventDefault();
+      setSearchOpen(true);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
 
   // Floating "island" header once the page scrolls
   useEffect(() => {
@@ -147,8 +151,21 @@ export default function Layout() {
               ))}
             </nav>
 
+            {/* Right cluster. The open/closed pill that used to sit here was a
+                duplicate of TemplePulseHeader directly above, and the width it
+                took was the reason the row overflowed its container and was
+                clipped on the right. The strip still carries that information,
+                and the timings link lives in the footer and in About. */}
             <div className="navbar__right">
-              <LivePill />
+              <button
+                type="button"
+                className="navbar__icon-btn navbar__search"
+                onClick={() => setSearchOpen(true)}
+                aria-label={t("தளத்தில் தேடு", "Search the site")}
+                title={t("தேடு (Ctrl+K)", "Search (Ctrl+K)")}
+              >
+                <LuSearch aria-hidden="true" />
+              </button>
 
               <div className="lang-toggle" role="group" aria-label={t("மொழி", "Language")}>
                 <button
@@ -170,6 +187,8 @@ export default function Layout() {
                   EN
                 </button>
               </div>
+
+              <AccountControl />
 
               <NavLink to="/sevas" className="btn btn-primary btn--sm navbar__cta">
                 <LuSparkles aria-hidden="true" />
@@ -220,6 +239,19 @@ export default function Layout() {
 
         <DrawerStatus t={t} />
 
+        <button
+          type="button"
+          className="drawer__search"
+          tabIndex={menuOpen ? 0 : -1}
+          onClick={() => {
+            closeMenu();
+            setSearchOpen(true);
+          }}
+        >
+          <LuSearch aria-hidden="true" />
+          <span>{t("தளத்தில் தேடு", "Search the site")}</span>
+        </button>
+
         <nav className="drawer__nav" aria-label={t("மொபைல் வழிசெலுத்தல்", "Mobile")}>
           {NAV_LINKS.map(({ to, ta, en, Icon }, i) => (
             <NavLink
@@ -239,6 +271,8 @@ export default function Layout() {
         </nav>
 
         <div className="drawer__foot">
+          <DrawerAccount menuOpen={menuOpen} onNavigate={closeMenu} />
+
           <div className="drawer__lang" role="group" aria-label={t("மொழி", "Language")}>
             <button
               type="button"
@@ -279,11 +313,171 @@ export default function Layout() {
         <Outlet />
       </main>
 
+      {/* Nothing to show while the palette chunk loads — it opens a moment later. */}
+      <Suspense fallback={null}>{searchOpen && <SearchDialog open onClose={closeSearch} />}</Suspense>
+
       <Footer />
       <FloatingActions />
       <Chatbot />
       <BottomNav />
     </>
+  );
+}
+
+/**
+ * The account control in the navbar: a sign-in link for a guest, and for a
+ * signed-in devotee an initials button opening a small menu. Hidden entirely
+ * when the devotee tables have not been migrated in.
+ */
+function AccountControl() {
+  const { t } = useLang();
+  const { user, ready, accountsEnabled, logout } = useAuth();
+  const toast = useToast();
+  const navigate = useNavigate();
+  const { pathname } = useLocation();
+  const [open, setOpen] = useState(false);
+  const wrapRef = useRef(null);
+  const btnRef = useRef(null);
+
+  // Close on outside click, on Escape, and whenever the route changes.
+  useEffect(() => {
+    if (!open) return undefined;
+    const onDown = (e) => {
+      if (!wrapRef.current?.contains(e.target)) setOpen(false);
+    };
+    const onKey = (e) => {
+      if (e.key !== "Escape") return;
+      setOpen(false);
+      btnRef.current?.focus();
+    };
+    document.addEventListener("mousedown", onDown);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDown);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
+
+  useEffect(() => setOpen(false), [pathname]);
+
+  // While the first /auth/me is in flight, hold the space rather than letting
+  // the row reflow under the visitor's cursor a moment after paint.
+  if (!ready) return <span className="navbar__auth-hold" aria-hidden="true" />;
+  if (!accountsEnabled) return null;
+
+  if (!user) {
+    return (
+      <div className="navbar__auth">
+        {/* The words are hidden below 1280px, so each link carries its own
+            accessible name — an icon alone would leave it unnamed. */}
+        <NavLink to="/login" className="btn btn-outline btn--sm navbar__login" aria-label={t("உள்நுழை", "Login")}>
+          <LuLogIn aria-hidden="true" />
+          <span className="navbar__auth-word">{t("உள்நுழை", "Login")}</span>
+        </NavLink>
+        <NavLink
+          to="/register"
+          className="btn btn-gold btn--sm navbar__signup"
+          aria-label={t("பதிவு செய்யுங்கள்", "Sign Up")}
+        >
+          <LuUserPlus aria-hidden="true" />
+          <span className="navbar__auth-word">{t("பதிவு", "Sign Up")}</span>
+        </NavLink>
+      </div>
+    );
+  }
+
+  const initials =
+    user.name
+      .split(/\s+/)
+      .filter(Boolean)
+      .slice(0, 2)
+      .map((w) => w[0])
+      .join("")
+      .toUpperCase() || "·";
+
+  const signOut = async () => {
+    setOpen(false);
+    await logout();
+    toast.info(t("வெளியேறிவிட்டீர்கள்.", "You are signed out."));
+    navigate("/", { replace: true });
+  };
+
+  return (
+    <div className="dropdown" ref={wrapRef}>
+      <button
+        ref={btnRef}
+        type="button"
+        className="navbar__acct-btn"
+        onClick={() => setOpen((o) => !o)}
+        aria-expanded={open}
+        aria-haspopup="menu"
+        aria-label={`${t("என் கணக்கு", "My account")} — ${user.name}`}
+      >
+        <span className="avatar" aria-hidden="true">
+          {initials}
+        </span>
+      </button>
+      {open && (
+        <div className="menu" role="menu">
+          <span className="menu__label">{user.name}</span>
+          <NavLink to="/account" className="menu__item" role="menuitem">
+            <LuCircleUser aria-hidden="true" />
+            {t("என் கணக்கு", "My account")}
+          </NavLink>
+          <NavLink to="/sevas" className="menu__item" role="menuitem">
+            <LuFlame aria-hidden="true" />
+            {t("சேவை பதிவு", "Book a seva")}
+          </NavLink>
+          <span className="menu__divider" role="separator" />
+          <button type="button" className="menu__item menu__item--danger" role="menuitem" onClick={signOut}>
+            <LuLogOut aria-hidden="true" />
+            {t("வெளியேறு", "Sign out")}
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** The same account entry points, as full-width rows in the mobile drawer. */
+function DrawerAccount({ menuOpen, onNavigate }) {
+  const { t } = useLang();
+  const { user, ready, accountsEnabled, logout } = useAuth();
+  const toast = useToast();
+  const navigate = useNavigate();
+  const tab = menuOpen ? 0 : -1;
+
+  if (!ready || !accountsEnabled) return null;
+
+  if (!user) {
+    return (
+      <div className="drawer__acct">
+        <NavLink to="/login" className="btn btn-soft btn--block" tabIndex={tab} onClick={onNavigate}>
+          <LuLogIn aria-hidden="true" /> {t("உள்நுழை", "Sign in")}
+        </NavLink>
+        <NavLink to="/register" className="btn btn-ghost btn--block" tabIndex={tab} onClick={onNavigate}>
+          <LuUserPlus aria-hidden="true" /> {t("புதிய கணக்கு", "Create account")}
+        </NavLink>
+      </div>
+    );
+  }
+
+  const signOut = async () => {
+    onNavigate();
+    await logout();
+    toast.info(t("வெளியேறிவிட்டீர்கள்.", "You are signed out."));
+    navigate("/", { replace: true });
+  };
+
+  return (
+    <div className="drawer__acct">
+      <NavLink to="/account" className="btn btn-soft btn--block" tabIndex={tab} onClick={onNavigate}>
+        <LuCircleUser aria-hidden="true" /> {t("என் கணக்கு", "My account")}
+      </NavLink>
+      <button type="button" className="btn btn-ghost btn--block" tabIndex={tab} onClick={signOut}>
+        <LuLogOut aria-hidden="true" /> {t("வெளியேறு", "Sign out")}
+      </button>
+    </div>
   );
 }
 

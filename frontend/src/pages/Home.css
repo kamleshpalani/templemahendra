@@ -142,6 +142,24 @@
   flex-wrap: wrap;
   gap: var(--space-4);
 }
+/* Quiet counterpart to the Get Started button, on the hero's dark ground */
+.home-hero__signin {
+  margin: var(--space-4) 0 0;
+  font-size: var(--text-sm);
+  color: var(--text-on-dark-2);
+}
+.home-hero__signin a {
+  color: var(--gold-200);
+  font-weight: var(--weight-semibold);
+  text-decoration: underline;
+  text-decoration-color: color-mix(in srgb, var(--gold-300) 55%, transparent);
+  text-underline-offset: 3px;
+}
+.home-hero__signin a:hover,
+.home-hero__signin a:focus-visible {
+  color: var(--white);
+  text-decoration-color: currentColor;
+}
 .home-hero__proof {
   list-style: none;
   display: flex;
@@ -829,9 +847,12 @@ a.home-tile__value--link:hover {
   font-weight: var(--weight-bold);
   letter-spacing: 0.06em;
   text-transform: uppercase;
+  /* No dimming opacity here. --accent-ink clears AA at 5.0:1 on this card, but
+     at 0.85 opacity the composited colour drops under 4.5:1, which axe reports
+     as a serious contrast failure. The quiet-then-brighter effect is expressed
+     with two real colours instead. */
   color: var(--accent-ink);
-  opacity: 0.85;
-  transition: opacity var(--transition), transform var(--transition);
+  transition: color var(--transition), transform var(--transition);
 }
 .home-seva__cta > svg {
   width: 0.9rem;
@@ -839,7 +860,7 @@ a.home-tile__value--link:hover {
   transition: transform var(--transition);
 }
 .home-seva:hover .home-seva__cta {
-  opacity: 1;
+  color: var(--maroon-600);
 }
 .home-seva:hover .home-seva__cta > svg {
   transform: translateX(3px);

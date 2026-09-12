@@ -1,0 +1,310 @@
+/* ══════════════════════════════════════════════════════════════════
+   SearchDialog.css — the Ctrl+K palette.
+
+   Reuses .modal-overlay for the scrim and .chip / .kbd for the fill-ins, then
+   defines the palette itself: a glass sheet pinned near the top of the viewport
+   so the results list grows downward into space the eye is already on.
+   Tokens only.
+   ══════════════════════════════════════════════════════════════════ */
+
+/* The scrim aligns the sheet high rather than centring it */
+.cmdk-overlay {
+  align-items: flex-start;
+  justify-content: center;
+  padding-top: clamp(var(--space-8), 9vh, var(--space-20));
+}
+
+.cmdk {
+  width: min(100%, 40rem);
+  max-height: min(72vh, 34rem);
+  display: flex;
+  flex-direction: column;
+  background: var(--glass-3);
+  backdrop-filter: blur(var(--blur-xl)) saturate(var(--saturate));
+  -webkit-backdrop-filter: blur(var(--blur-xl)) saturate(var(--saturate));
+  border: 1px solid var(--glass-border-strong);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-xl), var(--inset-highlight);
+  overflow: hidden;
+}
+
+/* ── Input bar ───────────────────────────────────────────────────── */
+.cmdk__bar {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-4) var(--space-5);
+  border-bottom: 1px solid var(--glass-border);
+  flex-shrink: 0;
+}
+.cmdk__bar-icon {
+  display: grid;
+  place-items: center;
+  color: var(--maroon-500);
+}
+.cmdk__bar-icon > svg {
+  width: 19px;
+  height: 19px;
+}
+
+/* Deliberately unlike .input: the bar itself is the field */
+.cmdk__input {
+  width: 100%;
+  border: 0;
+  background: none;
+  padding: var(--space-1) 0;
+  font-family: var(--font-body);
+  font-size: var(--text-md);
+  color: var(--text-1);
+  min-width: 0;
+}
+.cmdk__input::placeholder {
+  color: var(--text-muted);
+}
+.cmdk__input:focus {
+  outline: none;
+}
+:lang(ta) .cmdk__input {
+  font-family: var(--font-tamil);
+}
+
+.cmdk__close {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-sm);
+  background: var(--glass-1);
+  color: var(--text-3);
+  cursor: pointer;
+  transition: color var(--transition), background var(--transition);
+}
+.cmdk__close:hover,
+.cmdk__close:focus-visible {
+  color: var(--maroon-600);
+  background: var(--glass-tint-maroon);
+}
+.cmdk__close > svg {
+  width: 16px;
+  height: 16px;
+}
+
+/* ── Results ─────────────────────────────────────────────────────── */
+.cmdk__body {
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: var(--space-3) var(--space-3) var(--space-4);
+  flex: 1;
+  min-height: 0;
+}
+
+.cmdk__group + .cmdk__group {
+  margin-top: var(--space-4);
+}
+.cmdk__group-title {
+  margin: 0 0 var(--space-2);
+  padding: 0 var(--space-3);
+  font-family: var(--font-body);
+  font-size: var(--text-2xs);
+  font-weight: var(--weight-bold);
+  letter-spacing: var(--tracking-caps);
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.cmdk__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  padding: 0 var(--space-3);
+}
+
+.cmdk__row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--space-3);
+  width: 100%;
+  padding: var(--space-3);
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: none;
+  text-align: left;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+  transition: background var(--transition);
+}
+/* The highlight is driven by the arrow keys, not by focus */
+.cmdk__row[data-active="true"] {
+  background: var(--glass-tint-maroon);
+  box-shadow: inset 0 0 0 1px var(--glass-border-strong);
+}
+
+.cmdk__row-icon {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border-radius: var(--radius-sm);
+  background: var(--glass-1);
+  border: 1px solid var(--glass-border);
+  color: var(--maroon-500);
+  flex-shrink: 0;
+}
+.cmdk__row-icon > svg {
+  width: 16px;
+  height: 16px;
+}
+.cmdk__row[data-active="true"] .cmdk__row-icon {
+  background: linear-gradient(135deg, var(--saffron), var(--gold));
+  color: var(--white);
+  border-color: transparent;
+}
+
+.cmdk__row-text {
+  display: grid;
+  gap: 0.1rem;
+  min-width: 0;
+}
+.cmdk__row-title {
+  font-size: var(--text-base);
+  font-weight: var(--weight-semibold);
+  color: var(--text-1);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.cmdk__row-sub {
+  font-size: var(--text-xs);
+  color: var(--text-3);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cmdk__row-go {
+  display: grid;
+  place-items: center;
+  color: var(--text-muted);
+  opacity: 0;
+  transform: translateX(-4px);
+  transition: opacity var(--transition), transform var(--transition);
+}
+.cmdk__row-go > svg {
+  width: 16px;
+  height: 16px;
+}
+.cmdk__row[data-active="true"] .cmdk__row-go {
+  opacity: 1;
+  transform: none;
+  color: var(--maroon-600);
+}
+
+/* ── Hints and empties ───────────────────────────────────────────── */
+.cmdk__hint {
+  margin: 0;
+  padding: var(--space-4) var(--space-3);
+  font-size: var(--text-sm);
+  line-height: var(--leading-relaxed);
+  color: var(--text-3);
+}
+.cmdk__hint--error {
+  color: var(--danger-fg);
+}
+.cmdk__empty {
+  padding: var(--space-5) var(--space-3) var(--space-2);
+}
+.cmdk__empty > p:first-child {
+  margin: 0;
+  font-size: var(--text-base);
+  color: var(--text-1);
+}
+.cmdk__empty .cmdk__hint {
+  padding-left: 0;
+  padding-right: 0;
+  padding-bottom: 0;
+}
+
+/* ── Footer ──────────────────────────────────────────────────────── */
+.cmdk__foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-5);
+  border-top: 1px solid var(--glass-border);
+  background: var(--glass-1);
+  flex-shrink: 0;
+}
+.cmdk__keys {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--text-2xs);
+  color: var(--text-muted);
+}
+.cmdk__all {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  border: 0;
+  background: none;
+  padding: var(--space-1) var(--space-2);
+  border-radius: var(--radius-xs);
+  font-family: var(--font-body);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-semibold);
+  color: var(--maroon-600);
+  cursor: pointer;
+}
+.cmdk__all > svg {
+  width: 14px;
+  height: 14px;
+}
+.cmdk__all:hover,
+.cmdk__all:focus-visible {
+  color: var(--accent-ink);
+}
+
+/* ── Narrow: a full-height sheet, keyboard legend dropped ────────── */
+@media (max-width: 640px) {
+  .cmdk-overlay {
+    padding: 0;
+    align-items: stretch;
+  }
+  .cmdk {
+    width: 100%;
+    max-height: none;
+    height: 100%;
+    border-radius: 0;
+    border-inline: 0;
+  }
+  .cmdk__bar {
+    padding-top: max(var(--space-4), env(safe-area-inset-top));
+  }
+  .cmdk__keys {
+    display: none;
+  }
+  .cmdk__foot {
+    justify-content: flex-end;
+    padding-bottom: max(var(--space-3), env(safe-area-inset-bottom));
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cmdk__row-go {
+    transition: none;
+    transform: none;
+  }
+}
+
+/* Without backdrop-filter the sheet must stay readable on its own */
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .cmdk {
+    background: var(--bg-root);
+  }
+}

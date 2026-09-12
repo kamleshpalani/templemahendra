@@ -3,6 +3,7 @@
 
 require_once __DIR__ . '/../includes/db.php';
 require_once __DIR__ . '/../includes/helpers.php';
+require_once __DIR__ . '/../includes/devotee_auth.php';
 
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     sendError('Method not allowed', 405);
@@ -42,19 +43,27 @@ if (!empty($preferred_date)) {
 }
 
 // ── Insert ────────────────────────────────────────────────────────────────────
-$db   = getDB();
-$stmt = $db->prepare(
-    'INSERT INTO seva_bookings
-           (devotee_name, phone, seva_id, seva_name, preferred_date, message)
-     VALUES (:devotee_name, :phone, :seva_id, :seva_name, :preferred_date, :message)'
-);
-$stmt->execute([
+// A signed-in devotee's booking is stamped with their account id so it shows up
+// in their own history. Anonymous bookings keep working exactly as before.
+$db       = getDB();
+$linkId   = devoteeLinkId('seva_bookings');
+$columns  = ['devotee_name', 'phone', 'seva_id', 'seva_name', 'preferred_date', 'message'];
+$params   = [
     ':devotee_name'   => $devotee_name,
     ':phone'          => $phone,
     ':seva_id'        => $seva_id,
     ':seva_name'      => $seva_name,
     ':preferred_date' => $dateValue,
     ':message'        => $message !== '' ? $message : null,
-]);
+];
+if ($linkId !== null) {
+    $columns[]           = 'devotee_id';
+    $params[':devotee_id'] = $linkId;
+}
+$stmt = $db->prepare(
+    'INSERT INTO seva_bookings (' . implode(', ', $columns) . ')'
+    . ' VALUES (' . implode(', ', array_keys($params)) . ')'
+);
+$stmt->execute($params);
 
 sendJson(['success' => true, 'id' => (int) $db->lastInsertId()], 201);

@@ -13,6 +13,7 @@ import {
 } from "react-icons/lu";
 import { useLang } from "../context/LangContext";
 import { useToast } from "../context/ToastContext";
+import { useAuth } from "../context/AuthContext";
 import { TEMPLE, TRUST, KUMBABHISHEKAM_APPEAL, DONATION_NOTE } from "../data/temple";
 import TrustDetails from "../components/TrustDetails/TrustDetails";
 import PageHero from "../components/ui/PageHero";
@@ -27,9 +28,12 @@ const QUICK_AMOUNTS = [501, 1001, 2001, 5001];
 export default function Donations() {
   const { t } = useLang();
   const toast = useToast();
+  // Prefilled for a signed-in devotee; the pledge is then attached to their
+  // account so it shows in their own history.
+  const { user } = useAuth();
   const [form, setForm] = useState({
-    name: "",
-    phone: "",
+    name: user?.name ?? "",
+    phone: user?.phone ?? "",
     amount: "",
     purpose: "",
     message: "",
@@ -143,7 +147,7 @@ export default function Donations() {
         }
       />
 
-      <section className="section donations">
+      <section className="section">
         <div className="container split donations__split">
           {/* ── Left: intro · appeal · bank details ─────────────────── */}
           <div className="donations__info rise" style={{ "--i": 0 }}>

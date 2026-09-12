@@ -1,6 +1,11 @@
 // Screenshot + console-error probe.
 //   node shot.mjs <url> <out.png> [width] [height] [--login] [--full] [--wait ms] [--click selector]
-import { chromium } from "playwright";
+// playwright and axe-core are devDependencies of frontend/, and Node resolves a
+// bare specifier from this file's own directory upwards — which never reaches
+// frontend/node_modules. Resolving explicitly means "cd frontend && npm install"
+// is the only setup step, with no symlink or root install to remember.
+import { createRequire } from "node:module";
+const { chromium } = createRequire(import.meta.url)("../frontend/node_modules/playwright/index.js");
 import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 

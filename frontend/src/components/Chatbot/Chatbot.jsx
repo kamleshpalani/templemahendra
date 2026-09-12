@@ -113,7 +113,7 @@ export default function Chatbot() {
   };
 
   return (
-    <div className="chatbot">
+    <div>
       {open && (
         <section
           className="chatbot__window"

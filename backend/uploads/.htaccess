@@ -1,0 +1,28 @@
+# Uploads are content, never code. Even if something ever gets past the
+# admin-side file checks, it must not be executable here.
+
+<IfModule mod_php.c>
+  php_flag engine off
+</IfModule>
+<IfModule mod_php7.c>
+  php_flag engine off
+</IfModule>
+<IfModule mod_php8.c>
+  php_flag engine off
+</IfModule>
+
+# Hosts where the handler is set by extension rather than by module
+RemoveHandler .php .phtml .php3 .php4 .php5 .php7 .php8 .phps
+RemoveType .php .phtml .php3 .php4 .php5 .php7 .php8 .phps
+AddType text/plain .php .phtml .php3 .php4 .php5 .php7 .php8 .phps
+
+# And refuse to serve anything that is not an image or document outright
+<FilesMatch "(?i)\.(php|phtml|ph[3-8]|phps|pl|py|cgi|sh|htaccess)$">
+  <IfModule mod_authz_core.c>
+    Require all denied
+  </IfModule>
+  <IfModule !mod_authz_core.c>
+    Order Allow,Deny
+    Deny from all
+  </IfModule>
+</FilesMatch>

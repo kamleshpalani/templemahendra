@@ -21,7 +21,16 @@ function setCorsHeaders(): void
     $origin = CORS_ORIGIN;
     header("Access-Control-Allow-Origin: $origin");
     header('Access-Control-Allow-Methods: GET, POST, PUT, DELETE, OPTIONS');
-    header('Access-Control-Allow-Headers: Content-Type, Authorization');
+    // X-CSRF-Token is the double-submit header every devotee state change sends.
+    header('Access-Control-Allow-Headers: Content-Type, Authorization, X-CSRF-Token');
+    // Session cookies only cross origins when credentials are allowed, and the
+    // browser forbids that against a wildcard origin. In production the site and
+    // the API share an origin, so this matters only for a split deployment where
+    // CORS_ORIGIN names the site explicitly.
+    if ($origin !== '*') {
+        header('Access-Control-Allow-Credentials: true');
+        header('Vary: Origin');
+    }
     if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
         http_response_code(204);
         exit;
@@ -41,6 +50,30 @@ function getJsonBody(): array
 function sanitizeText(string $value, int $maxLen = 500): string
 {
     return mb_substr(strip_tags(trim($value)), 0, $maxLen);
+}
+
+/**
+ * Shared password policy for every account on the site, admin or devotee.
+ * Returns a sentence explaining the problem, or '' when acceptable.
+ * Deliberately simple, so the message can always say what to do next.
+ */
+function passwordProblem(string $password, string $identity = ''): string
+{
+    if (mb_strlen($password) < 10)         return 'Use at least 10 characters.';
+    if (mb_strlen($password) > 200)        return 'That password is too long.';
+    if (!preg_match('/[a-z]/', $password)) return 'Include at least one lowercase letter.';
+    if (!preg_match('/[A-Z]/', $password)) return 'Include at least one uppercase letter.';
+    if (!preg_match('/\d/', $password))    return 'Include at least one number.';
+    if ($identity !== '') {
+        $stem = explode('@', $identity)[0];
+        if ($stem !== '' && mb_strlen($stem) >= 3 && stripos($password, $stem) !== false) {
+            return 'Do not put your name or email in the password.';
+        }
+    }
+    foreach (['password', 'temple', '12345678', 'qwerty', 'admin123', 'letmein', 'welcome'] as $bad) {
+        if (stripos($password, $bad) !== false) return 'That password is too easy to guess.';
+    }
+    return '';
 }
 
 /**

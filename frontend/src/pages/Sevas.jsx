@@ -16,6 +16,7 @@ import {
 import api from "../services/api";
 import { useLang } from "../context/LangContext";
 import { useToast } from "../context/ToastContext";
+import { useAuth } from "../context/AuthContext";
 import Button from "../components/ui/Button";
 import Badge from "../components/ui/Badge";
 import Alert from "../components/ui/Alert";
@@ -102,9 +103,12 @@ const FALLBACK_SEVAS = [
 /* ── Seva Booking Modal ─────────────────────────────────────────── */
 function BookingModal({ seva, onClose, t, lang }) {
   const toast = useToast();
+  // A signed-in devotee should not retype what the temple already holds. The
+  // server stamps the booking with their account id either way.
+  const { user } = useAuth();
   const [form, setForm] = useState({
-    devotee_name: "",
-    phone: "",
+    devotee_name: user?.name ?? "",
+    phone: user?.phone ?? "",
     preferred_date: "",
     message: "",
   });
@@ -171,7 +175,7 @@ function BookingModal({ seva, onClose, t, lang }) {
 
   if (status === "success") {
     return (
-      <Modal open onClose={onClose} size="md" labelledBy="booking-success-title" className="booking-modal">
+      <Modal open onClose={onClose} size="md" labelledBy="booking-success-title">
         <div className="booking-success">
           <span className="booking-success__icon" aria-hidden="true">
             <LuCircleCheck />
@@ -208,7 +212,7 @@ function BookingModal({ seva, onClose, t, lang }) {
         "விவரங்களை நிரப்பவும் — கோயில் அலுவலகம் தொலைபேசியில் உறுதி செய்யும்.",
         "Fill in your details — the temple office will confirm by phone.",
       )}
-      className="booking-modal"
+     
     >
       <p className="booking-modal__amount">
         <span className="booking-modal__value text-gradient">₹{seva.amount}</span>
@@ -405,7 +409,7 @@ export default function Sevas() {
         aside={<HowItWorks t={t} />}
       />
 
-      <section className="section sevas-section">
+      <section className="section">
         <div className="container">
           <SectionHeader
             align="split"
@@ -472,7 +476,7 @@ export default function Sevas() {
                     onClick={(e) => openFromCard(s, e)}
                   >
                     <div className="seva-card__head">
-                      <span className="card__icon seva-card__icon" aria-hidden="true">
+                      <span className="card__icon" aria-hidden="true">
                         <Icon />
                       </span>
                       <div className="seva-card__names">

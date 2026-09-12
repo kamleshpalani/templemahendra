@@ -8,6 +8,10 @@ const api = axios.create({
   baseURL: import.meta.env.VITE_API_URL || "/api",
   timeout: 10000,
   headers: { Accept: "application/json" },
+  // Devotee accounts use a session cookie. Same-origin requests send it either
+  // way; this only matters when VITE_API_URL points at another host, and there
+  // the backend must also name that origin in CORS_ORIGIN.
+  withCredentials: true,
 });
 
 api.interceptors.response.use(

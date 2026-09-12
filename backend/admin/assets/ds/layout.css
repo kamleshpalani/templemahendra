@@ -344,6 +344,10 @@
   --hero-a: var(--moon-500);
   --hero-b: var(--gold-300);
 }
+.page-hero--search {
+  --hero-a: var(--gold-300);
+  --hero-b: var(--saffron-400);
+}
 
 .page-hero__content {
   position: relative;

@@ -152,7 +152,7 @@ export default function Reviews({ t: tProp }) {
   );
 
   return (
-    <section className="section home-reviews reveal" aria-labelledby="home-reviews-title">
+    <section className="section reveal" aria-labelledby="home-reviews-title">
       <div className="container">
         <SectionHeader
           id="home-reviews-title"

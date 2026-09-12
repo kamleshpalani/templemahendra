@@ -4,7 +4,12 @@
 // overflow, axe-core serious/critical violations), language toggle, mobile
 // drawer + keyboard, seva booking modal (focus trap, validation, real submit),
 // contact + donation forms, events filter, panchangam navigation, chatbot, 404.
-import { chromium } from "playwright";
+// playwright and axe-core are devDependencies of frontend/, and Node resolves a
+// bare specifier from this file's own directory upwards — which never reaches
+// frontend/node_modules. Resolving explicitly means "cd frontend && npm install"
+// is the only setup step, with no symlink or root install to remember.
+import { createRequire } from "node:module";
+const { chromium } = createRequire(import.meta.url)("../frontend/node_modules/playwright/index.js");
 import { mkdirSync, readFileSync } from "node:fs";
 
 const base = process.argv[2] || "http://127.0.0.1:5173";
@@ -233,6 +238,73 @@ try {
   check((await page.locator(".chatbot__window").count()) === 0, "chatbot: Escape closes window");
   await page.context().close();
 } catch (e) { fail("Chatbot round-trip (rule-based fallback on the backend) (scenario threw)", String(e.message || e).split("\n")[0].slice(0, 160)); }
+
+// Header fit — the row must sit inside its own container at every width.
+//
+// The navbar clips its overflow, so a row that is too wide loses its rightmost
+// controls silently: no scrollbar, no console error, nothing a "no horizontal
+// overflow" check would catch. That is exactly how the brand, seven Tamil nav
+// labels and the right-hand controls came to be ~560px wider than the bar.
+// This measures the real thing, at breakpoint boundaries and either side.
+try {
+  const WIDTHS_HEADER = [
+    2560, 1920, 1600, 1560, 1559, 1440, 1366, 1340, 1339, 1280, 1200, 1100, 1024, 1023, 960, 900,
+    768, 700, 640, 620, 560, 480, 460, 430, 400, 390, 375, 370, 360, 320,
+  ];
+  const spills = [];
+  for (const w of WIDTHS_HEADER) {
+    const page = await newPage(w, 840);
+    await page.goto(base + "/", { waitUntil: "networkidle" });
+    await page.waitForTimeout(250);
+    const worst = await page.evaluate(() => {
+      const inner = document.querySelector(".navbar__inner");
+      if (!inner) return { spill: 0, sel: "no .navbar__inner" };
+      const box = inner.getBoundingClientRect();
+      let spill = 0;
+      let sel = "";
+      for (const el of inner.querySelectorAll("*")) {
+        const r = el.getBoundingClientRect();
+        if (r.width > 0 && r.right - box.right > spill) {
+          spill = Math.round(r.right - box.right);
+          sel = String(el.className).slice(0, 40);
+        }
+      }
+      return { spill, sel };
+    });
+    if (worst.spill > 1) spills.push(`${w}px: ${worst.sel} +${worst.spill}px`);
+    await page.context().close();
+  }
+  check(spills.length === 0, `header row fits its container at ${WIDTHS_HEADER.length} widths`, spills.slice(0, 4).join(" | "));
+} catch (e) {
+  fail("Header fit (scenario threw)", String(e.message || e).split("\n")[0].slice(0, 160));
+}
+
+// Sign-in / Sign-up must be reachable from the header at every width.
+try {
+  for (const w of [1920, 1440, 1024, 768, 390]) {
+    const page = await newPage(w, 840);
+    await page.goto(base + "/", { waitUntil: "networkidle" });
+    await page.waitForTimeout(500);
+    const seen = await page.evaluate(() => {
+      const vis = (el) => {
+        if (!el) return false;
+        const r = el.getBoundingClientRect();
+        return r.width > 0 && r.height > 0 && r.right <= document.documentElement.clientWidth + 1;
+      };
+      return {
+        signup: vis(document.querySelector(".navbar__signup")),
+        login: vis(document.querySelector(".navbar__login")),
+        toggle: vis(document.querySelector(".navbar__toggle")),
+      };
+    });
+    // Below 920px Login lives in the drawer, so the hamburger is what must show.
+    const ok = seen.signup && (seen.login || seen.toggle);
+    check(ok, `@${w}: sign-up is visible and sign-in is reachable`, JSON.stringify(seen));
+    await page.context().close();
+  }
+} catch (e) {
+  fail("Header auth entry points (scenario threw)", String(e.message || e).split("\n")[0].slice(0, 160));
+}
 
 await browser.close();
 

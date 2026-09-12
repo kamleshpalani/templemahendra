@@ -1,8 +1,31 @@
-# Deny direct access to API includes/config from HTTP
+# Nothing in this directory is a web entry point — these files are require'd by
+# api/ and admin/ only. Deny every direct HTTP request.
+#
+# Both syntaxes are present on purpose: Apache 2.4 uses `Require`, while 2.2
+# (and 2.4 with mod_access_compat loaded) uses Order/Deny. Whichever the host
+# understands, the directory stays closed.
+#
+# The previous version of this file used `<Files "\*">`, which matches a file
+# literally named "*" and therefore denied nothing at all. `<FilesMatch ".*">`
+# is a real regex over every filename.
 
-# Place this file in backend/config/ and backend/includes/
+<IfModule mod_authz_core.c>
+  Require all denied
+</IfModule>
 
-<Files "\*">
-Order Allow,Deny
-Deny from all
-</Files>
+<IfModule !mod_authz_core.c>
+  Order Allow,Deny
+  Deny from all
+</IfModule>
+
+# Belt and braces for hosts that ignore directory-level Require (some LiteSpeed
+# configurations): match every filename explicitly as well.
+<FilesMatch ".*">
+  <IfModule mod_authz_core.c>
+    Require all denied
+  </IfModule>
+  <IfModule !mod_authz_core.c>
+    Order Allow,Deny
+    Deny from all
+  </IfModule>
+</FilesMatch>

@@ -663,7 +663,7 @@ export default function PanchangCalendar() {
         }
       />
 
-      <section className="section section--tight panchang">
+      <section className="section section--tight">
         <div className="container">
           {/* Month navigator */}
           <div className="card card--static panchang-nav">
@@ -836,7 +836,7 @@ export default function PanchangCalendar() {
               )}
             />
             {data?.upcoming?.length > 0 ? (
-              <div className="card card--static panchang-upcoming__card">
+              <div className="card card--static">
                 <ul className="panchang-upcoming__list">
                   {data.upcoming.slice(0, 10).map((day, i) => {
                     const dt = new Date(day.date + "T00:00:00");

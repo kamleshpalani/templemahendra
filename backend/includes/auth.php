@@ -359,20 +359,9 @@ function csrfValid(): bool
     return $sent !== '' && hash_equals(csrfToken(), $sent);
 }
 
-/**
- * Shared password policy. Returns an error string, or '' when acceptable.
- * Deliberately simple and explainable to a committee member.
- */
+/** Admin passwords use the one site-wide policy in includes/helpers.php. */
 function adminPasswordProblem(string $password, string $username = ''): string
 {
-    if (mb_strlen($password) < 10)            return 'Use at least 10 characters.';
-    if (!preg_match('/[a-z]/', $password))    return 'Include at least one lowercase letter.';
-    if (!preg_match('/[A-Z]/', $password))    return 'Include at least one uppercase letter.';
-    if (!preg_match('/\d/', $password))       return 'Include at least one number.';
-    if ($username !== '' && stripos($password, $username) !== false) return 'Do not put your username in the password.';
-    $common = ['password', 'temple', '12345678', 'qwerty', 'admin123', 'letmein'];
-    foreach ($common as $bad) {
-        if (stripos($password, $bad) !== false) return 'That password is too easy to guess.';
-    }
-    return '';
+    require_once __DIR__ . '/helpers.php';
+    return passwordProblem($password, $username);
 }

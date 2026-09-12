@@ -1,0 +1,302 @@
+/* ══════════════════════════════════════════════════════════════════
+   AuthShell.css — the frame shared by every account page
+   (/login, /register, /forgot-password, /reset-password, /verify-email).
+
+   Two columns on desktop: a dark-glass welcome panel and the form card.
+   One column on phones, panel first but trimmed to the brand line so the
+   form is the first thing in reach. Tokens only.
+   ══════════════════════════════════════════════════════════════════ */
+
+.authx {
+  padding: calc(var(--header-h) + var(--space-10)) 0 var(--space-16);
+}
+
+/* Wider than --container-narrow on purpose. At 840px the form column lands at
+   about 400px, and Tamil display headings ("மீண்டும் வரவேற்கிறோம்") then break
+   mid-word, because headings carry overflow-wrap: anywhere as a 390px overflow
+   guard. Giving the column real room is the fix; shrinking the type alone would
+   only move the problem to the next long word. */
+.authx__grid {
+  width: 100%;
+  max-width: min(var(--container), 62rem);
+  margin: 0 auto;
+  padding-inline: var(--gutter);
+  display: grid;
+  grid-template-columns: minmax(0, 0.8fr) minmax(0, 1fr);
+  gap: var(--space-8);
+  align-items: start;
+}
+.authx--wide .authx__grid {
+  max-width: var(--container);
+}
+
+/* ── Welcome panel ───────────────────────────────────────────────── */
+.authx__panel {
+  position: sticky;
+  top: calc(var(--header-h) + var(--space-6));
+  padding: var(--space-8) var(--space-7);
+  border-radius: var(--radius-xl);
+  background: linear-gradient(155deg, var(--maroon-700) 0%, var(--maroon-900) 100%);
+  border: 1px solid var(--glass-ink-border);
+  box-shadow: var(--shadow-ink);
+  overflow: hidden;
+  isolation: isolate;
+}
+/* Warm halo, kept behind the content */
+.authx__panel::before {
+  content: "";
+  position: absolute;
+  inset: -40% -30% auto auto;
+  width: 420px;
+  height: 420px;
+  border-radius: 50%;
+  background: var(--glow-saffron);
+  opacity: 0.5;
+  z-index: -1;
+  pointer-events: none;
+}
+
+.authx__brand {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-3);
+  text-decoration: none;
+  margin-bottom: var(--space-7);
+}
+.authx__brand img {
+  border-radius: 50%;
+  background: var(--glass-ink-2);
+  padding: 3px;
+  flex-shrink: 0;
+}
+.authx__brand span {
+  display: grid;
+  min-width: 0;
+}
+.authx__brand strong {
+  font-family: var(--font-display);
+  font-size: var(--text-md);
+  font-weight: var(--weight-bold);
+  color: var(--gold-200);
+  line-height: var(--leading-snug);
+}
+.authx__brand small {
+  font-size: var(--text-2xs);
+  font-weight: var(--weight-semibold);
+  letter-spacing: var(--tracking-caps);
+  text-transform: uppercase;
+  color: var(--text-on-dark-3);
+}
+.authx__brand:hover strong,
+.authx__brand:focus-visible strong {
+  color: var(--gold-light);
+}
+
+.authx__panel-title {
+  font-size: var(--text-xl);
+  line-height: var(--leading-snug);
+  color: var(--text-on-dark);
+  margin: 0 0 var(--space-6);
+  text-wrap: balance;
+}
+
+.authx__reasons {
+  display: grid;
+  gap: var(--space-4);
+  margin: 0 0 var(--space-7);
+  padding: 0;
+  list-style: none;
+}
+.authx__reasons li {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: var(--space-3);
+  align-items: start;
+  font-size: var(--text-sm);
+  line-height: var(--leading-relaxed);
+  color: var(--text-on-dark-2);
+}
+.authx__reason-icon {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius-sm);
+  background: var(--glass-ink-2);
+  border: 1px solid var(--glass-ink-border);
+  color: var(--gold-300);
+  flex-shrink: 0;
+}
+.authx__reason-icon > svg {
+  width: 17px;
+  height: 17px;
+}
+
+.authx__note {
+  margin: 0;
+  padding-top: var(--space-5);
+  border-top: 1px solid var(--glass-ink-border);
+  font-size: var(--text-xs);
+  line-height: var(--leading-relaxed);
+  color: var(--text-on-dark-3);
+}
+
+/* ── Form card ───────────────────────────────────────────────────── */
+.authx__card {
+  padding: var(--space-8) var(--space-7);
+  border-radius: var(--radius-xl);
+  min-width: 0;
+}
+/* Fluid, so the longest Tamil heading still sets on two lines on a phone */
+.authx__title {
+  font-size: clamp(1.6rem, 1.05rem + 1.7vw, 2.3rem);
+  line-height: var(--leading-tight);
+  color: var(--maroon-600);
+  margin: var(--space-2) 0 var(--space-3);
+  text-wrap: balance;
+}
+.authx__lead {
+  margin: 0 0 var(--space-6);
+  font-size: var(--text-base);
+  line-height: var(--leading-relaxed);
+  color: var(--text-2);
+  max-width: 46ch;
+}
+.authx__card form {
+  display: grid;
+  gap: var(--space-1);
+}
+/* The submit button carries its own top gap so field spacing stays uniform */
+.authx__card form > .btn {
+  margin-top: var(--space-4);
+}
+
+.authx__foot {
+  margin-top: var(--space-6);
+  padding-top: var(--space-5);
+  border-top: 1px solid var(--border-soft);
+  display: grid;
+  gap: var(--space-3);
+  font-size: var(--text-sm);
+  color: var(--text-2);
+}
+.authx__foot a {
+  color: var(--maroon-600);
+  font-weight: var(--weight-semibold);
+  text-decoration: underline;
+  text-decoration-color: color-mix(in srgb, var(--saffron) 45%, transparent);
+  text-underline-offset: 3px;
+}
+.authx__foot a:hover,
+.authx__foot a:focus-visible {
+  color: var(--accent-ink);
+  text-decoration-color: var(--accent-ink);
+}
+.authx__foot-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2) var(--space-4);
+  align-items: baseline;
+  justify-content: space-between;
+}
+
+/* Stacked actions on the "what now" screens (registered, confirmed, expired) */
+.authx__next {
+  display: grid;
+  gap: var(--space-3);
+  margin-top: var(--space-6);
+}
+
+/* What the committee stores, said plainly next to the password field */
+.authx__privacy {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: var(--space-3);
+  margin: var(--space-4) 0 0;
+  padding: var(--space-4);
+  border-radius: var(--radius-sm);
+  background: var(--glass-tint-maroon);
+  border: 1px solid var(--border-soft);
+  font-size: var(--text-xs);
+  line-height: var(--leading-relaxed);
+  color: var(--text-2);
+}
+.authx__privacy > svg {
+  width: 16px;
+  height: 16px;
+  margin-top: 2px;
+  color: var(--maroon-500);
+}
+
+.authx__aside-note {
+  margin: var(--space-4) 0 0;
+  font-size: var(--text-xs);
+  line-height: var(--leading-relaxed);
+  color: var(--text-3);
+}
+
+/* Password rules, shown before the field is submitted rather than after */
+.authx__rules {
+  margin: calc(var(--space-2) * -1) 0 var(--space-2);
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-sm);
+  background: var(--glass-tint-gold);
+  border: 1px solid var(--border-soft);
+  font-size: var(--text-xs);
+  line-height: var(--leading-relaxed);
+  color: var(--text-3);
+  list-style: none;
+  display: grid;
+  gap: var(--space-1);
+}
+.authx__rules li {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+.authx__rules svg {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+  color: var(--text-muted);
+}
+.authx__rules li[data-met="true"] {
+  color: var(--success-fg);
+}
+.authx__rules li[data-met="true"] svg {
+  color: var(--success);
+}
+
+/* ── Narrow ──────────────────────────────────────────────────────── */
+@media (max-width: 900px) {
+  .authx__grid {
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--space-6);
+    max-width: 34rem;
+  }
+  .authx__panel {
+    position: static;
+    padding: var(--space-6);
+  }
+  /* On a phone the form is the job; the panel keeps only its brand line. */
+  .authx__panel-title,
+  .authx__reasons,
+  .authx__note {
+    display: none;
+  }
+  .authx__brand {
+    margin-bottom: 0;
+  }
+}
+
+@media (max-width: 520px) {
+  .authx {
+    padding-top: calc(var(--header-h) + var(--space-6));
+  }
+  .authx__card {
+    padding: var(--space-6) var(--space-5);
+  }
+  .authx__title {
+    font-size: var(--text-xl);
+  }
+}

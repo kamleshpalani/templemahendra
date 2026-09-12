@@ -52,9 +52,29 @@ $method = $_SERVER['REQUEST_METHOD'];
 $path = preg_replace('#^/api#', '', $uri);
 $path = rtrim($path, '/') ?: '/';
 
+// Prefixed groups: one file handles every action under the prefix and reads
+// the remaining segment from the variable named here.
+$groups = [
+    '/auth/'    => ['file' => 'auth.php',    'var' => 'authAction'],
+    '/account/' => ['file' => 'account.php', 'var' => 'accountAction'],
+];
+foreach ($groups as $prefix => $group) {
+    if (str_starts_with($path, $prefix)) {
+        $rest = substr($path, strlen($prefix));
+        // one clean segment only: no slashes, no traversal
+        if (preg_match('/^[a-z][a-z0-9_-]{0,30}$/', $rest)) {
+            ${$group['var']} = $rest;
+            require __DIR__ . '/' . $group['file'];
+            exit;
+        }
+        sendError('Not found', 404);
+    }
+}
+
 $routes = [
     'GET'  => [
         '/announcements'   => 'announcements.php',
+        '/search'          => 'search.php',
         '/sevas'           => 'sevas.php',
         '/events'          => 'events.php',
         '/gallery'         => 'gallery.php',
