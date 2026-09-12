@@ -1,0 +1,25 @@
+# The mail fallback log lives here, and it contains verification and password
+# reset links in plain text. Those links are credentials: anyone who can read
+# this file can take over an account. Nothing here may ever be served.
+#
+# The mailer also writes this file itself when it creates the directory
+# (see backend/includes/mailer.php), so a fresh deployment is never exposed.
+
+<IfModule mod_authz_core.c>
+  Require all denied
+</IfModule>
+
+<IfModule !mod_authz_core.c>
+  Order Allow,Deny
+  Deny from all
+</IfModule>
+
+<FilesMatch ".*">
+  <IfModule mod_authz_core.c>
+    Require all denied
+  </IfModule>
+  <IfModule !mod_authz_core.c>
+    Order Allow,Deny
+    Deny from all
+  </IfModule>
+</FilesMatch>

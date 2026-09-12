@@ -139,6 +139,7 @@ Upload via Hostinger File Manager or FTP:
 | --------- | ------------ |
 | `001_admin_users.sql` | `admin_users` + `admin_activity` — committee accounts, roles and the audit trail. Skip it and the admin keeps working with the single environment-variable login. |
 | `002_contact_messages_index.sql` | An index on `contact_messages.created_at` so the inbox sorts and paginates without a full scan. |
+| `003_devotee_accounts.sql` | `devotees`, `devotee_tokens`, `mail_log` and `rate_limits` — public accounts, email confirmation and password reset. It also adds a nullable `devotee_id` to `seva_bookings` and `donations` so a signed-in devotee's records appear in their own history. Skip it and the site simply hides every account entry point; nothing else changes. |
 
 ```bash
 for f in database/migrations/*.sql; do mysql -u <user> -p <db> < "$f"; done
@@ -161,6 +162,23 @@ Values needed:
 | `ADMIN_USERNAME`  | Admin panel login                                        |
 | `ADMIN_PASS_HASH` | bcrypt hash of the admin password (see Step 5)           |
 | `CORS_ORIGIN`     | Allowed origin, e.g. `https://www.templemahendra.in`     |
+
+Devotee accounts need a few more. They are only read once migration 003 has
+been applied; see `backend/.env.example` for the annotated version.
+
+| Variable          | Description                                              |
+| ----------------- | -------------------------------------------------------- |
+| `SITE_URL`        | Public address of the React site. Confirmation and reset links point here, so it must be exact, including `https`. |
+| `MAIL_TRANSPORT`  | `smtp` on Hostinger. `mail` hands off to PHP's `mail()`. Left blank, messages are written to `backend/logs/mail.log` and the site tells the caller that email is unavailable — fine locally, never in production. |
+| `SMTP_HOST` `SMTP_PORT` `SMTP_USER` `SMTP_PASS` `SMTP_SECURE` | Mailbox for outgoing mail. `SMTP_SECURE` is `tls` on port 587 or `ssl` on 465. |
+| `MAIL_FROM` `MAIL_FROM_NAME` | Sender address and display name. Use a mailbox on your own domain, or the messages will be filed as spam. |
+
+Two security notes for the shared-hosting upload. `backend/logs/` holds
+password-reset links in plain text when email is not configured, and
+`backend/includes/` and `backend/config/` are not web entry points. Each has a
+`.htaccess` that denies all HTTP access, so **upload the dot-files too** — many
+FTP clients hide them by default. `backend/uploads/.htaccess` additionally
+turns off script execution in the uploads folder.
 
 The backend is **MySQL-only**. There is no SQLite, MongoDB or Render/Docker
 fallback: `backend/includes/db.php` always connects to MySQL using the
@@ -193,6 +211,36 @@ chmod 755 public_html/uploads
 | GET    | `/api/gallery`       | List gallery images    |
 | POST   | `/api/donations`     | Submit donation record |
 | POST   | `/api/contact`       | Submit contact message |
+| GET    | `/api/search`        | Search sevas, events, poojas, announcements, gallery captions and the static pages. `?q=` and an optional `?limit=`. Answers in both languages. |
+
+### Devotee accounts
+
+Available once migration 003 is applied. Sessions are an httpOnly cookie; every
+state change carries the CSRF token from `/api/auth/me` in an `X-CSRF-Token`
+header. Register, forgot-password and resend answer identically whether or not
+the address is known, so none of them can be used to find out who has an
+account.
+
+| Method | Path                     | Description                                  |
+| ------ | ------------------------ | -------------------------------------------- |
+| GET    | `/api/auth/me`           | The signed-in devotee (or `null`), a CSRF token, and whether accounts are switched on |
+| POST   | `/api/auth/register`     | Create an account and send a confirmation email |
+| POST   | `/api/auth/login`        | Start a session                              |
+| POST   | `/api/auth/logout`       | End it                                       |
+| POST   | `/api/auth/verify`       | Consume a confirmation token                 |
+| POST   | `/api/auth/resend`       | Send the confirmation email again            |
+| POST   | `/api/auth/forgot`       | Send a reset link                            |
+| POST   | `/api/auth/reset`        | Consume a reset token and set a new password |
+| GET    | `/api/account/summary`   | Counts and totals for the dashboard          |
+| GET    | `/api/account/bookings`  | The devotee's own seva bookings              |
+| GET    | `/api/account/donations` | The devotee's own offerings                  |
+| POST   | `/api/account/profile`   | Update name and phone                        |
+| POST   | `/api/account/password`  | Change password; the current one is required |
+
+A devotee's history is matched on the account id stamped on a record when it
+was created, and never on a phone number. There is no SMS verification here, so
+a phone number proves nothing: matching on it would let anyone register with a
+neighbour's number and read their donation history.
 
 ---
 

@@ -11,6 +11,12 @@ frontend/.env.*.local
 # Uploaded files (manage via Hostinger, not git)
 backend/uploads/*
 !backend/uploads/.gitkeep
+!backend/uploads/.htaccess
+
+# Mail fallback log — contains verification and password-reset links, which are
+# credentials. The deny rule that protects it in production is kept.
+backend/logs/*
+!backend/logs/.htaccess
 
 # Temporary one-off scripts (never commit DB seeds with credentials)
 _seed_aiven.mjs
@@ -31,6 +37,7 @@ docker-entrypoint.sh
 # Editor/tool scratch
 
 # Node
+node_modules/
 frontend/node_modules/
 frontend/dist/
 

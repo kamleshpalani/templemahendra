@@ -10,6 +10,27 @@ if (str_starts_with($uri, '/api')) {
     return true;
 }
 
+// Directories that are never web entry points. On Hostinger a .htaccess in each
+// of these denies HTTP access; the built-in server honours no .htaccess, so the
+// same rule is applied here. Without it, local behaviour is more permissive than
+// production, which is exactly where hardening gaps hide.
+$closed = ['/includes', '/config', '/logs'];
+foreach ($closed as $prefix) {
+    if ($uri === $prefix || str_starts_with($uri, $prefix . '/')) {
+        http_response_code(403);
+        header('Content-Type: application/json; charset=utf-8');
+        echo json_encode(['error' => 'Forbidden']);
+        return true;
+    }
+}
+
+// Uploads are content, not code — mirror the uploads/.htaccess rule.
+if (str_starts_with($uri, '/uploads/') && preg_match('/\.(php|phtml|ph[3-8]|phps)$/i', $uri)) {
+    http_response_code(403);
+    echo 'Forbidden';
+    return true;
+}
+
 // Resolve the file path
 $file = __DIR__ . $uri;
 
