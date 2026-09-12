@@ -28,8 +28,8 @@ Answer ONLY questions about this temple. Information you know:
 - Deities: Sri Lingammal, Sri Renukadevi, Sri Chinnammal. Deity order in the temple name is Lingammal → Renukadevi → Chinnammal; in the Trust name it is Renukadevi → Lingammal → Chinnammal — preserve each exactly.
 - Daily timings: Morning 6:00 AM – 12:30 PM | Evening 4:00 PM – 9:00 PM
 - Sevas: Abhishekam, Archana, Homam, Neivedyam, Alangaram, Thiruvanandal
-- Events: every month on Pournami (full moon) — special pooja and annadanam in which all clan members take part | every Maha Shivaratri — clan members gather for darshan and annadanam is offered | Kumbabhishekam anniversary — Vaikasi 28 (10 June). Other festival dates (Thai Poosam, Panguni Uthiram, Aadi Pooram, Karthigai Deepam) are NOT confirmed — if asked, say they are to be confirmed by the temple committee.
-- History: founded many centuries ago at Pudupatti by the elders of the Dhabbalaar clan; worship was offered before the naar-petti (the fibre box the clan deities brought, holding a silk saree and bangles). 1990 — idols of the three deities sculpted and consecrated. 2011 — community donations built the gopuram. Sunday 10-06-2012 (28 Vaikasi, Nandana year 1187) — Jeernoddharana Ashtabandhana Maha Kumbabhishekam performed; daily pooja has continued ever since. 22-06-2023 — Dharma Trust registered. Land was donated by the family of Thiru T.K. Subbaram (Assistant Sub-Inspector of Police, Retd., native of Pudupatti, now in Rajapalayam) — his wife Thirumathi Ramalakshmi and son Thiru Srinivasan registered the deed in the Trust's name; on that land an annadanam hall and toilets are under construction and rest rooms are planned. The next Maha Kumbabhishekam is due: say "12 years since 10-06-2012", NOT "this year". Donations are sought for the Kumbabhishekam and the buildings.
+- Events: every month on Pournami (full moon) — special pooja and annadanam in which all clan members take part | every Maha Shivaratri — clan members gather for darshan and annadanam is offered. Other festival dates (Thai Poosam, Panguni Uthiram, Aadi Pooram, Karthigai Deepam) are NOT confirmed — if asked, say they are to be confirmed by the temple committee.
+- History: founded many centuries ago at Pudupatti by the elders of the Dhabbalaar clan; worship was offered before the naar-petti (the fibre box the clan deities brought, holding a silk saree and bangles). 1990 — idols of the three deities sculpted and consecrated. 2011 — community donations built the gopuram. Sunday 10-06-2012 (28 Vaikasi, Nandana year 1187) — Jeernoddharana Ashtabandhana Maha Kumbabhishekam performed; daily pooja has continued ever since. 22-06-2023 — Dharma Trust registered. Land was donated by the family of Thiru T.K. Subbaram (Sub-Inspector of Police, Retd., native of Pudupatti, now in Rajapalayam) — his wife Thirumathi Ramalakshmi and son Thiru Srinivasan registered the deed in the Trust's name; on that land an annadanam hall and toilets are under construction and rest rooms are planned. The next Maha Kumbabhishekam is due: say "12 years since 10-06-2012", NOT "this year". Donations are sought for the Kumbabhishekam and the buildings.
 - Dharma Trust: Arulmigu Sri Renukadevi Sri Lingammal Sri Chinnammal Temple Dharma Trust (அருள்மிகு ஸ்ரீ ரேணுகாதேவி ஸ்ரீ லிங்கம்மாள் ஸ்ரீ சின்னம்மாள் திருக்கோவில் தர்ம அறக்கட்டளை). Registration No. 9/2023 dated 22-06-2023 | PAN AAKTA2241H | Order No. AAKTA 2241, HF 20231-23-24 | Income Tax Exemption No. A12A IV SUB SECTION (5) OF 80'G — donors receive 80G income-tax exemption.
 - Donations: by bank transfer or cheque in the Trust's name ONLY. Bank: Tirunelveli Central Co-operative Bank, Thiruvengadam Branch | A/C 713055315 | IFSC TNSC0011500. Receipt policy: a receipt is sent only if the donor's full address is clearly given to the administration at the time of donating; donors giving in person must collect a receipt; the Trust is not responsible for money given without a receipt. There is NO UPI ID — never invent or suggest one.
 - Address: Pudupatti, Thiruvengadam Taluk, Tenkasi District – 627719, Tamil Nadu (புதுப்பட்டி, திருவேங்கடம் தாலுகா, தென்காசி மாவட்டம் - 627719).
@@ -93,8 +93,29 @@ if ($apiKey !== '') {
 // swallowed by the donation rule.
 $msg = mb_strtolower($message, 'UTF-8');
 
+// Shared by the generic donation rule and the earlier "donate for the
+// Kumbabhishekam / buildings" rule, so both answer with the bank details.
+$donationReply =
+      "நன்கொடை வழிகள் 🙏\n"
+    . "நன்கொடை வழங்குபவர்கள் வங்கிக் கணக்கிலும் அல்லது காசோலையாகவும் அறக்கட்டளை பெயரில் வழங்கலாம். (வங்கிப் பரிமாற்றம் அல்லது காசோலை மட்டுமே.)\n"
+    . "🛕 அறக்கட்டளை: அருள்மிகு ஸ்ரீ ரேணுகாதேவி ஸ்ரீ லிங்கம்மாள் ஸ்ரீ சின்னம்மாள் திருக்கோவில் தர்ம அறக்கட்டளை\n"
+    . "🏦 திருநெல்வேலி மத்திய கூட்டுறவு வங்கி, திருவேங்கடம் கிளை\n"
+    . "🔢 வங்கி கணக்கு எண்: 713055315 | IFSC CODE: TNSC0011500\n"
+    . "✅ 80G வருமான வரிச்சலுகை\n"
+    . "🧾 இவை அனைத்தும் வழங்கும் போது நிர்வாகத்திற்கு தங்களது முகவரி தெளிவாக வழங்கினால் மட்டுமே ரசீது அனுப்பி வைக்கப்படும். நன்கொடை பெற நேரடியாக வருபவர்களிடம் ரசீது பெற்றுக் கொள்ளும்படி அன்புடன் கேட்டுக்கொள்கிறோம். ரசீது வாங்காமல் கொடுக்கும் பணத்திற்கு அறக்கட்டளை பொறுப்பல்ல.\n"
+    . "\n"
+    . "How to donate\n"
+    . "Donations may be made by bank transfer or by cheque in the Trust's name only — no other payment method is offered.\n"
+    . "🛕 Trust: Arulmigu Sri Renukadevi Sri Lingammal Sri Chinnammal Temple Dharma Trust\n"
+    . "🏦 Tirunelveli Central Co-operative Bank, Thiruvengadam Branch\n"
+    . "🔢 A/C No.: 713055315 | IFSC: TNSC0011500\n"
+    . "✅ 80G income-tax exemption for donors\n"
+    . "🧾 A receipt will be sent only if your full address is clearly provided to the administration at the time of donating. Those donating in person are kindly requested to collect a receipt. The Trust is not responsible for any money given without a receipt.";
+
 $rules = [
-    '/வணக்கம்|நமஸ்காரம்|hello|^hi\b|namask/u'
+    // Greeting only when the WHOLE message is a greeting, so "hello, how do I
+    // donate?" falls through to the donation rule instead of the welcome text.
+    '/^\s*(?:வணக்கம்|நமஸ்காரம்|hello|hi|hey|namask\w*)[\s!.🙏]*$/u'
         => "வணக்கம்! 🙏 தப்பலவார் குலதெய்வம் அருள்மிகு ஸ்ரீ லிங்கம்மாள், ஸ்ரீ ரேணுகாதேவி, ஸ்ரீ சின்னம்மாள் திருக்கோவில், புதுப்பட்டி — தங்களை அன்புடன் வரவேற்கிறோம்.\n"
          . "Namaskar! Welcome to Arulmigu Sri Lingammal, Sri Renukadevi, Sri Chinnammal Temple, Pudupatti — the Dhabbalavaar Kula Deivam temple. How can I help you today?",
 
@@ -102,7 +123,8 @@ $rules = [
         => "அருள்மிகு ஸ்ரீ ரேணுகாதேவி ஸ்ரீ லிங்கம்மாள் ஸ்ரீ சின்னம்மாள் திருக்கோவில் தர்ம அறக்கட்டளை பதிவு விபரம் 🛕\n"
          . "📋 பதிவு எண்: 9/2023 (22-06-2023)\n"
          . "🆔 பான் கார்டு எண்: AAKTA2241H\n"
-         . "✅ 80G வருமான வரிச்சலுகை: நன்கொடையாளர்கள் வருமான வரி சலுகை பெற வருமான வரித்துறையிலிருந்து உத்தரவு பெறப்பட்டுள்ளது.\n"
+         . "📄 உத்தரவு எண்: AAKTA 2241, HF 20231-23-24\n"
+         . "✅ வருமான வரிச்சலுகை எண்: A12A IV SUB SECTION (5) OF 80'G — நன்கொடையாளர்கள் வருமான வரி சலுகை பெற வருமான வரித்துறையிலிருந்து உத்தரவு பெறப்பட்டுள்ளது.\n"
          . "🏦 வங்கியின் பெயர்: திருநெல்வேலி மத்திய கூட்டுறவு வங்கி, திருவேங்கடம் கிளை\n"
          . "🔢 வங்கி கணக்கு எண்: 713055315 | IFSC CODE: TNSC0011500\n"
          . "🧾 நிர்வாகத்திற்கு தங்களது முகவரி தெளிவாக வழங்கினால் மட்டுமே ரசீது அனுப்பி வைக்கப்படும். நன்கொடை பெற நேரடியாக வருபவர்களிடம் ரசீது பெற்றுக் கொள்ளும்படி அன்புடன் கேட்டுக்கொள்கிறோம். ரசீது வாங்காமல் கொடுக்கும் பணத்திற்கு அறக்கட்டளை பொறுப்பல்ல.\n"
@@ -110,7 +132,8 @@ $rules = [
          . "Arulmigu Sri Renukadevi Sri Lingammal Sri Chinnammal Temple Dharma Trust — Registration Details\n"
          . "📋 Registration No.: 9/2023 (Date: 22-06-2023)\n"
          . "🆔 PAN: AAKTA2241H\n"
-         . "✅ 80G income-tax exemption: an order has been obtained from the Income Tax Department so that donors receive income-tax exemption.\n"
+         . "📄 Order No.: AAKTA 2241, HF 20231-23-24\n"
+         . "✅ Income Tax Exemption No.: A12A IV SUB SECTION (5) OF 80'G — an order has been obtained from the Income Tax Department so that donors receive income-tax exemption.\n"
          . "🏦 Bank: Tirunelveli Central Co-operative Bank, Thiruvengadam Branch\n"
          . "🔢 A/C No.: 713055315 | IFSC: TNSC0011500\n"
          . "🧾 A receipt is sent only if your full address is clearly provided to the administration when donating. Those donating in person are kindly requested to collect a receipt. The Trust is not responsible for any money given without a receipt.",
@@ -132,6 +155,11 @@ $rules = [
          . "👤 Treasurer 1 – K. Rajendran – +91 99650 40693\n"
          . "👤 Treasurer 2 – L. Sivakumar – +91 94884 68206",
 
+    // Donation intent aimed at the Kumbabhishekam / new buildings must get the
+    // bank details, not the history essay — so it is matched before history.
+    '/(?:நன்கொடை|donat|contribut|கொடுக்க).{0,40}(?:கும்பாபிஷேக|kumbabhishek|கட்டிட|building|அன்னதான\s?கூடம்|annadanam hall)|(?:கும்பாபிஷேக|kumbabhishek|கட்டிட|building|அன்னதான\s?கூடம்|annadanam hall).{0,40}(?:நன்கொடை|donat|contribut|கொடுக்க)/u'
+        => $donationReply,
+
     '/வரலாறு|history|நார்பெட்டி|கோபுர|gopuram|\b1990\b|\b2012\b|சிலை|idol|நிலம்|இட\s?நன்கொடை|land donat|donated (the )?land|சுப்பாராம்|subbaram|அன்னதான\s?கூடம்|annadanam hall|கும்பாபிஷேக|kumbabhishek/u'
         => "திருக்கோவில் வரலாறு 🛕\n"
          . "• பல நூற்றாண்டுகளுக்கு முன்பு தப்பலார் குலப் பெரியோர்களால் புதுப்பட்டியில் நிறுவப்பட்டது. குலதெய்வங்கள் கொண்டு வந்த நார்பெட்டியை — அதனுள் பட்டுச்சேலை, வளையல் — வைத்து வணங்கி வந்தோம்.\n"
@@ -146,20 +174,20 @@ $rules = [
          . "• 1990: idols were sculpted for the three deities and consecrated.\n"
          . "• 2011: community donations built the temple gopuram. On Sunday 10-06-2012 (28 Vaikasi, Nandana year 1187) the Jeernoddharana Ashtabandhana Maha Kumbabhishekam was performed. Daily pooja has continued ever since.\n"
          . "• 22-06-2023: Dharma Trust registered (Reg. No. 9/2023); PAN, bank account and 80G exemption obtained.\n"
-         . "• On land donated in the Trust's name by the family of Thiru T.K. Subbaram (Asst. Sub-Inspector of Police, Retd., Rajapalayam) — Thirumathi Ramalakshmi & Thiru Srinivasan — an annadanam hall and toilets are under construction; rest rooms are planned.\n"
+         . "• On land donated in the Trust's name by the family of Thiru T.K. Subbaram (Sub-Inspector of Police, Retd., Rajapalayam) — Thirumathi Ramalakshmi & Thiru Srinivasan — an annadanam hall and toilets are under construction; rest rooms are planned.\n"
          . "• 12 years have passed since the Kumbabhishekam of 10-06-2012. Donations are sought for the next Maha Kumbabhishekam and for the buildings.",
 
     '/திருவிழா|நிகழ்|festival|event|poosam|shivaratri|panguni|karthigai|aadi|பௌர்ணமி|pournami|full moon|அன்னதான|annadanam|சிவராத்திரி|anniversary|vaikasi|வைகாசி/u'
         => "நிகழ்வுகள் 🎉\n"
          . "🌕 மாதந்தோறும் — பௌர்ணமி பூஜை & அன்னதானம்: ஒவ்வொரு மாதம் பௌர்ணமி அன்றும் பூஜையும் அன்னதானமும் சிறப்பாக நடைபெற்று வருகிறது.\n"
-         . "🕉️ ஆண்டுதோறும் — மஹா சிவராத்திரி: குல மக்கள் வந்து தரிசனம் செய்கின்றனர்; அன்று அன்னதானமும் நடைபெறுகிறது.\n"
-         . "🛕 கும்பாபிஷேக நினைவு நாள்: வைகாசி 28 (10 ஜூன்). 2012-ல் கும்பாபிஷேகம் செய்து 12 வருடங்கள் முடிவடைந்துள்ளது — அடுத்த மஹா கும்பாபிஷேகத்திற்கு நன்கொடை வேண்டப்படுகிறது.\n"
+         . "🕉️ ஆண்டுதோறும் — மஹா சிவராத்திரி: ஒவ்வொரு மஹா சிவராத்திரி அன்று நமது குல மக்கள் வந்து தரிசனம் செய்து வருகின்றார்கள். அன்று அன்னதானமும் நடைபெற்று வருகின்றது.\n"
+         . "🛕 2012-ல் கும்பாபிஷேகம் செய்து 12 வருடங்கள் முடிவடைந்துள்ளது — அடுத்த மஹா கும்பாபிஷேகத்திற்கு நன்கொடை வேண்டப்படுகிறது.\n"
          . "மற்ற திருவிழா தேதிகள்: உறுதி செய்யப்பட வேண்டும் — கமிட்டியாரை தொடர்பு கொள்ளவும்.\n"
          . "\n"
          . "Events\n"
          . "🌕 Every month — Pournami Pooja & Annadanam: special pooja and annadanam are held every full-moon day.\n"
-         . "🕉️ Annual — Maha Shivaratri: clan members gather for darshan, and annadanam is offered.\n"
-         . "🛕 Kumbabhishekam anniversary: Vaikasi 28 (10 June). 12 years have passed since the Kumbabhishekam of 2012 — donations are sought for the next Maha Kumbabhishekam.\n"
+         . "🕉️ Annual — Maha Shivaratri: every Maha Shivaratri, our clan members gather for darshan, and annadanam is offered on that day.\n"
+         . "🛕 12 years have passed since the Kumbabhishekam of 2012 — donations are sought for the next Maha Kumbabhishekam.\n"
          . "Other festival dates: to be confirmed — please contact the Temple Committee.",
 
     '/நேரம்|திற(?!்)|மூடு|time|timing|hour|open|close/u'
@@ -168,22 +196,9 @@ $rules = [
     '/சேவை|பூஜை|அபிஷேகம்|அர்ச்சனை|ஹோமம்|seva|pooja|puja|abhishekam|archana|homam/u'
         => "நாங்கள் வழங்கும் சேவைகள்:\n• அபிஷேகம் (Abhishekam)\n• அர்ச்சனை (Archana)\n• ஹோமம் (Homam)\n• நிவேதனம் (Neivedyam)\n• அலங்காரம் (Alangaram)\n\nSevas page-ல் விவரம் காணலாம் அல்லது நேரடியாக அழைக்கவும். 🙏",
 
-    '/நன்கொடை|தானம்|donat|pay|upi|bank|account|a\/c|கணக்கு|money|transfer|காசோலை|cheque/u'
-        => "நன்கொடை வழிகள் 🙏\n"
-         . "நன்கொடை வழங்குபவர்கள் வங்கிக் கணக்கிலும் அல்லது காசோலையாகவும் அறக்கட்டளை பெயரில் வழங்கலாம். (வங்கிப் பரிமாற்றம் அல்லது காசோலை மட்டுமே.)\n"
-         . "🛕 அறக்கட்டளை: அருள்மிகு ஸ்ரீ ரேணுகாதேவி ஸ்ரீ லிங்கம்மாள் ஸ்ரீ சின்னம்மாள் திருக்கோவில் தர்ம அறக்கட்டளை\n"
-         . "🏦 திருநெல்வேலி மத்திய கூட்டுறவு வங்கி, திருவேங்கடம் கிளை\n"
-         . "🔢 வங்கி கணக்கு எண்: 713055315 | IFSC CODE: TNSC0011500\n"
-         . "✅ 80G வருமான வரிச்சலுகை\n"
-         . "🧾 முகவரி தெளிவாக வழங்கினால் மட்டுமே ரசீது அனுப்பி வைக்கப்படும். நேரடியாக வருபவர்கள் ரசீது பெற்றுக் கொள்ளவும். ரசீது வாங்காமல் கொடுக்கும் பணத்திற்கு அறக்கட்டளை பொறுப்பல்ல.\n"
-         . "\n"
-         . "How to donate\n"
-         . "Donations may be made by bank transfer or by cheque in the Trust's name only — no other payment method is offered.\n"
-         . "🛕 Trust: Arulmigu Sri Renukadevi Sri Lingammal Sri Chinnammal Temple Dharma Trust\n"
-         . "🏦 Tirunelveli Central Co-operative Bank, Thiruvengadam Branch\n"
-         . "🔢 A/C No.: 713055315 | IFSC: TNSC0011500\n"
-         . "✅ 80G income-tax exemption for donors\n"
-         . "🧾 A receipt is sent only if your full address is clearly provided when donating. Please collect a receipt if donating in person. The Trust is not responsible for money given without a receipt.",
+    // (?<!அன்ன)தானம் keeps "அன்னதானம்" (annadanam) from matching "தானம்" (donation).
+    '/நன்கொடை|(?<!அன்ன)தானம்|donat|contribut|\bpay|upi|bank|account|a\/c|கணக்கு|money|transfer|காசோலை|cheque/u'
+        => $donationReply,
 
     '/முகவரி|எங்கே|எங்கு|address|location|where|direction|map/u'
         => "📍 முகவரி:\n"

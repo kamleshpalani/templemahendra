@@ -1,60 +1,72 @@
 import { useEffect, useState } from "react";
+import { LuExternalLink, LuStar } from "react-icons/lu";
 import api from "../../services/api";
 import { useLang } from "../../context/LangContext";
+import { MAPS_URL } from "../../data/temple";
+import Button from "../ui/Button";
+import SectionHeader from "../ui/SectionHeader";
+import { SkeletonCards } from "../ui/Feedback";
 import "./Reviews.css";
 
-function StarRating({ rating }) {
+/** Star row — filled vs outlined glyphs, plus a text label, so it never relies on colour alone. */
+function StarRating({ rating, size }) {
+  const { t } = useLang();
   return (
-    <span className="review-stars" aria-label={`${rating} out of 5 stars`}>
+    <span
+      className={`reviews-stars${size === "lg" ? " reviews-stars--lg" : ""}`}
+      role="img"
+      aria-label={t(`${rating} / 5 நட்சத்திரங்கள்`, `${rating} out of 5 stars`)}
+    >
       {[1, 2, 3, 4, 5].map((s) => (
-        <span key={s} className={s <= rating ? "star star--filled" : "star"}>
-          ★
-        </span>
+        <LuStar
+          key={s}
+          aria-hidden="true"
+          className={s <= rating ? "reviews-star reviews-star--filled" : "reviews-star"}
+        />
       ))}
     </span>
   );
 }
 
-function ReviewCard({ review }) {
+function ReviewCard({ review, index }) {
+  const { t } = useLang();
   const [expanded, setExpanded] = useState(false);
   const MAX = 180;
   const long = review.text.length > MAX;
 
   return (
-    <div className="review-card card">
-      <div className="review-card__header">
-        {review.avatar ? (
-          <img
-            src={review.avatar}
-            alt={review.author}
-            className="review-card__avatar"
-            referrerPolicy="no-referrer"
-          />
-        ) : (
-          <div className="review-card__avatar review-card__avatar--fallback">
-            {review.author.charAt(0).toUpperCase()}
-          </div>
-        )}
-        <div>
-          <p className="review-card__author">{review.author}</p>
-          <p className="review-card__time">{review.time}</p>
+    <article className="reviews-card card card--static rise" style={{ "--i": index }}>
+      <div className="reviews-card__head">
+        <span className="avatar avatar--lg reviews-card__avatar" aria-hidden="true">
+          {review.avatar ? (
+            <img src={review.avatar} alt="" referrerPolicy="no-referrer" />
+          ) : (
+            review.author.charAt(0).toUpperCase()
+          )}
+        </span>
+        <div className="reviews-card__who">
+          <p className="reviews-card__author">{review.author}</p>
+          <p className="reviews-card__time">{review.time}</p>
         </div>
-        <div className="review-card__stars">
+        <div className="reviews-card__stars">
           <StarRating rating={review.rating} />
         </div>
       </div>
-      <p className="review-card__text">
+      <p className="reviews-card__text">
         {long && !expanded ? review.text.slice(0, MAX) + "…" : review.text}
       </p>
       {long && (
-        <button
-          className="review-card__toggle"
+        <Button
+          variant="ghost"
+          size="sm"
+          className="reviews-card__toggle"
           onClick={() => setExpanded((e) => !e)}
+          aria-expanded={expanded}
         >
-          {expanded ? "Show less" : "Read more"}
-        </button>
+          {expanded ? t("குறைவாக காட்டு", "Show less") : t("மேலும் படிக்க", "Read more")}
+        </Button>
       )}
-    </div>
+    </article>
   );
 }
 
@@ -103,8 +115,8 @@ const FALLBACK_REVIEWS = [
   },
 ];
 
-const GOOGLE_MAPS_URL =
-  "https://maps.google.com/maps?q=Dhabbalavaar+Renuka+Devi+Lingamma+Sinnammal+Temple,+Middle+Street,+Pudupatti,+Tamil+Nadu+627719";
+// Single source of truth for the temple's map location (see data/temple.js)
+const GOOGLE_MAPS_URL = MAPS_URL;
 
 export default function Reviews({ t: tProp }) {
   const { t: tCtx } = useLang();
@@ -124,55 +136,56 @@ export default function Reviews({ t: tProp }) {
   // Use real reviews if API is configured and has data, else use fallback
   const isReal = !loading && data?.configured && data?.reviews?.length;
   const reviews = isReal ? data.reviews : FALLBACK_REVIEWS;
+  const hasRealRating = Boolean(isReal && data.rating);
+
+  const rateButton = (
+    <Button
+      href={GOOGLE_MAPS_URL}
+      target="_blank"
+      rel="noopener noreferrer"
+      variant="outline"
+      className="reviews-summary__link"
+      trailingIcon={<LuExternalLink aria-hidden="true" />}
+    >
+      {t("Google-ல் மதிப்பீடு இடுங்கள்", "Rate on Google")}
+    </Button>
+  );
 
   return (
-    <section className="section section--reviews">
+    <section className="section home-reviews reveal" aria-labelledby="home-reviews-title">
       <div className="container">
-        <h2 className="section__title">
-          {t("பக்தர்களின் அனுபவங்கள்", "Devotee Reviews")}
-        </h2>
+        <SectionHeader
+          id="home-reviews-title"
+          eyebrow={t("Google மதிப்புரைகள்", "Google reviews")}
+          title={t("பக்தர்களின் அனுபவங்கள்", "Devotee Reviews")}
+        />
 
         {loading ? (
-          <p className="loading-text">
-            {t("மதிப்புரைகள் ஏற்றுகிறது…", "Loading reviews…")}
-          </p>
+          <>
+            <p className="sr-only" role="status">
+              {t("மதிப்புரைகள் ஏற்றுகிறது…", "Loading reviews…")}
+            </p>
+            <SkeletonCards count={3} className="grid-3" />
+          </>
         ) : (
           <>
-            {isReal && data.rating ? (
-              <div className="reviews-summary">
-                <span className="reviews-summary__score">{data.rating}</span>
-                <StarRating rating={Math.round(data.rating)} />
-                <span className="reviews-summary__count">
-                  {data.total_ratings.toLocaleString()}{" "}
-                  {t("மதிப்புரைகள்", "reviews")}
-                </span>
-                <a
-                  href={GOOGLE_MAPS_URL}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="reviews-summary__link"
-                >
-                  {t("Google-ல் மதிப்பீடு இடுங்கள்", "Rate on Google")} ↗
-                </a>
+            <div className="reviews-summary card card--soft card--static">
+              <span className="reviews-summary__score text-gradient">{hasRealRating ? data.rating : "5.0"}</span>
+              <div className="reviews-summary__meta">
+                <StarRating rating={hasRealRating ? Math.round(data.rating) : 5} size="lg" />
+                {hasRealRating && data.total_ratings != null && (
+                  <span className="reviews-summary__count">
+                    {data.total_ratings.toLocaleString()} {t("மதிப்புரைகள்", "reviews")}
+                  </span>
+                )}
               </div>
-            ) : (
-              <div className="reviews-summary">
-                <span className="reviews-summary__score">5.0</span>
-                <StarRating rating={5} />
-                <a
-                  href={GOOGLE_MAPS_URL}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="reviews-summary__link"
-                >
-                  {t("Google-ல் மதிப்பீடு இடுங்கள்", "Rate on Google")} ↗
-                </a>
-              </div>
-            )}
+              {rateButton}
+            </div>
 
-            <div className="reviews-grid">
+            <div className="reviews-grid grid-3">
               {reviews.map((r, i) => (
-                <ReviewCard key={i} review={r} />
+                // eslint-disable-next-line react/no-array-index-key
+                <ReviewCard key={i} review={r} index={i} />
               ))}
             </div>
           </>

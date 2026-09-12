@@ -4,6 +4,7 @@ import Layout from "./components/Layout/Layout";
 import Home from "./pages/Home";
 import { PageLoader } from "./components/ui/Feedback";
 import { useLang } from "./context/LangContext";
+import useReveal from "./hooks/useReveal";
 
 // Home stays eager for LCP; every other route is code-split.
 const About = lazy(() => import("./pages/About"));
@@ -18,6 +19,8 @@ const NotFound = lazy(() => import("./pages/NotFound"));
 function PageTransition() {
   const { pathname } = useLocation();
   const { t } = useLang();
+  // Scroll-reveal for any `.reveal` blocks rendered by the current page.
+  useReveal([pathname]);
   return (
     <div key={pathname} className="page-enter">
       <Suspense fallback={<PageLoader label={t("ஏற்றுகிறது…", "Loading…")} />}>
@@ -28,11 +31,13 @@ function PageTransition() {
 }
 
 function ScrollToTop() {
-  const { pathname, hash } = useLocation();
+  const { pathname, hash, key } = useLocation();
   useEffect(() => {
     // In-page anchors (/about#trust, /donations#bank-details): scroll to the
-    // target once it has rendered. The sticky 70px navbar is offset via
-    // scroll-margin-top on [id] sections in index.css.
+    // target once it has rendered. Each anchored section sets its own
+    // scroll-margin-top (About.css, Contact.css, Donations.css, TrustDetails.css)
+    // so the sticky 70px navbar never covers it. Keying on `key` (not just
+    // pathname+hash) means re-clicking the same anchor link scrolls again.
     if (hash) {
       const target = document.getElementById(hash.slice(1));
       if (target) {
@@ -41,7 +46,7 @@ function ScrollToTop() {
       }
     }
     window.scrollTo({ top: 0, left: 0, behavior: "instant" });
-  }, [pathname, hash]);
+  }, [pathname, hash, key]);
   return null;
 }
 

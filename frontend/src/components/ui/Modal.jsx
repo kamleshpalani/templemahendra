@@ -1,53 +1,38 @@
-import { useEffect, useRef } from "react";
+import { useId, useRef } from "react";
+import { LuX } from "react-icons/lu";
+import { useLang } from "../../context/LangContext";
+import useDialogBehaviour from "../../hooks/useDialogBehaviour";
 
 /**
  * Accessible glass modal: focus trap, Escape to close, body scroll lock,
- * returns focus to the opener. Renders as a bottom sheet on small screens (CSS).
+ * restores focus to the opener. Renders as a bottom sheet on small screens.
+ *
+ *   <Modal open onClose={…} title="Book Seva" eyebrow="Abhishekam" description="…" size="md">
+ *     …body…
+ *   </Modal>
+ *
+ * Pass `labelledBy` if you render your own heading inside.
  */
-export default function Modal({ open, onClose, title, labelledBy, children, className = "" }) {
+export default function Modal({
+  open,
+  onClose,
+  title,
+  eyebrow,
+  description,
+  size = "md",
+  labelledBy,
+  children,
+  className = "",
+}) {
   const panelRef = useRef(null);
-  const openerRef = useRef(null);
+  const auto = useId();
+  const titleId = labelledBy ?? `modal-title-${auto}`;
+  const descId = description ? `modal-desc-${auto}` : undefined;
+  const { t } = useLang();
 
-  useEffect(() => {
-    if (!open) return undefined;
-    openerRef.current = document.activeElement;
-    const { overflow } = document.body.style;
-    document.body.style.overflow = "hidden";
-
-    const panel = panelRef.current;
-    const focusables = () =>
-      panel.querySelectorAll(
-        'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
-      );
-    const first = focusables()[0];
-    (first || panel).focus({ preventScroll: true });
-
-    const onKey = (e) => {
-      if (e.key === "Escape") {
-        e.stopPropagation();
-        onClose();
-        return;
-      }
-      if (e.key !== "Tab") return;
-      const items = focusables();
-      if (items.length === 0) return;
-      const start = items[0];
-      const end = items[items.length - 1];
-      if (e.shiftKey && document.activeElement === start) {
-        e.preventDefault();
-        end.focus();
-      } else if (!e.shiftKey && document.activeElement === end) {
-        e.preventDefault();
-        start.focus();
-      }
-    };
-    document.addEventListener("keydown", onKey);
-    return () => {
-      document.removeEventListener("keydown", onKey);
-      document.body.style.overflow = overflow;
-      openerRef.current?.focus?.({ preventScroll: true });
-    };
-  }, [open, onClose]);
+  // Scroll lock, Escape, Tab trap and focus return live in the shared dialog hook.
+  // Initial focus: first form control (the close button is marked data-dialog-close), then close, then the panel.
+  useDialogBehaviour({ open, onClose, panelRef });
 
   if (!open) return null;
 
@@ -55,16 +40,33 @@ export default function Modal({ open, onClose, title, labelledBy, children, clas
     <div className="modal-overlay" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
       <div
         ref={panelRef}
-        className={`modal ${className}`}
+        className={`modal${size !== "md" ? ` modal--${size}` : ""} ${className}`.trim()}
         role="dialog"
         aria-modal="true"
-        aria-labelledby={labelledBy}
-        aria-label={labelledBy ? undefined : title}
+        aria-labelledby={titleId}
+        aria-describedby={descId}
         tabIndex={-1}
       >
-        <button type="button" className="modal__close" onClick={onClose} aria-label="Close dialog">
-          ✕
+        <button
+          type="button"
+          className="modal__close"
+          data-dialog-close=""
+          onClick={onClose}
+          aria-label={t("மூடு", "Close dialog")}
+        >
+          <LuX aria-hidden="true" />
         </button>
+        {eyebrow && <p className="eyebrow modal__eyebrow">{eyebrow}</p>}
+        {title && (
+          <h2 id={titleId} className="modal__title">
+            {title}
+          </h2>
+        )}
+        {description && (
+          <p id={descId} className="modal__desc">
+            {description}
+          </p>
+        )}
         {children}
       </div>
     </div>

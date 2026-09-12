@@ -1,0 +1,68 @@
+/* ══════════════════════════════════════════════════════════════════
+   NotFound.css · Sacred Light v3 — centred solid glass card, big 404
+   ══════════════════════════════════════════════════════════════════ */
+.notfound {
+  display: grid;
+  place-items: center;
+  min-height: min(72dvh, 760px);
+}
+.notfound__card {
+  width: 100%;
+  text-align: center;
+  padding: clamp(2.5rem, 6vw, 4.5rem) clamp(1.25rem, 5vw, 3rem);
+  isolation: isolate;
+}
+/* Soft gold bloom behind the numerals (the card's ::before is its highlight line) */
+.notfound__card::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background:
+    radial-gradient(ellipse 60% 42% at 50% 0%, var(--glass-tint-gold), transparent 72%),
+    radial-gradient(ellipse 40% 30% at 50% 100%, var(--glass-tint-maroon), transparent 70%);
+  pointer-events: none;
+}
+.notfound__icon {
+  margin-bottom: var(--space-5);
+}
+.notfound__code {
+  font-family: var(--font-display);
+  font-size: var(--text-4xl);
+  font-weight: var(--weight-black);
+  line-height: 1;
+  letter-spacing: var(--tracking-tight);
+  font-variant-numeric: tabular-nums;
+  margin-bottom: var(--space-3);
+}
+.notfound__code > span {
+  display: inline-block;
+  padding-inline: 0.05em;
+}
+.notfound__title {
+  font-size: var(--text-xl);
+  color: var(--maroon-600);
+  margin-bottom: var(--space-3);
+}
+.notfound__lead {
+  max-width: 46ch;
+  margin: 0 auto var(--space-7);
+  color: var(--text-3);
+  font-size: var(--text-md);
+  line-height: var(--leading-relaxed);
+}
+.notfound__actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: var(--space-3);
+}
+
+@media (max-width: 480px) {
+  .notfound {
+    min-height: 0;
+  }
+  .notfound__actions .btn {
+    flex: 1 1 100%;
+  }
+}

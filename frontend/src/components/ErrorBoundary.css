@@ -1,0 +1,74 @@
+/* ══════════════════════════════════════════════════════════════════
+   ErrorBoundary.css · Sacred Light v3 — full-page crash screen
+   Composes .empty-state--error / .btn; tokens only.
+   ══════════════════════════════════════════════════════════════════ */
+.errorboundary {
+  min-height: 100dvh;
+  display: grid;
+  place-items: center;
+}
+.errorboundary__panel {
+  width: 100%;
+  padding: clamp(2.5rem, 6vw, 4rem) clamp(1.25rem, 5vw, 3rem);
+}
+.errorboundary__title {
+  font-size: var(--text-xl);
+}
+
+/* Collapsible stack trace (DEV only) */
+.errorboundary__details {
+  margin-top: var(--space-6);
+  text-align: left;
+  border: 1px solid var(--danger-border);
+  border-radius: var(--radius-sm);
+  background: var(--glass-2);
+  overflow: hidden;
+}
+.errorboundary__summary {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: 44px;
+  padding: 0.6rem var(--space-4);
+  cursor: pointer;
+  list-style: none;
+  font-size: var(--text-xs);
+  font-weight: var(--weight-bold);
+  letter-spacing: var(--tracking-caps);
+  text-transform: uppercase;
+  color: var(--danger-fg);
+  user-select: none;
+}
+.errorboundary__summary::-webkit-details-marker {
+  display: none;
+}
+.errorboundary__summary::before {
+  content: "";
+  width: 0.5em;
+  height: 0.5em;
+  border-right: 2px solid currentColor;
+  border-bottom: 2px solid currentColor;
+  transform: rotate(-45deg);
+  transition: transform var(--transition);
+  flex-shrink: 0;
+}
+.errorboundary__details[open] .errorboundary__summary::before {
+  transform: rotate(45deg);
+}
+.errorboundary__summary:hover {
+  background: var(--danger-bg);
+}
+.errorboundary__stack {
+  margin: 0;
+  padding: var(--space-4);
+  max-height: 50dvh;
+  overflow: auto;
+  border-top: 1px solid var(--danger-border);
+  background: var(--danger-bg);
+  color: var(--danger);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  line-height: 1.55;
+  white-space: pre-wrap;
+  word-break: break-all;
+}

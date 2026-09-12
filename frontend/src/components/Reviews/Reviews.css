@@ -1,139 +1,133 @@
-.section--reviews {
-  background: var(--bg-alt);
-}
+/* ══════════════════════════════════════════════════════════════════
+   Reviews.css · Sacred Light v3 — Google reviews block on Home
+   ══════════════════════════════════════════════════════════════════ */
 
-/* Summary bar */
+/* Summary row */
 .reviews-summary {
   display: flex;
   align-items: center;
-  gap: 0.75rem;
+  gap: var(--space-5);
   flex-wrap: wrap;
-  margin-bottom: 2rem;
+  padding: var(--space-5) var(--space-6);
+  margin-bottom: var(--space-8);
 }
-
 .reviews-summary__score {
-  font-size: 2.8rem;
-  font-weight: 800;
-  color: var(--maroon);
+  font-family: var(--font-display);
+  font-size: var(--text-3xl);
+  font-weight: var(--weight-black);
   line-height: 1;
+  letter-spacing: var(--tracking-tight);
+  font-variant-numeric: tabular-nums;
 }
-
+.reviews-summary__meta {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  min-width: 0;
+}
 .reviews-summary__count {
-  font-size: 0.9rem;
+  font-size: var(--text-sm);
   color: var(--text-3);
+  font-weight: var(--weight-medium);
 }
-
 .reviews-summary__link {
   margin-left: auto;
-  font-size: 0.82rem;
-  color: var(--saffron-dark);
-  font-weight: 600;
-  text-decoration: none;
-  border: 1px solid var(--saffron-dark);
-  padding: 0.3rem 0.75rem;
-  border-radius: 50px;
-  transition:
-    background var(--transition),
-    color var(--transition);
-}
-.reviews-summary__link:hover {
-  background: var(--saffron-dark);
-  color: #fff;
 }
 
-/* Stars */
-.review-stars {
+/* Stars — outlined vs filled glyphs (not colour alone) */
+.reviews-stars {
   display: inline-flex;
-  gap: 1px;
+  align-items: center;
+  gap: 2px;
 }
-.star {
-  color: #d1d5db;
-  font-size: 1rem;
+.reviews-star {
+  width: 1rem;
+  height: 1rem;
+  color: var(--border-strong);
+  fill: none;
 }
-.star--filled {
-  color: #f59e0b;
+.reviews-star--filled {
+  color: var(--gold-400);
+  fill: currentColor;
+}
+.reviews-stars--lg .reviews-star {
+  width: 1.35rem;
+  height: 1.35rem;
 }
 
 /* Grid */
 .reviews-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-  gap: 1.25rem;
+  gap: var(--space-5);
 }
 
 /* Card */
-.review-card {
-  padding: 1.25rem 1.4rem;
+.reviews-card {
   display: flex;
   flex-direction: column;
-  gap: 0.75rem;
+  gap: var(--space-3);
+  padding: var(--space-5) var(--space-6);
 }
-
-.review-card__header {
+.reviews-card__head {
   display: flex;
   align-items: center;
-  gap: 0.75rem;
+  gap: var(--space-3);
 }
-
-.review-card__avatar {
-  width: 42px;
-  height: 42px;
-  border-radius: 50%;
-  object-fit: cover;
-  flex-shrink: 0;
-  border: 2px solid rgba(153, 27, 27, 0.12);
+.reviews-card__avatar {
+  box-shadow: 0 0 0 2px var(--glass-highlight), 0 0 0 3px var(--glass-border);
 }
-.review-card__avatar--fallback {
-  background: var(--maroon);
-  color: #fff;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 1.1rem;
-  font-weight: 700;
+.reviews-card__who {
+  min-width: 0;
+  flex: 1;
 }
-
-.review-card__author {
-  font-size: 0.9rem;
-  font-weight: 700;
+.reviews-card__author {
+  font-size: var(--text-sm);
+  font-weight: var(--weight-bold);
   color: var(--text-1);
   margin: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
-.review-card__time {
-  font-size: 0.75rem;
-  color: var(--text-3);
+.reviews-card__time {
+  font-size: var(--text-xs);
+  color: var(--text-muted);
   margin: 0;
 }
-
-.review-card__stars {
-  margin-left: auto;
+.reviews-card__stars {
   flex-shrink: 0;
 }
-
-.review-card__text {
-  font-size: 0.88rem;
+.reviews-card__text {
+  font-size: var(--text-sm);
   color: var(--text-2);
-  line-height: 1.65;
+  line-height: 1.7;
   margin: 0;
 }
-
-.review-card__toggle {
-  background: none;
-  border: none;
-  color: var(--saffron-dark);
-  font-size: 0.82rem;
-  font-weight: 600;
-  cursor: pointer;
-  padding: 0;
-  text-decoration: underline;
+.reviews-card__toggle {
   align-self: flex-start;
+  min-height: 44px;
+  padding-inline: 0.6rem;
+  margin-left: -0.6rem;
+  color: var(--saffron-600);
 }
 
-@media (max-width: 600px) {
+@media (max-width: 640px) {
+  .reviews-summary {
+    padding: var(--space-4) var(--space-5);
+    gap: var(--space-4);
+  }
   .reviews-summary__score {
-    font-size: 2.2rem;
+    font-size: var(--text-2xl);
   }
   .reviews-summary__link {
     margin-left: 0;
+    width: 100%;
+  }
+}
+@media (max-width: 480px) {
+  .reviews-card__head {
+    flex-wrap: wrap;
+  }
+  .reviews-card__stars {
+    width: 100%;
   }
 }

@@ -1,5 +1,5 @@
 <?php
-// backend/admin/settings.php — Homepage Section Visibility Manager
+// backend/admin/settings.php — Homepage section visibility, administrator account and public-site links
 require_once __DIR__ . '/../includes/auth.php';
 requireAdminAuth();
 require_once __DIR__ . '/../includes/db.php';
@@ -34,15 +34,30 @@ foreach ($defaults as $d) {
     try { $ins->execute($d); } catch (Exception $e) {}
 }
 
+// Flash message left by a successful save before its redirect
+if (isset($_SESSION['admin_flash'])) {
+    $flash = $_SESSION['admin_flash'];
+    unset($_SESSION['admin_flash']);
+    if (is_array($flash) && !empty($flash['text'])) {
+        $tone = in_array($flash['type'] ?? '', ['success', 'error', 'warning', 'info'], true) ? $flash['type'] : 'info';
+        $msg  = '<p class="alert alert--' . $tone . '" role="status">' . h((string) $flash['text']) . '</p>';
+    }
+}
+
 // ── Handle POST ──────────────────────────────────────────────────────────────
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $allowedKeys = ['show_pournami_section', 'show_nalla_strip', 'show_donor_ticker'];
-    $stmt = $db->prepare("UPDATE homepage_settings SET val=? WHERE key_name=?");
-    foreach ($allowedKeys as $key) {
-        $val = isset($_POST[$key]) ? '1' : '0';
-        $stmt->execute([$val, $key]);
+    $msg = adminCsrfGuard();
+    if ($msg === '') {
+        $allowedKeys = ['show_pournami_section', 'show_nalla_strip', 'show_donor_ticker'];
+        $stmt = $db->prepare("UPDATE homepage_settings SET val=? WHERE key_name=?");
+        foreach ($allowedKeys as $key) {
+            $val = isset($_POST[$key]) ? '1' : '0';
+            $stmt->execute([$val, $key]);
+        }
+        $_SESSION['admin_flash'] = ['type' => 'success', 'text' => 'Settings saved.'];
+        header('Location: /admin/settings.php', true, 303);
+        exit;
     }
-    $msg = '<p class="alert alert--success">Settings saved.</p>';
 }
 
 $settings = $db->query("SELECT key_name, val, label FROM homepage_settings")
@@ -52,54 +67,115 @@ foreach ($settings as $s) {
     $map[$s['key_name']] = $s;
 }
 
-adminHeader('Homepage Settings', 'Data & System');
+// Homepage section switches: key => [title, description] (texts carried over from the original form)
+$sections = [
+    'show_pournami_section' => ['Pournami Pooja section', 'Show Pournami Poojai countdown + donor ticker on homepage'],
+    'show_nalla_strip'      => ['Nalla Neram strip',      'Show daily Nalla Neram (auspicious time) green strip below announcements'],
+    'show_donor_ticker'     => ['Donor ticker',           'Show scrolling donor/sponsor names inside Pournami section'],
+];
+$visibleCount = 0;
+foreach (array_keys($sections) as $key) {
+    if (($map[$key]['val'] ?? '1') === '1') $visibleCount++;
+}
+
+// Account details from the session
+$user    = (string) ($_SESSION['admin_user'] ?? 'admin');
+$loginAt = (int) ($_SESSION['admin_login_at'] ?? 0);
+
+// Public pages (React routes) for the quick-open card
+$publicPages = [
+    ['Home',       '/',           'house'],
+    ['Sevas',      '/sevas',      'sparkles'],
+    ['Events',     '/events',     'calendar'],
+    ['Panchangam', '/panchangam', 'moon'],
+    ['Donations',  '/donations',  'banknote'],
+    ['Contact',    '/contact',    'mail'],
+];
+
+$headerActions = '<a href="/" target="_blank" rel="noopener" class="btn btn-ghost btn--sm">' . adminIcon('external') . 'View site</a>';
+adminHeader('Settings', 'Data & System', ['actions' => $headerActions]);
 echo $msg;
+echo adminPageIntro(
+    'Choose which sections appear on the public homepage and review your administrator account; saved changes are live for every visitor immediately.',
+    '<a href="/admin/homepage_widgets.php" class="btn btn--sm">' . adminIcon('layers') . ' Homepage widgets</a>'
+);
 ?>
 
-<div class="card" style="max-width:680px">
-  <div class="card__head">
-    <h3>Homepage Section Visibility</h3>
-    <span class="badge badge--info">Live</span>
-  </div>
-  <div class="card__body">
-  <p class="muted mb-4">
-    Toggle which sections appear on the public homepage.
-    Changes take effect immediately for all visitors.
-  </p>
-
-  <form method="POST" action="/admin/settings.php">
-
-    <fieldset>
-      <legend>🌕 Pournami Pooja Section</legend>
-      <label class="checkbox-label">
-        <input type="checkbox" name="show_pournami_section"
-               <?= ($map['show_pournami_section']['val'] ?? '1') === '1' ? 'checked' : '' ?> />
-        Show Pournami Poojai countdown + donor ticker on homepage
-      </label>
-    </fieldset>
-
-    <fieldset>
-      <legend>✨ Nalla Neram Strip</legend>
-      <label class="checkbox-label">
-        <input type="checkbox" name="show_nalla_strip"
-               <?= ($map['show_nalla_strip']['val'] ?? '1') === '1' ? 'checked' : '' ?> />
-        Show daily Nalla Neram (auspicious time) green strip below announcements
-      </label>
-    </fieldset>
-
-    <fieldset>
-      <legend>🙏 Donor Ticker</legend>
-      <label class="checkbox-label">
-        <input type="checkbox" name="show_donor_ticker"
-               <?= ($map['show_donor_ticker']['val'] ?? '1') === '1' ? 'checked' : '' ?> />
-        Show scrolling donor/sponsor names inside Pournami section
-      </label>
-    </fieldset>
-
-    <div class="form-actions">
-      <button type="submit" class="btn btn-primary">Save Settings</button>
+<div class="dash-grid">
+  <section class="card card--static" aria-labelledby="sections-title">
+    <div class="card__head">
+      <h2 id="sections-title"><?= adminIcon('house', 'ico--sm') ?> Homepage sections</h2>
+      <?= adminBadge($visibleCount . ' of ' . count($sections) . ' visible', $visibleCount === count($sections) ? 'success' : 'warning', true) ?>
     </div>
-  </form>
+    <form method="POST" action="/admin/settings.php">
+      <?= csrfField() ?>
+      <div class="settings-list">
+        <?php foreach ($sections as $key => [$title, $desc]): $on = ($map[$key]['val'] ?? '1') === '1'; ?>
+          <div class="settings-row">
+            <div class="settings-row__text">
+              <strong id="<?= h($key) ?>-title"><?= h($title) ?></strong>
+              <span id="<?= h($key) ?>-desc"><?= h($desc) ?></span>
+            </div>
+            <label class="switch">
+              <input type="checkbox" role="switch" name="<?= h($key) ?>" value="1"<?= $on ? ' checked' : '' ?>
+                     aria-labelledby="<?= h($key) ?>-title" aria-describedby="<?= h($key) ?>-desc" />
+              <span class="switch__track" aria-hidden="true"></span>
+            </label>
+          </div>
+        <?php endforeach; ?>
+      </div>
+      <div class="card__foot">
+        <button type="submit" class="btn btn-primary"><?= adminIcon('check') ?> Save changes</button>
+      </div>
+    </form>
+  </section>
+
+  <div class="stack stack--lg">
+    <section class="card card--static" aria-labelledby="account-title">
+      <div class="card__head">
+        <h2 id="account-title"><?= adminIcon('user', 'ico--sm') ?> Account</h2>
+        <?= adminBadge('Administrator', 'gold') ?>
+      </div>
+      <div class="card__body">
+        <dl class="dl-grid">
+          <dt>Username</dt>
+          <dd><?= h($user) ?></dd>
+          <dt>Signed in</dt>
+          <dd>
+            <?php if ($loginAt > 0): ?>
+              <time datetime="<?= h(date('c', $loginAt)) ?>" title="<?= h(date('d M Y, H:i', $loginAt)) ?>"><?= h(adminAgo(date('c', $loginAt))) ?></time>
+            <?php else: ?>
+              this session
+            <?php endif; ?>
+          </dd>
+          <dt>Role</dt>
+          <dd>Committee administrator</dd>
+        </dl>
+        <div class="callout mt-4">
+          <?= adminIcon('key') ?>
+          <p>Passwords are not stored in the database. To change it, set the <code>ADMIN_PASS_HASH</code> environment
+             variable in the hosting panel to a new bcrypt hash — generate one with
+             <code>php -r "echo password_hash('new-password', PASSWORD_BCRYPT);"</code> — then sign in again with the new password.</p>
+        </div>
+      </div>
+      <div class="card__foot">
+        <a href="/admin/logout.php" class="btn btn-danger btn--sm"><?= adminIcon('logout') ?> Sign out</a>
+      </div>
+    </section>
+
+    <section class="card card--static" aria-labelledby="public-title">
+      <div class="card__head">
+        <h2 id="public-title"><?= adminIcon('external', 'ico--sm') ?> Public site</h2>
+      </div>
+      <div class="card__body">
+        <p class="muted mb-4">Open any page of the website in a new tab to check your work. Everything saved in the control center is live immediately — there is no publish step.</p>
+        <div class="cluster">
+          <?php foreach ($publicPages as [$label, $href, $icon]): ?>
+            <a class="btn btn--sm" href="<?= h($href) ?>" target="_blank" rel="noopener"><?= adminIcon($icon) ?> <?= h($label) ?></a>
+          <?php endforeach; ?>
+        </div>
+      </div>
+    </section>
   </div>
 </div>
 

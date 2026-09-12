@@ -1,279 +1,147 @@
-/* ══════════════════════════════════════════════════════════
-   Shared page hero — unified glass banner with per-page accent
-   Each page sets --hero-a / --hero-b (glow colours); the base
-   gradient stays in the brand family so pages feel related.
-   ══════════════════════════════════════════════════════════ */
-.page-hero {
-  --hero-a: var(--saffron);
-  --hero-b: var(--gold);
-  position: relative;
-  min-height: 260px;
-  display: flex;
-  align-items: center;
-  overflow: hidden;
-  color: #fff;
-  /* fallback first: browsers without color-mix keep a solid brand gradient */
-  background: linear-gradient(135deg, #1a0606 0%, #3d0a0a 50%, #240707 100%);
-  background:
-    radial-gradient(ellipse 55% 80% at 85% 20%, color-mix(in srgb, var(--hero-a) 38%, transparent), transparent 65%),
-    radial-gradient(ellipse 45% 70% at 10% 90%, color-mix(in srgb, var(--hero-b) 30%, transparent), transparent 65%),
-    linear-gradient(135deg, #1a0606 0%, #3d0a0a 50%, #240707 100%);
-}
-/* Soft floating orbs */
-.page-hero::before,
-.page-hero::after {
-  content: "";
-  position: absolute;
-  border-radius: 50%;
-  filter: blur(60px);
-  pointer-events: none;
-  opacity: 0.5;
-  will-change: transform;
-}
-.page-hero::before {
-  width: 460px;
-  height: 460px;
-  right: -120px;
-  top: -200px;
-  background: radial-gradient(circle, var(--hero-a), transparent 70%);
-  animation: hero-orb-a 14s ease-in-out infinite;
-}
-.page-hero::after {
-  width: 320px;
-  height: 320px;
-  left: -80px;
-  bottom: -140px;
-  background: radial-gradient(circle, var(--hero-b), transparent 70%);
-  animation: hero-orb-b 18s ease-in-out infinite 2s;
-}
-@keyframes hero-orb-a {
-  0%,
-  100% {
-    transform: translate3d(0, 0, 0) scale(1);
-  }
-  50% {
-    transform: translate3d(-30px, 24px, 0) scale(1.08);
-  }
-}
-@keyframes hero-orb-b {
-  0%,
-  100% {
-    transform: translate3d(0, 0, 0) scale(1);
-  }
-  50% {
-    transform: translate3d(26px, -20px, 0) scale(0.94);
-  }
+/* ══════════════════════════════════════════════════════════════════
+   PageCommon.css — shared long-form primitives for inner pages.
+
+   • .page-prose    typography for editorial copy (About): section h2 with
+                    the gold underline accent, h3, paragraph rhythm, links.
+   • .timings-table glass schedule table (About #timings).
+
+   The page hero lives in styles/layout.css (.page-hero) and each page owns
+   its own list/row patterns. Tokens only — no raw colours here.
+
+   Specificity note: `.page-prose p` / `.page-prose h3` are (0,1,1).
+   Components rendered inside the prose (HistoryTimeline, TrustDetails,
+   CommitteeGrid) scope their own text rules as `.history .x`, `.trust .x`,
+   `.committee .x` (0,2,0) so the prose defaults never leak into them.
+   Links exclude .btn / .chip so button primitives keep their own colours.
+   ══════════════════════════════════════════════════════════════════ */
+
+.page-prose {
+  min-width: 0;
 }
 
-/* Per-page accents */
-.page-hero--about {
-  --hero-a: #dc2626;
-  --hero-b: #d97706;
-}
-.page-hero--sevas {
-  --hero-a: #f97316;
-  --hero-b: #fbbf24;
-}
-.page-hero--events {
-  --hero-a: #7c3aed;
-  --hero-b: #f97316;
-}
-.page-hero--gallery {
-  --hero-a: #db2777;
-  --hero-b: #7c3aed;
-}
-.page-hero--donations {
-  --hero-a: #10b981;
-  --hero-b: #d97706;
-}
-.page-hero--contact {
-  --hero-a: #0ea5e9;
-  --hero-b: #f97316;
-}
-.page-hero--panchangam {
-  --hero-a: #6366f1;
-  --hero-b: #fbbf24;
-}
-
-.page-hero__content {
-  position: relative;
-  z-index: 1;
-  width: 100%;
-  max-width: var(--container);
-  margin: 0 auto;
-  padding: var(--space-12) var(--space-5);
-}
-.page-hero__content h1 {
-  font-family: var(--font-tamil);
-  font-size: var(--text-3xl);
-  font-weight: var(--weight-bold);
-  line-height: 1.3;
-  padding-bottom: 0.08em;
-  color: #fff;
-  background: linear-gradient(135deg, #ffffff 30%, var(--gold-bright) 75%);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
-  filter: drop-shadow(0 2px 12px rgba(0, 0, 0, 0.25));
-}
-.page-hero__content p {
-  margin-top: var(--space-3);
-  font-size: var(--text-md);
-  color: rgba(255, 248, 240, 0.8);
-  max-width: 640px;
-  line-height: 1.6;
-}
-/* Optional eyebrow/breadcrumb inside heroes */
-.page-hero__eyebrow {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.5rem;
-  margin-bottom: var(--space-3);
-  padding: 0.3rem 0.85rem;
-  border-radius: var(--radius-pill);
-  background: rgba(255, 255, 255, 0.1);
-  border: 1px solid rgba(255, 255, 255, 0.2);
-  backdrop-filter: blur(var(--blur-sm));
-  -webkit-backdrop-filter: blur(var(--blur-sm));
-  font-size: var(--text-xs);
-  font-weight: var(--weight-bold);
-  letter-spacing: var(--tracking-caps);
-  text-transform: uppercase;
-  color: var(--gold-bright);
-}
-
-/* ── Prose (About) ─────────────────────────────────────── */
+/* ── Section headings ────────────────────────────────────────────── */
 .page-prose h2 {
-  font-family: var(--font-tamil);
-  color: var(--maroon);
-  font-size: var(--text-xl);
-  margin: var(--space-10) 0 var(--space-3);
-  padding-bottom: var(--space-2);
-  border-bottom: 1px solid var(--glass-border);
   position: relative;
+  font-size: var(--text-xl);
+  color: var(--maroon-600);
+  line-height: var(--leading-snug);
+  margin: var(--space-12) 0 var(--space-4);
+  padding-bottom: var(--space-3);
+  border-bottom: 1px solid var(--glass-border);
 }
 .page-prose h2::after {
   content: "";
   position: absolute;
-  bottom: -1px;
   left: 0;
-  width: 56px;
-  height: 2px;
-  background: linear-gradient(90deg, var(--saffron), var(--gold-light));
+  bottom: -2px;
+  width: 64px;
+  height: 3px;
   border-radius: 2px;
+  background: linear-gradient(90deg, var(--saffron), var(--gold-300));
 }
-.page-prose p {
-  margin-bottom: var(--space-4);
-  color: var(--text-2);
-  line-height: 1.85;
+.page-prose h2:first-child {
+  margin-top: 0;
 }
 
-/* ── Timings table (About) ─────────────────────────────── */
+.page-prose h3 {
+  font-size: var(--text-lg);
+  color: var(--maroon-600);
+  line-height: var(--leading-snug);
+  margin: var(--space-6) 0 var(--space-3);
+}
+
+/* ── Body copy ───────────────────────────────────────────────────── */
+.page-prose p {
+  margin: 0 0 var(--space-4);
+  max-width: 75ch;
+  font-size: var(--text-md);
+  color: var(--text-2);
+  line-height: var(--leading-relaxed);
+}
+.page-prose em {
+  color: var(--text-3);
+}
+
+/* Inline links — button/chip primitives are excluded so they keep their own skin */
+.page-prose a:not(.btn):not(.chip) {
+  color: var(--maroon-600);
+  font-weight: var(--weight-semibold);
+  text-decoration: underline;
+  text-decoration-thickness: 2px;
+  text-decoration-color: color-mix(in srgb, var(--saffron) 45%, transparent);
+  text-underline-offset: 3px;
+  border-radius: var(--radius-xs);
+  transition: color var(--transition), text-decoration-color var(--transition);
+}
+.page-prose a:not(.btn):not(.chip):hover,
+.page-prose a:not(.btn):not(.chip):focus-visible {
+  color: var(--saffron-600);
+  text-decoration-color: var(--saffron);
+}
+
+/* ── Timings table (glass) ───────────────────────────────────────── */
 .timings-table {
   width: 100%;
+  min-width: 100%;
   border-collapse: separate;
   border-spacing: 0;
-  margin-top: var(--space-4);
   font-size: var(--text-sm);
-  border-radius: var(--radius);
-  overflow: hidden;
+  background: var(--glass-2);
+  backdrop-filter: blur(var(--blur-md)) saturate(var(--saturate));
+  -webkit-backdrop-filter: blur(var(--blur-md)) saturate(var(--saturate));
   border: 1px solid var(--glass-border);
-  background: var(--glass-md);
-  backdrop-filter: blur(var(--blur-sm));
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  box-shadow: var(--glass-edge);
 }
 .timings-table th {
-  background: linear-gradient(135deg, var(--maroon) 0%, var(--maroon-deep) 100%);
-  color: var(--gold-bright);
-  padding: 0.75rem 1rem;
+  padding: 0.85rem var(--space-5);
   text-align: left;
-  font-weight: var(--weight-semibold);
-  font-size: var(--text-xs);
+  font-family: var(--font-body);
+  font-size: var(--text-2xs);
+  font-weight: var(--weight-bold);
   letter-spacing: var(--tracking-caps);
   text-transform: uppercase;
+  color: var(--gold-200);
+  background: linear-gradient(135deg, var(--maroon-500) 0%, var(--maroon-700) 100%);
+  white-space: nowrap;
 }
 .timings-table td {
-  padding: 0.7rem 1rem;
-  border-bottom: 1px solid rgba(153, 27, 27, 0.07);
+  padding: 0.85rem var(--space-5);
   color: var(--text-2);
+  border-bottom: 1px solid var(--border-soft);
+  vertical-align: middle;
+  transition: background var(--transition);
+}
+.timings-table td:first-child {
+  font-weight: var(--weight-semibold);
+  color: var(--text-1);
+}
+.timings-table td:last-child {
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+  font-weight: var(--weight-semibold);
+  color: var(--maroon-600);
+}
+.timings-table tbody tr:nth-child(even) td {
+  background: var(--glass-tint-gold);
+}
+.timings-table tbody tr:hover td {
+  background: var(--glass-tint-maroon);
 }
 .timings-table tr:last-child td {
-  border-bottom: none;
-}
-.timings-table tr:nth-child(even) td {
-  background: rgba(249, 115, 22, 0.04);
-}
-
-/* ── Events list (Events page) ─────────────────────────── */
-.events-list {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-4);
-}
-.event-row {
-  display: flex;
-  align-items: center;
-  gap: var(--space-6);
-  padding: var(--space-5) var(--space-6);
-}
-.event-row__cal {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  min-width: 68px;
-  padding: 0.6rem 0.7rem;
-  border-radius: var(--radius);
-  color: #fff;
-  background: linear-gradient(160deg, var(--maroon) 0%, var(--maroon-deep) 100%);
-  box-shadow: 0 6px 20px rgba(153, 27, 27, 0.35), var(--inset-highlight);
-  flex-shrink: 0;
-}
-.event-row__day {
-  font-size: 1.8rem;
-  font-weight: var(--weight-bold);
-  line-height: 1;
-}
-.event-row__month {
-  font-size: var(--text-xs);
-  text-transform: uppercase;
-  letter-spacing: 0.07em;
-  color: var(--gold-bright);
-}
-.event-row__year {
-  font-size: 0.6rem;
-  color: rgba(255, 255, 255, 0.5);
-  margin-top: 0.1rem;
-}
-.event-row__info {
-  min-width: 0;
-  flex: 1;
-}
-.event-row__info h3 {
-  font-family: var(--font-tamil);
-  color: var(--text-1);
-  font-size: var(--text-md);
-  margin-bottom: 0.25rem;
-}
-.event-row__desc {
-  color: var(--text-3);
-  font-size: var(--text-sm);
-  line-height: 1.65;
+  border-bottom: 0;
 }
 
 @media (max-width: 640px) {
-  .page-hero {
-    min-height: 200px;
+  .page-prose h2 {
+    margin-top: var(--space-10);
   }
-  .page-hero__content {
-    padding: var(--space-10) var(--space-5);
+  .page-prose p {
+    font-size: var(--text-base);
   }
-  .page-hero__content h1 {
-    font-size: clamp(1.6rem, 7.5vw, 2.2rem);
-  }
-  .page-hero__content p {
-    font-size: var(--text-sm);
-  }
-  .event-row {
-    gap: var(--space-4);
-    padding: var(--space-4);
+  .timings-table th,
+  .timings-table td {
+    padding: 0.75rem var(--space-4);
   }
 }

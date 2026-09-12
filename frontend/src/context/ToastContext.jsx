@@ -1,8 +1,14 @@
 import { createContext, useCallback, useContext, useMemo, useRef, useState } from "react";
+import { LuCircleAlert, LuCircleCheck, LuInfo, LuTriangleAlert, LuX } from "react-icons/lu";
 
 const ToastContext = createContext(null);
 
-const ICONS = { success: "🙏", error: "⚠️", info: "ℹ️" };
+const ICONS = {
+  success: LuCircleCheck,
+  error: LuCircleAlert,
+  warning: LuTriangleAlert,
+  info: LuInfo,
+};
 const AUTO_DISMISS_MS = 5000;
 
 export function ToastProvider({ children }) {
@@ -32,6 +38,7 @@ export function ToastProvider({ children }) {
       dismiss,
       success: (message, title) => notify({ type: "success", message, title }),
       error: (message, title) => notify({ type: "error", message, title, duration: 7000 }),
+      warning: (message, title) => notify({ type: "warning", message, title, duration: 6000 }),
       info: (message, title) => notify({ type: "info", message, title }),
     }),
     [notify, dismiss],
@@ -41,29 +48,32 @@ export function ToastProvider({ children }) {
     <ToastContext.Provider value={api}>
       {children}
       <div className="toast-region" aria-live="polite" aria-atomic="false">
-        {toasts.map((t) => (
-          <div
-            key={t.id}
-            className={`toast toast--${t.type}${t.leaving ? " toast--leaving" : ""}`}
-            role={t.type === "error" ? "alert" : "status"}
-          >
-            <span className="toast__icon" aria-hidden="true">
-              {ICONS[t.type]}
-            </span>
-            <div className="toast__body">
-              {t.title && <span className="toast__title">{t.title}</span>}
-              <span>{t.message}</span>
-            </div>
-            <button
-              type="button"
-              className="toast__close"
-              onClick={() => dismiss(t.id)}
-              aria-label="Dismiss notification"
+        {toasts.map((t) => {
+          const Icon = ICONS[t.type] ?? LuInfo;
+          return (
+            <div
+              key={t.id}
+              className={`toast toast--${t.type}${t.leaving ? " toast--leaving" : ""}`}
+              role={t.type === "error" ? "alert" : "status"}
             >
-              ✕
-            </button>
-          </div>
-        ))}
+              <span className="toast__icon" aria-hidden="true">
+                <Icon />
+              </span>
+              <div className="toast__body">
+                {t.title && <span className="toast__title">{t.title}</span>}
+                <span>{t.message}</span>
+              </div>
+              <button
+                type="button"
+                className="toast__close"
+                onClick={() => dismiss(t.id)}
+                aria-label="Dismiss notification"
+              >
+                <LuX aria-hidden="true" />
+              </button>
+            </div>
+          );
+        })}
       </div>
     </ToastContext.Provider>
   );

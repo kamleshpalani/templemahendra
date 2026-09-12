@@ -1,5 +1,6 @@
 import { NavLink } from "react-router-dom";
-import { FaPhone, FaEnvelope, FaMapMarkerAlt } from "react-icons/fa";
+import { LuArrowUp, LuClock, LuMail, LuMapPin, LuPhone, LuShieldCheck } from "react-icons/lu";
+import { FaWhatsapp } from "react-icons/fa";
 import { useLang } from "../../context/LangContext";
 import {
   TEMPLE,
@@ -7,6 +8,7 @@ import {
   TRUST,
   PRIMARY_CONTACT,
   SECONDARY_CONTACT,
+  MAPS_URL,
   formatPhone,
   telHref,
 } from "../../data/temple";
@@ -21,36 +23,42 @@ export default function Footer() {
     { to: "/about#committee", ta: "திருக்கோவில் கமிட்டி", en: "Committee" },
     { to: "/sevas", ta: "சேவைகள் & பூஜைகள்", en: "Sevas & Poojas" },
     { to: "/events", ta: "நிகழ்வுகள் & திருவிழா", en: "Events & Festivals" },
+    { to: "/panchangam", ta: "பஞ்சாங்கம்", en: "Panchangam" },
     { to: "/donations", ta: "நன்கொடை", en: "Donate" },
     { to: "/contact", ta: "தொடர்பு கொள்ளுங்கள்", en: "Contact Us" },
   ];
 
   const contacts = [PRIMARY_CONTACT, SECONDARY_CONTACT];
+  const scrollTop = () => window.scrollTo({ top: 0, behavior: "smooth" });
 
   return (
     <footer className="footer">
       <div className="container footer__grid">
-        <div className="footer__col">
-          <h3 className="footer__title">{t(TEMPLE.name.ta, TEMPLE.name.en)}</h3>
-          <p className="footer__desc">
-            {t(TEMPLE.descriptor.ta, TEMPLE.descriptor.en)}
-          </p>
-          <p className="footer__desc footer__invocation">
+        <div className="footer__col footer__col--brand">
+          <div className="footer__brand">
+            <span className="footer__logo-ring" aria-hidden="true">
+              <img src="/logo.svg" alt="" width="44" height="44" />
+            </span>
+            <h2 className="footer__title">{t(TEMPLE.name.ta, TEMPLE.name.en)}</h2>
+          </div>
+          <p className="footer__desc">{t(TEMPLE.descriptor.ta, TEMPLE.descriptor.en)}</p>
+          <p className="footer__invocation">
             <em>{t(TEMPLE.invocation.ta, TEMPLE.invocation.en)}</em>
           </p>
-          <p className="footer__trust">
-            <NavLink to="/about#trust">
+          <NavLink to="/about#trust" className="footer__trust">
+            <LuShieldCheck aria-hidden="true" />
+            <span>
               {t(
-                `தர்ம அறக்கட்டளை பதிவு எண் ${TRUST.bank.regNo} (${TRUST.bank.regDate}) · PAN ${TRUST.bank.pan} · ${TRUST.taxExemption.short.ta}`,
+                `தர்ம அறக்கட்டளை பதிவு எண் ${TRUST.bank.regNo} (${TRUST.bank.regDate}) · பான் ${TRUST.bank.pan} · ${TRUST.taxExemption.short.ta}`,
                 `Dharma Trust Reg. No. ${TRUST.bank.regNo} (${TRUST.bank.regDate}) · PAN ${TRUST.bank.pan} · ${TRUST.taxExemption.short.en}`,
               )}
-            </NavLink>
-          </p>
+            </span>
+          </NavLink>
         </div>
 
         <div className="footer__col">
-          <h4 className="footer__heading">{t("இணைப்புகள்", "Quick Links")}</h4>
-          <ul className="footer__links">
+          <h3 className="footer__heading">{t("இணைப்புகள்", "Explore")}</h3>
+          <ul className="footer__links" role="list">
             {quickLinks.map(({ to, ta, en }) => (
               <li key={to}>
                 <NavLink to={to}>{t(ta, en)}</NavLink>
@@ -60,48 +68,79 @@ export default function Footer() {
         </div>
 
         <div className="footer__col">
-          <h4 className="footer__heading">{t("தொடர்பு", "Contact")}</h4>
-          <ul className="footer__contact">
+          <h3 className="footer__heading">{t("வருகை", "Visit")}</h3>
+          <ul className="footer__contact" role="list">
             <li>
-              <FaMapMarkerAlt aria-hidden="true" />{" "}
+              <LuMapPin aria-hidden="true" />
               <address className="footer__address">
                 {t(ADDRESS.oneLine.ta, ADDRESS.oneLine.en)}
+                <a href={MAPS_URL} target="_blank" rel="noopener noreferrer" className="footer__map">
+                  {t("வழி அறிய ↗", "Get directions ↗")}
+                </a>
               </address>
             </li>
+            <li>
+              <LuClock aria-hidden="true" />
+              <span>
+                {t("காலை 6:00 – மதியம் 12:30", "6:00 AM – 12:30 PM")}
+                <br />
+                {t("மாலை 4:00 – இரவு 9:00", "4:00 PM – 9:00 PM")}
+              </span>
+            </li>
+          </ul>
+        </div>
+
+        <div className="footer__col">
+          <h3 className="footer__heading">{t("தொடர்பு", "Contact")}</h3>
+          <ul className="footer__contact" role="list">
             {contacts.map((c) => (
               <li key={c.phone}>
-                <FaPhone aria-hidden="true" />{" "}
+                <LuPhone aria-hidden="true" />
                 <span>
                   <a
                     href={telHref(c.phone)}
-                    aria-label={`${t(c.name.ta, c.name.en)}, ${t(c.role.ta, c.role.en)}`}
+                    aria-label={`${formatPhone(c.phone)} — ${t(c.name.ta, c.name.en)}, ${t(c.role.ta, c.role.en)}`}
                   >
                     {formatPhone(c.phone)}
-                  </a>{" "}
+                  </a>
                   <span className="footer__contact-role">
-                    ({t(c.role.ta, c.role.en)} – {t(c.name.ta, c.name.en)})
+                    {t(c.role.ta, c.role.en)} – {t(c.name.ta, c.name.en)}
                   </span>
                 </span>
               </li>
             ))}
             <li>
-              <FaEnvelope aria-hidden="true" />{" "}
-              <a href="mailto:info@dhabbalavaartemple.in">
-                info@dhabbalavaartemple.in
+              <FaWhatsapp aria-hidden="true" />
+              <a href={`https://wa.me/91${PRIMARY_CONTACT.phone}`} target="_blank" rel="noopener noreferrer">
+                {t("வாட்ஸ்அப்பில் பேசுங்கள்", "Chat on WhatsApp")}
               </a>
+            </li>
+            <li>
+              <LuMail aria-hidden="true" />
+              <a href="mailto:info@dhabbalavaartemple.in">info@dhabbalavaartemple.in</a>
             </li>
           </ul>
         </div>
       </div>
 
       <div className="footer__bottom">
-        <p>
-          © {new Date().getFullYear()}{" "}
-          {t(
-            `${TRUST.name.ta} (பதிவு எண் ${TRUST.bank.regNo}). அனைத்து உரிமைகளும் பாதுகாக்கப்பட்டவை.`,
-            `${TRUST.name.en} (Reg. No. ${TRUST.bank.regNo}). All rights reserved.`,
-          )}
-        </p>
+        <div className="container footer__bottom-inner">
+          <p>
+            © {new Date().getFullYear()}{" "}
+            {t(
+              `${TRUST.name.ta} (பதிவு எண் ${TRUST.bank.regNo}). அனைத்து உரிமைகளும் பாதுகாக்கப்பட்டவை.`,
+              `${TRUST.name.en} (Reg. No. ${TRUST.bank.regNo}). All rights reserved.`,
+            )}
+          </p>
+          <div className="footer__bottom-actions">
+            <a href="/admin/" className="footer__admin" rel="nofollow">
+              {t("கமிட்டி உள்நுழைவு", "Committee sign-in")}
+            </a>
+            <button type="button" className="footer__top" onClick={scrollTop} aria-label={t("மேலே செல்", "Back to top")}>
+              <LuArrowUp aria-hidden="true" />
+            </button>
+          </div>
+        </div>
       </div>
     </footer>
   );

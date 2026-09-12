@@ -1,206 +1,424 @@
-/* About page — additions for the committee-supplied content.
-   Loaded after PageCommon.css so these rules win the cascade. */
+/* ══════════════════════════════════════════════════════════════════
+   About.css — About page composition on Sacred Light v3.
+   Loads after PageCommon.css and the shared content components, so the
+   page-scoped overrides here (.about-prose …) win the cascade.
+   Tokens only — no raw colours.
+   ══════════════════════════════════════════════════════════════════ */
 
-/* Anchor targets sit below the 70px sticky navbar */
-.page-prose [id] {
-  scroll-margin-top: 84px;
+/* ── Hero extras ─────────────────────────────────────────────────── */
+.about-hero__address {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  color: var(--text-on-dark-3);
+  font-size: var(--text-sm);
+}
+.about-hero__address > svg {
+  flex-shrink: 0;
+  width: 1rem;
+  height: 1rem;
+  margin-top: 0.3em;
+  color: var(--gold-300);
 }
 
-/* Sub-headings inside prose (PageCommon styles only h2) */
-.page-prose h3 {
-  font-family: var(--font-tamil);
-  font-size: 1.1rem;
-  color: var(--maroon);
-  margin: 1.4rem 0 0.5rem;
+/* Key-year fact tiles (gradient only — the hero eyebrow already owns the
+   blur budget on this layer). */
+.about-hero__facts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  margin: 0;
+  max-width: 440px; /* never squeeze the title column */
+}
+.about-hero__fact {
+  flex: 1 1 128px;
+  min-width: 0;
+  display: flex;
+  flex-direction: column-reverse; /* year on top, label below (dt stays first in DOM) */
+  gap: 0.15rem;
+  padding: var(--space-4) var(--space-5);
+  border-radius: var(--radius-lg);
+  background: linear-gradient(160deg, var(--glass-ink-2), var(--glass-ink-3));
+  border: 1px solid var(--glass-ink-border);
+  box-shadow: var(--glass-ink-edge);
+}
+.about-hero__fact-year {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: var(--text-xl);
+  font-weight: var(--weight-bold);
+  line-height: 1.1;
+  color: var(--gold-200);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: var(--tracking-tight);
+}
+.about-hero__fact-label {
+  font-size: var(--text-2xs);
+  font-weight: var(--weight-bold);
+  letter-spacing: var(--tracking-caps);
+  text-transform: uppercase;
+  color: var(--text-on-dark-3);
+  line-height: 1.4;
 }
 
-/* ── Sanctum photograph ─────────────────────────────────────── */
-.page-figure {
-  margin: 0 0 2rem;
-  border-radius: var(--radius);
-  overflow: hidden;
-  box-shadow: var(--shadow-md);
-  border: 1px solid var(--border);
-  background: var(--bg-alt);
+/* ── Sticky in-page section nav ──────────────────────────────────── */
+.about-nav {
+  position: sticky;
+  top: calc(var(--header-h) + var(--space-2));
+  z-index: var(--z-sticky);
+  padding-block: var(--space-3);
+  pointer-events: none; /* only the pill itself catches clicks */
 }
-.page-figure img {
+.about-nav__list {
+  pointer-events: auto;
+  display: flex;
+  gap: var(--space-2);
+  list-style: none;
+  margin: 0;
+  padding: 0.3rem;
+  max-width: max-content;
+  border-radius: var(--radius-pill);
+  background: var(--glass-2);
+  backdrop-filter: blur(var(--blur-md)) saturate(var(--saturate));
+  -webkit-backdrop-filter: blur(var(--blur-md)) saturate(var(--saturate));
+  border: 1px solid var(--glass-border);
+  box-shadow: var(--shadow-sm), var(--glass-edge);
+  overflow-x: auto;
+  scrollbar-width: none;
+  scroll-snap-type: x proximity;
+  -webkit-overflow-scrolling: touch;
+}
+.about-nav__list::-webkit-scrollbar {
+  display: none;
+}
+.about-nav__item {
+  flex: 0 0 auto;
+  scroll-snap-align: start;
+}
+.about-nav .about-nav__chip {
+  min-height: 40px;
+  padding-inline: 0.95rem;
+  text-decoration: none;
+}
+/* Inactive chips sit flat inside the pill; the active one keeps .chip[aria-current]'s gradient */
+.about-nav .about-nav__chip:not([aria-current]) {
+  border-color: transparent;
+  background: transparent;
+}
+.about-nav .about-nav__chip:not([aria-current]):hover {
+  background: var(--glass-tint-maroon);
+  color: var(--maroon-600);
+  transform: none;
+}
+.about-nav .about-nav__chip:focus-visible {
+  outline-offset: 0;
+}
+.about-nav .about-nav__chip > svg {
+  width: 0.95rem;
+  height: 0.95rem;
+  color: var(--saffron-600);
+  flex-shrink: 0;
+}
+.about-nav .about-nav__chip[aria-current] > svg {
+  color: currentColor;
+}
+@media (pointer: coarse) {
+  .about-nav .about-nav__chip {
+    min-height: 44px;
+  }
+}
+
+/* ── Prose shell ─────────────────────────────────────────────────── */
+.about-prose {
+  /* Rendered height of the sticky section nav (padding + pill) */
+  --about-nav-h: 68px;
+}
+/* html { scroll-padding-top } already clears the floating header for every
+   anchor jump; this margin adds only the sticky section nav so #history,
+   #trust, #timings… land just below the pill. */
+.about-prose [id] {
+  scroll-margin-top: calc(var(--about-nav-h) + var(--space-3));
+}
+.about .container {
+  padding-top: var(--space-2);
+}
+
+/* ── Sanctum photograph ─────────────────────────────────────────── */
+.about-figure {
+  margin: 0 0 var(--space-10);
+  border-radius: var(--radius-xl);
+}
+.about-figure img {
   width: 100%;
-  max-height: 520px;
+  max-height: 540px;
   object-fit: cover;
   display: block;
 }
-.page-figure figcaption {
-  padding: 0.75rem 1.1rem;
-  font-size: 0.9rem;
-  color: var(--text-2);
+/* Before the image resolves (or if the file is missing) take up no space */
+.about-figure--pending,
+.about-figure--pending:hover {
+  margin: 0;
+  border: 0;
+  box-shadow: none;
+  background: transparent;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+.about-figure--pending::before {
+  display: none;
+}
+.about-figure__caption {
+  padding: var(--space-4) var(--space-6);
   text-align: center;
   font-family: var(--font-tamil);
+  font-size: var(--text-sm);
+  color: var(--text-2);
+  background: var(--glass-tint-gold);
+  border-top: 1px solid var(--glass-border);
+}
+.about-figure__caption em {
+  color: var(--maroon-600);
 }
 
-/* ── Deity list ─────────────────────────────────────────────── */
+/* ── Deity tiles ─────────────────────────────────────────────────── */
 .about-deities {
   list-style: none;
   padding: 0;
-  margin: 0.75rem 0 0.5rem;
+  margin: var(--space-5) 0 var(--space-4);
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 0.85rem;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--space-4);
 }
 .about-deities__item {
-  background: rgba(255, 255, 255, 0.85);
-  border: 1px solid var(--border);
-  border-left: 4px solid var(--saffron);
-  border-radius: 0 var(--radius) var(--radius) 0;
-  padding: 0.85rem 1rem;
   display: flex;
   flex-direction: column;
-  gap: 0.15rem;
+  gap: 0.2rem;
+  padding: var(--space-5) var(--space-6);
+  min-width: 0;
 }
-.about-deities__ta {
-  font-family: var(--font-tamil);
-  font-size: 1.05rem;
-  font-weight: 700;
-  color: var(--maroon);
-}
-.about-deities__en {
-  font-size: 0.85rem;
-  color: var(--text-3);
-}
-.about-link {
-  margin-top: 0.25rem;
-}
-.about-link a,
-.page-prose a {
-  color: var(--maroon);
-  font-weight: 600;
-}
-.page-prose a:hover,
-.page-prose a:focus-visible {
-  color: var(--saffron-dark);
-  text-decoration: underline;
-}
-.page-prose a:focus-visible {
-  outline: 3px solid rgba(249, 115, 22, 0.45);
-  outline-offset: 2px;
-  border-radius: 4px;
-}
-
-/* ── Land-donor acknowledgement (mirrors the amber sponsor block) ── */
-.about-donor {
-  margin: 0.75rem 0 0.5rem;
-  padding: 0.9rem 1.1rem;
-  background: rgba(251, 191, 36, 0.12);
-  border: 1px solid rgba(251, 191, 36, 0.4);
-  border-radius: var(--radius-sm);
-  display: flex;
-  flex-direction: column;
-  gap: 0.15rem;
-}
-.about-donor--static:hover {
-  transform: none;
-  box-shadow: var(--shadow-sm);
-  border-color: rgba(251, 191, 36, 0.4);
-}
-.about-donor__label {
-  font-size: 0.68rem;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  color: #92400e;
-  margin: 0;
-}
-.about-donor__name {
-  font-family: var(--font-tamil);
-  font-size: 1.05rem;
-  font-weight: 700;
-  color: #78350f;
-  margin: 0;
-}
-.about-donor__detail,
-.about-donor__names {
-  font-size: 0.88rem;
-  color: var(--text-2);
-  margin: 0;
-}
-
-/* ── Kumbabhishekam appeal (mirrors the crimson "pos-2" widget) ── */
-.about-appeal {
-  margin: 1.75rem 0 0.5rem;
-  padding: 1.4rem 1.6rem;
-  border-radius: var(--radius);
-  background: linear-gradient(145deg, #450a0a 0%, #7f1d1d 55%, #991b1b 100%);
-  border: 1.5px solid #b91c1c;
-  position: relative;
-  overflow: hidden;
-  box-shadow: var(--shadow-md);
-}
-.about-appeal::before {
+/* Saffron→gold accent rail on the left edge */
+.about-deities__item::after {
   content: "";
   position: absolute;
   left: 0;
-  top: 0;
-  bottom: 0;
-  width: 4px;
-  background: #fbbf24;
+  top: 18%;
+  bottom: 18%;
+  width: 3px;
+  border-radius: 0 3px 3px 0;
+  background: linear-gradient(180deg, var(--saffron), var(--gold-300));
 }
-.about-appeal__title {
+.about-deities__glyph {
+  font-size: var(--text-xs);
+  color: var(--saffron-500);
+  margin-bottom: var(--space-1);
+}
+.about-deities__ta {
   font-family: var(--font-tamil);
-  font-size: 1.15rem;
-  font-weight: 800;
-  color: #fef9c3;
-  margin: 0 0 0.5rem;
-  border: none;
-  padding: 0;
+  font-size: var(--text-md);
+  font-weight: var(--weight-bold);
+  color: var(--maroon-600);
+  line-height: var(--leading-snug);
+  overflow-wrap: anywhere;
 }
-.about-appeal__title::after {
-  display: none;
+.about-deities__en {
+  font-size: var(--text-sm);
+  color: var(--text-3);
 }
-.about-appeal__text {
-  color: #fde68a;
-  font-size: 0.95rem;
-  line-height: 1.75;
-  margin-bottom: 1rem;
-}
-.about-appeal .btn-primary {
-  background: #fbbf24;
-  color: #78350f;
-  box-shadow: none;
-}
-.about-appeal .btn-primary:hover,
-.about-appeal .btn-primary:focus-visible {
-  background: #fde68a;
-  color: #78350f;
-}
-.about-appeal .btn:focus-visible {
-  outline: 3px solid #fde68a;
-  outline-offset: 2px;
+.about-prose .about-link {
+  margin: 0;
 }
 
-/* ── Table wrapper for narrow screens ───────────────────────── */
-.table-scroll {
+/* ── Land-donor acknowledgement ──────────────────────────────────── */
+.about-donor {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-5);
+  margin: var(--space-5) 0 var(--space-4);
+  padding: var(--space-5) var(--space-6);
+}
+/* Keep the gold hairline on hover (beats .card--static:hover's neutral border) */
+.about-donor,
+.about-donor:hover {
+  border-color: color-mix(in srgb, var(--gold-500) 32%, transparent);
+}
+.about-donor__icon {
+  color: var(--gold-600);
+  background: var(--glass-2);
+  border-color: var(--glass-border-strong);
+}
+.about-donor__body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  min-width: 0;
+}
+/* Scoped (0,2,0) so these beat .page-prose p (0,1,1). */
+.about-donor .about-donor__label {
+  margin: 0;
+  font-size: var(--text-2xs);
+  font-weight: var(--weight-bold);
+  letter-spacing: var(--tracking-caps);
+  text-transform: uppercase;
+  color: var(--gold-700);
+  line-height: 1.4;
+}
+.about-donor .about-donor__name {
+  margin: 0.1rem 0 0;
+  font-family: var(--font-tamil);
+  font-size: var(--text-md);
+  font-weight: var(--weight-bold);
+  color: var(--maroon-700);
+  line-height: var(--leading-snug);
+}
+.about-donor .about-donor__detail,
+.about-donor .about-donor__names {
+  margin: 0;
+  font-size: var(--text-sm);
+  color: var(--text-2);
+  line-height: 1.55;
+}
+
+/* ── Kumbabhishekam appeal (ink panel) ───────────────────────────── */
+.about-appeal {
+  margin: var(--space-8) 0 var(--space-4);
+  /* .card--ink is a translucent overlay meant for dark grounds; on the ivory
+     page give it a solid ink gradient with a saffron glow in the corner. */
+  background:
+    radial-gradient(ellipse 60% 70% at 100% 0%, color-mix(in srgb, var(--saffron) 24%, transparent), transparent 62%),
+    radial-gradient(ellipse 50% 60% at 0% 100%, color-mix(in srgb, var(--gold) 16%, transparent), transparent 62%),
+    linear-gradient(160deg, var(--bg-ink) 0%, var(--maroon-800) 55%, var(--maroon-700) 100%);
+}
+/* Not interactive — hold the ink shadow steady (beats .card--ink:hover's gold glow) */
+.about-appeal,
+.about-appeal:hover {
+  border-color: var(--glass-ink-border-strong);
+  box-shadow: var(--shadow-ink), var(--glass-ink-edge);
+}
+/* Kolam lattice echo from the hero */
+.about-appeal::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='56' height='56' viewBox='0 0 56 56' fill='none' stroke='rgba(255,255,255,0.06)' stroke-width='1'><circle cx='28' cy='28' r='10'/><circle cx='28' cy='28' r='2'/><path d='M28 0v18M28 38v18M0 28h18M38 28h18'/></svg>");
+  mask-image: radial-gradient(ellipse 80% 100% at 100% 0%, black 20%, transparent 100%);
+  -webkit-mask-image: radial-gradient(ellipse 80% 100% at 100% 0%, black 20%, transparent 100%);
+}
+.about-appeal__body {
+  position: relative;
+  z-index: 1;
+  padding: var(--space-8);
+}
+/* Scoped (0,2,0) so these beat .page-prose h3 / .page-prose p (0,1,1). */
+.about-appeal .about-appeal__eyebrow {
+  margin: 0 0 var(--space-3);
+  max-width: none;
+  font-size: var(--text-xs);
+  line-height: 1.4;
+  color: var(--gold-200);
+}
+.about-appeal .about-appeal__title {
+  margin: 0 0 var(--space-3);
+  font-size: var(--text-xl);
+  line-height: var(--leading-snug);
+  color: var(--text-on-dark);
+  background: linear-gradient(135deg, var(--text-on-dark) 30%, var(--gold-200) 80%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+.about-appeal .about-appeal__text {
+  margin: 0 0 var(--space-6);
+  font-size: var(--text-md);
+  line-height: var(--leading-relaxed);
+  color: var(--text-on-dark-2);
+  max-width: 66ch;
+}
+.about-appeal__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+}
+
+/* Committee sign-off inside left-aligned prose */
+.about-prose .committee__signoff {
+  text-align: left;
+}
+
+/* ── Timings scroll container ────────────────────────────────────── */
+.about-timings {
+  margin-top: var(--space-5);
   overflow-x: auto;
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
   -webkit-overflow-scrolling: touch;
 }
-.visually-hidden {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  padding: 0;
-  margin: -1px;
-  overflow: hidden;
-  clip: rect(0, 0, 0, 0);
-  white-space: nowrap;
-  border: 0;
-}
 
-@media (max-width: 600px) {
+/* ── Responsive ──────────────────────────────────────────────────── */
+@media (max-width: 820px) {
+  .about-hero__facts {
+    max-width: none;
+    width: 100%;
+  }
+  .about-hero__fact {
+    flex-basis: 140px;
+  }
   .about-deities {
-    grid-template-columns: 1fr;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
-  .about-appeal {
-    padding: 1.1rem 1.2rem;
+}
+@media (max-width: 640px) {
+  .about-nav {
+    padding-block: var(--space-2);
   }
-  .page-figure img {
+  .about-nav__list {
+    max-width: none;
+  }
+  .about-prose {
+    --about-nav-h: 60px;
+  }
+  .about-deities {
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--space-3);
+  }
+  .about-deities__item {
+    padding: var(--space-4) var(--space-5);
+  }
+  .about-figure {
+    margin-bottom: var(--space-8);
+  }
+  .about-figure img {
     max-height: 360px;
+  }
+  .about-donor {
+    padding: var(--space-4) var(--space-5);
+    gap: var(--space-4);
+  }
+  .about-appeal__body {
+    padding: var(--space-6) var(--space-5);
+  }
+  .about-appeal .about-appeal__title {
+    font-size: var(--text-lg);
+  }
+  .about-appeal .about-appeal__text {
+    font-size: var(--text-base);
+  }
+}
+@media (max-width: 480px) {
+  .about-hero__fact {
+    flex-basis: 100%;
+    flex-direction: row-reverse;
+    justify-content: space-between;
+    align-items: center;
+    padding: var(--space-3) var(--space-4);
+  }
+  .about-hero__fact-year {
+    font-size: var(--text-lg);
+  }
+  .about-donor {
+    flex-direction: column;
+  }
+  .about-appeal__actions .btn {
+    width: 100%;
   }
 }

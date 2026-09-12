@@ -13,8 +13,8 @@ export default defineConfig({
         short_name: "Dhabbalavaar Temple",
         description:
           "Official temple app — poojas, sevas, events, donations & more.",
-        theme_color: "#6b1e1e",
-        background_color: "#6b1e1e",
+        theme_color: "#3d0707",
+        background_color: "#fffbf5",
         display: "standalone",
         orientation: "portrait",
         start_url: "/",

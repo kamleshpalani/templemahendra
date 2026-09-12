@@ -57,10 +57,14 @@ export const TEMPLE = {
     { ta: "ஸ்ரீ சின்னம்மாள்", en: "Sri Chinnammal" },
   ],
 
-  /** Two-line brand mark for the 70px navbar (space-constrained; full name lives in aria-label). */
+  /**
+   * Two-line brand mark for the 70px navbar (space-constrained; the full name is
+   * also exposed to assistive tech). Tamil follows the printed TEMPLE order;
+   * English keeps the site's pre-existing transliteration.
+   */
   brand: {
-    line1: { ta: "தப்பலவார் ரேணுகாதேவி", en: "Dhabbalavaar Renuka Devi" },
-    line2: { ta: "லிங்கம்மாள் சின்னம்மாள் திருக்கோவில்", en: "Lingamma Sinnammal Temple" },
+    line1: { ta: "தப்பலவார் ஸ்ரீ லிங்கம்மாள்", en: "Dhabbalavaar Renuka Devi" },
+    line2: { ta: "ரேணுகாதேவி சின்னம்மாள் திருக்கோவில்", en: "Lingamma Sinnammal Temple" },
   },
 
   /** Alt text for the sanctum photograph (three deities in floral alankaram). */
@@ -94,10 +98,10 @@ export const ADDRESS = {
     en: "Pudupatti, Thiruvengadam Taluk, Tenkasi District – 627719",
   },
 
-  /** Single-line form including the pre-existing street. */
+  /** Single-line form including the pre-existing street and state. */
   oneLine: {
-    ta: "நடு தெரு, புதுப்பட்டி, திருவேங்கடம் தாலுகா, தென்காசி மாவட்டம் - 627719",
-    en: "Middle Street, Pudupatti, Thiruvengadam Taluk, Tenkasi District – 627719",
+    ta: "நடு தெரு, புதுப்பட்டி, திருவேங்கடம் தாலுகா, தென்காசி மாவட்டம், தமிழ்நாடு - 627719",
+    en: "Middle Street, Pudupatti, Thiruvengadam Taluk, Tenkasi District, Tamil Nadu – 627719",
   },
 
   /** Google Maps free-text query (taluk + district disambiguate the several Pudupattis in TN). */
@@ -307,10 +311,10 @@ export const HISTORY = {
 export const LAND_DONATION = {
   heading: { ta: "அன்னதான கூடம் & இட நன்கொடை", en: "Annadanam Hall & Land Donation" },
   ta: "நமது இனபந்துக்கள் கோவிலுக்கு வந்து சுவாமி தரிசனம் செய்பவர்களுக்கு போதிய வசதி இல்லை. அன்னதானம் வழங்கவும் போதிய வசதியும் இல்லை. இவை அனைத்தும் நிவர்த்தி செய்ய நம் இன பெரியவர்கள் முடிவு செய்தார்கள். இந்த முடிவின்படி முதலில் அன்னதான கூடம் கட்ட புதுப்பட்டியை பூர்வீகமாக கொண்டு தற்போது இராஜபாளையத்தில் வசித்து வரும் திரு. த.கா. சுப்பாராம் (காவல்துறை உதவி ஆய்வாளர், ஓய்வு) அவர்கள் குடும்பத்தார்கள் கோவிலுக்கு இடவசதி கொடுக்க முன் வந்து இடத்தை நன்கொடையாக திரு. த.கா.சுப்பாராம் அவர்கள் மனைவி திருமதி. இராமலட்சுமி அவர்களும் இவர்களது மகன் திரு. சீனிவாசன் அவர்களும் நமது தர்ம அறக்கட்டளை பெயரில் பத்திரம் பதிவு செய்து வழங்கியுள்ளார்கள். இந்த இடத்தில் தற்போது அன்னதான கூடமும், கழிப்பறைகளும் கட்டிக் கொண்டு உள்ளோம். இதுபோன்று தங்கும் ஓய்வறைகள் சகல வசதியும் அமைக்கவும் முடிவெடுக்கப்பட்டுள்ளது.",
-  en: "Devotees of our community who visit the temple for darshan lack adequate facilities, and there is no proper provision for serving annadanam. Our community elders resolved to address all of this. As a first step towards building an annadanam hall, the family of Thiru T.K. Subbaram (Assistant Sub-Inspector of Police, Retd.) — a native of Pudupatti now residing in Rajapalayam — came forward to provide land for the temple. His wife Thirumathi Ramalakshmi and their son Thiru Srinivasan have registered the deed and donated the land in the name of our Dharma Trust. On this land we are now constructing an annadanam hall and toilets. It has also been resolved to build rest rooms with every facility.",
+  en: "Devotees of our community who visit the temple for darshan lack adequate facilities, and there is no proper provision for serving annadanam. Our community elders resolved to address all of this. As a first step towards building an annadanam hall, the family of Thiru T.K. Subbaram (Sub-Inspector of Police, Retd.) — a native of Pudupatti now residing in Rajapalayam — came forward to provide land for the temple. His wife Thirumathi Ramalakshmi and their son Thiru Srinivasan have registered the deed and donated the land in the name of our Dharma Trust. On this land we are now constructing an annadanam hall and toilets. It has also been resolved to build rest rooms with every facility.",
   donors: {
     family: { ta: "திரு. த.கா. சுப்பாராம் குடும்பத்தார்", en: "Family of Thiru T.K. Subbaram" },
-    detail: { ta: "காவல்துறை உதவி ஆய்வாளர் (ஓய்வு), இராஜபாளையம்", en: "Assistant Sub-Inspector of Police (Retd.), Rajapalayam" },
+    detail: { ta: "காவல்துறை உதவி ஆய்வாளர் (ஓய்வு), இராஜபாளையம்", en: "Sub-Inspector of Police (Retd.), Rajapalayam" },
     names: { ta: "திருமதி. இராமலட்சுமி & திரு. சீனிவாசன்", en: "Thirumathi Ramalakshmi & Thiru Srinivasan" },
   },
 };
@@ -346,10 +350,6 @@ export const OBSERVANCES = {
     label: { ta: "மஹா சிவராத்திரி — தரிசனம் & அன்னதானம்", en: "Maha Shivaratri — Darshan & Annadanam" },
     when: { ta: "ஆண்டுதோறும்", en: "Annual" },
     desc: HISTORY.paragraphs.find((p) => p.key === "shivaratri"),
-  },
-  kumbabhishekamAnniversary: {
-    label: { ta: "கும்பாபிஷேக நினைவு நாள்", en: "Kumbabhishekam Anniversary" },
-    when: { ta: "வைகாசி 28 (10 ஜூன்)", en: "Vaikasi 28 (10 June)" },
   },
 };
 

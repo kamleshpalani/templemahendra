@@ -1,195 +1,133 @@
-/* ══════════════════════════════════════════════════════════
+/* ══════════════════════════════════════════════════════════════════
    CommitteeGrid.css — Temple committee office-bearer cards
-   Composes global .section-title / .divider / .section-subtitle /
-   .card / .grid-3 from index.css; the page supplies .section/.container.
+   Composes global .section-title / .divider / .section-subtitle / .card /
+   .avatar / .badge / .btn / .grid-3; the page supplies .section/.container.
 
    Element rules below are scoped under .committee / .committee-card
    (specificity 0,2,0+) because About.jsx renders this inside .page-prose,
-   whose descendant rules (.page-prose p / h3 / a — 0,1,1) would otherwise
-   add prose margins, resize card names and underline the tel emoji.
-   ══════════════════════════════════════════════════════════ */
+   whose descendant rules (.page-prose p / h3 — 0,1,1) would otherwise add
+   prose margins and resize card names. Tokens only — no raw colours.
+   ══════════════════════════════════════════════════════════════════ */
 
 .committee {
   min-width: 0;
 }
 
-/* ── Heading (level 3 = nested inside a page's own h2 prose) ─ */
+/* ── Heading (level 3 = nested inside a page's own h2 prose) ─────── */
 .committee .committee__heading--nested {
-  font-family: var(--font-tamil);
-  font-size: 1.35rem;
-  font-weight: 700;
-  color: var(--maroon);
+  font-size: var(--text-lg);
+  color: var(--maroon-600);
   text-align: left;
-  letter-spacing: 0.01em;
-  line-height: 1.35;
-  margin: 0 0 0.5rem;
+  line-height: var(--leading-snug);
+  margin: 0 0 var(--space-2);
 }
 
-/* ── Invite line ─────────────────────────────────────────── */
-/* Level 2 uses global .section-subtitle (centred, .95rem, --text-3). */
+/* ── Invite line ─────────────────────────────────────────────────── */
+/* Level 2 uses global .section-subtitle (centred, --text-3). */
 .committee .committee__invite--nested {
-  font-size: 0.95rem;
+  font-size: var(--text-base);
   font-style: italic;
   color: var(--text-3);
   text-align: left;
-  line-height: 1.65;
-  margin: 0 0 1.25rem;
+  line-height: var(--leading-normal);
+  margin: 0 0 var(--space-5);
 }
 
-/* ── Grid (columns/gap come from .grid-3) ────────────────── */
+/* ── Grid (columns/gap come from .grid-3) ────────────────────────── */
 .committee__grid {
   list-style: none;
   margin: 0;
   padding: 0;
 }
 
-/* ── Card ────────────────────────────────────────────────── */
+/* ── Card ────────────────────────────────────────────────────────── */
 .committee-card {
-  position: relative;
   display: flex;
   flex-direction: column;
-  align-items: flex-start;
-  gap: 0.35rem;
-  padding: 1.2rem 1.4rem;
+  align-items: stretch;
+  gap: var(--space-3);
+  padding: var(--space-5);
   min-width: 0;
 }
-
-/* Left accent stripe (saffron → gold) */
-.committee-card::before {
-  content: "";
-  position: absolute;
-  left: 0;
-  top: 0;
-  bottom: 0;
-  width: 4px;
-  background: linear-gradient(180deg, var(--saffron), var(--gold-light));
-  border-radius: 0 2px 2px 0;
+.committee-card__top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  flex-wrap: wrap;
 }
 
-/* Non-interactive card: cancel the global .card hover lift */
-.committee-card.committee-card--static,
-.committee-card.committee-card--static:hover {
-  transform: none;
-  box-shadow: var(--shadow-sm);
-  border-color: rgba(153, 27, 27, 0.1);
+/* Initials tile — .avatar primitive, sized up; lead members go maroon */
+.committee-card__avatar {
+  width: 52px;
+  height: 52px;
+  font-family: var(--font-display);
+  font-size: var(--text-md);
+  letter-spacing: 0.04em;
+  box-shadow: var(--inset-highlight), var(--glow-saffron);
+}
+.committee-card--lead .committee-card__avatar {
+  background: linear-gradient(135deg, var(--maroon-500), var(--maroon-700));
+  box-shadow: var(--inset-highlight), var(--glow-maroon);
 }
 
-/* ── Role eyebrow ────────────────────────────────────────── */
+/* Role badge (Badge tone: gold for President / Secretary, neutral otherwise) */
 .committee-card .committee-card__role {
-  margin: 0;
-  font-size: 0.68rem;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--text-3);
+  max-width: 100%;
+  white-space: normal;
+  text-align: right;
   line-height: 1.4;
 }
 
-/* President / Secretary: amber pill */
-.committee-card .committee-card__role--lead {
-  display: inline-flex;
-  align-items: center;
-  padding: 0.2rem 0.65rem;
-  border-radius: 20px;
-  background: #fde68a;
-  color: #78350f;
-}
-
-/* ── Name (Tamil-primary / English-secondary pairing) ────── */
+/* ── Name (active-language primary / other-language secondary) ───── */
 .committee-card .committee-card__name {
   margin: 0;
-  font-family: var(--font-tamil);
-  font-size: 1.05rem;
-  font-weight: 700;
-  color: var(--maroon);
-  line-height: 1.4;
+  font-size: var(--text-md);
+  line-height: var(--leading-snug);
+  color: var(--maroon-600);
   overflow-wrap: anywhere;
 }
-
 .committee-card__name-ta,
 .committee-card__name-en {
   display: block;
+  margin-top: 0.15rem;
   font-family: var(--font-body);
-  font-size: 0.85rem;
-  font-weight: 400;
+  font-size: var(--text-sm);
+  font-weight: var(--weight-regular);
+  letter-spacing: 0;
   color: var(--text-3);
-  margin-top: 0.1rem;
 }
 
-/* ── Tap-to-call link ────────────────────────────────────── */
+/* ── Tap-to-call (Button variant="outline" size="sm" block) ──────── */
 .committee-card .committee-card__tel {
-  display: inline-flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 0.4rem;
-  margin-top: 0.4rem;
-  padding: 0.2rem 0;
-  font-size: 0.95rem;
-  font-weight: 700;
-  color: var(--maroon);
-  text-decoration: none;
-  border-radius: 4px;
+  margin-top: auto;
+  min-height: 44px;
 }
-
-/* Keep the underline on the number span only (beats .page-prose a:hover) */
-.committee-card .committee-card__tel:hover,
-.committee-card .committee-card__tel:focus-visible {
-  text-decoration: none;
-}
-
-.committee-card__tel-icon {
-  font-size: 1rem;
-  line-height: 1;
-}
-
 .committee-card__tel-number {
-  white-space: nowrap;
   font-variant-numeric: tabular-nums;
-  text-decoration: underline;
-  text-decoration-color: transparent;
-  text-decoration-thickness: 2px;
-  text-underline-offset: 3px;
+  letter-spacing: 0.02em;
 }
 
-.committee-card .committee-card__tel:hover .committee-card__tel-number,
-.committee-card .committee-card__tel:focus-visible .committee-card__tel-number {
-  text-decoration-color: var(--saffron);
-}
-
-.committee-card .committee-card__tel:focus-visible {
-  outline: 3px solid rgba(249, 115, 22, 0.45);
-  outline-offset: 2px;
-}
-
-/* ── Sign-off ────────────────────────────────────────────── */
+/* ── Sign-off ────────────────────────────────────────────────────── */
 .committee .committee__signoff {
-  margin: 1.25rem 0 0;
-  font-size: 0.9rem;
+  margin: var(--space-6) 0 0;
+  font-size: var(--text-sm);
   font-style: italic;
   color: var(--text-2);
   text-align: center;
 }
-
 .committee .committee__signoff--nested {
   text-align: left;
 }
 
-/* ── Motion ──────────────────────────────────────────────── */
-@media (prefers-reduced-motion: no-preference) {
-  .committee-card__tel-number {
-    transition: text-decoration-color var(--transition);
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
+/* ── Responsive (grid collapses via .grid-3 at 820px / 640px) ─────── */
+@media (max-width: 640px) {
   .committee-card {
-    transition: none;
+    padding: var(--space-4) var(--space-5);
   }
-}
-
-/* ── Responsive (grid collapses via .grid-3 at 900px / 600px) ─ */
-@media (max-width: 600px) {
-  .committee-card {
-    padding: 1.1rem 1.2rem;
+  .committee-card__avatar {
+    width: 46px;
+    height: 46px;
+    font-size: var(--text-base);
   }
 }

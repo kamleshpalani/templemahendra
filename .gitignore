@@ -29,7 +29,6 @@ render.yaml
 docker-entrypoint.sh
 
 # Editor/tool scratch
-.codebuddy/
 
 # Node
 frontend/node_modules/

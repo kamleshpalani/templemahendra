@@ -1,4 +1,5 @@
 import { useId } from "react";
+import { LuPhone } from "react-icons/lu";
 import { useLang } from "../../context/LangContext";
 import {
   COMMITTEE,
@@ -7,7 +8,20 @@ import {
   formatPhone,
   telHref,
 } from "../../data/temple";
+import Badge from "../ui/Badge";
+import Button from "../ui/Button";
 import "./CommitteeGrid.css";
+
+/** "S. Gengaiah" → "SG" — up to two Latin initials for the avatar tile. */
+function initialsOf(enName) {
+  return enName
+    .split(/\s+/)
+    .map((w) => w.replace(/[^A-Za-z]/g, ""))
+    .filter(Boolean)
+    .map((w) => w[0].toUpperCase())
+    .slice(0, 2)
+    .join("");
+}
 
 /**
  * CommitteeGrid — the temple committee office-bearers as tap-to-call cards.
@@ -45,13 +59,14 @@ export default function CommitteeGrid({
   const Heading = nested ? "h3" : "h2";
   // Cards sit one level below the heading directly above them: the component's
   // own h3 when it renders one, otherwise the page-supplied h2 (About passes
-  // showHeading={false} headingLevel={3} under its own h2).
+  // showHeading={false} headingLevel={2} under its own h2, so cards are h3).
   const CardHeading = showHeading && nested ? "h4" : "h3";
 
   return (
     <Root
       className={nested ? "committee committee--nested" : "committee"}
       id={id}
+      lang={lang}
       aria-labelledby={showHeading ? headingId : undefined}
     >
       {showHeading && (
@@ -84,7 +99,7 @@ export default function CommitteeGrid({
 
       {/* role="list" keeps list semantics in Safari/VoiceOver once list-style is none */}
       <ul className="committee__grid grid-3" role="list">
-        {COMMITTEE.members.map((member) => {
+        {COMMITTEE.members.map((member, i) => {
           // President and Secretary are the data module's designated contacts.
           const isLead =
             member === PRIMARY_CONTACT || member === SECONDARY_CONTACT;
@@ -95,17 +110,17 @@ export default function CommitteeGrid({
           return (
             <li
               key={member.phone}
-              className="committee-card card committee-card--static"
+              className={`committee-card card card--static rise${isLead ? " committee-card--lead" : ""}`}
+              style={{ "--i": i }}
             >
-              <p
-                className={
-                  isLead
-                    ? "committee-card__role committee-card__role--lead"
-                    : "committee-card__role"
-                }
-              >
-                {role}
-              </p>
+              <div className="committee-card__top">
+                <span className="avatar avatar--lg committee-card__avatar" aria-hidden="true">
+                  {initialsOf(member.name.en)}
+                </span>
+                <Badge tone={isLead ? "gold" : "default"} className="committee-card__role">
+                  {role}
+                </Badge>
+              </div>
 
               <CardHeading className="committee-card__name">
                 {name}
@@ -120,16 +135,17 @@ export default function CommitteeGrid({
                 )}
               </CardHeading>
 
-              <a
-                className="committee-card__tel"
+              <Button
                 href={telHref(member.phone)}
+                variant="outline"
+                size="sm"
+                block
+                icon={<LuPhone aria-hidden="true" />}
+                className="committee-card__tel"
                 aria-label={`${name}, ${role} — ${phone}`}
               >
-                <span className="committee-card__tel-icon" aria-hidden="true">
-                  📞
-                </span>
                 <span className="committee-card__tel-number">{phone}</span>
-              </a>
+              </Button>
             </li>
           );
         })}
