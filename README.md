@@ -131,10 +131,18 @@ Upload via Hostinger File Manager or FTP:
 
 1. Create database in Hostinger hPanel → Databases → MySQL
 2. Import `database/schema.sql` via phpMyAdmin
-3. Import `database/migrations/001_admin_users.sql` to enable committee
-   accounts, roles and the admin activity log. This is additive and safe to run
-   on an existing database. Skip it and the admin keeps working with the single
-   environment-variable login.
+3. Run the migrations in `database/migrations/` in order. Each is additive and
+   safe to re-run on an existing database; a fresh `schema.sql` install already
+   contains them.
+
+| Migration | What it adds |
+| --------- | ------------ |
+| `001_admin_users.sql` | `admin_users` + `admin_activity` — committee accounts, roles and the audit trail. Skip it and the admin keeps working with the single environment-variable login. |
+| `002_contact_messages_index.sql` | An index on `contact_messages.created_at` so the inbox sorts and paginates without a full scan. |
+
+```bash
+for f in database/migrations/*.sql; do mysql -u <user> -p <db> < "$f"; done
+```
 
 ### Step 4 — Environment variables
 
