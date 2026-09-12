@@ -16,7 +16,9 @@ Single source of truth for the public site (React/Vite) **and** the PHP admin.
 
 ## Rules for page / component stylesheets
 
-1. **Tokens only.** No raw hex/rgb colours in page CSS. Use `var(--maroon-600)`, `var(--glass-2)`, `var(--text-3)`, `var(--shadow-md)`, … Semantic accents: `--moon-*` only for lunar/panchangam content, `--sage-*` only for auspicious-time content, status tokens for status.
+1. **Tokens only for colour.** Every *opaque* colour must come from a token — `var(--maroon-600)`, `var(--glass-2)`, `var(--text-3)`, `var(--white)`, `var(--ink-1..4)`, `var(--brand-whatsapp)`. Never write a bare hex. Semantic accents: `--moon-*` only for lunar/panchangam content, `--sage-*` only for auspicious-time content, status tokens for status, `--danger-on-dark`/`--success-on-dark` for status text on ink surfaces.
+   The one allowed literal is an **alpha tint of white or black** (`rgba(255,255,255,α)`, `rgba(0,0,0,α)`) used for glass highlights, hairlines and shadows, plus brand-tinted glows whose base colour is already a token value. Anything else is a violation. Colours inside `url("data:image/svg+xml…")` patterns are exempt because SVG cannot read custom properties.
+   Run `node audit.mjs` (scratchpad) to check: it reports undefined variables, orphan classes, opaque raw colours and stray inline styles.
 2. **Compose primitives, don't restate them.** A page card is `.card` + a page modifier for layout; buttons are `.btn` variants; forms use `<Field>`; lists of status use `.badge`.
 3. **No inline `style={{}}` for visual styling** (only for dynamic data such as `--i` stagger index or a computed width).
 4. **Glass budget.** At most one `backdrop-filter` surface per visual layer; never nest blurred surfaces three deep; large full-width bands use gradients, not blur.

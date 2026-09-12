@@ -39,6 +39,26 @@
   --gold-200: #fde68a;
   --gold-100: #fef3c7;
 
+  /* Neutral anchors. `--white` exists so chrome never hardcodes #fff. */
+  --white: #ffffff;
+  --black: #000000;
+
+  /* Ink gradient stops — the dark maroon ramp behind heroes, the footer,
+     the admin sidebar and the sign-in page. Ordered darkest → lightest. */
+  --ink-1: #1a0606;
+  --ink-2: #240707;
+  --ink-3: #3d0a0a;
+  --ink-4: #4a0c0c;
+
+  /* Third-party brand colours (fixed by the vendor, never re-themed) */
+  --brand-whatsapp: #25d366;
+  --brand-whatsapp-deep: #128c7e;
+
+  /* Status text that sits on dark ink surfaces (needs a lighter value
+     than the on-ivory status tokens to keep 4.5:1) */
+  --danger-on-dark: #fecaca;
+  --success-on-dark: var(--sage-300);
+
   /* Lunar accent — used ONLY for panchangam / pournami content */
   --moon-700: #4c1d95;
   --moon-600: #5b21b6;

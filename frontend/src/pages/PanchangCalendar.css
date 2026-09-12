@@ -330,7 +330,10 @@
   animation-duration: 0.4s;
   animation-delay: calc(var(--i, 0) * 14ms);
 }
-.panchang-cell:hover {
+/* Hover tint only on real, unhighlighted cells — the guard keeps the
+   today / selected fills (lower specificity) from being overwritten and
+   stops the aria-hidden blank + skeleton cells reading as clickable. */
+.panchang-cell:not(.panchang-cell--empty):not(.panchang-cell--skeleton):not(.panchang-cell--today):not(.panchang-cell--selected):hover {
   background: var(--bg-alt);
 }
 .panchang-cell:focus-visible {

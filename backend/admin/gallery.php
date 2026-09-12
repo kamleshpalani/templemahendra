@@ -141,8 +141,9 @@ echo adminPageIntro(
       <div class="gallery-admin-grid">
         <?php foreach ($images as $img): $cap = trim((string) ($img['caption'] ?? '')); $id = (int) $img['id']; ?>
           <figure class="gallery-admin-item">
+            <?php // the card wraps the photo only: .card sets overflow:hidden, which would clip the row menu popover ?>
             <div class="card card--static">
-              <img src="/uploads/<?= h($img['filename']) ?>" alt="<?= h($cap !== '' ? $cap : 'Gallery photo ' . $id) ?>" loading="lazy" />
+              <img src="/uploads/<?= h($img['filename']) ?>" alt="<?= h($cap !== '' ? $cap : 'Gallery photo ' . $id) ?>" loading="lazy" width="400" height="400" />
             </div>
             <figcaption class="gallery-admin-item__info">
               <div class="grow">

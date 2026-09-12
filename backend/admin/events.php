@@ -18,11 +18,12 @@ if (!empty($_SESSION['flash'])) {
     unset($_SESSION['flash']);
 }
 
-// ── List filters (GET, whitelisted) ──────────────────────────────────────────
+// ── List filters (whitelisted; read from the request that carried them) ──────
 $filters       = ['upcoming' => 'Upcoming', 'past' => 'Past', 'all' => 'All'];
 $defaultFilter = 'upcoming';
-$filter        = isset($filters[$str($_GET, 'f')]) ? $str($_GET, 'f') : $defaultFilter;
-$q             = mb_substr(trim($str($_GET, 'q')), 0, 100);
+$src           = $_SERVER['REQUEST_METHOD'] === 'POST' ? $_POST : $_GET; // a failed save must keep the list state
+$filter        = isset($filters[$str($src, 'f')]) ? $str($src, 'f') : $defaultFilter;
+$q             = mb_substr(trim($str($src, 'q')), 0, 100);
 $query         = ['f' => $filter === $defaultFilter ? '' : $filter, 'q' => $q];
 $listUrl       = static fn(array $override = []): string => '/admin/events.php' . rtrim(adminQuery($query, $override), '?');
 
@@ -36,9 +37,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $backF  = $str($_POST, 'f');
     $back   = '/admin/events.php' . (isset($filters[$backF]) && $backF !== $defaultFilter ? '?f=' . $backF : '');
 
+    // A rejected token must not cost the admin their typing — reflect it back (inert: every value is h()-escaped).
+    if ($msg !== '' && $action === 'save') {
+        $editing = [
+            'id'          => (int) $str($_POST, 'id'),
+            'title_ta'    => $str($_POST, 'title_ta'),
+            'title_en'    => $str($_POST, 'title_en'),
+            'description' => $str($_POST, 'description'),
+            'event_date'  => $str($_POST, 'event_date'),
+            'is_active'   => isset($_POST['is_active']) ? 1 : 0,
+        ];
+    }
+
     if ($msg === '' && $action === 'save') {
-        $title_ta   = sanitizeText($str($_POST, 'title_ta'));
-        $title_en   = sanitizeText($str($_POST, 'title_en'));
+        // Lengths are clamped to the column definitions so nothing reaches MySQL out of bounds.
+        $title_ta   = sanitizeText($str($_POST, 'title_ta'), 300); // VARCHAR(300)
+        $title_en   = sanitizeText($str($_POST, 'title_en'), 300); // VARCHAR(300)
         $desc       = sanitizeText($str($_POST, 'description'), 2000);
         $event_date = $str($_POST, 'event_date');
         $active     = isset($_POST['is_active']) ? 1 : 0;
@@ -141,6 +155,7 @@ echo adminPageIntro(
       <?= csrfField() ?>
       <input type="hidden" name="action" value="save" />
       <input type="hidden" name="f" value="<?= h($filter) ?>" />
+      <input type="hidden" name="q" value="<?= h($q) ?>" />
       <?php if ($isEdit): ?><input type="hidden" name="id" value="<?= (int) $editing['id'] ?>" /><?php endif; ?>
 
       <label for="title_en">

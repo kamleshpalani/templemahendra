@@ -1,11 +1,23 @@
 <?php
 require_once __DIR__ . '/../includes/auth.php';
+require_once __DIR__ . '/../includes/db.php';
 require_once __DIR__ . '/../includes/helpers.php';
 require_once __DIR__ . '/includes/admin_ui.php';
 
+/** Only ever redirect back to a path inside this admin — never to another host. */
+function safeNext(string $next): string
+{
+    $next = trim($next);
+    if ($next === '' || !str_starts_with($next, '/admin/')) return '/admin/';
+    if (str_starts_with($next, '//') || str_contains($next, "\n") || str_contains($next, "\r")) return '/admin/';
+    if (str_contains($next, 'login.php') || str_contains($next, 'logout.php')) return '/admin/';
+    return $next;
+}
+$next = safeNext(rawurldecode((string) ($_GET['next'] ?? $_POST['next'] ?? '')));
+
 // Already logged in
 if (!empty($_SESSION['admin_logged_in'])) {
-    header('Location: /admin/');
+    header('Location: ' . $next);
     exit;
 }
 
@@ -15,7 +27,7 @@ $username = '';
 
 // Friendly notices carried over from other pages (?reason=expired|signed_out)
 $reason = $_GET['reason'] ?? '';
-if ($reason === 'signed_out') $notice = 'You have been signed out. Nandri 🙏';
+if ($reason === 'signed_out') $notice = 'You have been signed out. Nandri.';
 if ($reason === 'expired')    $notice = 'Your session expired. Please sign in again.';
 
 // Simple per-session throttle: 5 failures -> 60s cool-down
@@ -34,13 +46,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $error = 'Too many attempts. Please wait a minute and try again.';
     } elseif ($username === '' || $password === '') {
         $error = 'Please enter both username and password.';
-    } elseif (adminLogin($username, $password)) {
-        session_regenerate_id(true);
-        $_SESSION['admin_logged_in'] = true;
-        $_SESSION['admin_user']      = $username;
-        $_SESSION['admin_login_at']  = time();
+    } elseif ($user = adminLogin($username, $password)) {
+        adminStartSession($user);
         unset($_SESSION['login_fails'], $_SESSION['login_locked_until']);
-        header('Location: /admin/');
+        // A freshly issued password must be changed before anything else.
+        header('Location: ' . ($user['must_change'] ? '/admin/profile.php?must_change=1' : $next));
         exit;
     } else {
         $fails++;
@@ -100,6 +110,7 @@ $hasError = $error !== '';
 
     <form method="POST" action="/admin/login.php" autocomplete="on" novalidate>
       <?= csrfField() ?>
+      <input type="hidden" name="next" value="<?= h($next) ?>" />
       <label for="username">
         Username
         <span class="input-affix input-affix--leading">
@@ -124,10 +135,12 @@ $hasError = $error !== '';
 
     <details class="login-help">
       <summary><?= adminIcon('key', 'ico--sm') ?> Trouble signing in? <?= adminIcon('chevron-down', 'ico--xs') ?></summary>
-      <p>Access is limited to the temple committee. There is no self-service password reset for security reasons — the
-         administrator who set up the site can issue a new password by updating the <code>ADMIN_PASS_HASH</code>
-         environment variable in the hosting panel and sharing the new password with you privately.</p>
-      <p>Still stuck? Contact the President or Secretary listed on the public Contact page.</p>
+      <p>Access is limited to the temple committee. There is no self-service reset by design: the site sends no email,
+         so a reset link could not be delivered safely.</p>
+      <p>If you have a committee account, ask any <strong>owner</strong> to open <em>Committee accounts</em> in the admin
+         and issue you a new password — you will be asked to change it the moment you sign in.</p>
+      <p>If nobody can sign in at all, the person who set the site up can restore access by updating the
+         <code>ADMIN_PASS_HASH</code> environment variable in the hosting panel.</p>
     </details>
   </section>
 

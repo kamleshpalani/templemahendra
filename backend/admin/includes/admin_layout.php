@@ -31,33 +31,75 @@ function adminNavGroups(): array
             'bulk_upload.php'      => ['upload',      'Bulk Upload',      'Import CSV / Excel data'],
             'settings.php'         => ['settings',    'Settings',         'Homepage sections and account'],
         ],
+        'People' => [
+            'users.php'            => ['users',       'Committee Accounts', 'Sign-ins and roles'],
+            'profile.php'          => ['user',        'My Profile',         'Your details and password'],
+        ],
     ];
 }
+
+// adminPageCapability() / adminPageWriteCapability() live in includes/auth.php
+// so requireAdminAuth() can enforce them before a page runs any POST handler.
 
 /** Quick actions surfaced in the command palette and dashboard. */
 function adminQuickActions(): array
 {
-    return [
-        ['label' => 'New event',              'href' => '/admin/events.php#new',         'icon' => 'plus'],
-        ['label' => 'New announcement',       'href' => '/admin/announcements.php#new',  'icon' => 'plus'],
-        ['label' => 'New seva',               'href' => '/admin/sevas.php#new',          'icon' => 'plus'],
-        ['label' => 'Add pooja',              'href' => '/admin/poojas.php#new',         'icon' => 'plus'],
-        ['label' => 'Upload photo',           'href' => '/admin/gallery.php#new',        'icon' => 'upload'],
-        ['label' => 'Bulk upload CSV / Excel','href' => '/admin/bulk_upload.php',        'icon' => 'spreadsheet'],
-        ['label' => 'Export donations CSV',   'href' => '/admin/donations.php?export=csv','icon' => 'download'],
-        ['label' => 'Export bookings CSV',    'href' => '/admin/seva_bookings.php?export=csv','icon' => 'download'],
-        ['label' => 'View public site',       'href' => '/',                             'icon' => 'external', 'external' => true],
-        ['label' => 'Sign out',               'href' => '/admin/logout.php',             'icon' => 'logout'],
+    $all = [
+        ['label' => 'New event',              'href' => '/admin/events.php#new',         'icon' => 'plus',        'can' => 'content.edit'],
+        ['label' => 'New announcement',       'href' => '/admin/announcements.php#new',  'icon' => 'plus',        'can' => 'content.edit'],
+        ['label' => 'New seva',               'href' => '/admin/sevas.php#new',          'icon' => 'plus',        'can' => 'content.edit'],
+        ['label' => 'Add pooja',              'href' => '/admin/poojas.php#new',         'icon' => 'plus',        'can' => 'content.edit'],
+        ['label' => 'Upload photo',           'href' => '/admin/gallery.php#new',        'icon' => 'upload',      'can' => 'content.edit'],
+        ['label' => 'Bulk upload CSV / Excel','href' => '/admin/bulk_upload.php',        'icon' => 'spreadsheet', 'can' => 'import'],
+        ['label' => 'Export donations CSV',   'href' => '/admin/donations.php?export=csv','icon' => 'download',   'can' => 'export'],
+        ['label' => 'Export bookings CSV',    'href' => '/admin/seva_bookings.php?export=csv','icon' => 'download','can' => 'export'],
+        ['label' => 'Committee accounts',     'href' => '/admin/users.php',              'icon' => 'users',       'can' => 'users.manage'],
+        ['label' => 'My profile',             'href' => '/admin/profile.php',            'icon' => 'user',        'can' => 'view'],
+        ['label' => 'View public site',       'href' => '/',                             'icon' => 'external',    'can' => 'view', 'external' => true],
+        ['label' => 'Sign out',               'href' => '/admin/logout.php',             'icon' => 'logout',      'can' => 'view'],
     ];
+    return array_values(array_filter($all, fn($a) => adminCan($a['can'])));
+}
+
+/** Sidebar groups with pages the signed-in role cannot reach removed. */
+function adminVisibleNavGroups(): array
+{
+    $out = [];
+    foreach (adminNavGroups() as $group => $items) {
+        $keep = array_filter($items, fn($_, $file) => adminCan(adminPageCapability($file)), ARRAY_FILTER_USE_BOTH);
+        if ($keep) $out[$group] = $keep;
+    }
+    return $out;
+}
+
+/** Pages + quick actions for the Ctrl+K palette, filtered by role. */
+function adminPaletteItems(): array
+{
+    $palette = [];
+    foreach (adminVisibleNavGroups() as $group => $items) {
+        foreach ($items as $file => [$icon, $label, $desc]) {
+            $palette[] = ['type' => 'page', 'group' => $group, 'label' => $label, 'desc' => $desc,
+                          'href' => '/admin/' . ($file === 'index.php' ? '' : $file), 'icon' => $icon];
+        }
+    }
+    foreach (adminQuickActions() as $a) {
+        $palette[] = ['type' => 'action', 'group' => 'Quick actions', 'label' => $a['label'], 'desc' => '',
+                      'href' => $a['href'], 'icon' => $a['icon'], 'external' => !empty($a['external'])];
+    }
+    return $palette;
 }
 
 function adminHeader(string $pageTitle, string $crumb = 'Temple Admin', array $opts = []): void
 {
     $current  = basename($_SERVER['PHP_SELF']);
-    $user     = (string) ($_SESSION['admin_user'] ?? 'admin');
-    $initials = strtoupper(mb_substr($user, 0, 1));
+    $me       = function_exists('currentAdmin') ? (currentAdmin() ?? []) : [];
+    $user     = (string) ($me['username'] ?? $_SESSION['admin_user'] ?? 'admin');
+    $name     = (string) ($me['display_name'] ?? $user);
+    $role     = (string) ($me['role'] ?? 'owner');
+    $initials = strtoupper(mb_substr($name, 0, 1));
     $actions  = (string) ($opts['actions'] ?? '');
     $wide     = !empty($opts['wide']);
+    $roleTone = ['owner' => 'gold', 'editor' => 'info', 'viewer' => 'muted'][$role] ?? 'muted';
     ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -108,7 +150,7 @@ function adminHeader(string $pageTitle, string $crumb = 'Temple Admin', array $o
   </button>
 
   <nav class="sidebar__nav">
-    <?php foreach (adminNavGroups() as $group => $items): ?>
+    <?php foreach (adminVisibleNavGroups() as $group => $items): ?>
       <span class="sidebar__group"><?= h($group) ?></span>
       <?php foreach ($items as $file => [$icon, $label, $desc]): $active = $current === $file; ?>
         <a href="/admin/<?= $file === 'index.php' ? '' : $file ?>"
@@ -127,7 +169,10 @@ function adminHeader(string $pageTitle, string $crumb = 'Temple Admin', array $o
     </a>
     <div class="sidebar__user">
       <span class="avatar" aria-hidden="true"><?= h($initials) ?></span>
-      <span class="sidebar__user-name"><?= h($user) ?></span>
+      <span class="sidebar__user-name">
+        <?= h($name) ?>
+        <small class="sidebar__user-role"><?= h(ucfirst($role)) ?></small>
+      </span>
       <a href="/admin/logout.php" class="sidebar__logout" data-tip="Sign out" aria-label="Sign out"><?= adminIcon('logout') ?></a>
     </div>
   </div>
@@ -148,13 +193,17 @@ function adminHeader(string $pageTitle, string $crumb = 'Temple Admin', array $o
       <div class="dropdown">
         <button type="button" class="topbar-user" data-menu-toggle aria-haspopup="menu" aria-expanded="false" aria-controls="user-menu">
           <span class="avatar" aria-hidden="true"><?= h($initials) ?></span>
-          <span class="topbar-user__name"><?= h($user) ?></span>
+          <span class="topbar-user__name"><?= h($name) ?></span>
           <?= adminIcon('chevron-down', 'ico--sm') ?>
         </button>
         <div class="menu" id="user-menu" role="menu" hidden>
-          <div class="menu__label">Signed in as <?= h($user) ?></div>
+          <div class="menu__label">Signed in as <?= h($user) ?> · <?= h(ucfirst($role)) ?></div>
+          <a class="menu__item" role="menuitem" href="/admin/profile.php"><?= adminIcon('user') ?>My profile</a>
+          <?php if (adminCan('users.manage')): ?>
+            <a class="menu__item" role="menuitem" href="/admin/users.php"><?= adminIcon('users') ?>Committee accounts</a>
+            <a class="menu__item" role="menuitem" href="/admin/settings.php"><?= adminIcon('settings') ?>Settings</a>
+          <?php endif; ?>
           <a class="menu__item" role="menuitem" href="/" target="_blank" rel="noopener"><?= adminIcon('external') ?>View public site</a>
-          <a class="menu__item" role="menuitem" href="/admin/settings.php"><?= adminIcon('settings') ?>Settings</a>
           <div class="menu__divider" role="separator"></div>
           <a class="menu__item menu__item--danger" role="menuitem" href="/admin/logout.php"><?= adminIcon('logout') ?>Sign out</a>
         </div>
@@ -168,15 +217,7 @@ function adminHeader(string $pageTitle, string $crumb = 'Temple Admin', array $o
 
 function adminFooter(): void
 {
-    $palette = [];
-    foreach (adminNavGroups() as $group => $items) {
-        foreach ($items as $file => [$icon, $label, $desc]) {
-            $palette[] = ['type' => 'page', 'group' => $group, 'label' => $label, 'desc' => $desc, 'href' => '/admin/' . ($file === 'index.php' ? '' : $file), 'icon' => $icon];
-        }
-    }
-    foreach (adminQuickActions() as $a) {
-        $palette[] = ['type' => 'action', 'group' => 'Quick actions', 'label' => $a['label'], 'desc' => '', 'href' => $a['href'], 'icon' => $a['icon'], 'external' => !empty($a['external'])];
-    }
+    $palette = adminPaletteItems();
     ?>
   </main><!-- /admin-content -->
 </div><!-- /admin-main -->

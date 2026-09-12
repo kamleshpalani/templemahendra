@@ -80,13 +80,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $msg === '') {
     }
 }
 
-// Flash from the previous request
-if ($msg === '' && !empty($_SESSION['flash_seva_bookings'])) {
-    [$fType, $fText] = $_SESSION['flash_seva_bookings'];
-    $msg = '<p class="alert alert--' . h($fType === 'error' ? 'error' : 'success') . '" role="' . ($fType === 'error' ? 'alert' : 'status') . '">' . h($fText) . '</p>';
-}
-unset($_SESSION['flash_seva_bookings']);
-
 // ── Filters (GET) ───────────────────────────────────────────────────────────
 $q      = trim(mb_substr((string) ($_GET['q'] ?? ''), 0, 120));
 $status = in_array($_GET['status'] ?? '', $statuses, true) ? (string) $_GET['status'] : '';
@@ -94,11 +87,17 @@ $isDate = static function (string $d): bool {
     if (!preg_match('/^(\d{4})-(\d{2})-(\d{2})$/', $d, $m)) return false;
     return checkdate((int) $m[2], (int) $m[3], (int) $m[1]);
 };
-$from = (string) ($_GET['from'] ?? '');
-$to   = (string) ($_GET['to'] ?? '');
-if (!$isDate($from)) $from = '';
-if (!$isDate($to))   $to   = '';
-if ($from !== '' && $to !== '' && $from > $to) [$from, $to] = [$to, $from];
+$fromRaw = trim((string) ($_GET['from'] ?? ''));
+$toRaw   = trim((string) ($_GET['to'] ?? ''));
+$from    = $isDate($fromRaw) ? $fromRaw : '';
+$to      = $isDate($toRaw)   ? $toRaw   : '';
+$badFrom = $fromRaw !== '' && $from === '';
+$badTo   = $toRaw !== ''   && $to === '';
+$swapped = false;
+if ($from !== '' && $to !== '' && $from > $to) {
+    [$from, $to] = [$to, $from];
+    $swapped = true;
+}
 
 $sortable = ['created_at', 'preferred_date', 'devotee_name', 'seva_name', 'status'];
 $sort = in_array($_GET['sort'] ?? '', $sortable, true) ? (string) $_GET['sort'] : 'created_at';
@@ -151,6 +150,22 @@ if (($_GET['export'] ?? '') === 'csv') {
     }
     fclose($out);
     exit;
+}
+
+// ── Flash from the previous request (after export so a download never eats it) ─
+if ($msg === '' && !empty($_SESSION['flash_seva_bookings'])) {
+    [$fType, $fText] = $_SESSION['flash_seva_bookings'];
+    $msg = '<p class="alert alert--' . h($fType === 'error' ? 'error' : 'success') . '" role="' . ($fType === 'error' ? 'alert' : 'status') . '">' . h($fText) . '</p>';
+}
+unset($_SESSION['flash_seva_bookings']);
+
+// Filter feedback (also flagged on the offending field with aria-invalid)
+$filterNotes = [];
+if ($badFrom) $filterNotes[] = 'The “From” date was not a valid date and has been ignored.';
+if ($badTo)   $filterNotes[] = 'The “To” date was not a valid date and has been ignored.';
+if ($swapped) $filterNotes[] = 'The date range was reversed, so it has been swapped for you.';
+if ($filterNotes) {
+    $msg .= '<p class="alert alert--warning" role="status">' . h(implode(' ', $filterNotes)) . '</p>';
 }
 
 // ── Data ────────────────────────────────────────────────────────────────────
@@ -214,8 +229,8 @@ echo adminKpi([
     <input type="search" id="q" name="q" value="<?= h($q) ?>" placeholder="Search devotee, phone or seva…" autocomplete="off" />
   </div>
   <div class="toolbar__group">
-    <label for="from">From <input type="date" id="from" name="from" value="<?= h($from) ?>" /></label>
-    <label for="to">To <input type="date" id="to" name="to" value="<?= h($to) ?>" /></label>
+    <label for="from">From <input type="date" id="from" name="from" value="<?= h($from) ?>"<?= $badFrom ? ' aria-invalid="true"' : '' ?> /></label>
+    <label for="to">To <input type="date" id="to" name="to" value="<?= h($to) ?>"<?= $badTo ? ' aria-invalid="true"' : '' ?> /></label>
     <button type="submit" class="btn btn--sm"><?= adminIcon('filter') ?> Filter</button>
     <?php if ($filtersActive): ?>
       <a href="<?= SB_BASE ?>" class="btn btn-ghost btn--sm"><?= adminIcon('x') ?> Clear</a>

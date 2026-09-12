@@ -22,7 +22,7 @@
   padding: 0 0 0 15px;
   border-radius: var(--radius-pill);
   text-decoration: none;
-  color: #fff;
+  color: var(--white);
   border: 1px solid rgba(255, 255, 255, 0.28);
   box-shadow: 0 8px 26px rgba(0, 0, 0, 0.28), inset 0 1px 0 rgba(255, 255, 255, 0.3);
   overflow: hidden;
@@ -74,7 +74,7 @@
 }
 
 .fab--whatsapp {
-  background: linear-gradient(135deg, #25d366 0%, #128c7e 100%);
+  background: linear-gradient(135deg, var(--brand-whatsapp) 0%, var(--brand-whatsapp-deep) 100%);
   box-shadow: 0 8px 26px rgba(18, 140, 126, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.3);
 }
 .fab--phone {

@@ -275,10 +275,10 @@ echo adminPageIntro(
 <div class="admin-two-col admin-two-col--wide-form admin-two-col--collapsible" id="widget-editor" data-editing="<?= $formOpen ? '1' : '0' ?>">
 
   <!-- ── Editor ──────────────────────────────────────────────────────── -->
-  <section class="admin-form-box card card--static" aria-labelledby="widget-form-title">
+  <section class="admin-form-box card card--static" id="new" aria-labelledby="widget-form-title">
     <h2 id="widget-form-title"><?= adminIcon($isEditing ? 'pencil' : 'plus', 'ico--sm') ?> <?= $isEditing ? 'Edit widget #' . (int) $editing['id'] : 'New widget' ?></h2>
 
-    <form method="POST" action="<?= h($self) ?>" id="new">
+    <form method="POST" action="<?= h($self) ?>">
       <?= csrfField() ?>
       <input type="hidden" name="action" value="save" />
       <input type="hidden" name="f" value="<?= h($filter) ?>" />
@@ -362,12 +362,12 @@ echo adminPageIntro(
         <label class="switch">
           <input type="checkbox" name="show_sponsor" value="1"<?= $chk('show_sponsor') ?> />
           <span class="switch__track" aria-hidden="true"></span>
-          <span class="switch__label">Show sponsor details<span class="switch__desc">Displays the linked sponsor's name on the card.</span></span>
+          <span class="switch__label"><strong>Show sponsor details</strong><span class="switch__desc">Displays the linked sponsor's name on the card.</span></span>
         </label>
         <label class="switch">
           <input type="checkbox" name="show_nalla_neram" value="1"<?= $chk('show_nalla_neram') ?> />
           <span class="switch__track" aria-hidden="true"></span>
-          <span class="switch__label">Show today's Nalla Neram<span class="switch__desc" lang="ta">இன்றைய நல்ல நேரம்</span></span>
+          <span class="switch__label"><strong>Show today's Nalla Neram</strong><span class="switch__desc" lang="ta">இன்றைய நல்ல நேரம்</span></span>
         </label>
       </fieldset>
 
@@ -397,12 +397,12 @@ echo adminPageIntro(
       <label class="switch">
         <input type="checkbox" name="is_pinned" value="1"<?= $chk('is_pinned') ?> />
         <span class="switch__track" aria-hidden="true"></span>
-        <span class="switch__label">Pin this widget<span class="switch__desc">Always shown first, regardless of priority.</span></span>
+        <span class="switch__label"><strong>Pin this widget</strong><span class="switch__desc">Always shown first, regardless of priority.</span></span>
       </label>
       <label class="switch">
         <input type="checkbox" name="is_active" value="1"<?= $chk('is_active', $editing === null ? 1 : 0) ?> />
         <span class="switch__track" aria-hidden="true"></span>
-        <span class="switch__label">Active<span class="switch__desc">Visible on the homepage within its schedule.</span></span>
+        <span class="switch__label"><strong>Active</strong><span class="switch__desc">Visible on the homepage within its schedule.</span></span>
       </label>
 
       <div class="form-actions">

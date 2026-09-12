@@ -92,7 +92,7 @@
   justify-content: space-between;
   gap: 0.5rem;
   padding: 0.85rem 1rem;
-  color: #fff;
+  color: var(--white);
   background:
     radial-gradient(ellipse 60% 100% at 100% 0%, rgba(251, 191, 36, 0.2), transparent 60%),
     linear-gradient(135deg, var(--maroon-500) 0%, var(--maroon-700) 100%);
@@ -149,7 +149,7 @@
   border: none;
   border-radius: 50%;
   background: rgba(255, 255, 255, 0.1);
-  color: #fff;
+  color: var(--white);
   cursor: pointer;
   transition: background var(--transition);
 }
@@ -229,7 +229,7 @@
 }
 .chatbot__bubble--user .chatbot__text {
   background: linear-gradient(135deg, var(--maroon-500), var(--maroon-700));
-  color: #fff;
+  color: var(--white);
   border-bottom-right-radius: 6px;
   box-shadow: 0 4px 14px rgba(153, 27, 27, 0.25);
 }

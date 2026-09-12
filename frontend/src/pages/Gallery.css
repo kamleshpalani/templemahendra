@@ -248,10 +248,8 @@
     --grid-min: 180px;
     grid-auto-rows: 170px;
   }
-  /* Arrows drop below the photo; the whole sheet clears the floating bottom nav */
-  .gallery-lightbox {
-    padding-bottom: calc(var(--space-4) + var(--bottom-nav-h) + env(safe-area-inset-bottom));
-  }
+  /* Arrows drop below the photo. No bottom-nav clearance needed: the lightbox is
+     --z-modal (2000) and covers the --z-fab (1200) floating nav completely. */
   .gallery-lightbox__stage {
     grid-template-columns: 1fr 1fr;
     grid-template-rows: minmax(0, 1fr) auto;

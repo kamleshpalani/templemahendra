@@ -433,6 +433,13 @@
   color: var(--text-on-dark-3);
   margin-bottom: var(--space-4);
 }
+/* Keeps a separator glued to the label that follows it when the trail wraps */
+.crumbs__item {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  white-space: nowrap;
+}
 .crumbs a {
   color: var(--text-on-dark-2);
   transition: color var(--transition);

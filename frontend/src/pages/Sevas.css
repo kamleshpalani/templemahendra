@@ -10,8 +10,15 @@
   width: min(100%, 340px);
   padding: var(--space-5);
 }
+/* Eyebrow is a <span> (see Sevas.jsx) so `.page-hero p` cannot claim it;
+   flex gives the inline-flex chip its own line above the title. */
 .sevas-how .eyebrow {
-  margin-bottom: var(--space-2);
+  display: flex;
+  margin: 0 0 var(--space-2);
+  max-width: none;
+  font-size: var(--text-xs);
+  line-height: 1.4;
+  color: var(--gold-200);
 }
 .sevas-how__title {
   font-size: var(--text-md);

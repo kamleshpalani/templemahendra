@@ -18,11 +18,12 @@ if (!empty($_SESSION['flash'])) {
     unset($_SESSION['flash']);
 }
 
-// ── List filters (GET, whitelisted) ──────────────────────────────────────────
+// ── List filters (whitelisted; read from the request that carried them) ──────
 $filters       = ['all' => 'All', 'featured' => 'Featured', 'active' => 'Active', 'hidden' => 'Hidden'];
 $defaultFilter = 'all';
-$filter        = isset($filters[$str($_GET, 'f')]) ? $str($_GET, 'f') : $defaultFilter;
-$q             = mb_substr(trim($str($_GET, 'q')), 0, 100);
+$src           = $_SERVER['REQUEST_METHOD'] === 'POST' ? $_POST : $_GET; // a failed save must keep the list state
+$filter        = isset($filters[$str($src, 'f')]) ? $str($src, 'f') : $defaultFilter;
+$q             = mb_substr(trim($str($src, 'q')), 0, 100);
 $query         = ['f' => $filter === $defaultFilter ? '' : $filter, 'q' => $q];
 $listUrl       = static fn(array $override = []): string => '/admin/sevas.php' . rtrim(adminQuery($query, $override), '?');
 
@@ -36,19 +37,35 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $backF  = $str($_POST, 'f');
     $back   = '/admin/sevas.php' . (isset($filters[$backF]) && $backF !== $defaultFilter ? '?f=' . $backF : '');
 
+    // A rejected token must not cost the admin their typing — reflect it back (inert: every value is h()-escaped).
+    if ($msg !== '' && $action === 'save') {
+        $editing = [
+            'id'          => (int) $str($_POST, 'id'),
+            'name_ta'     => $str($_POST, 'name_ta'),
+            'name_en'     => $str($_POST, 'name_en'),
+            'description' => $str($_POST, 'description'),
+            'amount'      => $str($_POST, 'amount'),
+            'sort_order'  => (int) $str($_POST, 'sort_order'),
+            'is_featured' => isset($_POST['is_featured']) ? 1 : 0,
+            'is_active'   => isset($_POST['is_active']) ? 1 : 0,
+        ];
+    }
+
     if ($msg === '' && $action === 'save') {
-        $name_ta  = sanitizeText($str($_POST, 'name_ta'));
-        $name_en  = sanitizeText($str($_POST, 'name_en'));
+        // Lengths and ranges are clamped to the column definitions so nothing reaches MySQL out of bounds.
+        $name_ta  = sanitizeText($str($_POST, 'name_ta'), 200);   // VARCHAR(200)
+        $name_en  = sanitizeText($str($_POST, 'name_en'), 200);   // VARCHAR(200)
         $desc     = sanitizeText($str($_POST, 'description'), 1000);
         $amount   = filter_var($str($_POST, 'amount'), FILTER_VALIDATE_FLOAT);
-        $sort     = (int) $str($_POST, 'sort_order');
+        $sort     = max(-2147483648, min(2147483647, (int) $str($_POST, 'sort_order'))); // INT
         $featured = isset($_POST['is_featured']) ? 1 : 0;
         $active   = isset($_POST['is_active']) ? 1 : 0;
         $id       = (int) $str($_POST, 'id');
 
         if ($name_ta === '')                   $errors['name_ta'] = true;
         if ($name_en === '')                   $errors['name_en'] = true;
-        if ($amount === false || $amount < 0)  $errors['amount']  = true;
+        // DECIMAL(10,2) → 0 … 99,999,999.99
+        if ($amount === false || $amount < 0 || $amount > 99999999.99) $errors['amount'] = true;
 
         if ($errors) {
             $msg     = '<p class="alert alert--error">Tamil name, English name, and a valid amount are required.</p>';
@@ -147,6 +164,7 @@ echo adminPageIntro(
       <?= csrfField() ?>
       <input type="hidden" name="action" value="save" />
       <input type="hidden" name="f" value="<?= h($filter) ?>" />
+      <input type="hidden" name="q" value="<?= h($q) ?>" />
       <?php if ($isEdit): ?><input type="hidden" name="id" value="<?= (int) $editing['id'] ?>" /><?php endif; ?>
 
       <label for="name_en">
@@ -172,13 +190,14 @@ echo adminPageIntro(
       <div class="form-grid">
         <label for="amount">
           <span class="field__label">Amount (₹) <span class="field__required" aria-hidden="true">*</span></span>
-          <input id="amount" name="amount" type="number" inputmode="decimal" required aria-required="true" min="0" step="0.01"
+          <input id="amount" name="amount" type="number" inputmode="decimal" required aria-required="true" min="0" max="99999999.99" step="0.01"
                  placeholder="0.00" value="<?= h((string) ($editing['amount'] ?? '')) ?>"<?= $invalid('amount') ?> />
-          <?= $fieldError('amount', 'Enter a valid amount of 0 or more.') ?>
+          <?= $fieldError('amount', 'Enter an amount between 0 and 99,999,999.99.') ?>
+          <span class="field__hint">Between 0 and 99,999,999.99.</span>
         </label>
         <label for="sort_order">
           <span class="field__label">Sort order</span>
-          <input id="sort_order" name="sort_order" type="number" inputmode="numeric" step="1"
+          <input id="sort_order" name="sort_order" type="number" inputmode="numeric" step="1" min="-2147483648" max="2147483647"
                  value="<?= h((string) ($editing['sort_order'] ?? '0')) ?>" />
           <span class="field__hint">Lower shows first.</span>
         </label>

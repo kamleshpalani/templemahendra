@@ -323,7 +323,9 @@ function HowItWorks({ t }) {
   ];
   return (
     <aside className="card card--ink card--static sevas-how rise" aria-labelledby="sevas-how-title">
-      <p className="eyebrow eyebrow--on-dark">{t("3 எளிய படிகள்", "3 simple steps")}</p>
+      {/* <span>, not <p>: `.page-hero p` (layout.css) would out-specify
+          `.eyebrow` and render this as a full-size muted paragraph. */}
+      <span className="eyebrow eyebrow--on-dark">{t("3 எளிய படிகள்", "3 simple steps")}</span>
       <h2 id="sevas-how-title" className="sevas-how__title">
         {t("இது எப்படி செயல்படுகிறது", "How it works")}
       </h2>
@@ -371,8 +373,11 @@ export default function Sevas() {
 
   // Whole card is a pointer convenience; the Book button is the accessible
   // control. Skip when the visitor is selecting text to copy a name/price.
-  function openFromCard(seva) {
+  // Focus that card's Book button first so the dialog has a real opener to
+  // return focus to on close (a click on the <li> leaves focus on <body>).
+  function openFromCard(seva, e) {
     if (typeof window !== "undefined" && window.getSelection?.()?.toString()) return;
+    e?.currentTarget?.querySelector?.(".seva-card__book")?.focus?.({ preventScroll: true });
     setSelectedSeva(seva);
   }
 
@@ -464,7 +469,7 @@ export default function Sevas() {
                     key={s.id}
                     className="card card--interactive seva-card rise"
                     style={{ "--i": i }}
-                    onClick={() => openFromCard(s)}
+                    onClick={(e) => openFromCard(s, e)}
                   >
                     <div className="seva-card__head">
                       <span className="card__icon seva-card__icon" aria-hidden="true">

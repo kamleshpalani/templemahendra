@@ -7,8 +7,12 @@
    ══════════════════════════════════════════════════════════════════ */
 
 /* ── Page shell ──────────────────────────────────────────────────── */
-.events-page {
-  /* The lunar panel floats up over the hero's bottom edge */
+/* The lunar panel floats up over the hero's bottom edge, so the section's
+   top padding is dropped ONLY while that panel (or its skeleton) renders.
+   PournamiStrip returns null when /pournamis yields nothing (offline, API
+   failure) — then the normal .section padding must survive, otherwise the
+   "Upcoming Events" header would sit flush against the hero. */
+.events-page:has(.events-moon, .events-moon-skeleton) {
   padding-top: 0;
 }
 
@@ -412,6 +416,13 @@
   border-radius: 50%;
   background: linear-gradient(135deg, var(--saffron), var(--gold-300));
   box-shadow: 0 0 0 4px var(--bg-root), var(--glow-saffron);
+}
+/* Lunar events get a moon-toned marker (--moon-* only for lunar content) */
+.events-timeline__node[data-kind="pournami"]::before {
+  background: linear-gradient(135deg, var(--moon-500), var(--moon-300));
+  box-shadow:
+    0 0 0 4px var(--bg-root),
+    0 0 32px color-mix(in srgb, var(--moon-500) 30%, transparent);
 }
 .events-timeline--skeleton .skeleton--card {
   height: 136px;

@@ -18,11 +18,12 @@ if (!empty($_SESSION['flash'])) {
     unset($_SESSION['flash']);
 }
 
-// ── List filters (GET, whitelisted) ──────────────────────────────────────────
+// ── List filters (whitelisted; read from the request that carried them) ──────
 $filters       = ['active' => 'Active', 'hidden' => 'Hidden', 'all' => 'All'];
 $defaultFilter = 'all';
-$filter        = isset($filters[$str($_GET, 'f')]) ? $str($_GET, 'f') : $defaultFilter;
-$q             = mb_substr(trim($str($_GET, 'q')), 0, 100);
+$src           = $_SERVER['REQUEST_METHOD'] === 'POST' ? $_POST : $_GET; // a failed save must keep the list state
+$filter        = isset($filters[$str($src, 'f')]) ? $str($src, 'f') : $defaultFilter;
+$q             = mb_substr(trim($str($src, 'q')), 0, 100);
 $query         = ['f' => $filter === $defaultFilter ? '' : $filter, 'q' => $q];
 $listUrl       = static fn(array $override = []): string => '/admin/announcements.php' . rtrim(adminQuery($query, $override), '?');
 
@@ -36,8 +37,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $backF  = $str($_POST, 'f');
     $back   = '/admin/announcements.php' . (isset($filters[$backF]) && $backF !== $defaultFilter ? '?f=' . $backF : '');
 
+    // A rejected token must not cost the admin their typing — reflect it back (inert: every value is h()-escaped).
+    if ($msg !== '' && $action === 'save') {
+        $editing = [
+            'id'        => (int) $str($_POST, 'id'),
+            'title'     => $str($_POST, 'title'),
+            'body'      => $str($_POST, 'body'),
+            'is_active' => isset($_POST['is_active']) ? 1 : 0,
+        ];
+    }
+
     if ($msg === '' && $action === 'save') {
-        $title     = sanitizeText($str($_POST, 'title'));
+        // Length is clamped to the column definition so nothing reaches MySQL out of bounds.
+        $title     = sanitizeText($str($_POST, 'title'), 300); // VARCHAR(300)
         $body      = sanitizeText($str($_POST, 'body'), 2000);
         $is_active = isset($_POST['is_active']) ? 1 : 0;
         $id        = (int) $str($_POST, 'id');
@@ -135,6 +147,7 @@ echo adminPageIntro(
       <?= csrfField() ?>
       <input type="hidden" name="action" value="save" />
       <input type="hidden" name="f" value="<?= h($filter) ?>" />
+      <input type="hidden" name="q" value="<?= h($q) ?>" />
       <?php if ($isEdit): ?><input type="hidden" name="id" value="<?= (int) $editing['id'] ?>" /><?php endif; ?>
 
       <label for="title">

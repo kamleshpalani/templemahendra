@@ -7,7 +7,7 @@ import Badge from "../components/ui/Badge";
 import Button from "../components/ui/Button";
 import PageHero from "../components/ui/PageHero";
 import SectionHeader from "../components/ui/SectionHeader";
-import { EmptyState, SkeletonCards } from "../components/ui/Feedback";
+import { EmptyState, ErrorState, SkeletonCards } from "../components/ui/Feedback";
 import { TEMPLE } from "../data/temple";
 import useDialogBehaviour from "../hooks/useDialogBehaviour";
 import "./Gallery.css";
@@ -24,6 +24,7 @@ const tileShape = (i) => {
 export default function Gallery() {
   const [images, setImages] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [failed, setFailed] = useState(false);
   const [lightbox, setLightbox] = useState(null); // index into `images`, or null
   const { t } = useLang();
 
@@ -32,13 +33,21 @@ export default function Gallery() {
   const countRef = useRef(0);
   countRef.current = images.length;
 
-  useEffect(() => {
+  // Same request as before; a rejection is now surfaced as an error state
+  // instead of being swallowed into a misleading "no photos yet".
+  const load = useCallback(() => {
+    setLoading(true);
+    setFailed(false);
     api
       .get("/gallery")
       .then((r) => setImages(Array.isArray(r.data) ? r.data : []))
-      .catch(() => {})
+      .catch(() => setFailed(true))
       .finally(() => setLoading(false));
   }, []);
+
+  useEffect(() => {
+    load();
+  }, [load]);
 
   const open = lightbox != null;
   const close = useCallback(() => setLightbox(null), []);
@@ -104,7 +113,22 @@ export default function Gallery() {
           />
 
           {loading ? (
-            <SkeletonCards count={8} className="grid-auto gallery-grid gallery-grid--skeleton" />
+            <>
+              <span className="sr-only" role="status" aria-live="polite">
+                {t("புகைப்படங்கள் ஏற்றப்படுகிறது…", "Loading photos…")}
+              </span>
+              <SkeletonCards count={8} className="grid-auto gallery-grid gallery-grid--skeleton" />
+            </>
+          ) : failed ? (
+            <ErrorState
+              title={t("புகைப்படங்களை ஏற்ற முடியவில்லை", "Couldn't load the gallery")}
+              onRetry={load}
+            >
+              {t(
+                "இணைப்பைச் சரிபார்த்து மீண்டும் முயற்சிக்கவும்.",
+                "Check your connection and try again.",
+              )}
+            </ErrorState>
           ) : total === 0 ? (
             <EmptyState icon={<LuImages />} title={t("புகைப்படங்கள் விரைவில் வரும்!", "Photos coming soon")}>
               {t("அடுத்த திருவிழாவுக்குப் பிறகு மீண்டும் பார்க்கவும்.", "Check back after the next festival!")}
@@ -112,11 +136,15 @@ export default function Gallery() {
           ) : (
             <div className="grid-auto gallery-grid" role="list">
               {images.map((img, i) => (
-                <div key={img.id} role="listitem" className={`gallery-cell ${tileShape(i)}`.trim()}>
+                <div
+                  key={img.id}
+                  role="listitem"
+                  className={`gallery-cell rise ${tileShape(i)}`.trim()}
+                  style={{ "--i": Math.min(i, 11) }}
+                >
                   <button
                     type="button"
-                    className="card gallery-tile rise"
-                    style={{ "--i": Math.min(i, 11) }}
+                    className="card gallery-tile"
                     onClick={() => setLightbox(i)}
                     aria-label={`${photoLabel(img)} — ${t("பெரிதாக்கு", "Enlarge")}`}
                   >

@@ -246,55 +246,61 @@ function bulkReadXlsx(string $path): array
     if ($zip->open($path) !== true) {
         throw new RuntimeException('Could not open the Excel file. Make sure it is a real .xlsx workbook (older .xls files are not supported — save as .xlsx or CSV UTF-8).');
     }
-    libxml_use_internal_errors(true);
+    $libxml = libxml_use_internal_errors(true);
     $part = function (string $name) use ($zip): string|false {
         $st = $zip->statName($name);
         if ($st === false) return false;
         if ((int) $st['size'] > BULK_XML_MAX) throw new RuntimeException('The workbook is too large to import. Split it into smaller files.');
         return $zip->getFromName($name);
     };
-
-    // 1. Locate the first worksheet via workbook.xml + its relationships (fallback sheet1.xml)
-    $sheetPath = 'xl/worksheets/sheet1.xml';
-    $wbXml  = $part('xl/workbook.xml');
-    $relXml = $part('xl/_rels/workbook.xml.rels');
-    if ($wbXml !== false && $relXml !== false) {
-        $wb   = simplexml_load_string($wbXml);
-        $rels = simplexml_load_string($relXml);
-        if ($wb && $rels && isset($wb->sheets->sheet[0])) {
-            $rid = (string) ($wb->sheets->sheet[0]->attributes('http://schemas.openxmlformats.org/officeDocument/2006/relationships')->id ?? '');
-            foreach ($rels->Relationship as $rel) {
-                if ((string) $rel['Id'] === $rid) {
-                    $target = (string) $rel['Target'];
-                    $sheetPath = str_starts_with($target, '/') ? ltrim($target, '/') : 'xl/' . ltrim($target, '/');
-                    break;
+    // Anything thrown below still releases the archive and the libxml error state
+    try {
+        // 1. Locate the first worksheet via workbook.xml + its relationships (fallback sheet1.xml)
+        $sheetPath = 'xl/worksheets/sheet1.xml';
+        $wbXml  = $part('xl/workbook.xml');
+        $relXml = $part('xl/_rels/workbook.xml.rels');
+        if ($wbXml !== false && $relXml !== false) {
+            $wb   = simplexml_load_string($wbXml);
+            $rels = simplexml_load_string($relXml);
+            if ($wb && $rels && isset($wb->sheets->sheet[0])) {
+                $rid = (string) ($wb->sheets->sheet[0]->attributes('http://schemas.openxmlformats.org/officeDocument/2006/relationships')->id ?? '');
+                foreach ($rels->Relationship as $rel) {
+                    if ((string) $rel['Id'] === $rid) {
+                        $target = (string) $rel['Target'];
+                        $sheetPath = str_starts_with($target, '/') ? ltrim($target, '/') : 'xl/' . ltrim($target, '/');
+                        break;
+                    }
                 }
             }
         }
-    }
-    if ($zip->locateName($sheetPath) === false) {
-        $zip->close();
-        throw new RuntimeException('No worksheet was found in the workbook.');
-    }
+        if ($zip->locateName($sheetPath) === false) {
+            throw new RuntimeException('No worksheet was found in the workbook.');
+        }
 
-    // 2. Shared strings (<si><t> and rich text <si><r><t>…; phonetic runs ignored)
-    $shared = [];
-    $ssXml  = $part('xl/sharedStrings.xml');
-    if ($ssXml !== false) {
-        $sst = simplexml_load_string($ssXml);
-        if ($sst) {
-            foreach ($sst->si as $si) {
-                $parts    = $si->xpath('.//*[local-name()="t" and not(ancestor::*[local-name()="rPh"])]') ?: [];
-                $shared[] = implode('', array_map('strval', $parts));
+        // 2. Shared strings (<si><t> and rich text <si><r><t>…; phonetic runs ignored)
+        $shared = [];
+        $ssXml  = $part('xl/sharedStrings.xml');
+        if ($ssXml !== false) {
+            $sst = simplexml_load_string($ssXml);
+            if ($sst) {
+                foreach ($sst->si as $si) {
+                    $parts    = $si->xpath('.//*[local-name()="t" and not(ancestor::*[local-name()="rPh"])]') ?: [];
+                    $shared[] = implode('', array_map('strval', $parts));
+                }
             }
         }
-    }
 
-    // 3. Sheet rows
-    $sheetXml = $part($sheetPath);
+        // 3. Sheet rows
+        $sheetXml = $part($sheetPath);
+    } catch (RuntimeException $e) {
+        @$zip->close();
+        libxml_use_internal_errors($libxml);
+        throw $e;
+    }
     $zip->close();
     $reader = new XMLReader();
     if ($sheetXml === false || !$reader->XML($sheetXml)) {
+        libxml_use_internal_errors($libxml);
         throw new RuntimeException('The worksheet could not be read.');
     }
     $doc = new DOMDocument();
@@ -342,6 +348,8 @@ function bulkReadXlsx(string $path): array
         $lines[] = $rowNum ?: count($rows) + 1;
     }
     $reader->close();
+    libxml_clear_errors();
+    libxml_use_internal_errors($libxml);
     if ($header === null) throw new RuntimeException('The worksheet appears to be empty.');
     return ['header' => $header, 'rows' => $rows, 'lines' => $lines, 'truncated' => $truncated];
 }

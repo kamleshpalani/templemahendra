@@ -59,7 +59,7 @@
 }
 .pulse-pill--closed {
   background: rgba(239, 68, 68, 0.16);
-  color: #fecaca;
+  color: var(--danger-on-dark);
   border-color: rgba(239, 68, 68, 0.36);
 }
 .pulse-pill__dot {
