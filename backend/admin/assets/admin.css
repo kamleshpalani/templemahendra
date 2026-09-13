@@ -566,6 +566,12 @@ textarea {
 textarea {
   min-height: 96px;
 }
+/* Short codes — ISO country codes like IN, GB, SG — read back uppercase
+   whatever case they were typed in. Display only: the submitted value keeps
+   the typed case and the server normalises it. */
+.input--code {
+  text-transform: uppercase;
+}
 
 /* Filter / toolbar row */
 .toolbar {
@@ -1697,4 +1703,21 @@ code.cols {
     margin-left: 0;
     width: 100%;
   }
+}
+
+/* ── Devotee accounts table ──────────────────────────────────────────
+   A closed account is still listed — its records matter — but reads as
+   stepped back. The row being edited above is marked so the eye can pair
+   the panel with its row. */
+.table tr.row--muted td {
+  opacity: 0.62;
+}
+.table tr.row--current td {
+  background: var(--glass-tint-gold);
+  box-shadow: inset 3px 0 0 var(--saffron-500);
+}
+/* Counts and money line up on their digits. */
+.cell-num {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }

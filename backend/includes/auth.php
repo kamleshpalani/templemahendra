@@ -46,6 +46,14 @@ const ADMIN_CAPABILITIES = [
     'import'        => 'editor',   // bulk upload
     'settings.edit' => 'owner',    // homepage settings
     'users.manage'  => 'owner',    // committee accounts
+    // Devotee notifications (docs/notifications/SPEC.md §8.1). Approval is an
+    // owner's alone: a broadcast to hundreds of devotees, a paid SMS run or an
+    // emergency banner cannot be taken back, so an editor may write and send
+    // small messages but never wave through a large one.
+    'notifications.view'      => 'viewer',  // campaigns, audiences, templates, analytics (read)
+    'notifications.compose'   => 'editor',  // write, submit, schedule, send what needs no approval, requeue
+    'notifications.approve'   => 'owner',   // approve / send back, emergency send, cancel others' campaigns
+    'notifications.templates' => 'owner',   // the wording of every automated message, categories
 ];
 
 /**
@@ -65,6 +73,10 @@ function adminPageCapability(string $file): string
         'bulk_upload.php'      => 'import',
         'settings.php'         => 'settings.edit',
         'users.php'            => 'users.manage',
+        'notifications.php'          => 'notifications.view',
+        'notification_segments.php'  => 'notifications.view',
+        'notification_templates.php' => 'notifications.view',
+        'notification_analytics.php' => 'notifications.view',
     ][$file] ?? 'view';
 }
 
@@ -83,6 +95,12 @@ function adminPageWriteCapability(string $file): string
         'seva_bookings.php'    => 'devotees.edit',
         'donations.php'        => 'devotees.edit',
         'contact_messages.php' => 'devotees.edit',
+        // Notification pages make finer checks per action (approve, emergency
+        // send) on top of these, and the service re-checks the actor's role.
+        'notifications.php'          => 'notifications.compose',
+        'notification_segments.php'  => 'notifications.compose',
+        'notification_templates.php' => 'notifications.templates',
+        'notification_analytics.php' => 'notifications.compose', // requeue
     ];
     if (isset($explicit[$file])) return $explicit[$file];
     $read = adminPageCapability($file);

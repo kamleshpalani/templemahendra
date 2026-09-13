@@ -186,6 +186,11 @@
   padding-top: var(--space-4);
   border-top: 1px dashed var(--border);
 }
+/* Price on the left, Book and share together on the right. The gap between
+   those two is tighter than the row's, so they read as one group. */
+.seva-card__share {
+  margin-left: calc(var(--space-3) * -0.5);
+}
 .seva-card__price {
   display: flex;
   flex-direction: column;

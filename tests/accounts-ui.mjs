@@ -31,6 +31,7 @@ const USER = {
   name: "E2E-UI Meena Kumari",
   email: `e2e-ui-${RUN}@example.test`,
   phone: "9876501234",
+  city: "Pudupatti",
   password: "Kolam99Deep",
 };
 
@@ -86,6 +87,16 @@ async function go(page, path) {
   }
 }
 
+/**
+ * The combobox inside the <Field> whose label reads `label` — the country and
+ * the state pickers share one class, so addressing them by position breaks
+ * whenever the address fields are reordered. Ask for them by name instead.
+ */
+const picker = (page, label) =>
+  page
+    .locator(".field", { has: page.locator(".field__label", { hasText: label }) })
+    .locator(".country-select");
+
 /** Sign in through the real form, leaving the page on /account. */
 async function signIn(page) {
   await go(page, "/login");
@@ -138,29 +149,95 @@ try {
   const page = await newPage();
   await go(page, "/register");
 
-  // The rule checklist must respond as the password is typed.
-  const metBefore = await page.locator('.authx__rules li[data-met="true"]').count();
+  // The meter responds as the password is typed; the full rules live behind the
+  // help button rather than taking five lines of the form.
+  const segBefore = await page.locator('.pw-meter__seg[data-met="true"]').count();
   await page.fill('input[name="password"]', USER.password);
   await page.waitForTimeout(250);
-  const metAfter = await page.locator('.authx__rules li[data-met="true"]').count();
-  check(metBefore === 0, "password rules start unmet", `${metBefore} met`);
-  check(metAfter === 4, "a valid password satisfies every rule live", `${metAfter} of 4 met`);
+  const segAfter = await page.locator('.pw-meter__seg[data-met="true"]').count();
+  check(segBefore === 0, "the password meter starts empty", `${segBefore} lit`);
+  check(segAfter === 4, "a valid password lights every segment", `${segAfter} of 4`);
+  check((await page.locator(".pw-meter__list").count()) === 0, "the rule list is not taking up form space");
+  await page.locator(".pw-meter__help").click();
+  await page.waitForTimeout(300);
+  check(
+    (await page.locator('.pw-meter__list li[data-met="true"]').count()) === 4,
+    "the help popover shows every rule met",
+  );
+  await page.keyboard.press("Escape");
+  await page.waitForTimeout(200);
 
   // Client-side validation fires before any request goes out.
   await page.fill('input[name="password"]', "short");
   await page.click('button[type="submit"]');
-  await page.waitForTimeout(350);
-  const fieldErrors = await page.locator(".field__error").count();
-  check(fieldErrors >= 2, "submitting an empty form shows field errors", `${fieldErrors} errors`);
+  await page.waitForTimeout(400);
+  const errorTexts = await page.locator(".field__error").allInnerTexts();
+  check(errorTexts.length >= 3, "submitting an incomplete form shows field errors", `${errorTexts.length} errors`);
+  check(
+    errorTexts.some((x) => /phone|number/i.test(x)),
+    "…including one for the now-required phone number",
+    errorTexts.join(" | ").slice(0, 120),
+  );
 
   await page.fill('input[name="name"]', USER.name);
   await page.fill('input[name="email"]', USER.email);
-  await page.fill('input[name="phone"]', USER.phone);
   await page.fill('input[name="password"]', USER.password);
+  await page.fill('input[name="confirm"]', USER.password);
+  await page.fill(".phone-input__num", USER.phone);
+  await page.fill('input[name="city"]', USER.city);
+
+  // The country defaults to India, so India's state list is what gets offered.
+  check(
+    (await picker(page, "Country").innerText()).includes("India"),
+    "the country field defaults to India",
+  );
+  check(
+    (await page.inputValue(".phone-input__num")) === "98765 01234",
+    "the number is grouped the way India writes it",
+    await page.inputValue(".phone-input__num"),
+  );
+
+  // The address reads state → city → country, and all three are required.
+  // textContent, not innerText: the labels are uppercased in CSS, and the point
+  // here is the order and the required asterisk, not the casing.
+  const labels = await page.$$eval(".field__label", (els) => els.map((e) => e.textContent.trim()));
+  const at = (word) => labels.findIndex((x) => x.startsWith(word));
+  check(
+    at("State") >= 0 && at("State") < at("City") && at("City") < at("Country"),
+    "the address fields read state, then city, then country",
+    labels.join(" | "),
+  );
+  check(
+    ["State", "City", "Country"].every((w) => at(w) >= 0 && labels[at(w)].includes("*")),
+    "and each of the three is marked required",
+    labels.join(" | "),
+  );
+
+  await picker(page, "State").click();
+  await page.waitForTimeout(450);
+  await page.fill(".country-pop__search input", "tamil");
+  await page.waitForTimeout(450);
+  check((await page.locator(".country-pop__opt").count()) === 1, "searching the state list finds Tamil Nadu");
+  await page.keyboard.press("Enter");
+  await page.waitForTimeout(300);
+  check(
+    (await picker(page, "State").innerText()).includes("Tamil Nadu"),
+    "and selecting it fills the state field",
+  );
+
   await page.click('button[type="submit"]');
-  await page.waitForTimeout(2000);
+  await page.waitForTimeout(2500);
 
   const body = await page.locator("body").innerText();
+  // Sign-up is capped at five completed registrations per hour per IP. Running
+  // this suite twice in an hour, or alongside devotee-auth.mjs, exhausts it and
+  // every later scenario then fails as a confusing timeout. Say so here instead.
+  if (/Too many sign-up attempts/i.test(body)) {
+    fail(
+      "registration was rate-limited, not tested",
+      "Run DELETE FROM rate_limits; and do not run devotee-auth.mjs at the same time.",
+    );
+  }
   check(/Check your email|Account created/i.test(body), "registering lands on the confirmation screen", body.slice(0, 120));
   check(
     /could not send email|sign in directly/i.test(body),
@@ -230,8 +307,29 @@ try {
   const selected = await page.locator('[role="tab"][aria-selected="true"]').innerText();
   check(/details/i.test(selected), "ArrowRight moves to the next tab", selected);
 
+  // The address opens holding what was typed at sign-up, in the same order.
+  check(
+    (await page.inputValue('.acct-form input[autocomplete="address-level2"]')) === USER.city,
+    "the account page opens with the town given at sign-up",
+  );
+  check(
+    (await picker(page, "Country").innerText()).includes("India"),
+    "…and the country it was registered with",
+  );
+
+  // City is required here too, so a receipt always has somewhere to go.
+  await page.fill('.acct-form input[autocomplete="address-level2"]', "");
+  await page.click('.acct-form button[type="submit"]');
+  await page.waitForTimeout(700);
+  check(
+    (await page.locator(".acct-form .field__error").count()) > 0,
+    "clearing the town blocks the save",
+  );
+  await page.fill('.acct-form input[autocomplete="address-level2"]', USER.city);
+
   // Profile save
   await page.fill('.acct-form input[autocomplete="name"]', "E2E-UI Meena Kumari Renamed");
+  await page.fill('.acct-form input[autocomplete="postal-code"]', "627719");
   await page.click('.acct-form button[type="submit"]');
   await page.waitForTimeout(1600);
   check((await page.locator(".toast--success").count()) > 0, "saving the profile shows a success toast");

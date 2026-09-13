@@ -1,4 +1,5 @@
-import { LuCheck, LuDot } from "react-icons/lu";
+import { useEffect, useId, useRef, useState } from "react";
+import { LuCheck, LuCircleHelp, LuDot, LuX } from "react-icons/lu";
 import { useLang } from "../../context/LangContext";
 
 /**
@@ -25,38 +26,127 @@ export function passwordProblem(password, identity = "") {
   return "";
 }
 
-export default function PasswordRules({ value = "", identity = "" }) {
-  const { t } = useLang();
+/** The four rules, each with its live state. */
+function rulesFor(value, identity, t) {
   const lower = value.toLowerCase();
   const stem = String(identity).split("@")[0];
-
-  const rules = [
-    { met: value.length >= 10, ta: "குறைந்தது 10 எழுத்துகள்", en: "At least 10 characters" },
+  return [
+    { met: value.length >= 10, label: t("குறைந்தது 10 எழுத்துகள்", "At least 10 characters") },
     {
       met: /[a-z]/.test(value) && /[A-Z]/.test(value),
-      ta: "சிறிய மற்றும் பெரிய எழுத்து",
-      en: "A lowercase and an uppercase letter",
+      label: t("சிறிய மற்றும் பெரிய எழுத்து", "A lowercase and an uppercase letter"),
     },
-    { met: /\d/.test(value), ta: "குறைந்தது ஒரு எண்", en: "At least one number" },
+    { met: /\d/.test(value), label: t("குறைந்தது ஒரு எண்", "At least one number") },
     {
       met:
         value.length > 0 &&
         !WEAK_WORDS.some((w) => lower.includes(w)) &&
         !(stem.length >= 3 && lower.includes(stem.toLowerCase())),
-      ta: "பெயர், மின்னஞ்சல் அல்லது எளிய சொல் இல்லை",
-      en: "Not your name, email, or a common word",
+      label: t("பெயர், மின்னஞ்சல் அல்லது எளிய சொல் இல்லை", "Not your name, email, or a common word"),
     },
   ];
+}
+
+/**
+ * PasswordRules — one line, not five.
+ *
+ * The four rules used to sit permanently under the field as a checklist, which
+ * took more vertical space than the rest of the form put together. What a
+ * person needs while typing is "am I there yet"; the wording of each rule is
+ * only wanted when something is still missing. So the line shows a four-segment
+ * meter and a count, and the full list lives behind the help button beside it.
+ *
+ * The count is also announced politely, so the progress is not purely visual.
+ */
+export default function PasswordRules({ value = "", identity = "" }) {
+  const { t } = useLang();
+  const rules = rulesFor(value, identity, t);
+  const met = rules.filter((r) => r.met).length;
+
+  const [open, setOpen] = useState(false);
+  const wrapRef = useRef(null);
+  const buttonRef = useRef(null);
+  const auto = useId();
+  const popId = `pw-help-${auto}`;
+
+  useEffect(() => {
+    if (!open) return undefined;
+    const onDown = (e) => {
+      if (!wrapRef.current?.contains(e.target)) setOpen(false);
+    };
+    const onKey = (e) => {
+      if (e.key !== "Escape") return;
+      e.stopPropagation();
+      setOpen(false);
+      buttonRef.current?.focus();
+    };
+    document.addEventListener("mousedown", onDown);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDown);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
+
+  // Once every rule is met the line has nothing left to say, so it steps back
+  // to a single confirmation instead of a meter the devotee has finished with.
+  const done = met === rules.length;
 
   return (
-    <ul className="authx__rules" aria-label={t("கடவுச்சொல் விதிகள்", "Password requirements")}>
-      {rules.map((r) => (
-        <li key={r.en} data-met={r.met ? "true" : "false"}>
-          {r.met ? <LuCheck aria-hidden="true" /> : <LuDot aria-hidden="true" />}
-          <span>{t(r.ta, r.en)}</span>
-          <span className="sr-only">{r.met ? t("— நிறைவு", "— met") : ""}</span>
-        </li>
-      ))}
-    </ul>
+    <div className="pw-meter" ref={wrapRef}>
+      <span className="pw-meter__track" aria-hidden="true">
+        {rules.map((r, i) => (
+          <span key={i} className="pw-meter__seg" data-met={r.met ? "true" : "false"} />
+        ))}
+      </span>
+
+      <span className={`pw-meter__count${done ? " pw-meter__count--done" : ""}`} role="status">
+        {value === ""
+          ? t("கடவுச்சொல் விதிகள்", "Password rules")
+          : done
+            ? t("நல்ல கடவுச்சொல்", "Strong enough")
+            : t(`${rules.length} இல் ${met} நிறைவு`, `${met} of ${rules.length} met`)}
+      </span>
+
+      <button
+        ref={buttonRef}
+        type="button"
+        className="pw-meter__help"
+        onClick={() => setOpen((o) => !o)}
+        aria-expanded={open}
+        aria-controls={popId}
+        aria-label={t("கடவுச்சொல் விதிகளைக் காட்டு", "Show password rules")}
+      >
+        <LuCircleHelp aria-hidden="true" />
+      </button>
+
+      {open && (
+        <div className="pw-meter__pop" id={popId}>
+          <div className="pw-meter__pop-head">
+            <strong>{t("கடவுச்சொல் விதிகள்", "Password rules")}</strong>
+            <button
+              type="button"
+              className="pw-meter__pop-close"
+              onClick={() => {
+                setOpen(false);
+                buttonRef.current?.focus();
+              }}
+              aria-label={t("மூடு", "Close")}
+            >
+              <LuX aria-hidden="true" />
+            </button>
+          </div>
+          <ul className="pw-meter__list">
+            {rules.map((r, i) => (
+              <li key={i} data-met={r.met ? "true" : "false"}>
+                {r.met ? <LuCheck aria-hidden="true" /> : <LuDot aria-hidden="true" />}
+                <span>{r.label}</span>
+                <span className="sr-only">{r.met ? t("— நிறைவு", "— met") : t("— இன்னும் இல்லை", "— not yet")}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </div>
   );
 }

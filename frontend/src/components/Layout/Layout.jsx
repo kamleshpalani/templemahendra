@@ -1,6 +1,7 @@
 import { Suspense, lazy, useCallback, useEffect, useRef, useState } from "react";
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import {
+  LuBell,
   LuCalendarDays,
   LuCircleUser,
   LuFlame,
@@ -23,8 +24,10 @@ import FloatingActions from "../FloatingActions/FloatingActions";
 import BottomNav from "../BottomNav/BottomNav";
 import Chatbot from "../Chatbot/Chatbot";
 import TemplePulseHeader from "../TemplePulseHeader/TemplePulseHeader";
+import NotificationBell from "../Notifications/NotificationBell";
 import { useLang } from "../../context/LangContext";
 import { useAuth } from "../../context/AuthContext";
+import { useNotifications } from "../../context/NotificationContext";
 import { useToast } from "../../context/ToastContext";
 import { TEMPLE, PRIMARY_CONTACT, telHref, formatPhone } from "../../data/temple";
 import { getISTNow, getNextPooja, isTempleOpen } from "../../lib/templeTime";
@@ -48,6 +51,7 @@ export default function Layout() {
   const [scrolled, setScrolled] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const { lang, setLang, t } = useLang();
+  const { user } = useAuth();
   const { pathname } = useLocation();
   const toggleRef = useRef(null);
   const drawerRef = useRef(null);
@@ -125,7 +129,7 @@ export default function Layout() {
 
       <TemplePulseHeader />
 
-      <header className={`navbar${scrolled ? " navbar--scrolled" : ""}`}>
+      <header className={`navbar${scrolled ? " navbar--scrolled" : ""}${user ? " navbar--member" : ""}`}>
         <div className="navbar__bar">
           <div className="navbar__inner">
             <NavLink to="/" className="navbar__brand" aria-label={brandLabel}>
@@ -157,6 +161,20 @@ export default function Layout() {
                 clipped on the right. The strip still carries that information,
                 and the timings link lives in the footer and in About. */}
             <div className="navbar__right">
+              {/* Calling the temple is the action people most often want, and it
+                  used to be a floating button that covered the page's left edge.
+                  Here it is in the sticky header, so it is reachable from every
+                  page at every scroll position. */}
+              <a
+                href={telHref(PRIMARY_CONTACT.phone)}
+                className="navbar__icon-btn navbar__call"
+                aria-label={`${t("கோயிலை அழைக்கவும்", "Call the temple")} — ${formatPhone(PRIMARY_CONTACT.phone)}`}
+                title={formatPhone(PRIMARY_CONTACT.phone)}
+              >
+                <LuPhone aria-hidden="true" />
+                <span className="navbar__call-num">{formatPhone(PRIMARY_CONTACT.phone)}</span>
+              </a>
+
               <button
                 type="button"
                 className="navbar__icon-btn navbar__search"
@@ -167,27 +185,12 @@ export default function Layout() {
                 <LuSearch aria-hidden="true" />
               </button>
 
-              <div className="lang-toggle" role="group" aria-label={t("மொழி", "Language")}>
-                <button
-                  type="button"
-                  className={`lang-toggle__btn${lang === "ta" ? " lang-toggle__btn--active" : ""}`}
-                  onClick={() => setLang("ta")}
-                  aria-pressed={lang === "ta"}
-                  lang="ta"
-                >
-                  தமிழ்
-                </button>
-                <button
-                  type="button"
-                  className={`lang-toggle__btn${lang === "en" ? " lang-toggle__btn--active" : ""}`}
-                  onClick={() => setLang("en")}
-                  aria-pressed={lang === "en"}
-                  lang="en"
-                >
-                  EN
-                </button>
-              </div>
-
+              {/* The language toggle used to sit here. It now lives in the
+                  status strip above, which frees the width this row needed for
+                  a readable Login and Sign Up pair. */}
+              {/* The bell sits immediately before the avatar and renders nothing
+                  for a guest, so the guest row is exactly what it was. */}
+              <NotificationBell />
               <AccountControl />
 
               <NavLink to="/sevas" className="btn btn-primary btn--sm navbar__cta">
@@ -471,6 +474,7 @@ function DrawerAccount({ menuOpen, onNavigate }) {
 
   return (
     <div className="drawer__acct">
+      <DrawerNotifications tab={tab} onNavigate={onNavigate} />
       <NavLink to="/account" className="btn btn-soft btn--block" tabIndex={tab} onClick={onNavigate}>
         <LuCircleUser aria-hidden="true" /> {t("என் கணக்கு", "My account")}
       </NavLink>
@@ -478,6 +482,36 @@ function DrawerAccount({ menuOpen, onNavigate }) {
         <LuLogOut aria-hidden="true" /> {t("வெளியேறு", "Sign out")}
       </button>
     </div>
+  );
+}
+
+/**
+ * The drawer's way to the notifications page, with the unread count. On a phone
+ * the header bell is still there; this row is the one a devotee finds while
+ * looking through the menu, and it says the count in words for a screen reader.
+ */
+function DrawerNotifications({ tab, onNavigate }) {
+  const { t } = useLang();
+  const { enabled, unread } = useNotifications();
+  if (!enabled) return null;
+  return (
+    <NavLink
+      to="/notifications"
+      className={({ isActive }) => "drawer__notif" + (isActive ? " drawer__notif--active" : "")}
+      tabIndex={tab}
+      onClick={onNavigate}
+      aria-label={unread > 0 ? t(`அறிவிப்புகள், ${unread} படிக்கவில்லை`, `Notifications, ${unread} unread`) : undefined}
+    >
+      <span className="drawer__icon" aria-hidden="true">
+        <LuBell />
+      </span>
+      <span className="drawer__notif-label">{t("அறிவிப்புகள்", "Notifications")}</span>
+      {unread > 0 && (
+        <span className="drawer__notif-count" aria-hidden="true">
+          {unread > 99 ? "99+" : unread}
+        </span>
+      )}
+    </NavLink>
   );
 }
 

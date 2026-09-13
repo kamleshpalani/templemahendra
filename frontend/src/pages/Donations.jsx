@@ -1,5 +1,4 @@
-import { useState } from "react";
-import { Helmet } from "react-helmet-async";
+import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import {
   LuArrowRight,
@@ -11,12 +10,17 @@ import {
   LuMailCheck,
   LuSend,
 } from "react-icons/lu";
-import { useLang } from "../context/LangContext";
+import { useLang, rateLimitInfo, rateLimitMessage } from "../context/LangContext";
 import { useToast } from "../context/ToastContext";
 import { useAuth } from "../context/AuthContext";
-import { TEMPLE, TRUST, KUMBABHISHEKAM_APPEAL, DONATION_NOTE } from "../data/temple";
+import PhoneInput from "../components/ui/PhoneInput";
+import { parseInternational, phoneProblem, toE164 } from "../lib/phone";
+import { DEFAULT_COUNTRY } from "../data/countries";
+import { TRUST, KUMBABHISHEKAM_APPEAL, DONATION_NOTE } from "../data/temple";
 import TrustDetails from "../components/TrustDetails/TrustDetails";
 import PageHero from "../components/ui/PageHero";
+import Seo from "../components/Seo";
+import ShareButton from "../components/Share/ShareButton";
 import SectionHeader from "../components/ui/SectionHeader";
 import Button from "../components/ui/Button";
 import Alert from "../components/ui/Alert";
@@ -25,25 +29,49 @@ import "./Donations.css";
 
 const QUICK_AMOUNTS = [501, 1001, 2001, 5001];
 
+// What the form holds after a successful pledge, apart from the country, which
+// stays so a second pledge from the same family needs no re-selection. The
+// thank-you-list consent is deliberately not carried over: each pledge asks.
+const EMPTY_PLEDGE = {
+  name: "",
+  phone: "",
+  amount: "",
+  purpose: "",
+  message: "",
+  showNamePublicly: false,
+  hp_token: "",
+};
+
 export default function Donations() {
   const { t } = useLang();
   const toast = useToast();
   // Prefilled for a signed-in devotee; the pledge is then attached to their
   // account so it shows in their own history.
   const { user } = useAuth();
-  const [form, setForm] = useState({
-    name: user?.name ?? "",
-    phone: user?.phone ?? "",
-    amount: "",
-    purpose: "",
-    message: "",
-  });
+  const [form, setForm] = useState({ ...EMPTY_PLEDGE, phoneCountry: DEFAULT_COUNTRY });
+
+  // The session resolves after this page mounts, so prefilling from the initial
+  // state alone leaves a direct load or a refresh of /donations with an empty
+  // form for someone who is signed in. Fill in whatever the devotee has not
+  // already typed, once their details arrive.
+  useEffect(() => {
+    if (!user) return;
+    const saved = parseInternational(user.phone ?? "", user.phoneCountry);
+    setForm((f) => ({
+      ...f,
+      name: f.name || user.name || "",
+      phone: f.phone || saved?.national || "",
+      phoneCountry: f.phone ? f.phoneCountry : saved?.country || user.phoneCountry || DEFAULT_COUNTRY,
+    }));
+  }, [user]);
   const [errors, setErrors] = useState({});
-  const [status, setStatus] = useState(null);
+  const [status, setStatus] = useState(null); // null | sending | success | error | limited
+  // Kept as seconds, not as a sentence, so the notice follows a language switch.
+  const [retryAfter, setRetryAfter] = useState(null);
 
   const handleChange = (e) => {
-    const { name, value } = e.target;
-    setForm((f) => ({ ...f, [name]: value }));
+    const { name, value, type, checked } = e.target;
+    setForm((f) => ({ ...f, [name]: type === "checkbox" ? checked : value }));
     if (errors[name]) setErrors((er) => ({ ...er, [name]: undefined }));
   };
 
@@ -53,8 +81,8 @@ export default function Donations() {
   const validate = () => {
     const next = {};
     if (form.name.trim().length < 2) next.name = t("பெயரை உள்ளிடவும்", "Please enter your name");
-    if (!/^[0-9]{10}$/.test(form.phone))
-      next.phone = t("10 இலக்க தொலைபேசி எண் தேவை", "Enter a 10-digit phone number");
+    const pe = phoneProblem(form.phone, form.phoneCountry, { required: true });
+    if (pe) next.phone = pe;
     if (!(Number(form.amount) >= 1))
       next.amount = t("தொகையை உள்ளிடவும்", "Enter a donation amount");
     setErrors(next);
@@ -69,11 +97,21 @@ export default function Donations() {
       const res = await fetch("/api/donations", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(form),
+        body: JSON.stringify({ ...form, phone: toE164(form.phone, form.phoneCountry) }),
       });
-      if (!res.ok) throw new Error();
+      if (!res.ok) {
+        const body = await res.json().catch(() => null);
+        const limited = rateLimitInfo(res.status, body, res.headers.get("Retry-After"));
+        if (limited) {
+          setRetryAfter(limited.retryAfter);
+          setStatus("limited");
+          toast.error(rateLimitMessage(t, limited.retryAfter));
+          return;
+        }
+        throw new Error();
+      }
       setStatus("success");
-      setForm({ name: "", phone: "", amount: "", purpose: "", message: "" });
+      setForm((f) => ({ ...EMPTY_PLEDGE, phoneCountry: f.phoneCountry }));
       toast.success(
         t("உங்கள் நன்கொடை பதிவு செய்யப்பட்டது.", "Your donation has been recorded."),
         t("நன்றி!", "Thank you!"),
@@ -119,11 +157,7 @@ export default function Donations() {
 
   return (
     <>
-      <Helmet>
-        <title>
-          {t("நன்கொடை", "Donations")} — {t(TEMPLE.name.ta, TEMPLE.name.en)}
-        </title>
-      </Helmet>
+      <Seo title={t("நன்கொடை", "Donations")} description={t(TRUST.name.ta, TRUST.name.en)} />
 
       <PageHero
         variant="donations"
@@ -143,6 +177,11 @@ export default function Donations() {
             <Button href="#pledge" variant="gold" icon={<LuHeartHandshake aria-hidden="true" />}>
               {t("நன்கொடை பதிவு", "Pledge")}
             </Button>
+            <ShareButton
+              variant="outline-light"
+              title={t("நன்கொடை", "Donations")}
+              text={t(TRUST.name.ta, TRUST.name.en)}
+            />
           </>
         }
       />
@@ -231,6 +270,11 @@ export default function Donations() {
                   )}
                 </Alert>
               )}
+              {status === "limited" && (
+                <Alert tone="warning" onClose={() => setStatus(null)}>
+                  {rateLimitMessage(t, retryAfter)}
+                </Alert>
+              )}
 
               <form onSubmit={handleSubmit} noValidate aria-busy={sending} className="donations-pledge__form">
                 <Field label={t("முழு பெயர்", "Full Name")} required error={errors.name}>
@@ -246,23 +290,41 @@ export default function Donations() {
                   )}
                 </Field>
 
+                {/* Honeypot. People never see it and cannot Tab to it; form-filling
+                    bots do fill it, and the server then quietly saves nothing.
+                    Sits between two real fields, not first or last, so no focus
+                    logic that picks "the first input" can land on it. */}
+                <div className="visually-hidden" aria-hidden="true">
+                  <label htmlFor="donation-hp-token">
+                    {t("இந்தப் புலத்தை காலியாக விடவும்", "Leave this field empty")}
+                  </label>
+                  <input
+                    id="donation-hp-token"
+                    type="text"
+                    name="hp_token"
+                    value={form.hp_token}
+                    onChange={handleChange}
+                    tabIndex={-1}
+                    autoComplete="off"
+                  />
+                </div>
+
                 <Field
                   label={t("தொலைபேசி எண்", "Phone Number")}
                   required
                   error={errors.phone}
-                  hint={t("10 இலக்க மொபைல் எண்", "10-digit mobile number")}
+                  hint={t("நாட்டைத் தேர்ந்தெடுத்து, முன்னால் உள்ள 0 இல்லாமல் எண்ணை உள்ளிடவும்", "Pick your country, then type the number without its leading 0")}
                 >
                   {(a11y) => (
-                    <input
+                    <PhoneInput
                       {...a11y}
-                      required
-                      type="tel"
                       name="phone"
-                      value={form.phone}
-                      onChange={handleChange}
-                      inputMode="numeric"
-                      autoComplete="tel"
-                      placeholder="9999999999"
+                      country={form.phoneCountry}
+                      national={form.phone}
+                      onChange={({ country, national }) => {
+                        setForm((f) => ({ ...f, phoneCountry: country, phone: national }));
+                        if (errors.phone) setErrors((er) => ({ ...er, phone: undefined }));
+                      }}
                     />
                   )}
                 </Field>
@@ -329,6 +391,33 @@ export default function Donations() {
                     />
                   )}
                 </Field>
+
+                {/* Opt-in only, and unticked every time: a donor's name goes on the
+                    public thank-you list only when they say so for this pledge. */}
+                <div className="field donations-pledge__consent">
+                  <label className="checkbox-label" htmlFor="donation-show-name">
+                    <input
+                      id="donation-show-name"
+                      type="checkbox"
+                      name="showNamePublicly"
+                      checked={form.showNamePublicly}
+                      onChange={handleChange}
+                      aria-describedby="donation-show-name-hint"
+                    />
+                    <span>
+                      {t(
+                        "கோயிலின் நன்றிப் பட்டியலில் என் பெயரைக் காட்டவும்",
+                        "Show my name on the temple's thank-you list",
+                      )}
+                    </span>
+                  </label>
+                  <span id="donation-show-name-hint" className="field__hint donations-pledge__consent-hint">
+                    {t(
+                      "உங்கள் பெயரும் நோக்கமும் மட்டுமே காட்டப்படும்; தொலைபேசி எண்ணோ தொகையோ ஒருபோதும் காட்டப்படாது.",
+                      "Only your name and the purpose are shown, never your phone number or the amount.",
+                    )}
+                  </span>
+                </div>
 
                 <Button
                   type="submit"

@@ -37,7 +37,10 @@ function toAuthError(err) {
       code: "network",
     });
   }
-  return new AuthError(data.error || GENERIC, {
+  // Most failures put their text in `error`; the resend endpoint's 503 puts
+  // it in `message`. Reading both means a real explanation is never replaced
+  // by the generic one.
+  return new AuthError(data.error || data.message || GENERIC, {
     fields: data.fields ?? {},
     code: data.code ?? null,
     status: res.status,
@@ -122,8 +125,11 @@ export function AuthProvider({ children }) {
           await post("/auth/logout");
         } finally {
           setUser(null);
-          // The session id changed, so the old CSRF token is void.
-          await refresh();
+          // The session id changed, so the old CSRF token is void. Refresh it
+          // without blocking: awaiting here kept the caller on a guarded route
+          // for another round trip with `user` already null, which flashed the
+          // sign-in page on the way out.
+          refresh();
         }
       },
       verify: (token) => post("/auth/verify", { token }).then(adopt),

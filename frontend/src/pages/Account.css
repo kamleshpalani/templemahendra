@@ -22,8 +22,8 @@
   width: 520px;
   height: 520px;
   border-radius: 50%;
-  background: var(--glow-saffron);
-  opacity: 0.45;
+  background: radial-gradient(circle, color-mix(in srgb, var(--saffron-500) 30%, transparent), transparent 70%);
+  opacity: 0.5;
   z-index: -1;
   pointer-events: none;
 }
@@ -213,6 +213,19 @@
   line-height: var(--leading-relaxed);
   color: var(--text-2);
 }
+/* A quiet heading inside a form, so the address reads as its own group
+   without a second card or a fieldset border. */
+.acct-form__section {
+  margin: var(--space-5) 0 var(--space-2);
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--border-soft);
+  font-size: var(--text-2xs);
+  font-weight: var(--weight-bold);
+  letter-spacing: var(--tracking-caps);
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
 .acct-form form {
   display: grid;
   gap: var(--space-1);
@@ -220,6 +233,64 @@
 .acct-form form > .btn {
   margin-top: var(--space-4);
   justify-self: start;
+}
+
+/* ── Phone verification (inside the details form) ────────────────── */
+/* A tinted inset under the phone field, so the code step reads as part of
+   that field rather than as a second form. */
+.acct-phone {
+  display: grid;
+  gap: var(--space-3);
+  justify-items: start;
+  margin: calc(-1 * var(--space-2)) 0 var(--space-4);
+  padding: var(--space-4);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius);
+  background: var(--glass-tint-gold);
+}
+.acct-phone__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2) var(--space-3);
+  width: 100%;
+}
+.acct-phone__title {
+  font-size: var(--text-sm);
+  font-weight: var(--weight-semibold);
+  color: var(--text-1);
+}
+.acct-phone__badge {
+  white-space: nowrap;
+}
+.acct-phone__note {
+  margin: 0;
+  font-size: var(--text-xs);
+  line-height: var(--leading-snug);
+  color: var(--text-2);
+}
+.acct-phone__error {
+  margin: 0;
+  font-size: var(--text-xs);
+  font-weight: var(--weight-semibold);
+  color: var(--danger);
+}
+.acct-phone .field {
+  width: 100%;
+  margin-bottom: 0;
+}
+.acct-phone__code {
+  max-width: 12rem;
+  font-family: var(--font-mono);
+  font-size: var(--text-md);
+  letter-spacing: 0.3em;
+  font-variant-numeric: tabular-nums;
+}
+.acct-phone__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
 }
 
 /* ── Narrow ──────────────────────────────────────────────────────── */
@@ -255,6 +326,10 @@
   }
   .acct-form {
     padding: var(--space-5);
+  }
+  /* Touch targets of at least 44px for the verification step. */
+  .acct-phone .btn {
+    min-height: 44px;
   }
 }
 

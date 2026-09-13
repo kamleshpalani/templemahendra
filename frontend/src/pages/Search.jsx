@@ -1,15 +1,15 @@
 import { useEffect, useMemo, useState } from "react";
-import { Helmet } from "react-helmet-async";
 import { Link, useSearchParams } from "react-router-dom";
 import { LuArrowRight, LuFileText, LuSearch } from "react-icons/lu";
 import PageHero from "../components/ui/PageHero";
+import Seo from "../components/Seo";
+import ShareButton from "../components/Share/ShareButton";
 import Button from "../components/ui/Button";
 import { Chip } from "../components/ui/Field";
 import { EmptyState, ErrorState, SkeletonText } from "../components/ui/Feedback";
 import { GROUP_ICONS } from "../components/Search/SearchDialog";
 import useSiteSearch from "../hooks/useSiteSearch";
 import { useLang } from "../context/LangContext";
-import { TEMPLE } from "../data/temple";
 import "./Search.css";
 
 /**
@@ -31,7 +31,7 @@ export default function Search() {
     setOnly("all");
   }, [q]);
 
-  const { groups, total, status, minChars } = useSiteSearch(q, { limit: 24 });
+  const { groups, total, status, retry, minChars } = useSiteSearch(q, { limit: 24 });
 
   const submit = (e) => {
     e.preventDefault();
@@ -41,32 +41,41 @@ export default function Search() {
 
   const shown = useMemo(() => (only === "all" ? groups : groups.filter((g) => g.type === only)), [groups, only]);
 
+  const lead = t(
+    "சேவைகள், நிகழ்வுகள், பஞ்சாங்கம், அறிவிப்புகள், பக்கங்கள் — எல்லாவற்றிலும் தேடுங்கள்.",
+    "Sevas, events, panchangam, notices and pages, all in one place.",
+  );
+
   const label = (item) => (lang === "ta" ? item.title_ta || item.title_en : item.title_en || item.title_ta);
   const sub = (item) => (lang === "ta" ? item.sub_ta || item.sub_en : item.sub_en || item.sub_ta);
 
   return (
     <>
-      <Helmet>
-        <title>
-          {q ? `${t("தேடல்", "Search")}: ${q}` : t("தேடல்", "Search")} — {t(TEMPLE.name.ta, TEMPLE.name.en)}
-        </title>
-        {/* A results page is not a destination for a search engine. */}
-        <meta name="robots" content="noindex, follow" />
-      </Helmet>
+      {/* A results page is not a destination for a search engine, but the
+          results themselves are worth following. */}
+      <Seo
+        title={q ? `${t("தேடல்", "Search")}: ${q}` : t("தேடல்", "Search")}
+        description={lead}
+        robots="noindex, follow"
+      />
 
       <PageHero
         variant="search"
         eyebrow={t("தளத் தேடல்", "Search the site")}
         title={q ? `“${q}”` : t("என்ன தேடுகிறீர்கள்?", "What are you looking for?")}
-        lead={
-          q
-            ? undefined
-            : t(
-                "சேவைகள், நிகழ்வுகள், பஞ்சாங்கம், அறிவிப்புகள், பக்கங்கள் — எல்லாவற்றிலும் தேடுங்கள்.",
-                "Sevas, events, panchangam, notices and pages, all in one place.",
-              )
-        }
+        lead={q ? undefined : lead}
         crumbs={[{ label: t("தேடல்", "Search") }]}
+        actions={
+          q ? (
+            // Shares the query, not just the page: ?q= is already in the URL.
+            <ShareButton
+              variant="outline-light"
+              title={`${t("தேடல்", "Search")}: ${q}`}
+              text={lead}
+              label={t("முடிவுகளைப் பங்கிடு", "Share results")}
+            />
+          ) : null
+        }
       >
         <form className="srch__form" onSubmit={submit} role="search">
           <span className="input-affix input-affix--leading srch__field">
@@ -123,7 +132,7 @@ export default function Search() {
           {status === "loading" && <SkeletonText lines={6} />}
 
           {status === "error" && (
-            <ErrorState onRetry={() => setParams({ q }, { replace: true })}>
+            <ErrorState onRetry={retry}>
               {t("தேடல் இப்போது வேலை செய்யவில்லை.", "Search is unavailable right now.")}
             </ErrorState>
           )}

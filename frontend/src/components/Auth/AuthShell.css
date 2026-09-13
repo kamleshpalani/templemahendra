@@ -50,8 +50,10 @@
   width: 420px;
   height: 420px;
   border-radius: 50%;
-  background: var(--glow-saffron);
-  opacity: 0.5;
+  /* --glow-saffron is a box-shadow value; as a background it is simply
+     dropped and the halo never renders. A gradient is what this wants. */
+  background: radial-gradient(circle, color-mix(in srgb, var(--saffron-500) 34%, transparent), transparent 70%);
+  opacity: 0.55;
   z-index: -1;
   pointer-events: none;
 }
@@ -207,25 +209,23 @@
   margin-top: var(--space-6);
 }
 
-/* What the committee stores, said plainly next to the password field */
-.authx__privacy {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
-  gap: var(--space-3);
+.authx__whoami {
   margin: var(--space-4) 0 0;
   padding: var(--space-4);
   border-radius: var(--radius-sm);
-  background: var(--glass-tint-maroon);
+  background: var(--glass-tint-gold);
   border: 1px solid var(--border-soft);
-  font-size: var(--text-xs);
+  font-size: var(--text-sm);
   line-height: var(--leading-relaxed);
   color: var(--text-2);
+  overflow-wrap: anywhere;
 }
-.authx__privacy > svg {
-  width: 16px;
-  height: 16px;
-  margin-top: 2px;
-  color: var(--maroon-500);
+.authx__whoami strong {
+  color: var(--maroon-600);
+}
+.authx__whoami-note {
+  font-size: var(--text-xs);
+  color: var(--text-3);
 }
 
 .authx__aside-note {
@@ -235,36 +235,147 @@
   color: var(--text-3);
 }
 
-/* Password rules, shown before the field is submitted rather than after */
-.authx__rules {
-  margin: calc(var(--space-2) * -1) 0 var(--space-2);
-  padding: var(--space-3) var(--space-4);
-  border-radius: var(--radius-sm);
-  background: var(--glass-tint-gold);
-  border: 1px solid var(--border-soft);
+/* ── Password meter ──────────────────────────────────────────────────
+   One line: a four-segment meter, a count, and a help button holding the full
+   list. The list used to sit here permanently and took more vertical space
+   than the rest of the form.
+   ──────────────────────────────────────────────────────────────────── */
+.pw-meter {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  margin: calc(var(--space-1) * -1) 0 var(--space-3);
+  min-height: 26px;
+}
+.pw-meter__track {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 3px;
+  flex: 1 1 auto;
+  min-width: 0;
+  max-width: 9rem;
+}
+.pw-meter__seg {
+  height: 4px;
+  border-radius: 2px;
+  background: var(--border);
+  transition: background var(--transition);
+}
+.pw-meter__seg[data-met="true"] {
+  background: linear-gradient(90deg, var(--saffron-500), var(--gold-500));
+}
+.pw-meter__count {
+  font-size: var(--text-xs);
+  color: var(--text-3);
+  white-space: nowrap;
+}
+.pw-meter__count--done {
+  color: var(--success-fg);
+  font-weight: var(--weight-semibold);
+}
+.pw-meter__help {
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  margin-left: auto;
+  border: 0;
+  border-radius: 50%;
+  background: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: color var(--transition), background var(--transition);
+}
+.pw-meter__help:hover,
+.pw-meter__help:focus-visible,
+.pw-meter__help[aria-expanded="true"] {
+  color: var(--maroon-600);
+  background: var(--glass-tint-maroon);
+}
+.pw-meter__help > svg {
+  width: 16px;
+  height: 16px;
+}
+
+.pw-meter__pop {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: var(--z-popover);
+  width: min(20rem, calc(100vw - 2rem));
+  padding: var(--space-3) var(--space-4) var(--space-4);
+  border-radius: var(--radius);
+  background: var(--glass-3);
+  backdrop-filter: blur(var(--blur-lg)) saturate(var(--saturate));
+  -webkit-backdrop-filter: blur(var(--blur-lg)) saturate(var(--saturate));
+  border: 1px solid var(--glass-border-strong);
+  box-shadow: var(--shadow-lg), var(--inset-highlight);
+}
+.pw-meter__pop-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin-bottom: var(--space-2);
+  font-size: var(--text-xs);
+  letter-spacing: var(--tracking-caps);
+  text-transform: uppercase;
+  color: var(--text-3);
+}
+.pw-meter__pop-close {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border: 0;
+  border-radius: var(--radius-xs);
+  background: none;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+.pw-meter__pop-close:hover,
+.pw-meter__pop-close:focus-visible {
+  color: var(--maroon-600);
+  background: var(--glass-tint-maroon);
+}
+.pw-meter__pop-close > svg {
+  width: 14px;
+  height: 14px;
+}
+.pw-meter__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: var(--space-2);
   font-size: var(--text-xs);
   line-height: var(--leading-relaxed);
   color: var(--text-3);
-  list-style: none;
-  display: grid;
-  gap: var(--space-1);
 }
-.authx__rules li {
+.pw-meter__list li {
   display: flex;
   align-items: center;
   gap: var(--space-2);
 }
-.authx__rules svg {
+.pw-meter__list svg {
   width: 14px;
   height: 14px;
   flex-shrink: 0;
   color: var(--text-muted);
 }
-.authx__rules li[data-met="true"] {
+.pw-meter__list li[data-met="true"] {
   color: var(--success-fg);
 }
-.authx__rules li[data-met="true"] svg {
+.pw-meter__list li[data-met="true"] svg {
   color: var(--success);
+}
+
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .pw-meter__pop {
+    background: var(--bg-root);
+  }
 }
 
 /* ── Narrow ──────────────────────────────────────────────────────── */

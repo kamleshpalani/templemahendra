@@ -81,16 +81,81 @@ the same tokens and components.
 
 ```bash
 cd backend
-php -S localhost:8000 -t api   # serves /api/*
+php -S 127.0.0.1:8000 router.php
 ```
+
+**Use `router.php`.** `php -S ... -t api` looks right and is not: it serves only
+the `api` folder, so `/admin/` 404s and the API's own front controller never
+runs. `router.php` reproduces what `.htaccess` does on Hostinger — `/api/*` to
+the front controller, `/admin/*` to the PHP panel, everything else static — and
+it refuses `includes/`, `config/` and `logs/` exactly as the server does.
+
+On Windows there is often no `php` on PATH. Download the **Thread Safe** VS16
+x64 zip from [windows.php.net/download](https://windows.php.net/download/),
+unzip it anywhere, copy `php.ini-development` to `php.ini`, and enable these:
+
+```ini
+extension_dir = "ext"
+extension=pdo_mysql
+extension=mbstring
+extension=openssl
+extension=curl
+extension=fileinfo
+extension=zip
+```
+
+Then run `php.exe -c php.ini -S 127.0.0.1:8000 router.php` from `backend/`.
+Check the driver loaded before blaming the app for a 500:
+`php -m | findstr pdo_mysql`.
 
 ### Database
 
 ```bash
 mysql -u root -p < database/schema.sql
+for f in database/migrations/*.sql; do mysql -u root -p templemahendra < "$f"; done
 ```
 
-Copy `backend/.env.example` → `backend/.env` and fill in credentials.
+Or with Docker, which needs nothing installed:
+
+```bash
+docker run -d --name temple-mysql -p 3307:3306 \
+  -e MYSQL_ROOT_PASSWORD=rootpass -e MYSQL_DATABASE=templemahendra \
+  -e MYSQL_USER=temple -e MYSQL_PASSWORD=templepass \
+  mysql:8 --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
+```
+
+Configuration comes from the environment. For local work put it in `.env.local`
+at the repo root (git-ignored) and export it before starting PHP, or set the
+variables in your shell:
+
+```
+DB_HOST=127.0.0.1
+DB_PORT=3307
+DB_NAME=templemahendra
+DB_USER=temple
+DB_PASS=templepass
+CORS_ORIGIN=*
+SITE_URL=http://localhost:5173
+ADMIN_USERNAME=admin
+ADMIN_PASS_HASH=<php -r "echo password_hash('YourPassword', PASSWORD_BCRYPT);">
+```
+
+### Three things that catch people out
+
+**Use `http://localhost:5173`, not `127.0.0.1:5173`.** Vite binds the IPv6
+loopback, so the IPv4 address refuses the connection.
+
+**Email is not configured locally, and that is fine.** With `MAIL_TRANSPORT`
+unset, confirmation and password-reset messages are written to
+`backend/logs/mail.log` instead of being sent, and the site says so rather than
+pretending. To confirm an address or reset a password while testing, open that
+file and follow the link in the newest entry. The folder is denied over HTTP
+because those links are credentials.
+
+**The admin panel is at `/admin/` on the Vite server too** — the dev proxy
+passes `/api`, `/admin` and `/uploads` through to PHP, matching production. Sign
+in with the `ADMIN_USERNAME` / password above; that account is the fallback that
+cannot be deleted, and real committee accounts are created inside the panel.
 
 ---
 
@@ -140,6 +205,9 @@ Upload via Hostinger File Manager or FTP:
 | `001_admin_users.sql` | `admin_users` + `admin_activity` — committee accounts, roles and the audit trail. Skip it and the admin keeps working with the single environment-variable login. |
 | `002_contact_messages_index.sql` | An index on `contact_messages.created_at` so the inbox sorts and paginates without a full scan. |
 | `003_devotee_accounts.sql` | `devotees`, `devotee_tokens`, `mail_log` and `rate_limits` — public accounts, email confirmation and password reset. It also adds a nullable `devotee_id` to `seva_bookings` and `donations` so a signed-in devotee's records appear in their own history. Skip it and the site simply hides every account entry point; nothing else changes. |
+| `004_international_phone.sql` | Phone numbers stored in E.164 form with the country they belong to, on `devotees`, `seva_bookings`, `donations` and `contact_messages`. Devotees live in many countries; the forms no longer assume ten digits. Existing rows are untouched — a number with no country is read as Indian, which is what they always were. |
+| `005_devotee_location.sql` | `country`, `state` and `city` on `devotees`. Registration asks for them so the committee can post a receipt; the profile page fills them in for older accounts. |
+| `006_devotee_address.sql` | `address1`, `address2` and `postcode` on `devotees` — the postal address an 80G receipt is sent to. The street lines and the PIN are optional and registration does not ask for them; devotees fill them in on their account page and the committee can correct them in the admin. State, city and country are required on both forms, so an account created today always has somewhere a receipt can go. |
 
 ```bash
 for f in database/migrations/*.sql; do mysql -u <user> -p <db> < "$f"; done
@@ -172,6 +240,55 @@ been applied; see `backend/.env.example` for the annotated version.
 | `MAIL_TRANSPORT`  | `smtp` on Hostinger. `mail` hands off to PHP's `mail()`. Left blank, messages are written to `backend/logs/mail.log` and the site tells the caller that email is unavailable — fine locally, never in production. |
 | `SMTP_HOST` `SMTP_PORT` `SMTP_USER` `SMTP_PASS` `SMTP_SECURE` | Mailbox for outgoing mail. `SMTP_SECURE` is `tls` on port 587 or `ssl` on 465. |
 | `MAIL_FROM` `MAIL_FROM_NAME` | Sender address and display name. Use a mailbox on your own domain, or the messages will be filed as spam. |
+
+### Paths that belong to PHP, not to React
+
+`/api`, `/admin` and `/uploads` are served by PHP. Every other path is the React
+app. **Three places encode that split, and all three must agree** — miss one and
+`/admin/` silently serves the React 404 page on a correctly configured server:
+
+| Where | What it does |
+| ----- | ------------ |
+| `deploy/htaccess_public_html` | `RewriteRule ^(api\|admin\|uploads)(/.*)?$ - [L]` before the SPA fallback |
+| `frontend/vite.config.js` → `server.proxy` | The same three paths proxied to the PHP dev server |
+| `frontend/vite.config.js` → `workbox.navigateFallbackDenylist` | Stops the service worker answering those navigations from the cached `index.html` |
+
+The service-worker entry is the easy one to forget and the hardest to diagnose:
+without it the server is right, the `.htaccess` is right, and the committee still
+gets the React app at `/admin/`, because the request never leaves the browser.
+`tests/public-e2e.mjs` checks the behaviour end to end.
+
+### Shared links and rich previews
+
+Visitors share pages from a `<ShareButton>` — one component, dropped anywhere,
+offering WhatsApp, Facebook, LinkedIn, X, email, copy-link and the device's own
+share sheet where the browser has one. It takes the page's own title, lead and
+URL, so nothing about the site's address or copy is written twice. Each page's
+meta tags come from `<Seo>`, the single writer of the document head.
+
+The preview a link shows is a separate problem. WhatsApp, Facebook, LinkedIn and
+X fetch the HTML once and **never run JavaScript**, so the React app's own Open
+Graph tags are invisible to them: without a server-side answer, every shared link
+previews as the same generic page. So:
+
+| Piece | Role |
+| ----- | ---- |
+| `backend/api/og.php` | Renders a real preview per path — title, description, image, canonical. Reads one seva or one photograph straight from the database for `?seva=` / `?photo=` links. |
+| `backend/includes/site_pages.php` | The per-page copy og.php uses. The same sentences the React pages pass to `<Seo>`. |
+| `deploy/htaccess_public_html` | Sends unfurler user agents to `og.php`. Search engines are deliberately excluded — they run JavaScript and should index the real page. |
+| `backend/router.php` | The same diversion locally, so previews can be checked before shipping: `curl -A "WhatsApp/2.23" http://127.0.0.1:8000/sevas?seva=1` |
+| `frontend/index.html` | The site-level floor. Every share tag there carries `data-rh="true"` so react-helmet-async **replaces** them instead of appending a second copy — remove the attribute and platforms start showing the generic site blurb on every page. |
+
+`site_pages.php` holds a second copy of each page's title and lead, which is
+exactly the kind of thing that drifts. `tests/og.mjs` loads every route in a real
+browser, reads the tags React wrote, and fails if they disagree with what
+`og.php` returns for the same path — so changing a page's lead tells you to
+update the table.
+
+Set `VITE_SITE_URL` at build time only if the browser cannot see the public
+origin (behind a proxy, or a preview build that should advertise the real
+domain). Left unset, links use the origin the page was served from, which is
+correct everywhere else, local development included.
 
 Two security notes for the shared-hosting upload. `backend/logs/` holds
 password-reset links in plain text when email is not configured, and
@@ -212,6 +329,7 @@ chmod 755 public_html/uploads
 | POST   | `/api/donations`     | Submit donation record |
 | POST   | `/api/contact`       | Submit contact message |
 | GET    | `/api/search`        | Search sevas, events, poojas, announcements, gallery captions and the static pages. `?q=` and an optional `?limit=`. Answers in both languages. |
+| GET    | `/api/og.php`        | The share preview for a path: `?path=/sevas&seva=3`. Returns HTML, not JSON — it is what link unfurlers read. See *Shared links and rich previews*. |
 
 ### Devotee accounts
 

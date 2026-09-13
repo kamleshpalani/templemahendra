@@ -36,6 +36,10 @@ docker-entrypoint.sh
 
 # Editor/tool scratch
 
+# Screenshots written by the local test scripts (node tests/*.mjs). Throwaway
+# evidence for one run; regenerate rather than commit.
+shots/
+
 # Node
 node_modules/
 frontend/node_modules/

@@ -10,6 +10,10 @@
 //   6. Future content (start_date > today) is excluded
 //   7. Calendar-driven widgets auto-pick the next upcoming Pournami/special pooja
 //   8. If no widgets exist at all, fall back to auto-selected upcoming pooja
+//
+// Privacy: this is a public endpoint, so a sponsor appears by name and
+// dedication note only. Their phone number is for the committee to call and is
+// never selected here, so no card type or fallback path can leak it.
 
 require_once __DIR__ . '/../includes/db.php';
 require_once __DIR__ . '/../includes/helpers.php';
@@ -48,7 +52,6 @@ $stmt = $db->prepare("
         p.description_en AS pooja_desc_en,
         p.pooja_date, p.pooja_time, p.pooja_type,
         s.name  AS sponsor_name,
-        s.phone AS sponsor_phone,
         s.note  AS sponsor_note
     FROM   homepage_widgets w
     LEFT   JOIN poojas   p ON p.id = w.linked_pooja_id
@@ -84,7 +87,6 @@ if ($needAutoPooja) {
     $stmtAuto = $db->prepare("
         SELECT p.*,
                s.name  AS sponsor_name,
-               s.phone AS sponsor_phone,
                s.note  AS sponsor_note
         FROM   poojas p
         LEFT   JOIN sponsors s ON s.pooja_id = p.id AND s.is_active = 1
@@ -149,9 +151,8 @@ foreach ($rows as $row) {
             // auto-attach sponsor from the auto-pooja
             if ($autoPooja['sponsor_name']) {
                 $w['sponsor'] = [
-                    'name'  => $autoPooja['sponsor_name'],
-                    'phone' => $autoPooja['sponsor_phone'],
-                    'note'  => $autoPooja['sponsor_note'],
+                    'name' => $autoPooja['sponsor_name'],
+                    'note' => $autoPooja['sponsor_note'],
                 ];
             }
         }
@@ -171,9 +172,8 @@ foreach ($rows as $row) {
     // Attach sponsor (manually linked)
     if ($row['show_sponsor'] && !empty($row['sponsor_name']) && !isset($w['sponsor'])) {
         $w['sponsor'] = [
-            'name'  => $row['sponsor_name'],
-            'phone' => $row['sponsor_phone'],
-            'note'  => $row['sponsor_note'],
+            'name' => $row['sponsor_name'],
+            'note' => $row['sponsor_note'],
         ];
     }
 
@@ -192,7 +192,6 @@ if (empty($widgets)) {
         $stmtFb = $db->prepare("
             SELECT p.*,
                    s.name  AS sponsor_name,
-                   s.phone AS sponsor_phone,
                    s.note  AS sponsor_note
             FROM   poojas p
             LEFT   JOIN sponsors s ON s.pooja_id = p.id AND s.is_active = 1
@@ -226,9 +225,8 @@ if (empty($widgets)) {
         ];
         if ($autoPooja['sponsor_name']) {
             $fb['sponsor'] = [
-                'name'  => $autoPooja['sponsor_name'],
-                'phone' => $autoPooja['sponsor_phone'],
-                'note'  => $autoPooja['sponsor_note'],
+                'name' => $autoPooja['sponsor_name'],
+                'note' => $autoPooja['sponsor_note'],
             ];
         }
         $widgets[] = $fb;

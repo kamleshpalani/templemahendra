@@ -1,5 +1,4 @@
 import { useState } from "react";
-import { Helmet } from "react-helmet-async";
 import { Link, useLocation } from "react-router-dom";
 import {
   LuCalendarDays,
@@ -24,6 +23,8 @@ import {
 } from "../data/temple";
 import PageHero from "../components/ui/PageHero";
 import Button from "../components/ui/Button";
+import Seo from "../components/Seo";
+import ShareButton from "../components/Share/ShareButton";
 import HistoryTimeline from "../components/HistoryTimeline/HistoryTimeline";
 import TrustDetails from "../components/TrustDetails/TrustDetails";
 import CommitteeGrid from "../components/CommitteeGrid/CommitteeGrid";
@@ -72,19 +73,20 @@ export default function About() {
     return { ...f, year: m.date ? m.date.slice(0, 4) : t(m.year.ta, m.year.en), date: m.date };
   }).filter(Boolean);
 
+  // One string, read by the visitor in the hero and by anyone the page is
+  // shared with. See <Seo>.
+  const title = t("ஆலயம் பற்றி", "About the Temple");
+  const lead = t(TEMPLE.fullName.ta, TEMPLE.fullName.en);
+
   return (
     <>
-      <Helmet>
-        <title>
-          {t("பற்றி", "About")} — {t(TEMPLE.name.ta, TEMPLE.name.en)}
-        </title>
-      </Helmet>
+      <Seo title={t("பற்றி", "About")} description={lead} type="article" />
 
       <PageHero
         variant="about"
         eyebrow={t("வரலாறு · அறக்கட்டளை · கமிட்டி", "History · Trust · Committee")}
-        title={t("ஆலயம் பற்றி", "About the Temple")}
-        lead={t(TEMPLE.fullName.ta, TEMPLE.fullName.en)}
+        title={title}
+        lead={lead}
         crumbs={[{ label: t("பற்றி", "About") }]}
         actions={
           <>
@@ -94,6 +96,7 @@ export default function About() {
             <Button variant="outline-light" to="/contact" icon={<LuMapPin aria-hidden="true" />}>
               {t("வழி & தொடர்பு", "Directions & Contact")}
             </Button>
+            <ShareButton variant="outline-light" title={title} text={lead} />
           </>
         }
         aside={

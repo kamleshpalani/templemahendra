@@ -156,6 +156,10 @@
 .gallery-lightbox__count {
   font-variant-numeric: tabular-nums;
 }
+/* The counter sits at the left; share and close group together at the right. */
+.gallery-lightbox__share {
+  margin-left: auto;
+}
 
 .gallery-lightbox__stage {
   flex: 1 1 auto;

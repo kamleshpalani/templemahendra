@@ -26,11 +26,17 @@
     background-position: -200% 0;
   }
 }
+/* Same width cap and gutter as .navbar__inner, so the language toggle here and
+   the navbar controls below it share a right edge. */
 .pulse-strip__inner {
+  width: 100%;
+  max-width: var(--header-max);
+  margin-inline: auto;
+  padding-inline: var(--gutter);
   display: flex;
   align-items: center;
   gap: 0.6rem 1.1rem;
-  min-height: 36px;
+  min-height: 38px;
   padding-block: 0.3rem;
   flex-wrap: nowrap;
   overflow: hidden;
@@ -112,8 +118,15 @@
   align-items: center;
   gap: 0.4rem;
 }
+.pulse-strip__name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
 .pulse-countdown {
   display: inline-block;
+  flex-shrink: 0;
   font-family: var(--font-mono);
   font-size: var(--text-2xs);
   font-weight: var(--weight-bold);
@@ -132,9 +145,23 @@
   font-variant-numeric: tabular-nums;
 }
 
+/* Touch: give the strip room for a target that clears WCAG 2.5.8 (24px) with
+   margin to spare, rather than shrinking everything to fit a 38px band. The
+   button size itself is a property of the control, so it is set in
+   components.css; only the strip height belongs here. */
+@media (hover: none) and (pointer: coarse) {
+  .pulse-strip__inner {
+    min-height: 46px;
+  }
+}
+
 @media (max-width: 1024px) {
   .pulse-strip__hours {
     display: none;
+  }
+  /* The hours carried margin-left:auto; with them gone the toggle takes it. */
+  .pulse-strip .lang-toggle {
+    margin-left: auto;
   }
 }
 @media (max-width: 820px) {
@@ -145,8 +172,26 @@
     display: none;
   }
 }
+@media (max-width: 560px) {
+  /* Smallest phones: the pill and the countdown are what people glance at, and
+     the language toggle must stay reachable. The icon is the first to go. */
+  .pulse-strip .lang-toggle__icon {
+    display: none;
+  }
+  .pulse-strip .lang-toggle {
+    padding-left: 2px;
+  }
+}
 @media (max-width: 480px) {
   .pulse-strip__inner {
     gap: 0.5rem;
+  }
+}
+@media (max-width: 360px) {
+  /* Narrowest phones: the open/closed pill and the language toggle are what
+     must survive. The next pooja and its countdown are still on the homepage
+     status panel and at the top of the mobile drawer. */
+  .pulse-strip__item {
+    display: none;
   }
 }

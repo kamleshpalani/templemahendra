@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Helmet } from "react-helmet-async";
 import {
   LuCalendarDays,
   LuCalendarX,
@@ -13,9 +12,10 @@ import {
 } from "react-icons/lu";
 import api from "../services/api";
 import { useLang } from "../context/LangContext";
-import { TEMPLE } from "../data/temple";
 import { NALLA_NERAM as NALLA, to12h } from "../lib/templeTime";
 import PageHero from "../components/ui/PageHero";
+import Seo from "../components/Seo";
+import ShareButton from "../components/Share/ShareButton";
 import SectionHeader from "../components/ui/SectionHeader";
 import Button from "../components/ui/Button";
 import Badge from "../components/ui/Badge";
@@ -634,24 +634,24 @@ export default function PanchangCalendar() {
 
   cellRefs.current = [];
 
+  // Read by the visitor in the hero, and by anyone the calendar is shared with.
+  const heading = t("பஞ்சாங்க நாட்காட்டி", "Panchangam Calendar");
+  const lead = t(
+    "அமாவாசை · பௌர்ணமி · ஏகாதசி · நல்ல நேரம் · ராகு காலம்",
+    "Amavasai · Pournami · Ekadasi · Good Timings · Rahu Kalam",
+  );
+
   return (
     <div className="panchang-page">
-      <Helmet>
-        <title>
-          {t("பஞ்சாங்கம்", "Panchangam")} —{" "}
-          {t(TEMPLE.name.ta, TEMPLE.name.en)}
-        </title>
-      </Helmet>
+      <Seo title={t("பஞ்சாங்கம்", "Panchangam")} description={lead} />
 
       <PageHero
         variant="panchangam"
         eyebrow={t("பஞ்சாங்கம்", "Panchangam")}
-        title={t("பஞ்சாங்க நாட்காட்டி", "Panchangam Calendar")}
-        lead={t(
-          "அமாவாசை · பௌர்ணமி · ஏகாதசி · நல்ல நேரம் · ராகு காலம்",
-          "Amavasai · Pournami · Ekadasi · Good Timings · Rahu Kalam",
-        )}
+        title={heading}
+        lead={lead}
         crumbs={[{ label: t("பஞ்சாங்கம்", "Panchangam") }]}
+        actions={<ShareButton variant="outline-light" title={heading} text={lead} />}
         aside={
           <TodayCard
             today={todayInfo}

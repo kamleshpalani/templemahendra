@@ -1,5 +1,4 @@
 import { useEffect, useState } from "react";
-import { Helmet } from "react-helmet-async";
 import { Link } from "react-router-dom";
 import {
   LuArrowRight,
@@ -59,6 +58,8 @@ import {
   todayIST,
 } from "../lib/templeTime";
 import Button from "../components/ui/Button";
+import Seo from "../components/Seo";
+import ShareButton from "../components/Share/ShareButton";
 import Badge from "../components/ui/Badge";
 import SectionHeader from "../components/ui/SectionHeader";
 import SegmentedControl from "../components/ui/Tabs";
@@ -88,10 +89,30 @@ const FALLBACK_SEVAS = [
   ["அன்னதானம்", "Annadanam"],
 ];
 
+/* Reading or writing storage THROWS in a private window and wherever site data
+   is blocked — not returns null. Unguarded, that took the whole app down to the
+   error boundary on the homepage. These conveniences degrade instead. */
+const store = {
+  get(key) {
+    try {
+      return localStorage.getItem(key);
+    } catch {
+      return null;
+    }
+  },
+  set(key, value) {
+    try {
+      localStorage.setItem(key, value);
+    } catch {
+      /* nothing to do: the preference simply is not remembered */
+    }
+  },
+};
+
 /* ─── Darshan mode detection ─────────────────────────────── */
 function detectInitialMode(lang) {
-  if (!localStorage.getItem("templeVisited")) {
-    localStorage.setItem("templeVisited", "1");
+  if (!store.get("templeVisited")) {
+    store.set("templeVisited", "1");
     return "first-visit";
   }
   const tz = new Date().getTimezoneOffset(); // IST = -330
@@ -129,12 +150,12 @@ const BLESSING_KEY = "temple_blessing_hidden";
 function DevoteeContent({ t, pulseData, nallaTime, pournami }) {
   const [blessingHidden, setBlessingHidden] = useState(() => {
     const today = new Date().toISOString().slice(0, 10);
-    return localStorage.getItem(BLESSING_KEY) === today;
+    return store.get(BLESSING_KEY) === today;
   });
 
   const hideBlessing = () => {
     const today = new Date().toISOString().slice(0, 10);
-    localStorage.setItem(BLESSING_KEY, today);
+    store.set(BLESSING_KEY, today);
     setBlessingHidden(true);
   };
 
@@ -582,17 +603,22 @@ export default function Home() {
     second: "2-digit",
   });
 
+  // The hero's one-line description of the temple, and the sentence a shared
+  // link to the site shows.
+  const heroLead = t(
+    "பக்தி, பாரம்பரியம் மற்றும் சமூகம் — ஒரு புனிதத் தலம்",
+    "A sacred place of devotion, tradition, and community",
+  );
+
   const showNotices = announcements.length > 0;
   const showNalla = Boolean(siteSettings.show_nalla_strip && nallaTime);
   const showDonors = Boolean(siteSettings.show_donor_ticker && donors.length > 0);
 
   return (
     <>
-      <Helmet>
-        <title>
-          {t("முகப்பு", "Home")} — {t(TEMPLE.name.ta, TEMPLE.name.en)}
-        </title>
-      </Helmet>
+      {/* No title prop: the temple's name is the whole title on its own page,
+          not "Home — …". */}
+      <Seo description={heroLead} />
 
       {/* ── Hero ── */}
       <section className="home-hero" aria-labelledby="home-hero-title">
@@ -609,12 +635,7 @@ export default function Home() {
             <p className="home-hero__meta">
               {t(TEMPLE.descriptor.ta, TEMPLE.descriptor.en)} · {t(ADDRESS.printed.ta, ADDRESS.printed.en)}
             </p>
-            <p className="home-hero__lead">
-              {t(
-                "பக்தி, பாரம்பரியம் மற்றும் சமூகம் — ஒரு புனிதத் தலம்",
-                "A sacred place of devotion, tradition, and community",
-              )}
-            </p>
+            <p className="home-hero__lead">{heroLead}</p>
             <div className="home-hero__actions">
               <Button to="/sevas" variant="gold" size="lg" icon={<LuSparkles aria-hidden="true" />}>
                 {t("சேவை பதிவு செய்ய", "Book a Seva")}
@@ -634,6 +655,13 @@ export default function Home() {
               <Button to="/contact" variant="outline-light" size="lg" icon={<LuMapPin aria-hidden="true" />}>
                 {t("வழி அறிய", "Get Directions")}
               </Button>
+              <ShareButton
+                variant="outline-light"
+                size="lg"
+                title={t(TEMPLE.name.ta, TEMPLE.name.en)}
+                text={heroLead}
+                to="/"
+              />
             </div>
             {accountsEnabled && !user && (
               <p className="home-hero__signin">

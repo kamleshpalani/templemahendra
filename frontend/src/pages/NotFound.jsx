@@ -1,6 +1,6 @@
-import { Helmet } from "react-helmet-async";
 import { LuCompass } from "react-icons/lu";
 import Button from "../components/ui/Button";
+import Seo from "../components/Seo";
 import { useLang } from "../context/LangContext";
 import "./NotFound.css";
 
@@ -8,9 +8,8 @@ export default function NotFound() {
   const { t } = useLang();
   return (
     <>
-      <Helmet>
-        <title>{t("பக்கம் கிடைக்கவில்லை", "Page Not Found")}</title>
-      </Helmet>
+      {/* A wrong address should never be indexed or previewed as content. */}
+      <Seo title={t("பக்கம் கிடைக்கவில்லை", "Page Not Found")} robots="noindex, nofollow" />
       <section className="section notfound">
         <div className="container container--narrow">
           <div className="card card--solid card--static notfound__card rise">

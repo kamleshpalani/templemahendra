@@ -27,8 +27,28 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 const MAIL_LOG = resolve(HERE, "../backend/logs/mail.log");
 
 const RUN = Date.now().toString(36);
-const A = { name: "E2E-AUTH Ammu Devi", email: `e2e-auth-${RUN}-a@example.test`, password: "Kolam99Deep" };
-const B = { name: "E2E-AUTH Bala Raja", email: `e2e-auth-${RUN}-b@example.test`, password: "Vilakku42Raja" };
+// Registration now asks for a phone number, a country and a town, so a devotee
+// anywhere can be reached and sent a receipt. Phones are E.164 digits, no plus.
+const A = {
+  name: "E2E-AUTH Ammu Devi",
+  email: `e2e-auth-${RUN}-a@example.test`,
+  password: "Kolam99Deep",
+  phone: "919876543210",
+  phoneCountry: "IN",
+  country: "IN",
+  state: "TN",
+  city: "Pudupatti",
+};
+const B = {
+  name: "E2E-AUTH Bala Raja",
+  email: `e2e-auth-${RUN}-b@example.test`,
+  password: "Vilakku42Raja",
+  phone: "447700900123",
+  phoneCountry: "GB",
+  country: "GB",
+  state: "ENG",
+  city: "Leicester",
+};
 
 let passed = 0;
 const failures = [];
@@ -116,10 +136,29 @@ function linkFor(email, path) {
   }
   return null;
 }
+/**
+ * What kind of email a mail-log block is.
+ *
+ * Before migration 007 the mailer named each message's template ("verify",
+ * "reset", "already_registered"). Once the Notification Service sends them,
+ * every email is logged as "notify:<category>" — all three of these are
+ * "notify:security" — so the kind is recognised by what the email carries: the
+ * confirmation and reset links, or the sign-in help that only the
+ * already-registered message spells out.
+ */
+const MAIL_KINDS = {
+  verify: (b) => /\/verify-email\?token=[a-f0-9]{64}/.test(b),
+  reset: (b) => /\/reset-password\?token=[a-f0-9]{64}/.test(b),
+  already_registered: (b) => /\/forgot-password\s*$/m.test(b) && !/\?token=[a-f0-9]{64}/.test(b),
+};
 function mailCountFor(email, template) {
   return mailLog()
     .split("\n===== ")
-    .filter((b) => b.includes(`To: ${email}`) && b.includes(`Template: ${template}`)).length;
+    .filter(
+      (b) =>
+        b.includes(`To: ${email}`) &&
+        (b.includes(`Template: ${template}\n`) || (b.includes("Template: notify:") && MAIL_KINDS[template]?.(b))),
+    ).length;
 }
 
 async function main() {
@@ -162,7 +201,19 @@ async function main() {
   r = await a.post("/api/auth/register", { ...A, phone: "12" });
   check(r.status === 422 && !!r.json?.fields?.phone, "a two-digit phone number is rejected");
 
-  r = await a.post("/api/auth/register", { ...A, phone: "9876543210" });
+  r = await a.post("/api/auth/register", { ...A, phone: "" });
+  check(r.status === 422 && !!r.json?.fields?.phone, "a missing phone number is rejected — it is required now");
+
+  r = await a.post("/api/auth/register", { ...A, country: "" });
+  check(r.status === 422 && !!r.json?.fields?.country, "a missing country is rejected");
+
+  r = await a.post("/api/auth/register", { ...A, city: "" });
+  check(r.status === 422 && !!r.json?.fields?.city, "a missing city is rejected");
+
+  r = await a.post("/api/auth/register", { ...A, phone: "9".repeat(16) });
+  check(r.status === 422 && !!r.json?.fields?.phone, "a 16-digit number is past the E.164 ceiling");
+
+  r = await a.post("/api/auth/register", A);
   check(r.status === 201, "a valid registration is accepted (201)", `status ${r.status} ${r.text.slice(0, 120)}`);
   const firstReply = JSON.stringify({ ok: r.json?.ok, message: r.json?.message });
   check(r.json?.emailDelivery === "unavailable", "with MAIL_TRANSPORT unset, emailDelivery says unavailable");
@@ -173,7 +224,7 @@ async function main() {
 
   /* ── 3. Enumeration protection ────────────────────────────────────── */
   section("Enumeration protection");
-  r = await a.post("/api/auth/register", { ...A, phone: "9876543210" });
+  r = await a.post("/api/auth/register", A);
   check(r.status === 201, "registering an address that already exists still answers 201");
   check(
     JSON.stringify({ ok: r.json?.ok, message: r.json?.message }) === firstReply,
@@ -251,12 +302,42 @@ async function main() {
 
   /* ── 7. Profile and password ──────────────────────────────────────── */
   section("Profile and password");
-  r = await a.post("/api/account/profile", { name: "E2E-AUTH Ammu Devi Renamed", phone: "9123456780" });
+  r = await a.post("/api/account/profile", {
+    name: "E2E-AUTH Ammu Devi Renamed",
+    phone: "6591234567",
+    phoneCountry: "SG",
+    country: "SG",
+    city: "Singapore",
+  });
   check(r.status === 200 && r.json?.user?.name === "E2E-AUTH Ammu Devi Renamed", "the profile saves", `status ${r.status}`);
-  check(r.json?.user?.phone === "9123456780", "…including the phone number");
+  check(r.json?.user?.phone === "6591234567", "…including an international phone number");
+  check(r.json?.user?.phoneCountry === "SG", "…and the country that number belongs to");
+  check(r.json?.user?.city === "Singapore", "…and the town");
+
+  r = await a.post("/api/account/profile", {
+    name: "E2E-AUTH Ammu Devi Renamed",
+    phone: "6591234567",
+    phoneCountry: "SG",
+    country: "SG",
+    city: "Singapore",
+    address1: "12 Middle Street",
+    address2: "Near the temple tank",
+    state: "Central",
+    postcode: "627719",
+  });
+  check(r.status === 200 && r.json?.user?.address1 === "12 Middle Street", "a postal address saves", `status ${r.status}`);
+  check(r.json?.user?.postcode === "627719", "…including the PIN a receipt is posted to");
 
   r = await a.post("/api/account/profile", { name: "x" });
   check(r.status === 422 && !!r.json?.fields?.name, "a one-letter name is rejected");
+
+  // The form asks for these; the endpoint must not take a saved profile apart
+  // when someone posts to it directly.
+  r = await a.post("/api/account/profile", { name: "Ammu Devi", country: "", city: "Singapore" });
+  check(r.status === 422 && !!r.json?.fields?.country, "saving a profile with no country is rejected");
+
+  r = await a.post("/api/account/profile", { name: "Ammu Devi", country: "SG", city: "" });
+  check(r.status === 422 && !!r.json?.fields?.city, "saving a profile with no town is rejected");
 
   r = await a.post("/api/account/password", { currentPassword: "Wrong99Pass", newPassword: "Maadam77Vilakku" });
   check(r.status === 422 && !!r.json?.fields?.currentPassword, "changing the password needs the current one");
@@ -312,8 +393,8 @@ async function main() {
   section("One devotee cannot read another's history");
   const b = new Client("B");
   await b.boot();
-  r = await b.post("/api/auth/register", { ...B, phone: "9000000001" });
-  check(r.status === 201, "a second account registers", `status ${r.status}`);
+  r = await b.post("/api/auth/register", B);
+  check(r.status === 201, "a second account registers, from another country", `status ${r.status}`);
   r = await b.post("/api/auth/login", { email: B.email, password: B.password });
   check(r.status === 200, "and signs in");
 
