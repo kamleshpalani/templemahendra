@@ -5,7 +5,6 @@ import { useLang } from "../../context/LangContext";
 import { MAPS_URL } from "../../data/temple";
 import Button from "../ui/Button";
 import SectionHeader from "../ui/SectionHeader";
-import { SkeletonCards } from "../ui/Feedback";
 import "./Reviews.css";
 
 /** Star row — filled vs outlined glyphs, plus a text label, so it never relies on colour alone. */
@@ -46,7 +45,7 @@ function ReviewCard({ review, index }) {
         </span>
         <div className="reviews-card__who">
           <p className="reviews-card__author">{review.author}</p>
-          <p className="reviews-card__time">{review.time}</p>
+          {review.time && <p className="reviews-card__time">{review.time}</p>}
         </div>
         <div className="reviews-card__stars">
           <StarRating rating={review.rating} />
@@ -70,89 +69,50 @@ function ReviewCard({ review, index }) {
   );
 }
 
-const FALLBACK_REVIEWS = [
-  {
-    author: "Kavitha Rajan",
-    rating: 5,
-    time: "3 months ago",
-    text: "அம்மன் கோவில் மிகவும் அழகாக உள்ளது. தரிசனம் செய்த பிறகு மனசு அமைதியாக இருந்தது. அர்ச்சகர்கள் மிகவும் அன்பாக நடத்தினார்கள்.",
-    avatar: "",
-  },
-  {
-    author: "Murugan S",
-    rating: 5,
-    time: "5 months ago",
-    text: "One of the most peaceful temples in the region. The Renuka Devi idol is beautifully adorned. The Annadanam prasad was delicious and served with love. Highly recommend visiting during festival season.",
-    avatar: "",
-  },
-  {
-    author: "Lakshmi Priya",
-    rating: 5,
-    time: "6 months ago",
-    text: "கோவிலில் நடைபெறும் அபிஷேகம் மிகவும் சிறப்பாக இருந்தது. தினசரி பூஜை முறையாக நடக்கிறது. இங்கு வந்தால் மனம் நிம்மதி அடைகிறது.",
-    avatar: "",
-  },
-  {
-    author: "Senthil Kumar",
-    rating: 5,
-    time: "8 months ago",
-    text: "A sacred place with deep spiritual energy. The temple is well maintained and the priests are very knowledgeable. The evening aarti is a must-see experience.",
-    avatar: "",
-  },
-  {
-    author: "Valarmathi D",
-    rating: 5,
-    time: "1 year ago",
-    text: "புதுப்பட்டியில் இந்த கோவில் ஒரு ஆன்மீக சக்தி வாய்ந்த இடம். தினசரி வழிபாடு மிகவும் ஒழுங்காக நடக்கிறது. அனைவரும் ஒருமுறையாவது வர வேண்டும்.",
-    avatar: "",
-  },
-  {
-    author: "Rajesh Naidu",
-    rating: 5,
-    time: "1 year ago",
-    text: "This temple holds a very special place in our Dhabbalaar community. The Pournami pooja is conducted with great devotion and discipline. The premises are always kept clean and the management is very welcoming to all devotees.",
-    avatar: "",
-  },
-];
+/*
+ * Only what Google actually returned is shown. Without a configured Places key,
+ * with no reviews, while loading or after an error, the section renders nothing
+ * at all: a heading over invented praise, or over an empty box, would misstate
+ * what devotees have said about the temple.
+ */
+function usableReviews(data) {
+  if (!data?.configured || !Array.isArray(data.reviews)) return [];
+  return data.reviews
+    .filter((r) => r && typeof r.author === "string" && r.author.trim() && typeof r.text === "string" && r.text.trim())
+    .map((r) => ({
+      ...r,
+      rating: Math.min(5, Math.max(1, Math.round(Number(r.rating) || 5))),
+    }));
+}
 
-// Single source of truth for the temple's map location (see data/temple.js)
-const GOOGLE_MAPS_URL = MAPS_URL;
-
-export default function Reviews({ t: tProp }) {
-  const { t: tCtx } = useLang();
-  const t = tProp || tCtx;
-
+export default function Reviews() {
+  const { t } = useLang();
   const [data, setData] = useState(null);
-  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    let alive = true;
     api
       .get("/reviews")
-      .then((r) => setData(r.data))
-      .catch(() => setData(null))
-      .finally(() => setLoading(false));
+      .then((r) => {
+        if (alive) setData(r.data);
+      })
+      .catch(() => {
+        if (alive) setData(null);
+      });
+    return () => {
+      alive = false;
+    };
   }, []);
 
-  // Use real reviews if API is configured and has data, else use fallback
-  const isReal = !loading && data?.configured && data?.reviews?.length;
-  const reviews = isReal ? data.reviews : FALLBACK_REVIEWS;
-  const hasRealRating = Boolean(isReal && data.rating);
+  const reviews = usableReviews(data);
+  if (reviews.length === 0) return null;
 
-  const rateButton = (
-    <Button
-      href={GOOGLE_MAPS_URL}
-      target="_blank"
-      rel="noopener noreferrer"
-      variant="outline"
-      className="reviews-summary__link"
-      trailingIcon={<LuExternalLink aria-hidden="true" />}
-    >
-      {t("Google-ல் மதிப்பீடு இடுங்கள்", "Rate on Google")}
-    </Button>
-  );
+  const rating = Number(data.rating);
+  const hasRating = Number.isFinite(rating) && rating > 0;
+  const total = Number(data.total_ratings);
 
   return (
-    <section className="section reveal" aria-labelledby="home-reviews-title">
+    <section className="section home-section reveal" aria-labelledby="home-reviews-title">
       <div className="container">
         <SectionHeader
           id="home-reviews-title"
@@ -160,36 +120,37 @@ export default function Reviews({ t: tProp }) {
           title={t("பக்தர்களின் அனுபவங்கள்", "Devotee Reviews")}
         />
 
-        {loading ? (
-          <>
-            <p className="sr-only" role="status">
-              {t("மதிப்புரைகள் ஏற்றுகிறது…", "Loading reviews…")}
-            </p>
-            <SkeletonCards count={3} className="grid-3" />
-          </>
-        ) : (
-          <>
-            <div className="reviews-summary card card--soft card--static">
-              <span className="reviews-summary__score text-gradient">{hasRealRating ? data.rating : "5.0"}</span>
+        <div className="reviews-summary card card--soft card--static">
+          {hasRating && (
+            <>
+              <span className="reviews-summary__score text-gradient">{rating.toFixed(1)}</span>
               <div className="reviews-summary__meta">
-                <StarRating rating={hasRealRating ? Math.round(data.rating) : 5} size="lg" />
-                {hasRealRating && data.total_ratings != null && (
+                <StarRating rating={Math.round(rating)} size="lg" />
+                {total > 0 && (
                   <span className="reviews-summary__count">
-                    {data.total_ratings.toLocaleString()} {t("மதிப்புரைகள்", "reviews")}
+                    {total.toLocaleString()} {t("மதிப்புரைகள்", "reviews")}
                   </span>
                 )}
               </div>
-              {rateButton}
-            </div>
+            </>
+          )}
+          <Button
+            href={MAPS_URL}
+            target="_blank"
+            rel="noopener noreferrer"
+            variant="outline"
+            className="reviews-summary__link"
+            trailingIcon={<LuExternalLink aria-hidden="true" />}
+          >
+            {t("Google-ல் மதிப்பீடு இடுங்கள்", "Rate on Google")}
+          </Button>
+        </div>
 
-            <div className="reviews-grid grid-3">
-              {reviews.map((r, i) => (
-                // eslint-disable-next-line react/no-array-index-key
-                <ReviewCard key={i} review={r} index={i} />
-              ))}
-            </div>
-          </>
-        )}
+        <div className="reviews-grid grid-3">
+          {reviews.map((r, i) => (
+            <ReviewCard key={`${r.timestamp ?? ""}-${r.author}-${i}`} review={r} index={i} />
+          ))}
+        </div>
       </div>
     </section>
   );

@@ -117,6 +117,8 @@
       setText(pv("wa-cta-label"), wa.cta_label);
       if (pv("wa-template")) pv("wa-template").hidden = !wa.provider_template;
       setText(pv("wa-template-name"), wa.provider_template || "");
+      // An approved template cannot carry the site's stop-updates line; say so while one is named.
+      if (pv("wa-stop-note")) pv("wa-stop-note").hidden = !wa.template_needs_stop;
       const ol = pv("wa-params");
       if (ol) {
         ol.replaceChildren();
@@ -128,16 +130,6 @@
           ol.append(li);
         });
       }
-    }
-    if (data.push) {
-      setText(pv("push-title"), data.push.title);
-      setText(pv("push-body"), data.push.body);
-    }
-    if (data.inapp) {
-      setText(pv("inapp-title"), data.inapp.title);
-      setText(pv("inapp-body"), data.inapp.body);
-      if (pv("inapp-cta")) pv("inapp-cta").hidden = !data.inapp.cta_label;
-      setText(pv("inapp-cta"), data.inapp.cta_label);
     }
     renderWarnings(data.warnings);
   }

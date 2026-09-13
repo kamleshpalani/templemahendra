@@ -2,9 +2,9 @@
 /**
  * backend/api/notify_webhook.php — /api/notify-webhook/<driver>
  *
- * Where WhatsApp, SMS and push providers report what happened to a message
- * after they accepted it: delivered, read, failed. api/index.php routes here
- * with $webhookDriver (meta, twilio, msg91, fcm, test).
+ * Where WhatsApp and SMS providers report what happened to a message after
+ * they accepted it: delivered, read, failed. api/index.php routes here with
+ * $webhookDriver (meta, twilio, msg91, test).
  *
  * Every provider proves who it is differently — Meta signs the body with the
  * app secret, Twilio signs the URL and form fields with the auth token, MSG91
@@ -28,7 +28,7 @@
  */
 
 require_once __DIR__ . '/../includes/helpers.php';
-require_once __DIR__ . '/../includes/devotee_auth.php'; // clientIp(), for the log line on a refusal
+require_once __DIR__ . '/../includes/rate_limit.php'; // clientIp(), for the log line on a refusal
 
 // notify.php brings notifyApplyProviderUpdate(). Without it (a partial deploy)
 // callbacks are still verified and acknowledged, and the log says what was lost.

@@ -138,11 +138,9 @@
   padding: 0.05rem 0.4rem;
   font-variant-numeric: tabular-nums;
 }
-.pulse-strip__hours {
+/* The language toggle closes the strip at the right-hand end, at every width. */
+.pulse-strip .lang-toggle {
   margin-left: auto;
-  color: var(--text-on-dark-3);
-  white-space: nowrap;
-  font-variant-numeric: tabular-nums;
 }
 
 /* Touch: give the strip room for a target that clears WCAG 2.5.8 (24px) with
@@ -152,16 +150,6 @@
 @media (hover: none) and (pointer: coarse) {
   .pulse-strip__inner {
     min-height: 46px;
-  }
-}
-
-@media (max-width: 1024px) {
-  .pulse-strip__hours {
-    display: none;
-  }
-  /* The hours carried margin-left:auto; with them gone the toggle takes it. */
-  .pulse-strip .lang-toggle {
-    margin-left: auto;
   }
 }
 @media (max-width: 820px) {

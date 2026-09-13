@@ -41,6 +41,7 @@ Answer ONLY questions about this temple. Information you know:
 - Address: Pudupatti, Thiruvengadam Taluk, Tenkasi District – 627719, Tamil Nadu (புதுப்பட்டி, திருவேங்கடம் தாலுகா, தென்காசி மாவட்டம் - 627719).
 - Temple committee (name, role, phone): S. Gengaiah (S. கெங்கையா), President, +91 94430 02296 | S. Ponraj (S. பொன்ராஜ்), Vice President, +91 94431 26612 | G. Kumar (G. குமார்), Secretary, +91 73730 16302 | A. Gurusamy (A. குருசாமி), Joint Secretary, +91 82205 52427 | K. Rajendran (K. இராஜேந்திரன்), Treasurer 1, +91 99650 40693 | L. Sivakumar (L. சிவக்குமார்), Treasurer 2, +91 94884 68206.
 - Email: No email address has been supplied — do not invent one; direct devotees to the Contact page form.
+- Family registration: families register once on the website's Family registration page (/register), in four short steps — the registrant's name and phone number (email and date of birth are optional) and the language to be written to in; family members, which are optional (each member's name, relationship and, if they wish, age); the home address (a PIN code is needed for an Indian address); and a final review. There is no account, password or sign-in. Ticking the box on the form agrees to festival, pooja and temple updates by WhatsApp, SMS or email, and every update has a link to stop them. To change registered details later, contact the temple office.
 Keep replies concise (2-4 lines). If the user writes in Tamil, reply in Tamil. If in English, reply in English.
 Do not answer anything unrelated to this temple. Never state a fact that is not listed above.
 PROMPT;
@@ -216,6 +217,23 @@ $rules = [
 
     '/சேவை|பூஜை|அபிஷேகம்|அர்ச்சனை|ஹோமம்|seva|pooja|puja|abhishekam|archana|homam/u'
         => "நாங்கள் வழங்கும் சேவைகள்:\n• அபிஷேகம் (Abhishekam)\n• அர்ச்சனை (Archana)\n• ஹோமம் (Homam)\n• நிவேதனம் (Neivedyam)\n• அலங்காரம் (Alangaram)\n\nSevas page-ல் விவரம் காணலாம் அல்லது நேரடியாக அழைக்கவும். 🙏",
+
+    // Family registration. After the trust rule, so "trust registration number"
+    // still gets the Trust's details, and after the seva rule, because Tamil
+    // uses பதிவு for a seva booking too ("சேவை பதிவு"). Before the donation
+    // rule, whose "account" would otherwise take "do I need an account to register?",
+    // but never for a message about giving: the lookahead leaves "நன்கொடை பதிவு"
+    // and "register a donation" to the donation rule below.
+    '/^(?!.*(?:நன்கொடை|(?<!அன்ன)தானம்|donat|contribut)).*(?:regist(?:er|ration)|sign\s?-?up|enrol|family\s+(?:details|members?)|குடும்ப(?:ப்)?\s?பதிவு|குடும்ப\s?உறுப்பினர்|பதிவு)/us'
+        => "குடும்பப் பதிவு 🙏\n"
+         . "கோயில் உங்கள் குடும்பத்தை அறிந்து கொள்ள, இணையதளத்தின் \"குடும்பப் பதிவு\" பக்கத்தில் (/register) ஒரு முறை மட்டும் படிவத்தை நிரப்புங்கள்: உங்கள் பெயர், தொலைபேசி எண், வீட்டு முகவரி, விரும்பினால் குடும்ப உறுப்பினர்கள். கணக்கோ கடவுச்சொல்லோ தேவையில்லை.\n"
+         . "✅ திருவிழா, பூஜை மற்றும் கோயில் அறிவிப்புகள் வேண்டுமெனில் படிவத்தில் உள்ள பெட்டியைத் தேர்வு செய்யுங்கள்.\n"
+         . "📞 பதிவு செய்த விவரங்களை மாற்ற கோயில் அலுவலகத்தைத் தொடர்பு கொள்ளவும்.\n"
+         . "\n"
+         . "Family registration\n"
+         . "Fill in the form once on the website's Family registration page (/register) so the temple knows your family: your name, phone number and home address, and your family members if you wish. No account or password is needed.\n"
+         . "✅ Tick the box on the form if you would like festival, pooja and temple updates.\n"
+         . "📞 To change your registered details later, please contact the temple office.",
 
     // (?<!அன்ன)தானம் keeps "அன்னதானம்" (annadanam) from matching "தானம்" (donation).
     '/நன்கொடை|(?<!அன்ன)தானம்|donat|contribut|\bpay|upi|bank|account|a\/c|கணக்கு|money|transfer|காசோலை|cheque/u'

@@ -158,13 +158,9 @@ $robots      = '';
 $status      = 200;
 
 try {
-    $pages   = sitePages();
-    $private = sitePrivatePaths();
+    $pages = sitePages();
 
-    if (in_array($path, $private, true)) {
-        // A personal page. Answer politely, say nothing about it, index nothing.
-        $robots = 'noindex, nofollow';
-    } elseif ($path === '/gallery' && ($_GET['photo'] ?? '') !== '') {
+    if ($path === '/gallery' && ($_GET['photo'] ?? '') !== '') {
         $stmt = getDB()->prepare('SELECT caption, filename FROM gallery WHERE id = :id AND is_active = 1');
         $stmt->execute([':id' => (int) $_GET['photo']]);
         $photo = $stmt->fetch();

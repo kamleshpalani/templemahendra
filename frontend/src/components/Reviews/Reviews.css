@@ -8,8 +8,8 @@
   align-items: center;
   gap: var(--space-5);
   flex-wrap: wrap;
-  padding: var(--space-5) var(--space-6);
-  margin-bottom: var(--space-8);
+  padding: var(--space-4) var(--space-5);
+  margin-bottom: var(--space-5);
 }
 .reviews-summary__score {
   font-family: var(--font-display);

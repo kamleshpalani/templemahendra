@@ -5,11 +5,14 @@
  *
  * After 17:00 temple time, for tomorrow in the temple's calendar:
  *
- *   • each confirmed seva booking → booking.reminder to the devotee who booked
- *     it (or to the phone on the booking when no account made it);
- *   • each active event and pooja → one automatic, already-approved campaign
- *     to every devotee who has not muted that category. Expansion then handles
- *     scale exactly as it does for a committee campaign.
+ *   • each confirmed seva booking → booking.reminder to the phone on the
+ *     booking, in the language the booking form was sent in;
+ *   • each active event and pooja → one automatic campaign by email and
+ *     WhatsApp to the families who agreed to temple updates. It is created
+ *     waiting for approval, because WhatsApp messages cost the temple money and
+ *     the committee decides what goes out. Once approved, expansion handles
+ *     scale exactly as it does for a committee campaign, and a reminder approved
+ *     too late for "tomorrow" is cancelled rather than sent (campaigns.php).
  *
  * Both are idempotent: bookings through the event's dedupe key, broadcasts
  * through the reminderKey stored in the campaign's template_vars. The worker
@@ -81,21 +84,31 @@ function notifyFormatClock(?string $text, string $lang): string
     return $h12 . ':' . $min . ' ' . ($h < 12 ? 'am' : 'pm');
 }
 
-/** The booking number devotees see: SB-<id>. Shared so reminders and confirmations agree. */
+/**
+ * The booking number devotees see: "B-000091". It must read exactly like
+ * devoteeBookingNumber() in includes/devotee_notify.php, which the booking
+ * confirmation uses, so the reminder quotes the same reference. That file is
+ * not loaded by the worker, hence the second copy; tests/notify-unit.php
+ * fails if the two ever drift apart.
+ */
 function notifyBookingNumber(int $bookingId): string
 {
-    return 'SB-' . $bookingId;
+    return 'B-' . str_pad((string) $bookingId, 6, '0', STR_PAD_LEFT);
 }
 
-/** booking.reminder for every confirmed booking on $date. */
+/**
+ * booking.reminder for every confirmed booking on $date, to the phone number on
+ * the booking and in the booking's own language. A booking is not linked to a
+ * registration (docs/registration/SPEC.md §3), so the number the devotee typed
+ * on the form is the one that is reminded.
+ */
 function notifyRemindBookings(string $date): int
 {
     $stmt = getDB()->prepare(
-        "SELECT b.id, b.devotee_id, b.devotee_name, b.phone, b.phone_country, b.seva_name, b.preferred_date,
-                s.name_ta, s.name_en, p.lang AS pref_lang
+        "SELECT b.id, b.devotee_name, b.phone, b.phone_country, b.seva_name, b.preferred_date, b.lang,
+                s.name_ta, s.name_en
            FROM seva_bookings b
            LEFT JOIN sevas s ON s.id = b.seva_id
-           LEFT JOIN devotee_notification_prefs p ON p.devotee_id = b.devotee_id
           WHERE b.status = 'confirmed' AND b.preferred_date = :d
           ORDER BY b.id LIMIT 5000"
     );
@@ -103,33 +116,28 @@ function notifyRemindBookings(string $date): int
 
     $created = 0;
     foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $b) {
-        $lang = $b['devotee_id'] !== null ? (string) ($b['pref_lang'] ?: 'ta') : 'ta';
-        $l    = $lang === 'ta' ? 'ta' : 'en';
+        $digits = preg_replace('/\D+/', '', (string) $b['phone']) ?? '';
+        // Bookings from before international numbers were stored as ten Indian digits.
+        if (strlen($digits) === 10 && in_array($b['phone_country'], [null, '', 'IN'], true)) $digits = '91' . $digits;
+        if (strlen($digits) < 7) continue;
+
+        $l    = ($b['lang'] ?? 'ta') === 'en' ? 'en' : 'ta';
         $seva = $l === 'ta' ? ($b['name_ta'] ?: $b['seva_name']) : ($b['name_en'] ?: $b['seva_name']);
-        $ctx  = [
+        $r = notifyEvent('booking.reminder', [
             'entity_id'  => (int) $b['id'],
+            'to_phone'   => $digits,
+            'name'       => (string) $b['devotee_name'],
+            'lang'       => $l,
             'vars'       => [
                 'bookingNumber' => notifyBookingNumber((int) $b['id']),
                 'sevaName'      => (string) $seva,
                 'bookingDate'   => notifyFormatDate((string) $b['preferred_date'], $l),
                 'devoteeName'   => (string) $b['devotee_name'],
             ],
-            // The catalogue's key with the ISO date, so a devotee who changes
-            // language between two worker runs is still reminded once.
+            // The catalogue's key with the ISO date rather than the worded date,
+            // so the reminder is deduplicated whatever language it is written in.
             'dedupe_key' => 'booking:' . (int) $b['id'] . ':reminder:' . $b['preferred_date'],
-        ];
-        if ($b['devotee_id'] !== null) {
-            $ctx['devotee_id'] = (int) $b['devotee_id'];
-        } else {
-            $digits = preg_replace('/\D+/', '', (string) $b['phone']) ?? '';
-            // Bookings from before international numbers were stored as ten Indian digits.
-            if (strlen($digits) === 10 && in_array($b['phone_country'], [null, '', 'IN'], true)) $digits = '91' . $digits;
-            if (strlen($digits) < 7) continue;
-            $ctx['to_phone'] = $digits;
-            $ctx['name']     = (string) $b['devotee_name'];
-            $ctx['lang']     = 'ta';
-        }
-        $r = notifyEvent('booking.reminder', $ctx);
+        ]);
         if ($r['id'] !== null && !$r['deduped']) $created++;
     }
     return $created;
@@ -190,7 +198,10 @@ function notifyRemindBroadcast(string $kind, string $date): int
             $template = 'pooja_reminder';
             $cta = '/events';
         }
-        $audience = ['mode' => 'rules', 'match' => 'all', 'rules' => [['field' => 'category_not_muted', 'op' => 'is', 'value' => $kind]]];
+        // Families who agreed to temple updates. The category's consent rule would
+        // limit the audience to them anyway; saying so in the rule makes the
+        // campaign read correctly in the admin.
+        $audience = ['mode' => 'rules', 'match' => 'all', 'rules' => [['field' => 'consent', 'op' => 'is', 'value' => true]]];
         $now = notifyNow();
 
         $db->beginTransaction();
@@ -198,16 +209,17 @@ function notifyRemindBroadcast(string $kind, string $date): int
             $db->prepare(
                 "INSERT INTO notification_campaigns
                     (name, category, priority, channels, cta_url, template_key, template_vars, audience, estimated_count,
-                     status, requires_approval, schedule_tz, scheduled_at, next_run_at, recurrence,
-                     created_by, updated_by, submitted_by, submitted_at, approved_by, approved_at, created_at, updated_at)
-                 VALUES (:name, :category, 'normal', 'inapp,push', :cta, :tkey, :tvars, :audience, :estimate,
-                     'approved', 0, 'temple', :now1, :now2, 'none',
-                     'system', 'system', 'system', :now3, 'system', :now4, :now5, :now6)"
+                     status, requires_approval, approval_reason, schedule_tz, scheduled_at, next_run_at, recurrence,
+                     created_by, updated_by, submitted_by, submitted_at, created_at, updated_at)
+                 VALUES (:name, :category, 'normal', 'email,whatsapp', :cta, :tkey, :tvars, :audience, :estimate,
+                     'review', 1, :why, 'temple', :now1, :now2, 'none',
+                     'system', 'system', 'system', :now3, :now4, :now5)"
             )->execute([
                 ':name' => mb_substr('Reminder: ' . $titleEn . ' (automatic)', 0, 160), ':category' => $kind, ':cta' => $cta,
                 ':tkey' => $template, ':tvars' => json_encode($vars, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
-                ':audience' => json_encode($audience), ':estimate' => notifyAudienceCount($audience),
-                ':now1' => $now, ':now2' => $now, ':now3' => $now, ':now4' => $now, ':now5' => $now, ':now6' => $now,
+                ':audience' => json_encode($audience), ':estimate' => notifyAudienceCount($audience, $kind),
+                ':why' => 'Automatic reminder by email and WhatsApp: approve it this evening so it goes out before ' . $dateEn,
+                ':now1' => $now, ':now2' => $now, ':now3' => $now, ':now4' => $now, ':now5' => $now,
             ]);
             $campaignId = (int) $db->lastInsertId();
             $ins = $db->prepare('INSERT INTO notification_campaign_translations (campaign_id, lang, title, body, cta_label) VALUES (:c, :l, :t, :b, NULL)');

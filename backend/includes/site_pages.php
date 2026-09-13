@@ -78,18 +78,18 @@ function sitePages(): array
             'சேவைகள், நிகழ்வுகள், பஞ்சாங்கம், அறிவிப்புகள், பக்கங்கள் — எல்லாவற்றிலும் தேடுங்கள்.',
             'Sevas, events, panchangam, notices and pages, all in one place.',
         ],
+        // The family registration form (docs/registration/SPEC.md §7). The
+        // committee shares this link on WhatsApp, so it previews like any page.
+        '/register' => [
+            'குடும்பப் பதிவு', 'Family registration',
+            'கோயில் உங்கள் குடும்பத்தை அறிந்து கொள்ள, ஒரு முறை மட்டும் இந்தப் படிவத்தை நிரப்புங்கள். கணக்கோ கடவுச்சொல்லோ தேவையில்லை.',
+            'Fill this in once so the temple knows your family. No account or password is needed.',
+        ],
     ];
 }
 
-/**
- * Paths that must never be indexed or previewed as content: an account area is
- * one person's records, and a sign-in form is not something to share.
- *
- * og.php still answers for them — a crawler that follows such a link gets a
- * valid page saying only the temple's name, with robots set to noindex — rather
- * than a 404 that looks like the site is broken.
- */
-function sitePrivatePaths(): array
-{
-    return ['/account', '/login', '/register', '/forgot-password', '/reset-password', '/verify-email'];
-}
+// There are no private pages any more. Devotee sign-in was removed, and the
+// addresses it used (/login, /account, /notifications, /forgot-password,
+// /reset-password, /verify-email) now only redirect to /register in the browser.
+// A crawler asking for one of them is told what og.php tells it about any
+// address that is not a page of the site: 404, noindex.

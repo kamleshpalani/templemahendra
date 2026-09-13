@@ -1,28 +1,30 @@
 <?php
 /**
- * backend/includes/notify/service.php — notify(): "tell this devotee that…"
+ * backend/includes/notify/service.php — notify(): "tell this family that…"
  * becomes one notification row and one delivery per channel (SPEC §5.3).
  *
- * The notification row is the canonical copy: it is what the bell shows, and
- * every channel is delivered from it. A delivery row is a place in the queue.
+ * The notification row is the canonical copy: every channel is delivered from
+ * it, and the committee reads it in the admin. A delivery row is a place in
+ * the queue.
  *
  * NEVER BREAK A USER FLOW. A booking must save even if the notification tables
  * are missing, a provider is down or a template has a typo. notify() therefore
  * never throws: it logs "[notify] …" and returns a result that says what
  * happened, and callers are free to ignore it.
  *
- * SECRETS. One-time codes and verification links travel in secret_vars. They
- * are rendered only at dispatch, inside the same request, and never stored:
- * the stored copy shows •••• in their place. That is also why such a message is
- * sent synchronously and is never retried — a later attempt could not
- * reproduce the secret.
+ * SECRETS. A value that must never be stored (a one-time code, a link that
+ * proves something) travels in secret_vars. It is rendered only at dispatch,
+ * inside the same request, and the stored copy shows •••• in its place. That
+ * is also why such a message is sent synchronously and is never retried — a
+ * later attempt could not reproduce the secret. No built-in message uses one
+ * since devotee sign-in was retired; the rule stays for any module that does.
  */
 
 require_once __DIR__ . '/policy.php';
 require_once __DIR__ . '/tracking.php';
 
-/** Attempts per channel before a delivery is dead. In-app never retries: it is a row, not a send. */
-const NOTIFY_MAX_ATTEMPTS = ['inapp' => 1, 'email' => 5, 'whatsapp' => 5, 'sms' => 3, 'push' => 3];
+/** Attempts per channel before a delivery is dead. */
+const NOTIFY_MAX_ATTEMPTS = ['email' => 5, 'whatsapp' => 5, 'sms' => 3];
 const NOTIFY_SECRET_MASK  = '••••';
 
 function notifyEmptyResult(?string $skipped, bool $deduped = false, ?int $id = null): array
@@ -39,32 +41,44 @@ function notifyHasValue(array $vars, string $name): bool
 }
 
 /**
- * ['devotee_id','name','email','email_verified','phone','phone_verified','country',
- *  'lang','timezone','prefs','active','devices']
+ * The recipient shape the channel policy reads, for someone with no
+ * registration: a booking or donation made by phone, or an address an admin
+ * typed. A guest never gave consent to temple updates.
+ */
+function notifyGuestRecipient(?string $email, ?string $phone, string $lang = 'ta'): array
+{
+    return [
+        'devotee_id' => null, 'name' => '', 'email' => $email, 'phone' => $phone, 'country' => null,
+        'lang' => $lang, 'timezone' => notifyTempleTz(), 'active' => true, 'consent' => false, 'unsubscribed' => false,
+    ];
+}
+
+/**
+ * A registered family as a recipient:
  *
- * 'devices' (active push devices) is an addition to the SPEC shape; the channel
- * policy needs it. A devotee that does not exist comes back with devotee_id null.
+ *   ['devotee_id','name','email' (may be null),'phone','country','lang' ('ta'|'en'),
+ *    'timezone','active','consent','unsubscribed']
  *
- * Accepts an id or a devotees row. Campaign expansion passes rows carrying
- * '_prefs' and '_devices' it loaded for a whole batch, to save two queries per
- * devotee.
+ * consent is true when consent to temple updates is recorded and has not been
+ * withdrawn; unsubscribed is true once it was withdrawn from a message link.
+ * A registration that does not exist comes back with devotee_id null.
+ *
+ * Accepts an id or a devotees row. Campaign expansion passes the rows it loaded
+ * for a whole batch, to save a query per family.
  */
 function notifyRecipientFromDevotee(array|int $devotee): array
 {
-    $blank = [
-        'devotee_id' => null, 'name' => '', 'email' => null, 'email_verified' => false,
-        'phone' => null, 'phone_verified' => false, 'country' => null, 'lang' => 'ta',
-        'timezone' => notifyTempleTz(), 'prefs' => null, 'active' => false, 'devices' => 0,
-    ];
+    $blank = notifyGuestRecipient(null, null) + [];
+    $blank['active'] = false;
     if (!notifyTablesExist()) return $blank;
 
     $row = $devotee;
-    $needed = ['id', 'name', 'email', 'email_verified_at', 'phone', 'phone_verified_at', 'country', 'is_active'];
+    $needed = ['id', 'name', 'email', 'phone', 'country', 'lang', 'is_active', 'updates_consent_at', 'unsubscribed_at'];
     if (is_int($devotee) || count(array_intersect_key(array_flip($needed), $devotee)) < count($needed)) {
         $id = is_int($devotee) ? $devotee : (int) ($devotee['id'] ?? 0);
         if ($id < 1) return $blank;
         $stmt = getDB()->prepare(
-            'SELECT id, name, email, email_verified_at, phone, phone_verified_at, country, is_active FROM devotees WHERE id = :id'
+            'SELECT id, name, email, phone, country, lang, is_active, updates_consent_at, unsubscribed_at FROM devotees WHERE id = :id'
         );
         $stmt->execute([':id' => $id]);
         $loaded = $stmt->fetch(PDO::FETCH_ASSOC);
@@ -72,29 +86,19 @@ function notifyRecipientFromDevotee(array|int $devotee): array
         $row = is_array($devotee) ? $loaded + $devotee : $loaded;
     }
 
-    $id    = (int) $row['id'];
-    $prefs = is_array($row['_prefs'] ?? null) ? $row['_prefs'] : notifyPrefs($id);
-    if (array_key_exists('_devices', $row)) {
-        $devices = (int) $row['_devices'];
-    } else {
-        $stmt = getDB()->prepare('SELECT COUNT(*) FROM devotee_devices WHERE devotee_id = :d AND is_active = 1');
-        $stmt->execute([':d' => $id]);
-        $devices = (int) $stmt->fetchColumn();
-    }
-
+    $email = trim((string) ($row['email'] ?? ''));
+    $phone = trim((string) ($row['phone'] ?? ''));
     return [
-        'devotee_id'     => $id,
-        'name'           => (string) $row['name'],
-        'email'          => $row['email'] !== null ? (string) $row['email'] : null,
-        'email_verified' => $row['email_verified_at'] !== null,
-        'phone'          => $row['phone'] !== null && $row['phone'] !== '' ? (string) $row['phone'] : null,
-        'phone_verified' => $row['phone_verified_at'] !== null,
-        'country'        => $row['country'] ?? null,
-        'lang'           => $prefs['lang'] ?? 'ta',
-        'timezone'       => $prefs['effectiveTimezone'] ?? notifyTimezoneFor($prefs, $row['country'] ?? null),
-        'prefs'          => $prefs,
-        'active'         => (int) $row['is_active'] === 1,
-        'devices'        => $devices,
+        'devotee_id'   => (int) $row['id'],
+        'name'         => (string) $row['name'],
+        'email'        => $email !== '' ? $email : null,
+        'phone'        => $phone !== '' ? $phone : null,
+        'country'      => $row['country'] ?? null,
+        'lang'         => ($row['lang'] ?? 'ta') === 'en' ? 'en' : 'ta',
+        'timezone'     => notifyTimezoneFor(null, $row['country'] ?? null),
+        'active'       => (int) $row['is_active'] === 1,
+        'consent'      => $row['updates_consent_at'] !== null && $row['unsubscribed_at'] === null,
+        'unsubscribed' => $row['unsubscribed_at'] !== null,
     ];
 }
 
@@ -187,9 +191,10 @@ function notifyCreate(array $n): array
         error_log("[notify] unknown category \"{$category}\"; filed under general");
         $category = 'general';
     }
-    $kind = notifyCategoryKind($category);
 
-    $channels = $n['channels'] ?? ['inapp'];
+    // Email when the caller names no channel: the one channel with no cost per
+    // message, and the composer's own default.
+    $channels = $n['channels'] ?? ['email'];
     if (is_string($channels)) $channels = explode(',', $channels);
     $channels = array_values(array_unique(array_filter(
         array_map(static fn($c) => strtolower(trim((string) $c)), (array) $channels),
@@ -221,34 +226,23 @@ function notifyCreate(array $n): array
             : notifyRecipientFromDevotee($devoteeId);
         if (empty($recipient['devotee_id'])) return notifyEmptyResult('no such devotee');
 
-        if (!$recipient['active']) {
-            // A closed account receives nothing, except a security message to its
-            // own address — the one way its owner can learn what is happening to it.
-            if ($kind !== 'security') return notifyEmptyResult('account closed');
-            $channels = array_values(array_intersect($channels, ['email']));
-            if (!$channels) return notifyEmptyResult('account closed');
-            $toEmail = null;
-            $toPhone = null;
-        }
+        // An archived registration receives no temple updates. A message about
+        // its own booking or donation still goes: the family is still owed it.
+        if (!$recipient['active'] && notifyCategoryNeedsConsent($category)) return notifyEmptyResult('registration archived');
+
         if ($toEmail !== null && $toEmail !== mb_strtolower((string) $recipient['email'])) {
             $recipient['email'] = $toEmail;
-            $recipient['email_verified'] = false;
         } else {
             $toEmail = null;
         }
         if ($toPhone !== null && $toPhone !== preg_replace('/\D+/', '', (string) $recipient['phone'])) {
             $recipient['phone'] = $toPhone;
-            $recipient['phone_verified'] = false;
         } else {
             $toPhone = null;
         }
     } else {
         if ($toEmail === null && $toPhone === null) return notifyEmptyResult('no recipient');
-        $recipient = [
-            'devotee_id' => null, 'name' => '', 'email' => $toEmail, 'email_verified' => false,
-            'phone' => $toPhone, 'phone_verified' => false, 'country' => null, 'lang' => 'ta',
-            'timezone' => notifyTempleTz(), 'prefs' => null, 'active' => true, 'devices' => 0,
-        ];
+        $recipient = notifyGuestRecipient($toEmail, $toPhone);
         if (!empty($n['_test'])) $recipient['test'] = true;
     }
     if (is_string($n['name'] ?? null) && trim($n['name']) !== '') {
@@ -268,7 +262,6 @@ function notifyCreate(array $n): array
             if ($candidate > $now) $deliverAfter = $candidate;
         }
     }
-    $recipient['deliver_after'] = $deliverAfter;
 
     /* ── Variables, with secrets kept out ───────────────────────────────── */
     $vars = [];
@@ -323,7 +316,6 @@ function notifyCreate(array $n): array
     /* ── Which channels ─────────────────────────────────────────────────── */
     $isCampaign = (int) ($n['campaign_id'] ?? 0) > 0 || !empty($n['_campaign']);
     $decisions  = notifyAllowedChannels($channels, $category, $priority, $recipient, $isCampaign, $fallbacks);
-    $showInApp  = isset($decisions['inapp']) && $decisions['inapp']['status'] !== 'skipped';
 
     $imageUrl   = is_string($n['image_url'] ?? null) ? notifySafeCtaUrl($n['image_url']) : null;
     $entityType = is_string($n['entity_type'] ?? null) && preg_match('/^[a-z_]{1,32}$/', $n['entity_type']) ? $n['entity_type'] : null;
@@ -337,6 +329,7 @@ function notifyCreate(array $n): array
     $ownTx = !$db->inTransaction();
     if ($ownTx) $db->beginTransaction();
     try {
+        // show_in_app stays 0: the column belonged to the retired bell.
         $db->prepare(
             'INSERT INTO notifications
                 (campaign_id, run_no, devotee_id, recipient_type, to_email, to_phone, lang, template_key, event,
@@ -345,7 +338,7 @@ function notifyCreate(array $n): array
              VALUES
                 (:campaign, :run, :devotee, :rtype, :email, :phone, :lang, :template, :event,
                  :category, :priority, :title, :body, :cta, :cta_label, :image, :etype, :eid, :vars,
-                 :dedupe, :show, :after, :actor, :now)'
+                 :dedupe, 0, :after, :actor, :now)'
         )->execute([
             ':campaign'  => $campaignId,
             ':run'       => max(0, min(65535, (int) ($n['run_no'] ?? 0))),
@@ -367,7 +360,6 @@ function notifyCreate(array $n): array
             ':eid'       => $entityId,
             ':vars'      => $vars ? json_encode($vars, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) : null,
             ':dedupe'    => $dedupeKey,
-            ':show'      => $showInApp ? 1 : 0,
             ':after'     => $deliverAfter,
             ':actor'     => $actor,
             ':now'       => $now,
@@ -377,8 +369,8 @@ function notifyCreate(array $n): array
         $deliveries = [];
         $insert = $db->prepare(
             'INSERT INTO notification_deliveries
-                (notification_id, channel, status, priority_rank, max_attempts, next_attempt_at, skip_reason, sent_at, created_at, updated_at)
-             VALUES (:n, :c, :s, :rank, :max, :next, :skip, :sent, :now1, :now2)'
+                (notification_id, channel, status, priority_rank, max_attempts, next_attempt_at, skip_reason, created_at, updated_at)
+             VALUES (:n, :c, :s, :rank, :max, :next, :skip, :now1, :now2)'
         );
         foreach ($decisions as $channel => $decision) {
             $status = $decision['status'];
@@ -390,16 +382,13 @@ function notifyCreate(array $n): array
                 ':max'  => NOTIFY_MAX_ATTEMPTS[$channel],
                 ':next' => $status === 'queued' ? $deliverAfter : null,
                 ':skip' => $status === 'skipped' ? mb_substr((string) $decision['reason'], 0, 120) : null,
-                ':sent' => $status === 'sent' ? $now : null,
                 ':now1' => $now,
                 ':now2' => $now,
             ]);
             $deliveryId = (int) $db->lastInsertId();
-            $detail = match ($status) {
-                'skipped' => (string) $decision['reason'],
-                'sent'    => 'visible in the app',
-                default   => $deliverAfter !== null ? 'held until ' . notifyIso($deliverAfter) : null,
-            };
+            $detail = $status === 'skipped'
+                ? (string) $decision['reason']
+                : ($deliverAfter !== null ? 'held until ' . notifyIso($deliverAfter) : null);
             if (!empty($decision['fallbackFor'])) {
                 $detail = trim(($detail ?? '') . ' (instead of ' . $decision['fallbackFor'] . ', which is not configured)');
             }
@@ -421,7 +410,7 @@ function notifyCreate(array $n): array
     /* ── Send now, when the caller cannot wait for the worker ───────────── */
     if ((!empty($n['sync']) || $secretVars) && $deliverAfter === null) {
         foreach ($deliveries as $channel => $d) {
-            if ($channel === 'inapp' || $d['status'] !== 'queued') continue;
+            if ($d['status'] !== 'queued') continue;
             $r = notifyDispatchDelivery($d['id'], $secretVars);
             $deliveries[$channel] = ['id' => $d['id'], 'status' => $r['status'], 'reason' => $r['reason'], 'recordedOnly' => $r['recordedOnly']];
         }

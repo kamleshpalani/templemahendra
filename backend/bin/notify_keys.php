@@ -1,9 +1,8 @@
 <?php
 /**
- * backend/bin/notify_keys.php — keys, and a settings check, for the
- * notification providers. Command line only.
+ * backend/bin/notify_keys.php — a settings check for the notification
+ * providers. Command line only.
  *
- *   php backend/bin/notify_keys.php vapid   print a fresh Web Push (VAPID) key pair as environment lines
  *   php backend/bin/notify_keys.php check   say which channels are ready, and what is wrong with the rest
  *
  * `check` never prints a secret. It says whether a value is set, how long it is
@@ -11,6 +10,9 @@
  * channel's configured driver cannot send — so a deploy script can refuse to go
  * live with broken settings, and a committee member can paste the output into a
  * support request without leaking a token.
+ *
+ * The temple sends on email, WhatsApp and SMS. Web push and its VAPID and FCM
+ * keys went with devotee sign-in (docs/registration/SPEC.md §6).
  */
 
 if (PHP_SAPI !== 'cli') {
@@ -23,19 +25,6 @@ require_once __DIR__ . '/../includes/notify/contracts.php';
 $command = $argv[1] ?? '';
 
 switch ($command) {
-    case 'vapid':
-        $pair = NotifyEcKeys::generate();
-        if ($pair === null) {
-            fwrite(STDERR, "Could not generate a P-256 key pair: the PHP openssl extension cannot create EC keys here.\n");
-            exit(1);
-        }
-        // Guidance on stderr, so `php notify_keys.php vapid >> .env` captures only the two lines.
-        fwrite(STDERR, "# Web Push keys. Set both in the hosting environment once and keep them:\n"
-            . "# changing them later silently orphans every existing push subscription.\n");
-        echo 'VAPID_PUBLIC_KEY=' . notifyB64u($pair['public']) . "\n";
-        echo 'VAPID_PRIVATE_KEY=' . notifyB64u($pair['private']) . "\n";
-        exit(0);
-
     case 'check':
         exit(notifyKeysCheck());
 
@@ -44,12 +33,11 @@ switch ($command) {
     case '-h':
     case '--help':
         echo "Usage:\n"
-            . "  php backend/bin/notify_keys.php vapid   print VAPID_PUBLIC_KEY and VAPID_PRIVATE_KEY\n"
             . "  php backend/bin/notify_keys.php check   report which notification channels are configured\n";
         exit(0);
 
     default:
-        fwrite(STDERR, "Unknown command \"" . preg_replace('/[^\w-]/', '', $command) . "\". Use vapid or check.\n");
+        fwrite(STDERR, "Unknown command \"" . preg_replace('/[^\w-]/', '', $command) . "\". Use check.\n");
         exit(2);
 }
 
@@ -67,7 +55,7 @@ function notifyKeysCheck(): int
     echo "General\n";
     $print(notifyKeysGeneral());
 
-    foreach (NOTIFY_EXTERNAL_CHANNELS as $channel) {
+    foreach (NOTIFY_CHANNELS as $channel) {
         $driver   = notifyDriverName($channel);
         $provider = notifyProviderFor($channel, true);
         try {
@@ -78,15 +66,13 @@ function notifyKeysCheck(): int
         echo "\n" . $channel . ' (driver "' . $driver . '"): ' . ($ready ? 'ready' : 'NOT READY') . "\n";
 
         $checks = match ($driver) {
-            'mailer'  => notifyKeysMailer(),
-            'meta'    => notifyKeysMeta(),
-            'twilio'  => notifyKeysTwilio($channel),
-            'msg91'   => notifyKeysMsg91(),
-            'webpush' => notifyKeysWebPush(),
-            'fcm'     => notifyKeysFcm(),
-            'log'     => [['warn', 'the log driver writes messages to backend/logs/notify.log; nothing reaches a devotee']],
-            'test'    => [['warn', 'the test driver is for test suites only and must never be used in production']],
-            default   => [['error', 'unknown driver: use ' . implode(', ', array_keys(notifyProviderRegistry()[$channel] ?? []))]],
+            'mailer' => notifyKeysMailer(),
+            'meta'   => notifyKeysMeta(),
+            'twilio' => notifyKeysTwilio($channel),
+            'msg91'  => notifyKeysMsg91(),
+            'log'    => [['warn', 'the log driver writes messages to backend/logs/notify.log; nothing reaches a devotee']],
+            'test'   => [['warn', 'the test driver is for test suites only and must never be used in production']],
+            default  => [['error', 'unknown driver: use ' . implode(', ', array_keys(notifyProviderRegistry()[$channel] ?? []))]],
         };
         if (!$ready && $driver !== 'log') {
             $checks[] = ['error', 'the provider reports it is not configured, so this channel will be skipped'];
@@ -164,6 +150,7 @@ function notifyKeysMeta(): array
         ? ['ok', 'WHATSAPP_META_API_VERSION is ' . notifyEnv('WHATSAPP_META_API_VERSION', 'v21.0')]
         : ['error', 'WHATSAPP_META_API_VERSION must look like v21.0'];
     $out[] = notifyKeysHttps('WHATSAPP_META_BASE_URL', notifyEnv('WHATSAPP_META_BASE_URL', 'https://graph.facebook.com'), 'only a test mock should be plain http');
+    $out[] = ['ok', 'an approved Meta template is sent by name, so every template used for temple updates must include the unsubscribe link itself'];
     return $out;
 }
 
@@ -204,86 +191,7 @@ function notifyKeysMsg91(): array
     $out[] = strlen(notifyEnv('MSG91_WEBHOOK_TOKEN')) >= 24
         ? ['ok', notifyKeysSet('MSG91_WEBHOOK_TOKEN')]
         : ['warn', 'MSG91_WEBHOOK_TOKEN is missing or shorter than 24 characters: delivery reports will be refused'];
-    $out[] = ['ok', 'sender id, route and DLT entity belong to each flow template in the MSG91 panel; every SMS template needs its DLT template id in the admin'];
+    $out[] = ['ok', 'sender id, route and DLT entity belong to each flow template in the MSG91 panel; every SMS template needs its DLT template id in the admin, and templates for temple updates must include the unsubscribe link'];
     $out[] = notifyKeysHttps('MSG91_BASE_URL', notifyEnv('MSG91_BASE_URL', 'https://control.msg91.com'), 'only a test mock should be plain http');
-    return $out;
-}
-
-function notifyKeysWebPush(): array
-{
-    $out = [];
-    $public  = notifyEnv('VAPID_PUBLIC_KEY');
-    $private = notifyEnv('VAPID_PRIVATE_KEY');
-    if ($public === '' && $private === '') {
-        $out[] = ['warn', 'VAPID keys are not set: the development pair in notification_kv is used; run `php backend/bin/notify_keys.php vapid` and set your own before going live'];
-    } elseif ($public === '' || $private === '') {
-        $out[] = ['error', 'set both VAPID_PUBLIC_KEY and VAPID_PRIVATE_KEY, or neither'];
-    } else {
-        $pub  = notifyB64uDecode($public);
-        $priv = notifyB64uDecode($private);
-        $pubOk  = NotifyEcKeys::isPublicPoint($pub) && NotifyEcKeys::publicKey($pub) !== null;
-        $privOk = strlen($priv) === 32;
-        $out[] = $pubOk
-            ? ['ok', 'VAPID_PUBLIC_KEY is a 65-byte P-256 public key']
-            : ['error', 'VAPID_PUBLIC_KEY must be base64url of a 65-byte uncompressed P-256 point (87 characters)'];
-        $out[] = $privOk
-            ? ['ok', 'VAPID_PRIVATE_KEY is 32 bytes']
-            : ['error', 'VAPID_PRIVATE_KEY must be base64url of 32 bytes (43 characters)'];
-        if ($pubOk && $privOk) {
-            $out[] = NotifyEcKeys::publicFromPrivate($priv) === $pub
-                ? ['ok', 'the VAPID public and private keys belong together']
-                : ['error', 'VAPID_PUBLIC_KEY does not belong to VAPID_PRIVATE_KEY'];
-        }
-    }
-    $out[] = preg_match('~^(mailto:[^\s@]+@\S+|https://\S+)$~i', notifyEnv('VAPID_SUBJECT'))
-        ? ['ok', 'VAPID_SUBJECT is a mailto: or https: contact']
-        : ['warn', 'VAPID_SUBJECT is not set to mailto:… or https://…: MAIL_FROM or the site URL is used instead'];
-    $out[] = NotifyEcKeys::generate() !== null
-        ? ['ok', 'openssl can create the per-message encryption keys']
-        : ['error', 'openssl cannot create P-256 keys here, so push messages cannot be encrypted'];
-    return $out;
-}
-
-function notifyKeysFcm(): array
-{
-    $out = [];
-    $project = notifyEnv('FCM_PROJECT_ID');
-    $out[] = $project === ''
-        ? ['error', 'FCM_PROJECT_ID is not set']
-        : (preg_match('/^[a-z][a-z0-9-]{4,}$/', $project) ? ['ok', 'FCM_PROJECT_ID has the shape of a project id'] : ['warn', 'FCM_PROJECT_ID does not look like a Firebase project id']);
-
-    $raw = trim(notifyEnv('FCM_SERVICE_ACCOUNT_JSON'));
-    if ($raw === '') {
-        $out[] = ['error', 'FCM_SERVICE_ACCOUNT_JSON is not set (a path to the key file, or the JSON itself)'];
-        return $out;
-    }
-    if (!str_starts_with($raw, '{')) {
-        if (!is_file($raw) || !is_readable($raw)) {
-            $out[] = ['error', 'FCM_SERVICE_ACCOUNT_JSON names a file that does not exist or cannot be read'];
-            return $out;
-        }
-        $out[] = ['ok', 'FCM_SERVICE_ACCOUNT_JSON names a readable file'];
-        $raw = (string) file_get_contents($raw);
-    } else {
-        $out[] = ['ok', 'FCM_SERVICE_ACCOUNT_JSON holds inline JSON'];
-    }
-    $json = json_decode($raw, true);
-    if (!is_array($json)) {
-        $out[] = ['error', 'the service account JSON does not parse'];
-        return $out;
-    }
-    if (($json['type'] ?? '') !== 'service_account') $out[] = ['warn', 'the JSON "type" is not service_account'];
-    $out[] = filter_var($json['client_email'] ?? '', FILTER_VALIDATE_EMAIL)
-        ? ['ok', 'client_email is present']
-        : ['error', 'client_email is missing or not an address'];
-    $key = is_string($json['private_key'] ?? null) ? openssl_pkey_get_private($json['private_key']) : false;
-    while (openssl_error_string() !== false) {
-        // drain
-    }
-    $out[] = $key !== false ? ['ok', 'private_key loads'] : ['error', 'private_key is missing or cannot be loaded'];
-    if ($project !== '' && isset($json['project_id']) && $json['project_id'] !== $project) {
-        $out[] = ['warn', 'the service account belongs to a different project than FCM_PROJECT_ID'];
-    }
-    $out[] = notifyKeysHttps('FCM_TOKEN_URL', notifyEnv('FCM_TOKEN_URL', 'https://oauth2.googleapis.com/token'), 'only a test mock should be plain http');
     return $out;
 }

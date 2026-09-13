@@ -86,24 +86,12 @@ if ($path === '/notify-cron') {
     exit;
 }
 
-// Prefixed groups: one file handles every action under the prefix and reads
-// the remaining segment from the variable named here.
-$groups = [
-    '/auth/'          => ['file' => 'auth.php',          'var' => 'authAction'],
-    '/account/'       => ['file' => 'account.php',       'var' => 'accountAction'],
-    '/notifications/' => ['file' => 'notifications.php', 'var' => 'notificationsAction'],
-];
-foreach ($groups as $prefix => $group) {
-    if (str_starts_with($path, $prefix)) {
-        $rest = substr($path, strlen($prefix));
-        // one clean segment only: no slashes, no traversal
-        if (preg_match('/^[a-z][a-z0-9_-]{0,30}$/', $rest)) {
-            ${$group['var']} = $rest;
-            require __DIR__ . '/' . $group['file'];
-            exit;
-        }
-        sendError('Not found', 404);
-    }
+// The family registration form. Matched for every method, not only POST, so a
+// GET is told 405 "Method not allowed" rather than a 404 that suggests the form
+// is not there (docs/registration/SPEC.md §5).
+if ($path === '/registrations') {
+    require __DIR__ . '/registrations.php';
+    exit;
 }
 
 $routes = [

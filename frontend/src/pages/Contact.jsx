@@ -65,7 +65,7 @@ export default function Contact() {
   const validate = () => {
     const next = {};
     if (form.name.trim().length < 2) next.name = t("பெயரை உள்ளிடவும்", "Please enter your name");
-    const pe = phoneProblem(form.phone, form.phoneCountry, { required: true });
+    const pe = phoneProblem(form.phone, form.phoneCountry, { required: true, t });
     if (pe) next.phone = pe;
     if (form.message.trim().length < 5)
       next.message = t("செய்தியை உள்ளிடவும்", "Please write a short message");
@@ -160,7 +160,7 @@ export default function Contact() {
         }
       />
 
-      <section className="section">
+      <section className="section contact-main">
         <div className="container split contact-split">
           {/* ── Visit us ─────────────────────────────────────────── */}
           <div className="contact-visit">
@@ -201,7 +201,7 @@ export default function Contact() {
                   <LuPhone />
                 </span>
                 <div className="contact-card__body">
-                  <h3 className="contact-card__title">{t("தொலைபேசி", "Phone")}</h3>
+                  <h3 className="contact-card__title">{t("தொலைபேசி & மின்னஞ்சல்", "Phone & email")}</h3>
                   <ul className="contact-tel" role="list">
                     {phoneContacts.map((c) => (
                       <li key={c.phone}>
@@ -223,6 +223,18 @@ export default function Contact() {
                         </a>
                       </li>
                     ))}
+                    {/* Email as one more row of the same card: it was a card of its own */}
+                    <li>
+                      <a className="contact-tel__row" href={`mailto:${EMAIL}`}>
+                        <span className="contact-tel__body">
+                          <span className="contact-tel__num contact-tel__num--mail">{EMAIL}</span>
+                          <span className="contact-tel__meta">{t("மின்னஞ்சல்", "Email")}</span>
+                        </span>
+                        <span className="contact-tel__cta" aria-hidden="true">
+                          <LuMail />
+                        </span>
+                      </a>
+                    </li>
                   </ul>
                   <p className="contact-card__more">
                     <a href="#committee">
@@ -235,21 +247,8 @@ export default function Contact() {
                 </div>
               </article>
 
-              {/* Email */}
-              <article className="card card--static contact-card rise" style={{ "--i": 2 }}>
-                <span className="card__icon" aria-hidden="true">
-                  <LuMail />
-                </span>
-                <div className="contact-card__body">
-                  <h3 className="contact-card__title">{t("மின்னஞ்சல்", "Email")}</h3>
-                  <a className="contact-card__link" href={`mailto:${EMAIL}`}>
-                    {EMAIL}
-                  </a>
-                </div>
-              </article>
-
               {/* Timings */}
-              <article className="card card--static contact-card rise" style={{ "--i": 3 }}>
+              <article className="card card--static contact-card rise" style={{ "--i": 2 }}>
                 <span className="card__icon" aria-hidden="true">
                   <LuClock />
                 </span>
@@ -281,34 +280,6 @@ export default function Contact() {
                 </div>
               </article>
 
-              {/* Google Maps embed */}
-              <div className="card card--static contact-map rise" style={{ "--i": 4 }}>
-                <iframe
-                  className="contact-map__frame"
-                  title={t("கோயில் இருப்பிடம்", "Temple Location")}
-                  src={MAPS_EMBED_URL}
-                  width="100%"
-                  height="260"
-                  allowFullScreen
-                  loading="lazy"
-                  referrerPolicy="no-referrer-when-downgrade"
-                />
-                <div className="contact-map__foot">
-                  <span className="contact-map__addr">
-                    <LuMapPin aria-hidden="true" />
-                    {t(ADDRESS.printed.ta, ADDRESS.printed.en)}
-                  </span>
-                  <Button
-                    href={MAPS_URL}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    variant="outline"
-                    icon={<LuNavigation aria-hidden="true" />}
-                  >
-                    {t("வழிகாட்டி", "Directions")}
-                  </Button>
-                </div>
-              </div>
             </div>
           </div>
 
@@ -405,7 +376,7 @@ export default function Contact() {
                       {...a11y}
                       required
                       name="message"
-                      rows="5"
+                      rows="4"
                       value={form.message}
                       onChange={handleChange}
                     />
@@ -429,6 +400,42 @@ export default function Contact() {
                   {t("அழைக்கவும்", "Call")} {formatPhone(PRIMARY_CONTACT.phone)}
                 </Button>
               </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Map: the full width, below the contact details and the message form */}
+        <div className="container contact-map-band">
+          <div className="card card--static contact-map rise">
+            <iframe
+              className="contact-map__frame"
+              title={t("கோயில் இருப்பிடம்", "Temple Location")}
+              src={MAPS_EMBED_URL}
+              width="100%"
+              height="300"
+              allowFullScreen
+              loading="lazy"
+              referrerPolicy="no-referrer-when-downgrade"
+            />
+            <div className="contact-map__foot">
+              <div className="contact-map__text">
+                <h2 className="contact-map__title">
+                  <LuMapPin aria-hidden="true" />
+                  {t("கோயில் இருப்பிடம்", "Temple location")}
+                </h2>
+                <p className="contact-map__hint">
+                  {t("வழிகாட்டி Google Maps-ல் பாதையைத் திறக்கும்.", "Directions opens the route in Google Maps.")}
+                </p>
+              </div>
+              <Button
+                href={MAPS_URL}
+                target="_blank"
+                rel="noopener noreferrer"
+                variant="outline"
+                icon={<LuNavigation aria-hidden="true" />}
+              >
+                {t("வழிகாட்டி", "Directions")}
+              </Button>
             </div>
           </div>
         </div>

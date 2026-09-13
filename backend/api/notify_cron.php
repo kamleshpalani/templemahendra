@@ -15,7 +15,7 @@
 
 require_once __DIR__ . '/../includes/helpers.php';
 require_once __DIR__ . '/../includes/notify.php';
-require_once __DIR__ . '/../includes/devotee_auth.php';
+require_once __DIR__ . '/../includes/rate_limit.php';
 
 header('Cache-Control: no-store');
 header('X-Robots-Tag: noindex, nofollow');

@@ -38,9 +38,6 @@ export default defineConfig({
         // Pre-cache all built assets
         globPatterns: ["**/*.{js,css,html,ico,png,svg,woff2}"],
         cacheId: "temple-v2",
-        // Web Push handlers (push, notificationclick) live in public/push-sw.js
-        // as a plain script, loaded into the generated worker. See SPEC §7.4.
-        importScripts: ["push-sw.js"],
         // Workbox answers every navigation from the cached index.html. Without
         // this list that includes /admin/ and /admin/login.php, so once the
         // service worker is installed the committee would get the React app
@@ -58,6 +55,21 @@ export default defineConfig({
               cacheName: "temple-api",
               networkTimeoutSeconds: 5,
               expiration: { maxEntries: 30, maxAgeSeconds: 3600 },
+            },
+          },
+          {
+            // Temple photographs (/images/ in the app, /uploads/ from the admin)
+            // are left out of the precache on purpose: there are too many, and
+            // the committee adds more. Each one seen is kept, so a devotee who
+            // has browsed the gallery still sees it with a weak signal at the
+            // temple, and a fresh copy is fetched in the background.
+            // Status 0 covers opaque responses, e.g. an <img> without CORS.
+            urlPattern: ({ request, sameOrigin }) => sameOrigin && request.destination === "image",
+            handler: "StaleWhileRevalidate",
+            options: {
+              cacheName: "temple-images",
+              expiration: { maxEntries: 80, maxAgeSeconds: 30 * 24 * 60 * 60 },
+              cacheableResponse: { statuses: [0, 200] },
             },
           },
           {

@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { LuBot, LuChevronDown, LuSend, LuSparkles, LuX } from "react-icons/lu";
-import { useLang } from "../../context/LangContext";
+import { useLang, rateLimitInfo, rateLimitMessage } from "../../context/LangContext";
 import { PRIMARY_CONTACT, SECONDARY_CONTACT, formatPhone } from "../../data/temple";
 import "./Chatbot.css";
 
@@ -71,13 +71,26 @@ export default function Chatbot() {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             message: text,
-            history: updated.slice(-8).map((m) => ({
+            // A rate-limit notice carries no text of its own and is not part of
+            // the conversation the model should see.
+            history: updated.filter((m) => !m.limited).slice(-8).map((m) => ({
               role: m.role === "assistant" ? "assistant" : "user",
               text: m.text,
             })),
           }),
         });
-        if (!res.ok) throw new Error("Server error");
+        if (!res.ok) {
+          const body = await res.json().catch(() => null);
+          const limited = rateLimitInfo(res.status, body, res.headers.get("Retry-After"));
+          if (limited) {
+            // An ordinary answer, not the "assistant unavailable" error: nothing
+            // is broken, this connection has simply asked a lot. The wording is
+            // built at render time so it follows a language switch.
+            setMessages((prev) => [...prev, { role: "assistant", limited: true, retryAfter: limited.retryAfter }]);
+            return;
+          }
+          throw new Error("Server error");
+        }
         const data = await res.json();
         setMessages((prev) => [
           ...prev,
@@ -152,7 +165,7 @@ export default function Chatbot() {
                     <LuSparkles />
                   </span>
                 )}
-                <p className="chatbot__text">{m.text}</p>
+                <p className="chatbot__text">{m.limited ? rateLimitMessage(t, m.retryAfter) : m.text}</p>
               </div>
             ))}
 

@@ -16,9 +16,8 @@ import {
 import api from "../services/api";
 import { useLang, rateLimitInfo, rateLimitMessage } from "../context/LangContext";
 import { useToast } from "../context/ToastContext";
-import { useAuth } from "../context/AuthContext";
 import PhoneInput from "../components/ui/PhoneInput";
-import { parseInternational, phoneProblem, toE164 } from "../lib/phone";
+import { phoneProblem, toE164 } from "../lib/phone";
 import { DEFAULT_COUNTRY } from "../data/countries";
 import Button from "../components/ui/Button";
 import Badge from "../components/ui/Badge";
@@ -119,17 +118,10 @@ const FALLBACK_SEVAS = [
 /* ── Seva Booking Modal ─────────────────────────────────────────── */
 function BookingModal({ seva, onClose, t, lang }) {
   const toast = useToast();
-  // A signed-in devotee should not retype what the temple already holds. The
-  // server stamps the booking with their account id either way.
-  const { user } = useAuth();
-  const saved = parseInternational(user?.phone ?? "", user?.phoneCountry) ?? {
-    country: user?.phoneCountry || DEFAULT_COUNTRY,
-    national: "",
-  };
   const [form, setForm] = useState({
-    devotee_name: user?.name ?? "",
-    phone: saved.national,
-    phoneCountry: saved.country,
+    devotee_name: "",
+    phone: "",
+    phoneCountry: DEFAULT_COUNTRY,
     preferred_date: "",
     message: "",
     hp_token: "",
@@ -157,7 +149,7 @@ function BookingModal({ seva, onClose, t, lang }) {
     const next = {};
     if (form.devotee_name.trim().length < 2)
       next.devotee_name = t("பெயரை உள்ளிடவும்", "Please enter your name");
-    const pe = phoneProblem(form.phone, form.phoneCountry, { required: true });
+    const pe = phoneProblem(form.phone, form.phoneCountry, { required: true, t });
     if (pe) next.phone = pe;
     setErrors(next);
     return Object.keys(next).length === 0;

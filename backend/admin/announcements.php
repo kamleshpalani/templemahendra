@@ -2,14 +2,16 @@
 // backend/admin/announcements.php — Announcements: short notices for the homepage ticker.
 //
 // "Also notify devotees" (new announcements only) turns the notice into a DRAFT
-// notification campaign (SPEC §8.3). It never sends anything by itself: a
-// broadcast to every devotee goes through the campaign flow — review, approval
-// when the size or channels call for it, scheduling — on the Notifications page.
+// notification campaign by email and WhatsApp (docs/registration/SPEC.md §6). It
+// never sends anything by itself: a broadcast goes through the campaign flow —
+// review, approval when the size or channels call for it, scheduling — on the
+// Notifications page. An announcement is an update, so it reaches only the
+// registered families who agreed to temple updates.
 require_once __DIR__ . '/../includes/auth.php';
 requireAdminAuth();
 require_once __DIR__ . '/../includes/db.php';
 require_once __DIR__ . '/../includes/helpers.php';
-require_once __DIR__ . '/../includes/devotee_auth.php';
+require_once __DIR__ . '/../includes/devotee_notify.php';
 require_once __DIR__ . '/includes/admin_layout.php';
 
 $db = getDB();
@@ -34,7 +36,7 @@ function announcementDraftNotification(string $title, string $body): string
             'name'          => mb_substr('Announcement: ' . $title, 0, 160),
             'category'      => 'announcement',
             'priority'      => 'normal',
-            'channels'      => ['inapp', 'push'],
+            'channels'      => ['email', 'whatsapp'],
             'template_key'  => 'announcement',
             'audience'      => ['mode' => 'all_devotees'],
             'translations'  => ['ta' => $words, 'en' => $words],
@@ -49,7 +51,7 @@ function announcementDraftNotification(string $title, string $body): string
         return '<p class="alert alert--warning" role="alert">Created. The draft notification could not be made: '
             . h(implode(' ', $save['errors'])) . ' You can compose one on the Notifications page.</p>';
     }
-    return '<p class="alert alert--success" role="status">Created. A draft notification to all devotees is ready: '
+    return '<p class="alert alert--success" role="status">Created. A draft email and WhatsApp notification to the families who agreed to temple updates is ready: '
         . '<a href="/admin/notifications.php?edit=' . (int) $save['id'] . '">review and submit it</a>. '
         . 'Nothing is sent until it goes through the notification flow.</p>';
 }
@@ -225,7 +227,7 @@ echo adminPageIntro(
       <label class="switch">
         <input type="checkbox" name="notify_devotees" value="1"<?= !empty($editing['notify_devotees']) ? ' checked' : '' ?> />
         <span class="switch__track" aria-hidden="true"></span>
-        <span class="switch__label"><strong>Also notify devotees</strong><span class="switch__desc">Creates a draft notification (in the app and as a push message) for you to review. Nothing is sent until it is submitted from the Notifications page.</span></span>
+        <span class="switch__label"><strong>Also notify devotees</strong><span class="switch__desc">Creates a draft email and WhatsApp notification to the families who agreed to temple updates, for you to review. Nothing is sent until it is submitted from the Notifications page.</span></span>
       </label>
       <?php endif; ?>
 

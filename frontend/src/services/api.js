@@ -8,10 +8,11 @@ const api = axios.create({
   baseURL: import.meta.env.VITE_API_URL || "/api",
   timeout: 10000,
   headers: { Accept: "application/json" },
-  // Devotee accounts use a session cookie. Same-origin requests send it either
-  // way; this only matters when VITE_API_URL points at another host, and there
-  // the backend must also name that origin in CORS_ORIGIN.
-  withCredentials: true,
+  // No credentials. Devotee sign-in, and the session cookie that came with it,
+  // were removed (docs/registration/SPEC.md §1): every public endpoint answers
+  // anyone, so a request to a VITE_API_URL on another host has no cookie to
+  // carry and needs no credentialed CORS. The committee's /admin panel keeps
+  // its own PHP session and never goes through this client.
 });
 
 api.interceptors.response.use(

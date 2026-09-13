@@ -159,33 +159,36 @@ function notifyCampaignGet(int $id): ?array
     return $c;
 }
 
-/** ['recipients','byChannel' => [channel => [status => count]],'opened','clicked','read','failed','dead'] */
+/**
+ * ['recipients','byChannel' => [channel => [status => count]],'opened','clicked','failed','dead',
+ *  'skippedConsent' (deliveries skipped because the family had not agreed to updates or had unsubscribed)]
+ */
 function notifyCampaignStats(int $id): array
 {
-    $out = ['recipients' => 0, 'byChannel' => [], 'opened' => 0, 'clicked' => 0, 'read' => 0, 'failed' => 0, 'dead' => 0];
+    $out = ['recipients' => 0, 'byChannel' => [], 'opened' => 0, 'clicked' => 0, 'failed' => 0, 'dead' => 0, 'skippedConsent' => 0];
     if ($id < 1 || !notifyTablesExist()) return $out;
     try {
         $db = getDB();
-        $stmt = $db->prepare('SELECT COUNT(*) AS recipients, SUM(read_at IS NOT NULL) AS was_read FROM notifications WHERE campaign_id = :id');
+        $stmt = $db->prepare('SELECT COUNT(*) FROM notifications WHERE campaign_id = :id');
         $stmt->execute([':id' => $id]);
-        $n = $stmt->fetch(PDO::FETCH_ASSOC);
-        $out['recipients'] = (int) $n['recipients'];
-        $out['read']       = (int) $n['was_read'];
+        $out['recipients'] = (int) $stmt->fetchColumn();
 
         $stmt = $db->prepare(
-            'SELECT d.channel, d.status, COUNT(*) AS n,
-                    SUM(d.channel = \'email\' AND d.read_at IS NOT NULL) AS opened,
-                    SUM(d.clicked_at IS NOT NULL) AS clicked
+            "SELECT d.channel, d.status, COUNT(*) AS n,
+                    SUM(d.channel = 'email' AND d.read_at IS NOT NULL) AS opened,
+                    SUM(d.clicked_at IS NOT NULL) AS clicked,
+                    SUM(d.status = 'skipped' AND d.skip_reason IN ('no consent', 'unsubscribed')) AS consent_skips
                FROM notification_deliveries d
                JOIN notifications x ON x.id = d.notification_id
               WHERE x.campaign_id = :id
-              GROUP BY d.channel, d.status'
+              GROUP BY d.channel, d.status"
         );
         $stmt->execute([':id' => $id]);
         foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $r) {
             $out['byChannel'][(string) $r['channel']][(string) $r['status']] = (int) $r['n'];
             $out['opened']  += (int) $r['opened'];
             $out['clicked'] += (int) $r['clicked'];
+            $out['skippedConsent'] += (int) $r['consent_skips'];
             if ($r['status'] === 'failed' || $r['status'] === 'rejected') $out['failed'] += (int) $r['n'];
             if ($r['status'] === 'dead') $out['dead'] += (int) $r['n'];
         }
@@ -203,13 +206,13 @@ function notifyCampaignNeedsApproval(array $campaign, int $estimate): ?string
 {
     $raw       = notifyEnv('NOTIFY_APPROVAL_THRESHOLD', '50');
     $threshold = ctype_digit($raw) ? (int) $raw : 50;
-    if ($estimate > $threshold) return "Reaches {$estimate} devotees";
+    if ($estimate > $threshold) return "Reaches {$estimate} families";
 
     if (in_array($campaign['priority'] ?? 'normal', ['urgent', 'emergency'], true)) return 'Urgent/emergency priority';
 
     $channels = $campaign['channelsList'] ?? ($campaign['channels'] ?? []);
     if (is_string($channels)) $channels = explode(',', $channels);
-    if (array_intersect(['whatsapp', 'sms'], (array) $channels) && $estimate > 10) return "Paid channels to {$estimate} devotees";
+    if (array_intersect(['whatsapp', 'sms'], (array) $channels) && $estimate > 10) return "Paid channels to {$estimate} families";
 
     if (notifyCategoryKind((string) ($campaign['category'] ?? '')) === 'promotional') return 'Promotional message';
     return null;
@@ -505,6 +508,23 @@ function notifyCampaignSave(array $input, array $actor, ?int $id = null): array
 
 /* ── Transitions ────────────────────────────────────────────────────────── */
 
+/**
+ * How many families a campaign reaches now, and the sentence to show when that
+ * is nobody. An update (a category that needs consent) counts only families
+ * who agreed to temple updates, so "nobody" can mean "nobody has agreed yet".
+ * Returns [estimate, ?message].
+ */
+function notifyCampaignReach(array $c): array
+{
+    $category = (string) ($c['category'] ?? '');
+    $estimate = notifyAudienceCount($c['rules'], $category);
+    if ($estimate > 0) return [$estimate, null];
+    if (notifyAudienceNeedsConsent($category) && notifyAudienceCount($c['rules']) > 0) {
+        return [0, 'No family in this audience has agreed to receive temple updates, so there is no one to send it to.'];
+    }
+    return [0, 'No registered family matches this audience, so there is no one to send it to.'];
+}
+
 /** What stops a campaign from being sent as it stands, or null. */
 function notifyCampaignProblem(array $c): ?string
 {
@@ -574,8 +594,8 @@ function notifyCampaignTransition(int $id, string $action, array $actor, array $
                 if (!notifyActorCan($actor, 'notifications.compose')) return $deny('Your role cannot submit notifications.');
                 if ($status !== 'draft') return $deny('Only a draft can be submitted.');
                 if ($problem = notifyCampaignProblem($c)) return $deny($problem);
-                $estimate = notifyAudienceCount($c['rules']);
-                if ($estimate === 0) return $deny('No devotee matches this audience, so there is no one to send it to.');
+                [$estimate, $nobody] = notifyCampaignReach($c);
+                if ($nobody !== null) return $deny($nobody);
                 $why = notifyCampaignNeedsApproval($c, $estimate);
 
                 if ($why !== null) {
@@ -692,8 +712,8 @@ function notifyCampaignTransition(int $id, string $action, array $actor, array $
                 if ($c['priority'] !== 'emergency') return $deny('Set the priority to emergency first.');
                 if ($reason === '') return $deny('Say why this cannot wait for the usual approval.');
                 if ($problem = notifyCampaignProblem($c)) return $deny($problem);
-                $estimate = notifyAudienceCount($c['rules']);
-                if ($estimate === 0) return $deny('No devotee matches this audience, so there is no one to send it to.');
+                [$estimate, $nobody] = notifyCampaignReach($c);
+                if ($nobody !== null) return $deny($nobody);
 
                 $stmt = $db->prepare(
                     "UPDATE notification_campaigns
@@ -712,7 +732,7 @@ function notifyCampaignTransition(int $id, string $action, array $actor, array $
                     'reason' => $reason, 'estimate' => $estimate, 'previous_status' => $status,
                     'recurrence_dropped' => $c['recurrence'] !== 'none' ? $c['recurrence'] : null, 'snapshot' => notifyCampaignSnapshot($c),
                 ]);
-                return $res(true, 'sending', "Emergency send started to {$estimate} devotees.");
+                return $res(true, 'sending', "Emergency send started to {$estimate} families.");
             }
 
             case 'cancel': {
@@ -748,12 +768,6 @@ function notifyCampaignTransition(int $id, string $action, array $actor, array $
                     );
                     $upd->execute([':id' => $id]);
                     $cancelled = $upd->rowCount();
-                    // An in-app message held for its time must not appear in the bell later.
-                    $db->prepare(
-                        "UPDATE notifications n SET n.show_in_app = 0
-                          WHERE n.campaign_id = :id AND n.show_in_app = 1
-                            AND EXISTS (SELECT 1 FROM notification_deliveries d WHERE d.notification_id = n.id AND d.channel = 'inapp' AND d.status = 'cancelled')"
-                    )->execute([':id' => $id]);
                     $db->commit();
                 } catch (Throwable $e) {
                     if ($db->inTransaction()) $db->rollBack();
@@ -889,7 +903,7 @@ function notifyCampaignsExpandDue(float $deadline, ?int $onlyCampaignId = null, 
     return $expanded;
 }
 
-/** Devotee rows for a batch, with preferences and device counts, keyed by id. */
+/** Registration rows for a batch, with everything notifyRecipientFromDevotee() reads, keyed by id. */
 function notifyCampaignRecipientRows(array $ids): array
 {
     if (!$ids) return [];
@@ -900,27 +914,13 @@ function notifyCampaignRecipientRows(array $ids): array
         $params[':d' . $i] = (int) $id;
     }
     $stmt = getDB()->prepare(
-        'SELECT d.id, d.name, d.email, d.email_verified_at, d.phone, d.phone_verified_at, d.country, d.is_active,
-                p.devotee_id AS pref_devotee_id, p.lang AS pref_lang, p.timezone AS pref_timezone,
-                p.email_on, p.whatsapp_on, p.push_on, p.sms_on, p.inapp_on, p.muted_categories,
-                p.promotional_opt_in_at, p.unsubscribed_at, p.updated_at AS pref_updated_at,
-                (SELECT COUNT(*) FROM devotee_devices dv WHERE dv.devotee_id = d.id AND dv.is_active = 1) AS device_count
+        'SELECT d.id, d.name, d.email, d.phone, d.country, d.lang, d.is_active, d.updates_consent_at, d.unsubscribed_at
            FROM devotees d
-           LEFT JOIN devotee_notification_prefs p ON p.devotee_id = d.id
           WHERE d.id IN (' . implode(', ', $names) . ')'
     );
     $stmt->execute($params);
     $rows = [];
     foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $r) {
-        $pref = $r['pref_devotee_id'] === null ? null : [
-            'lang' => $r['pref_lang'], 'timezone' => $r['pref_timezone'],
-            'email_on' => $r['email_on'], 'whatsapp_on' => $r['whatsapp_on'], 'push_on' => $r['push_on'],
-            'sms_on' => $r['sms_on'], 'inapp_on' => $r['inapp_on'], 'muted_categories' => $r['muted_categories'],
-            'promotional_opt_in_at' => $r['promotional_opt_in_at'], 'unsubscribed_at' => $r['unsubscribed_at'],
-            'updated_at' => $r['pref_updated_at'],
-        ];
-        $r['_prefs']   = notifyPrefsFromRow($pref, $r['country']);
-        $r['_devices'] = (int) $r['device_count'];
         $rows[(int) $r['id']] = $r;
     }
     return $rows;
@@ -1015,6 +1015,23 @@ function notifyCampaignExpand(int $id, float $deadline, int $limit = 0): bool
            ->execute([':now' => notifyNow(), ':id' => $id]);
     }
 
+    // An automatic reminder says "tomorrow". One approved only on or after the day
+    // it is about would tell families something untrue, so it is cancelled.
+    $reminderKey = (string) ($c['templateVars']['reminderKey'] ?? '');
+    if ($reminderKey !== '' && preg_match('/:(\d{4}-\d{2}-\d{2})$/', $reminderKey, $m)
+        && $m[1] <= notifyFromUtc(notifyNow(), notifyTempleTz(), 'Y-m-d')) {
+        $stmt = $db->prepare(
+            "UPDATE notification_campaigns
+                SET status = 'cancelled', cancelled_by = 'system', cancelled_at = :now, next_run_at = NULL,
+                    last_error = :why, updated_at = :now2
+              WHERE id = :id AND status = 'sending'"
+        );
+        $why = 'The reminder was approved on or after ' . $m[1] . ', the day it is about, so it was not sent.';
+        $stmt->execute([':now' => notifyNow(), ':now2' => notifyNow(), ':why' => $why, ':id' => $id]);
+        if ($stmt->rowCount() > 0) notifyAudit($id, 'cancelled', notifySystemActor(), ['reason' => $why]);
+        return false;
+    }
+
     try {
         if (!is_array($c['rules'])) throw new InvalidArgumentException('The saved audience it used no longer exists.');
         $rules = notifyAudienceNormalize($c['rules']);
@@ -1041,7 +1058,7 @@ function notifyCampaignExpand(int $id, float $deadline, int $limit = 0): bool
         if ($status->fetchColumn() !== 'sending') break;
 
         $take = $limit === 0 ? NOTIFY_EXPAND_BATCH : min(NOTIFY_EXPAND_BATCH, $limit - $done);
-        $ids  = notifyAudienceBatch($rules, $cursor, $take);
+        $ids  = notifyAudienceBatch($rules, $cursor, $take, (string) $c['category']);
         if (!$ids) {
             $finished = true;
             break;
@@ -1180,6 +1197,16 @@ function notifyCampaignCheckCompletion(int $id): bool
 /* ── Preview and test send ──────────────────────────────────────────────── */
 
 /**
+ * The unsubscribe link a preview shows. It has the length and shape of a real
+ * one (so an SMS preview counts the right characters) but verifies for nobody:
+ * a committee member clicking it in a preview must not unsubscribe a family.
+ */
+function notifyPreviewUnsubscribeUrl(): string
+{
+    return siteUrl('/api/n/u/u0.previewonlylink0');
+}
+
+/**
  * What a campaign looks like on one channel in one language, for the composer.
  * $campaign is a notifyCampaignGet() row or unsaved input of the same shape
  * (translations, template_key, template_vars or templateVars, category,
@@ -1192,7 +1219,7 @@ function notifyCampaignCheckCompletion(int $id): bool
 function notifyCampaignPreview(array $campaign, string $channel, string $lang, ?int $sampleDevoteeId = null): array
 {
     $out = ['title' => '', 'body' => '', 'html' => null, 'cta_label' => '', 'cta_url' => null, 'provider_template' => null, 'params' => [], 'sms' => null, 'missing' => []];
-    $channel = in_array($channel, NOTIFY_CHANNELS, true) ? $channel : 'inapp';
+    $channel = in_array($channel, NOTIFY_CHANNELS, true) ? $channel : 'email';
     $lang    = preg_match('/^[a-z]{2,3}(-[a-z0-9]{2,4})?$/', $lang) ? $lang : 'ta';
 
     $translations = [];
@@ -1234,26 +1261,28 @@ function notifyCampaignPreview(array $campaign, string $channel, string $lang, ?
     $out['params']            = $r['provider_params'];
     $out['missing']           = array_values(array_diff($r['missing'], $sampleName !== '' ? ['devoteeName'] : []));
 
+    // An update shows the unsubscribe link or stop-updates line exactly where
+    // dispatch will put it (queue.php), so the committee sees the real length.
+    $kind  = notifyCategoryKind($c['category']);
+    $unsub = in_array($kind, NOTIFY_CONSENT_KINDS, true) ? notifyPreviewUnsubscribeUrl() : null;
     if ($channel === 'email') {
-        $mutable = in_array(notifyCategoryKind($c['category']), NOTIFY_MUTABLE_KINDS, true);
         $out['html'] = notifyEmailHtml([
-            'title' => $out['title'], 'body' => $out['body'], 'lang' => $usedLang, 'category' => $c['category'],
+            'title' => $out['title'], 'body' => $out['body'], 'lang' => $usedLang, 'category' => $c['category'], 'kind' => $kind,
             'category_label' => notifyCategoryLabel($c['category'], $usedLang), 'priority' => $c['priority'],
             'cta_url' => $ctaAbs, 'cta_label' => $out['cta_label'], 'logo_url' => siteUrl('/icons/icon-192x192.png'),
-            'preferences_url' => notifyPreferencesUrl(), 'unsubscribe_url' => $mutable ? notifyPreferencesUrl() : null,
+            'unsubscribe_url' => $unsub,
         ]);
     } elseif ($channel === 'sms') {
         $text = trim($out['body']) !== '' ? trim($out['body']) : $out['title'];
+        $stop = $unsub !== null ? "\n" . notifyStopUpdatesLine($usedLang, $unsub) : '';
         if ($ctaAbs !== null && !str_contains($text, $ctaAbs)) {
             $with = $text . "\n" . $ctaAbs;
-            if (notifySmsInfo($with)['segments'] <= max(2, notifySmsInfo($text)['segments'])) $text = $with;
+            if (notifySmsInfo($with . $stop)['segments'] <= max(2, notifySmsInfo($text . $stop)['segments'])) $text = $with;
         }
-        $out['body'] = $text;
-        $out['sms']  = notifySmsInfo($text);
-    } elseif ($channel === 'push') {
-        $text = trim((string) preg_replace("/\s*\n\s*/u", ' ', $out['body']));
-        if (mb_strlen($text) > NOTIFY_PUSH_BODY_MAX) $text = rtrim(mb_substr($text, 0, NOTIFY_PUSH_BODY_MAX - 1)) . '…';
-        $out['body'] = $text;
+        $out['body'] = $text . $stop;
+        $out['sms']  = notifySmsInfo($out['body']);
+    } elseif ($channel === 'whatsapp' && $unsub !== null && $out['provider_template'] === null) {
+        $out['body'] = ($out['body'] !== '' ? $out['body'] : $out['title']) . "\n\n" . notifyStopUpdatesLine($usedLang, $unsub);
     }
     return $out;
 }
@@ -1300,7 +1329,7 @@ function notifyCampaignTestSend(int $id, array $actor, array $to): array
     $lang = is_string($to['lang'] ?? null) ? strtolower($to['lang']) : null;
     if ($devoteeId !== null) {
         $recipient = notifyRecipientFromDevotee($devoteeId);
-        if (empty($recipient['devotee_id'])) return $res(false, 'That devotee account no longer exists.');
+        if (empty($recipient['devotee_id'])) return $res(false, 'That registration no longer exists.');
         $recipientName = (string) $recipient['name'];
         $lang ??= (string) $recipient['lang'];
     }

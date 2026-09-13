@@ -7,11 +7,17 @@ import "./TemplePulseHeader.css";
 /**
  * TemplePulseHeader — slim live status strip above the navbar, carrying the
  * temple's open/closed state, the next pooja with a countdown, today's special,
- * the daily hours, and the language toggle. Ticks once a second.
+ * and the language toggle. Ticks once a second.
+ *
+ * The daily hours are not repeated here: the footer, the Contact page and the
+ * About page's timings table already give them, and the open/closed pill says
+ * what a visitor needs in the moment.
  *
  * The language toggle lives here rather than in the navbar: it is a
  * once-per-visit choice, and the navbar's row is already at its width budget
- * with the brand, seven Tamil nav labels, search, Login and Sign Up.
+ * with the brand, seven Tamil nav labels, call, search and Register family.
+ * It is the site's one language switch on wide screens (the mobile drawer
+ * carries the other), so it is not repeated in the footer.
  *
  * Accessibility note. This used to be one `role="status"` region wrapping the
  * whole strip, which made it a polite live region containing a countdown that
@@ -57,10 +63,6 @@ export default function TemplePulseHeader() {
           <LuSparkles aria-hidden="true" />
           <span className="pulse-strip__label">{t("இன்றைய சிறப்பு", "Today")}</span>
           <span className="pulse-strip__value">{t(special.ta, special.en)}</span>
-        </span>
-
-        <span className="pulse-strip__hours">
-          {t("காலை 6:00 – 12:30 · மாலை 4:00 – 9:00", "6:00 AM – 12:30 PM · 4:00 PM – 9:00 PM")}
         </span>
 
         <div className="lang-toggle" role="group" aria-label={t("மொழி", "Language")}>

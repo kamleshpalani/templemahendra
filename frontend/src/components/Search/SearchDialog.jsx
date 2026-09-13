@@ -34,6 +34,9 @@ const SUGGESTIONS = [
   { ta: "80G ரசீது", en: "80G receipt" },
   { ta: "கோயில் நேரம்", en: "Temple timings" },
   { ta: "வழிகாட்டி", en: "Directions" },
+  // Offered because a family looking for the one-time form rarely knows what
+  // the site calls it; the search index maps this phrase to /register.
+  { ta: "குடும்பப் பதிவு", en: "Family registration" },
 ];
 
 /** Recent searches live only in this browser; nothing is sent anywhere. */

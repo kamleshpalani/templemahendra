@@ -144,27 +144,31 @@ function nUnsubscribe(?array $verified, string $method, string $token): never
         if (!notifyTablesExist()) nPage(503, 'unavailable');
         if ($verified === null) nPage(404, 'invalid');
 
-        $stmt = getDB()->prepare('SELECT id, email FROM devotees WHERE id = :id');
+        $stmt = getDB()->prepare('SELECT id, email, phone FROM devotees WHERE id = :id');
         $stmt->execute([':id' => $verified['id']]);
         $devotee = $stmt->fetch(PDO::FETCH_ASSOC);
-        // The account was deleted: there is nothing left to unsubscribe.
+        // The registration was deleted (or merged into another): nothing is left to unsubscribe.
         if (!$devotee) nPage(404, 'invalid');
 
-        $masked = notifyRedact((string) ($devotee['email'] ?? ''), 190);
-        $action = '/api/n/u/' . $token;
+        // Enough for a family sharing one inbox or phone to tell whose
+        // registration this is: the masked email, or the masked phone when the
+        // registration has no email.
+        $email   = trim((string) ($devotee['email'] ?? ''));
+        $contact = $email !== '' ? notifyRedact($email, 190) : notifyMaskPhone((string) ($devotee['phone'] ?? ''));
+        $action  = '/api/n/u/' . $token;
 
         if ($method === 'POST') {
-            // Unsubscribed = no optional (informational or promotional) email. The
-            // email switch itself stays on, because it also carries booking
-            // confirmations, receipts and security messages, which this devotee
-            // still needs. notifySavePrefs keeps the first unsubscribe time, so a
-            // second POST (a mail provider retrying) changes nothing.
-            notifySavePrefs((int) $devotee['id'], ['unsubscribed' => true]);
-            nPage(200, 'done', ['email' => $masked]);
+            // Unsubscribing withdraws the family's consent to temple updates on
+            // every channel (docs/registration/SPEC.md §6). Messages about their
+            // own bookings and donations are not updates and keep coming.
+            // notifyUnsubscribe keeps the first time, so a second POST (a mail
+            // provider retrying a one-click request) changes nothing.
+            notifyUnsubscribe((int) $devotee['id']);
+            nPage(200, 'done', ['contact' => $contact]);
         }
 
-        $already = notifyPrefs((int) $devotee['id'])['unsubscribed'];
-        nPage(200, $already ? 'already' : 'confirm', ['email' => $masked, 'action' => $action]);
+        $already = !empty(notifyConsentState((int) $devotee['id'])['unsubscribed']);
+        nPage(200, $already ? 'already' : 'confirm', ['contact' => $contact, 'action' => $action]);
     } catch (Throwable $e) {
         error_log('[notify-link] unsubscribe failed: ' . get_class($e) . ': ' . $e->getMessage());
         nPage(500, 'error');
@@ -183,49 +187,56 @@ function nMethodNotAllowed(string $allow): never
 
 /**
  * The words for each state of the unsubscribe page, Tamil first as on the site.
- * {email} is the masked address ("k***@example.org"), so someone reading a
- * shared inbox can tell which account the link belongs to.
+ * {contact} is the registration's masked email ("k***@example.org"), or its
+ * masked phone when it has no email, so someone reading a shared inbox or phone
+ * can tell whose registration the link belongs to. 'office' introduces the
+ * temple office's phone number, which the page shows instead of any settings
+ * link: devotees do not sign in, and the office is how anything is changed.
  */
 function nCopy(string $state): array
 {
-    $keepTa = 'சேவை பதிவு உறுதிப்படுத்தல்கள், நன்கொடை ரசீதுகள், கணக்குப் பாதுகாப்புச் செய்திகள் தொடர்ந்து மின்னஞ்சலில் வரும். இணையதள அறிவிப்புகள், வாட்ஸ்அப், குறுஞ்செய்தி அமைப்புகள் மாறாது.';
-    $keepEn = 'Booking confirmations, donation receipts and account security emails will still reach you. Notifications on the website, WhatsApp and SMS are not changed.';
+    $keepTa = 'உங்கள் சேவை பதிவுகள், நன்கொடைகள் பற்றிய உறுதிப்படுத்தல்கள், நினைவூட்டல்கள், ரசீதுகள் தொடர்ந்து வரும்.';
+    $keepEn = 'Messages about your own seva bookings and donations, such as confirmations, reminders and receipts, will still reach you.';
+    $againTa = 'மீண்டும் கோயில் அறிவிப்புகளைப் பெற, அல்லது வேறு எதற்கும், கோயில் அலுவலகத்தை அழைக்கவும்:';
+    $againEn = 'To receive temple updates again, or for anything else, call the temple office:';
 
     return match ($state) {
         'confirm' => [
-            'title' => ['ta' => 'விருப்ப மின்னஞ்சல்களை நிறுத்தவா?', 'en' => 'Stop optional emails from the temple?'],
-            'ta'    => ['கோயில் அறிவிப்புகள், திருவிழா, பூஜை, நிகழ்வுச் செய்திகள் போன்ற விருப்ப மின்னஞ்சல்கள் {email} முகவரிக்கு இனி அனுப்பப்படாது.', $keepTa],
-            'en'    => ['Temple announcements and news about festivals, poojas and events will no longer be emailed to {email}.', $keepEn],
-            'button' => ['ta' => 'மின்னஞ்சல்களை நிறுத்து', 'en' => 'Unsubscribe'],
-            'link'   => ['ta' => 'அல்லது எவை வேண்டும் என்று தேர்ந்தெடுங்கள்', 'en' => 'Or choose exactly what you receive'],
+            'title'  => ['ta' => 'கோயில் அறிவிப்புகளை நிறுத்தவா?', 'en' => 'Stop temple updates?'],
+            'ta'     => ['இந்தப் பதிவுக்கு ({contact}) திருவிழா, பூஜை மற்றும் கோயில் அறிவிப்புகள் இனி மின்னஞ்சல், வாட்ஸ்அப், குறுஞ்செய்தி எதிலும் அனுப்பப்படாது.', $keepTa],
+            'en'     => ['News of festivals, poojas and temple announcements will no longer be sent to this registration ({contact}) by email, WhatsApp or SMS.', $keepEn],
+            'button' => ['ta' => 'அறிவிப்புகளை நிறுத்து', 'en' => 'Stop updates'],
+            'office' => ['ta' => 'கேள்விகள் இருந்தால், கோயில் அலுவலகத்தை அழைக்கவும்:', 'en' => 'Questions? Call the temple office:'],
         ],
         'already' => [
-            'title' => ['ta' => 'நீங்கள் ஏற்கனவே விலகியுள்ளீர்கள்', 'en' => 'You are already unsubscribed'],
-            'ta'    => ['{email} முகவரிக்கு விருப்ப மின்னஞ்சல்கள் அனுப்பப்படுவதில்லை.', $keepTa],
-            'en'    => ['Optional emails are not being sent to {email}.', $keepEn],
-            'link'  => ['ta' => 'மின்னஞ்சல்களை மீண்டும் பெற, அறிவிப்பு அமைப்புகளைத் திறக்கவும்', 'en' => 'To receive them again, open your notification settings'],
+            'title'  => ['ta' => 'கோயில் அறிவிப்புகள் ஏற்கனவே நிறுத்தப்பட்டுள்ளன', 'en' => 'Temple updates are already stopped'],
+            'ta'     => ['இந்தப் பதிவுக்கு ({contact}) கோயில் அறிவிப்புகள் அனுப்பப்படுவதில்லை.', $keepTa],
+            'en'     => ['Temple updates are not being sent to this registration ({contact}).', $keepEn],
+            'office' => ['ta' => $againTa, 'en' => $againEn],
         ],
         'done' => [
-            'title' => ['ta' => 'விலகல் உறுதிசெய்யப்பட்டது', 'en' => 'You have been unsubscribed'],
-            'ta'    => ['{email} முகவரிக்கு இனி விருப்ப மின்னஞ்சல்கள் அனுப்பப்படாது.', $keepTa],
-            'en'    => ['No more optional emails will be sent to {email}.', $keepEn],
-            'link'  => ['ta' => 'மனம் மாறினால், அறிவிப்பு அமைப்புகளில் மீண்டும் இயக்கலாம்', 'en' => 'Changed your mind? Turn them back on in your notification settings'],
+            'title'  => ['ta' => 'கோயில் அறிவிப்புகள் நிறுத்தப்பட்டன', 'en' => 'Temple updates stopped'],
+            'ta'     => ['இந்தப் பதிவுக்கு ({contact}) இனி கோயில் அறிவிப்புகள் அனுப்பப்படாது.', $keepTa],
+            'en'     => ['No more temple updates will be sent to this registration ({contact}).', $keepEn],
+            'office' => ['ta' => $againTa, 'en' => $againEn],
         ],
         'invalid' => [
-            'title' => ['ta' => 'இந்த இணைப்பு செல்லாது', 'en' => 'This link is not valid'],
-            'ta'    => ['இணைப்பு முழுமையாக இல்லாமல் இருக்கலாம், அல்லது அந்தக் கணக்கு மூடப்பட்டிருக்கலாம். உள்நுழைந்த பின் அறிவிப்பு அமைப்புகளில் மின்னஞ்சல்களை நிர்வகிக்கலாம்.'],
-            'en'    => ['The link may be incomplete, or the account it belonged to has been closed. After signing in, you can manage emails in your notification settings.'],
-            'link'  => ['ta' => 'அறிவிப்பு அமைப்புகள்', 'en' => 'Notification settings'],
+            'title'  => ['ta' => 'இந்த இணைப்பு செல்லாது', 'en' => 'This link is not valid'],
+            'ta'     => ['இணைப்பு முழுமையாக இல்லாமல் இருக்கலாம், அல்லது அந்தப் பதிவு நீக்கப்பட்டிருக்கலாம்.'],
+            'en'     => ['The link may be incomplete, or the registration it belonged to has been removed.'],
+            'office' => ['ta' => 'கோயில் அறிவிப்புகளை நிறுத்த, கோயில் அலுவலகத்தை அழைக்கவும்:', 'en' => 'To stop temple updates, call the temple office:'],
         ],
         'unavailable' => [
-            'title' => ['ta' => 'மின்னஞ்சல் அமைப்புகள் இப்போது கிடைக்கவில்லை', 'en' => 'Email settings are not available right now'],
-            'ta'    => ['சிறிது நேரம் கழித்து மீண்டும் முயலுங்கள், அல்லது கோயில் அலுவலகத்தைத் தொடர்பு கொள்ளுங்கள்.'],
-            'en'    => ['Please try again later, or contact the temple office.'],
+            'title'  => ['ta' => 'இப்போது இதை மாற்ற முடியவில்லை', 'en' => 'This cannot be changed right now'],
+            'ta'     => ['சிறிது நேரம் கழித்து மீண்டும் முயலுங்கள்.'],
+            'en'     => ['Please try again later.'],
+            'office' => ['ta' => 'அல்லது கோயில் அலுவலகத்தை அழைக்கவும்:', 'en' => 'Or call the temple office:'],
         ],
         default => [
-            'title' => ['ta' => 'ஏதோ தவறு நடந்தது', 'en' => 'Something went wrong'],
-            'ta'    => ['உங்கள் தேர்வைச் சேமிக்க முடியவில்லை. சிறிது நேரத்தில் மீண்டும் முயலுங்கள்.'],
-            'en'    => ['Your choice could not be saved. Please try again in a moment.'],
+            'title'  => ['ta' => 'ஏதோ தவறு நடந்தது', 'en' => 'Something went wrong'],
+            'ta'     => ['உங்கள் தேர்வைச் சேமிக்க முடியவில்லை. சிறிது நேரத்தில் மீண்டும் முயலுங்கள்.'],
+            'en'     => ['Your choice could not be saved. Please try again in a moment.'],
+            'office' => ['ta' => 'அல்லது கோயில் அலுவலகத்தை அழைக்கவும்:', 'en' => 'Or call the temple office:'],
         ],
     };
 }
@@ -237,20 +248,21 @@ function nCopy(string $state): array
  */
 function nPage(int $status, string $state, array $ctx = []): never
 {
-    $h     = static fn(string $v): string => htmlspecialchars($v, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
-    $copy  = nCopy($state);
-    $email = (string) ($ctx['email'] ?? '');
-    $fill  = static fn(string $text): string => str_replace(
-        '{email}',
-        '<strong class="addr">' . $h($email !== '' ? $email : '—') . '</strong>',
+    $h       = static fn(string $v): string => htmlspecialchars($v, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+    $copy    = nCopy($state);
+    $contact = (string) ($ctx['contact'] ?? '');
+    $fill    = static fn(string $text): string => str_replace(
+        '{contact}',
+        '<strong class="addr">' . $h($contact !== '' ? $contact : '—') . '</strong>',
         $h($text)
     );
 
-    $facts   = function_exists('notifyTempleFacts') ? notifyTempleFacts() : [];
-    $nameTa  = (string) ($facts['name']['ta'] ?? 'அருள்மிகு ஸ்ரீ லிங்கம்மாள், ஸ்ரீ ரேணுகாதேவி, ஸ்ரீ சின்னம்மாள் திருக்கோவில்');
-    $nameEn  = (string) ($facts['name']['en'] ?? 'Dhabbalavaar Renuka Devi Lingamma Sinnammal Temple');
-    $prefs   = siteUrl('/account?tab=notifications');
-    $home    = siteUrl('/');
+    $facts        = function_exists('notifyTempleFacts') ? notifyTempleFacts() : [];
+    $nameTa       = (string) ($facts['name']['ta'] ?? 'அருள்மிகு ஸ்ரீ லிங்கம்மாள், ஸ்ரீ ரேணுகாதேவி, ஸ்ரீ சின்னம்மாள் திருக்கோவில்');
+    $nameEn       = (string) ($facts['name']['en'] ?? 'Dhabbalavaar Renuka Devi Lingamma Sinnammal Temple');
+    $officeTel    = (string) ($facts['supportPhone'] ?? '+919443002296');
+    $officeShown  = (string) ($facts['supportPhoneDisplay'] ?? '+91 94430 02296');
+    $home         = siteUrl('/');
 
     http_response_code($status);
     header('Content-Type: text/html; charset=utf-8');
@@ -309,6 +321,7 @@ function nPage(int $status, string $state, array $ctx = []): never
   .links { margin: 18px 0 0; font-size: 15px; }
   .links a { color: #92400e; text-decoration: underline; text-underline-offset: 3px; overflow-wrap: anywhere; }
   .links span { display: block; margin-top: 8px; }
+  .office .tel { display: inline-block; margin-top: 6px; font-weight: 700; font-size: 17px; white-space: nowrap; }
   .home { margin-top: 20px !important; font-size: 14px; color: #6b4447; }
   @media (min-width: 480px) {
     body { padding: 48px 24px; }
@@ -334,8 +347,9 @@ function nPage(int $status, string $state, array $ctx = []): never
       <button type="submit"><span><?= $h($copy['button']['ta']) ?></span><span lang="en"><?= $h($copy['button']['en']) ?></span></button>
     </form>
 <?php endif; ?>
-<?php if (isset($copy['link'])): ?>
-    <p class="links"><a href="<?= $h($prefs) ?>"><span><?= $h($copy['link']['ta']) ?></span><span lang="en"><?= $h($copy['link']['en']) ?></span></a></p>
+<?php if (isset($copy['office'])): ?>
+    <p class="links office"><span><?= $h($copy['office']['ta']) ?></span><span lang="en"><?= $h($copy['office']['en']) ?></span>
+      <a class="tel" href="tel:<?= $h($officeTel) ?>"><?= $h($officeShown) ?></a></p>
 <?php endif; ?>
     <p class="home"><a href="<?= $h($home) ?>">முகப்பு பக்கம் · <span lang="en">Temple website</span></a></p>
   </div>

@@ -22,7 +22,7 @@
  *
  * The plain-text part matters as much as the HTML: it is what screen readers in
  * some clients announce, what spam filters compare, and what a test reads the
- * verification link from.
+ * unsubscribe link from.
  */
 
 require_once __DIR__ . '/contracts.php';
@@ -54,7 +54,7 @@ function notifyEmailOneLine(mixed $value): string
 /**
  * An absolute http(s) URL safe to place in an href or src, or null.
  *
- * A site path ("/account?tab=bookings", never "//host") becomes absolute with
+ * A site path ("/contact", never "//host") becomes absolute with
  * siteUrl(), because a relative link in an email has nothing to be relative to.
  * javascript:, data:, protocol-relative and anything with whitespace, control
  * characters or backslashes is refused outright.
@@ -97,11 +97,10 @@ function notifyEmailCopy(string $lang): array
         'help'          => 'உதவி தேவையா?',
         'call'          => 'கோயில் அலுவலகத்தை அழைக்க:',
         'write'         => 'மின்னஞ்சல்:',
-        'why'           => '%s இணையதளத்தில் உங்களுக்குக் கணக்கு இருப்பதாலோ, கோயில் உங்களைத் தொடர்பு கொள்ள நீங்கள் கேட்டதாலோ இந்தச் செய்தி அனுப்பப்பட்டது.',
-        'whySecurity'   => 'இது உங்கள் கணக்கின் பாதுகாப்பு பற்றிய செய்தி. பிற மின்னஞ்சல்களை நிறுத்தியிருந்தாலும் இது அனுப்பப்படும்.',
-        'whyEmergency'  => 'இது கோயிலின் அவசர அறிவிப்பு. பக்தர்களின் பாதுகாப்பிற்காக, பிற அறிவிப்புகளை நிறுத்தியிருந்தாலும் இது அனுப்பப்படும்.',
-        'prefs'         => 'அறிவிப்பு அமைப்புகள்',
-        'unsubscribe'   => 'இந்த மின்னஞ்சல்களை நிறுத்த',
+        'why'           => '%s-இல் நீங்கள் சேவை பதிவு செய்ததாலோ, நன்கொடை வழங்கியதாலோ, உங்கள் குடும்பத்தைப் பதிவு செய்ததாலோ இந்தச் செய்தி அனுப்பப்பட்டது.',
+        'whyUpdates'    => '%s-இல் உங்கள் குடும்பத்தைப் பதிவு செய்தபோது கோயில் அறிவிப்புகளைப் பெற ஒப்புக்கொண்டதால் இந்தச் செய்தி அனுப்பப்பட்டது.',
+        'whyEmergency'  => 'இது கோயிலின் அவசர அறிவிப்பு. கோயில் அறிவிப்புகளைப் பெற ஒப்புக்கொண்ட அனைத்துக் குடும்பங்களுக்கும் அனுப்பப்படுகிறது.',
+        'unsubscribe'   => 'கோயில் அறிவிப்புகளை நிறுத்த',
     ];
     $en = [
         'emergency'     => 'Emergency notice',
@@ -114,11 +113,10 @@ function notifyEmailCopy(string $lang): array
         'help'          => 'Need help?',
         'call'          => 'Call the temple office:',
         'write'         => 'Email:',
-        'why'           => 'You are receiving this because you have an account on the %s website, or asked the temple to contact you.',
-        'whySecurity'   => 'This is a security message about your account. It is sent even when other emails are turned off.',
-        'whyEmergency'  => 'This is an emergency notice from the temple. For the safety of devotees it is sent even when other notifications are turned off.',
-        'prefs'         => 'Notification settings',
-        'unsubscribe'   => 'Unsubscribe from these emails',
+        'why'           => 'You are receiving this because you booked a seva, made an offering or registered your family with %s.',
+        'whyUpdates'    => 'You are receiving this because you agreed to receive temple updates when your family registered with %s.',
+        'whyEmergency'  => 'This is an emergency notice from the temple, sent to every family who agreed to receive temple updates.',
+        'unsubscribe'   => 'Stop temple updates',
     ];
     return $lang === 'ta' ? $ta : $en;
 }
@@ -211,14 +209,23 @@ function notifyEmailContact(array $p, string $lang): array
     ];
 }
 
-/** Why this devotee receives this email, in their language. */
+/**
+ * Why this devotee receives this email, in their language: an emergency notice,
+ * an update they agreed to at registration, or a message about their own
+ * booking, offering or registration. The kind comes from $p['kind'], or from
+ * the category when the caller gave only that.
+ */
 function notifyEmailWhy(array $p, string $lang, string $templeName, array $copy): string
 {
     $note = notifyEmailOneLine($p['footer_note'] ?? '');
     if ($note !== '') return $note;
     $category = (string) ($p['category'] ?? '');
-    if ($category === 'security') return $copy['whySecurity'];
-    if ($category === 'emergency' || ($p['priority'] ?? '') === 'emergency') return $copy['whyEmergency'];
+    $kind     = (string) ($p['kind'] ?? '');
+    if ($kind === '' && $category !== '' && function_exists('notifyCategoryKind')) $kind = notifyCategoryKind($category);
+    if ($kind === 'critical' || $category === 'emergency' || (($p['priority'] ?? '') === 'emergency' && $kind !== 'transactional')) {
+        return $copy['whyEmergency'];
+    }
+    if ($kind === 'informational' || $kind === 'promotional') return sprintf($copy['whyUpdates'], $templeName);
     return sprintf($copy['why'], $templeName);
 }
 
@@ -232,13 +239,14 @@ function notifyEmailWhy(array $p, string $lang, string $templeName, array $copy)
  *   (normal|important|urgent|emergency — urgent and emergency show a banner),
  *   cta_url (http(s) or a site path; anything else means no button), cta_label,
  *   details ([[label, value], …]), logo_url (default: the site icon), contact
- *   (['phone','email','address']; default: the temple office), preferences_url,
- *   unsubscribe_url (the link appears only when given), open_pixel_url (the
- *   image appears only when given).
+ *   (['phone','email','address']; default: the temple office), unsubscribe_url
+ *   (the "stop temple updates" link appears only when given), open_pixel_url
+ *   (the image appears only when given).
  *
- * Two extra keys tune the footer: category (a category key — security and
- * emergency explain why the message ignored the devotee's settings) and
- * footer_note (replaces the explanation entirely).
+ * Three extra keys tune the footer's explanation of why the email arrived:
+ * kind (the category's kind — an update says the family agreed to updates, an
+ * emergency says who receives it), category (a category key, used when kind is
+ * not given) and footer_note (replaces the explanation entirely).
  */
 function notifyEmailHtml(array $p): string
 {
@@ -260,7 +268,6 @@ function notifyEmailHtml(array $p): string
     $ctaUrl  = notifyEmailSafeUrl($p['cta_url'] ?? null);
     $ctaText = notifyEmailOneLine($p['cta_label'] ?? '');
     if ($ctaText === '') $ctaText = $copy['defaultCta'];
-    $prefs   = notifyEmailSafeUrl($p['preferences_url'] ?? null);
     $unsub   = notifyEmailSafeUrl($p['unsubscribe_url'] ?? null);
     $pixel   = notifyEmailSafeUrl($p['open_pixel_url'] ?? null);
     $details = notifyEmailDetails($p['details'] ?? []);
@@ -358,11 +365,8 @@ function notifyEmailHtml(array $p): string
             . '</td></tr></table></td></tr>';
     }
 
-    // ── Footer: why this arrived, and how to change it.
+    // ── Footer: why this arrived, and how to stop it.
     $links = [];
-    if ($prefs !== null) {
-        $links[] = '<a href="' . $e($prefs) . '" target="_blank" style="color:#8a2c0d;text-decoration:underline">' . $e($copy['prefs']) . '</a>';
-    }
     if ($unsub !== null) {
         $links[] = '<a href="' . $e($unsub) . '" target="_blank" style="color:#8a2c0d;text-decoration:underline">' . $e($copy['unsubscribe']) . '</a>';
     }
@@ -466,8 +470,6 @@ function notifyEmailText(array $p): string
 
     $out[] = '--';
     $out[] = notifyEmailWhy($p, $l, $facts['name'][$l], $copy);
-    $prefs = notifyEmailSafeUrl($p['preferences_url'] ?? null);
-    if ($prefs !== null) $out[] = $copy['prefs'] . ': ' . $prefs;
     $unsub = notifyEmailSafeUrl($p['unsubscribe_url'] ?? null);
     if ($unsub !== null) $out[] = $copy['unsubscribe'] . ': ' . $unsub;
     $out[] = $facts['trust'][$l];

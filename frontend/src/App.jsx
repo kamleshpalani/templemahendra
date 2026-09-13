@@ -1,4 +1,4 @@
-import { Routes, Route, useLocation, Outlet } from "react-router-dom";
+import { Routes, Route, Navigate, useLocation, Outlet } from "react-router-dom";
 import { Suspense, lazy, useEffect } from "react";
 import Layout from "./components/Layout/Layout";
 import Home from "./pages/Home";
@@ -15,17 +15,17 @@ const Donations = lazy(() => import("./pages/Donations"));
 const Contact = lazy(() => import("./pages/Contact"));
 const PanchangCalendar = lazy(() => import("./pages/PanchangCalendar"));
 const Search = lazy(() => import("./pages/Search"));
+const Register = lazy(() => import("./pages/Register"));
 const NotFound = lazy(() => import("./pages/NotFound"));
 
-// Accounts: one chunk each, so a visitor who never signs in never downloads them.
-const Login = lazy(() => import("./pages/Login"));
-const Register = lazy(() => import("./pages/Register"));
-const ForgotPassword = lazy(() => import("./pages/ForgotPassword"));
-const ResetPassword = lazy(() => import("./pages/ResetPassword"));
-const VerifyEmail = lazy(() => import("./pages/VerifyEmail"));
-const Account = lazy(() => import("./pages/Account"));
-const Notifications = lazy(() => import("./pages/Notifications"));
-const RequireAuth = lazy(() => import("./components/Auth/RequireAuth"));
+/*
+ * Devotee sign-in was removed (docs/registration/SPEC.md §7). These addresses
+ * still sit in old emails, bookmarks and forwarded WhatsApp messages, so each
+ * one lands on the family registration form instead of the 404 page. `replace`
+ * keeps the retired address out of the history, so Back does not bounce the
+ * visitor straight into the redirect again.
+ */
+const RETIRED_ACCOUNT_PATHS = ["login", "account", "notifications", "forgot-password", "reset-password", "verify-email"];
 
 /** Re-mounts on every path change so CSS `page-in` plays; Suspense shows the glass loader. */
 function PageTransition() {
@@ -43,8 +43,14 @@ function PageTransition() {
 }
 
 function ScrollToTop() {
-  const { pathname, hash, key } = useLocation();
+  const { pathname, hash, key, state } = useLocation();
+  // A navigation that moves within a page and places the view itself (the
+  // registration form's ?step= changes) says so in its history state. The
+  // state travels with the history entry, so browser Back and Forward between
+  // those steps are left alone too.
+  const preserveScroll = Boolean(state?.preserveScroll);
   useEffect(() => {
+    if (preserveScroll) return;
     // In-page anchors (/about#trust, /donations#bank-details): scroll to the
     // target once it has rendered. Each anchored section sets its own
     // scroll-margin-top (About.css, Contact.css, Donations.css, TrustDetails.css)
@@ -58,7 +64,7 @@ function ScrollToTop() {
       }
     }
     window.scrollTo({ top: 0, left: 0, behavior: "instant" });
-  }, [pathname, hash, key]);
+  }, [pathname, hash, key, preserveScroll]);
   return null;
 }
 
@@ -78,17 +84,11 @@ function App() {
             <Route path="contact" element={<Contact />} />
             <Route path="panchangam" element={<PanchangCalendar />} />
             <Route path="search" element={<Search />} />
-
-            {/* Accounts */}
-            <Route path="login" element={<Login />} />
             <Route path="register" element={<Register />} />
-            <Route path="forgot-password" element={<ForgotPassword />} />
-            <Route path="reset-password" element={<ResetPassword />} />
-            <Route path="verify-email" element={<VerifyEmail />} />
-            <Route element={<RequireAuth />}>
-              <Route path="account" element={<Account />} />
-              <Route path="notifications" element={<Notifications />} />
-            </Route>
+
+            {RETIRED_ACCOUNT_PATHS.map((path) => (
+              <Route key={path} path={path} element={<Navigate to="/register" replace />} />
+            ))}
 
             <Route path="*" element={<NotFound />} />
           </Route>

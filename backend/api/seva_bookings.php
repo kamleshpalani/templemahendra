@@ -3,7 +3,7 @@
 
 require_once __DIR__ . '/../includes/db.php';
 require_once __DIR__ . '/../includes/helpers.php';
-require_once __DIR__ . '/../includes/devotee_auth.php';
+require_once __DIR__ . '/../includes/devotee_notify.php';
 require_once __DIR__ . '/../includes/public_guard.php';
 
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
@@ -25,6 +25,8 @@ $seva_id        = isset($body['seva_id']) && is_numeric($body['seva_id'])
                     ? (int) $body['seva_id'] : null;
 $preferred_date = is_string($body['preferred_date'] ?? null) ? $body['preferred_date'] : null;
 $message        = sanitizeText(is_string($body['message'] ?? null) ? $body['message'] : '', 1000);
+// The language the site was showing, so the acknowledgement reads the same way.
+$lang           = devoteeLangFromInput($body['lang'] ?? null);
 
 // ── Validation ───────────────────────────────────────────────────────────────
 if ($devotee_name === '' || strlen($devotee_name) < 2) {
@@ -54,10 +56,7 @@ if (!empty($preferred_date)) {
 publicGuardLimit('seva-booking-saved');
 
 // ── Insert ────────────────────────────────────────────────────────────────────
-// A signed-in devotee's booking is stamped with their account id so it shows up
-// in their own history. Anonymous bookings keep working exactly as before.
 $db       = getDB();
-$linkId   = devoteeLinkId('seva_bookings');
 $columns  = ['devotee_name', 'phone', 'phone_country', 'seva_id', 'seva_name', 'preferred_date', 'message'];
 $params   = [
     ':devotee_name'   => $devotee_name,
@@ -68,9 +67,11 @@ $params   = [
     ':preferred_date' => $dateValue,
     ':message'        => $message !== '' ? $message : null,
 ];
-if ($linkId !== null) {
-    $columns[]           = 'devotee_id';
-    $params[':devotee_id'] = $linkId;
+// Migration 009 stores the language, so the office's confirmation and the
+// reminder the evening before are written in it too.
+if (publicGuardHasColumn('seva_bookings', 'lang')) {
+    $columns[]      = 'lang';
+    $params[':lang'] = $lang;
 }
 $stmt = $db->prepare(
     'INSERT INTO seva_bookings (' . implode(', ', $columns) . ')'
@@ -80,14 +81,13 @@ $stmt->execute($params);
 $bookingId = (int) $db->lastInsertId();
 
 // ── Acknowledge it ───────────────────────────────────────────────────────────
-// booking.received: the account when signed in, otherwise the phone number the
-// guest gave (in Tamil, the site's language). It is queued, not sent here, and
-// nothing about it can change this response — the booking is already saved,
-// and a devotee must never be told it failed because a message did.
+// booking.received, to the phone number the devotee gave, in the language the
+// site was in. It is queued, not sent here, and nothing about it can change
+// this response — the booking is already saved, and a devotee must never be
+// told it failed because a message did.
 try {
     if (devoteeNotifyReady()) {
-        $lang = $linkId !== null ? devoteeNotifyLang($linkId) : 'ta';
-        $l    = devoteeCopyLang($lang);
+        $l         = devoteeCopyLang($lang);
         $sevaLabel = $seva_name;
         if ($seva_id !== null) {
             $s = $db->prepare('SELECT name_ta, name_en FROM sevas WHERE id = :id');
@@ -96,22 +96,17 @@ try {
                 $sevaLabel = trim((string) ($l === 'ta' ? $seva['name_ta'] : $seva['name_en'])) ?: $seva_name;
             }
         }
-        $ctx = [
+        devoteeNotifyEvent('booking.received', [
             'entity_id' => $bookingId,
+            'to_phone'  => devoteeIntlPhone($phone, $ph['country']),
+            'name'      => $devotee_name,
+            'lang'      => $lang,
             'vars'      => [
                 'bookingNumber' => devoteeBookingNumber($bookingId),
                 'sevaName'      => $sevaLabel,
                 'bookingDate'   => devoteeBookingDateLabel($dateValue, $l),
             ],
-        ];
-        if ($linkId !== null) {
-            $ctx['devotee_id'] = $linkId;
-        } else {
-            $ctx['to_phone'] = devoteeIntlPhone($phone, $ph['country']);
-            $ctx['name']     = $devotee_name;
-            $ctx['lang']     = 'ta';
-        }
-        devoteeNotifyEvent('booking.received', $ctx);
+        ]);
     }
 } catch (Throwable $e) {
     error_log('[notify] booking.received for booking ' . $bookingId . ' failed: ' . $e->getMessage());

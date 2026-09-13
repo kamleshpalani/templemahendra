@@ -6,7 +6,8 @@
  * These are the words a devotee receives until the committee edits them in
  * Admin → Message Templates (rows in `notification_templates` win; see
  * templates.php for the resolution order). Every key ships Tamil and English,
- * a shared version ("any": the bell, push, email) and two channel overrides:
+ * a shared version ("any": the email, and the copy the admin shows) and two
+ * channel overrides:
  *
  *   sms       One segment wherever it can be. English stays within 160 GSM-7
  *             characters with realistic values (tests/notify-templates-unit.php
@@ -20,11 +21,12 @@
  * English and greets with "Vanakkam", as the site's emails always have.
  * Titles carry no personal names: they appear on lock screens.
  *
- * Security messages say what happened and what to do if it was not the
- * devotee. Links that prove something (verify an email, reset a password) are
- * written only into the email body, on a line of their own — never into SMS or
- * WhatsApp: a phone is not proof of owning an email address, and a reset link
- * sent to an unverified number would hand the account to whoever holds it.
+ * Devotees do not sign in, so no message points at a sign-in or settings page:
+ * links go to public pages (/, /contact, /sevas, /events), and "to change
+ * your details, call the temple office" is how a family updates anything. The
+ * "stop updates" line an update carries on WhatsApp and SMS, and the email's
+ * unsubscribe link, are added when the message is sent (queue.php), so the
+ * wording here never has to include them.
  */
 
 /**
@@ -136,315 +138,46 @@ function notifyTemplateBuiltIn(): array
 
     $t = [];
 
-    /* ── Account ─────────────────────────────────────────────────────────── */
+    /* ── Family registration ─────────────────────────────────────────────── */
 
-    $t['welcome'] = [
+    // Sent only to a family that ticked "send me temple updates", once. It must
+    // read naturally whether the registrant added no family members (familyCount
+    // 1) or several, so the count stands on a labelled line of its own rather
+    // than inside a sentence that would need "person" or "people".
+    $t['registration_received'] = [
         'category'    => 'general',
-        'description' => 'Sent when a devotee creates an account on the website.',
-        'variables'   => ['devoteeName', 'ctaUrl'],
-        'cta_path'    => '/account',
+        'description' => 'Sent once when a family registers on the website and agrees to temple updates. familyCount is the number of people in the registration, counting the registrant (1 when no family members were added).',
+        'variables'   => ['devoteeName', 'familyCount', 'ctaUrl'],
+        'cta_path'    => '/',
         'langs' => [
             'ta' => [
                 'any' => [
-                    'title'     => 'கோயில் குடும்பத்திற்கு வரவேற்கிறோம்',
-                    'body'      => "வணக்கம் {{devoteeName}},\n\n{{templeName}} இணையதளத்தில் கணக்கு தொடங்கியதற்கு நன்றி. இனி சேவை பதிவு செய்யலாம், உங்கள் பதிவுகளையும் நன்கொடைகளையும் ஒரே இடத்தில் பார்க்கலாம், திருவிழா மற்றும் பூஜை அறிவிப்புகளையும் பெறலாம்.\n\nஎங்கள் மின்னஞ்சல் வந்ததும் உங்கள் மின்னஞ்சல் முகவரியை உறுதிப்படுத்துங்கள்; அப்போதுதான் பதிவு உறுதிப்படுத்தல்களும் ரசீதுகளும் உங்களை வந்து சேரும்.\n\n$signTa",
-                    'cta_label' => 'என் கணக்கு',
+                    'title'     => 'கோயிலில் பதிவு செய்ததற்கு நன்றி',
+                    'body'      => "வணக்கம் {{devoteeName}},\n\n{{templeName}}-இல் பதிவு செய்ததற்கு மனமார்ந்த நன்றி. உங்கள் விவரங்கள் எங்களுக்குக் கிடைத்தன.\n\nஇந்தப் பதிவில் உள்ள நபர்கள்: {{familyCount}}\n\nஇனி திருவிழா, பூஜை மற்றும் கோயில் அறிவிப்புகளை நீங்கள் தேர்ந்தெடுத்த மொழியில் அனுப்புவோம். ஒவ்வொரு செய்தியிலும் அவற்றை நிறுத்துவதற்கான இணைப்பு இருக்கும்.\n\nபின்னர் விவரங்களை மாற்ற, கோயில் அலுவலகத்தை {{supportPhone}} என்ற எண்ணில் அழைக்கவும்.\n\nகுலதெய்வங்களின் அருள் உங்களுக்கும் உங்கள் குடும்பத்திற்கும் என்றும் துணை நிற்கட்டும்.\n\n$signTa",
+                    'cta_label' => 'கோயில் இணையதளம்',
                 ],
                 'sms' => [
                     'title' => '',
-                    'body'  => '{{templeShortName}}: வணக்கம் {{devoteeName}}, உங்கள் கணக்கு தயார். இனி இணையதளத்தில் சேவை பதிவு செய்யலாம்.',
+                    'body'  => '{{templeShortName}}: வணக்கம் {{devoteeName}}, கோயிலில் பதிவு செய்ததற்கு நன்றி. திருவிழா, பூஜை செய்திகளை அனுப்புவோம்.',
                 ],
                 'whatsapp' => [
                     'title' => '',
-                    'body'  => "வணக்கம் {{devoteeName}} 🙏\n\n*{{templeName}}* இணையதளத்தில் உங்கள் கணக்கு தயார். சேவை பதிவு செய்யவும், உங்கள் பதிவுகளையும் நன்கொடைகளையும் பார்க்கவும்:\n{{ctaUrl}}",
+                    'body'  => "வணக்கம் {{devoteeName}} 🙏\n\n*{{templeName}}*-இல் பதிவு செய்ததற்கு நன்றி.\n\n*இந்தப் பதிவில் உள்ள நபர்கள்:* {{familyCount}}\n\nதிருவிழா, பூஜை மற்றும் கோயில் அறிவிப்புகளை உங்களுக்கு அனுப்புவோம். பின்னர் விவரங்களை மாற்ற {{supportPhone}} என்ற எண்ணில் அழைக்கவும்.",
                 ],
             ],
             'en' => [
                 'any' => [
-                    'title'     => 'Welcome to the temple family',
-                    'body'      => "Vanakkam {{devoteeName}},\n\nThank you for creating an account with {{templeName}}. You can now book a seva, see your bookings and offerings in one place, and hear from the temple about festivals and poojas.\n\nPlease confirm your email address when our message arrives, so that booking confirmations and receipts can reach you.\n\n$signEn",
-                    'cta_label' => 'Open my account',
+                    'title'     => 'Thank you for registering with the temple',
+                    'body'      => "Vanakkam {{devoteeName}},\n\nThank you for registering with {{templeName}}. We have received your details.\n\nPeople in this registration: {{familyCount}}\n\nFrom now on we will send you news of festivals, poojas and temple announcements in the language you chose. Every message has a link to stop them.\n\nTo change your details later, call the temple office on {{supportPhone}}.\n\nMay the blessings of our kula deivams be with you and your family always.\n\n$signEn",
+                    'cta_label' => 'Visit the temple website',
                 ],
                 'sms' => [
                     'title' => '',
-                    'body'  => '{{templeShortName}}: Vanakkam {{devoteeName}}, your account is ready. You can now book sevas on our website.',
+                    'body'  => '{{templeShortName}}: Vanakkam {{devoteeName}}, thank you for registering with the temple. We will send you festival and pooja news.',
                 ],
                 'whatsapp' => [
                     'title' => '',
-                    'body'  => "Vanakkam {{devoteeName}} 🙏\n\nYour account with *{{templeName}}* is ready. Book a seva and see your bookings and offerings here:\n{{ctaUrl}}",
-                ],
-            ],
-        ],
-    ];
-
-    $t['email_verification'] = [
-        'category'    => 'security',
-        'description' => 'The link a devotee opens to confirm their email address. Sent at sign-up and whenever they ask for it again. The link goes only by email.',
-        'variables'   => ['devoteeName', 'verifyUrl', 'expiresHours', 'ctaUrl'],
-        'cta_path'    => '{{verifyUrl}}',
-        'langs' => [
-            'ta' => [
-                'any' => [
-                    'title'     => 'உங்கள் மின்னஞ்சலை உறுதிப்படுத்துங்கள்',
-                    'body'      => "வணக்கம் {{devoteeName}},\n\n{{templeName}} இணையதளத்தில் கணக்கு தொடங்கியதற்கு நன்றி. பதிவு உறுதிப்படுத்தல்களும் ரசீதுகளும் உங்களை வந்து சேர, இந்த மின்னஞ்சல் முகவரியை உறுதிப்படுத்துங்கள். அதற்கு இந்த இணைப்பைத் திறக்கவும்:\n\n{{verifyUrl}}\n\nஇந்த இணைப்பு {{expiresHours}} மணி நேரம் செல்லுபடியாகும். நீங்கள் கணக்கு தொடங்கவில்லை என்றால், இந்தச் செய்தியைப் புறக்கணிக்கலாம்; எதுவும் மாறாது.",
-                    'cta_label' => 'மின்னஞ்சலை உறுதிப்படுத்து',
-                ],
-                'sms' => [
-                    'title' => '',
-                    'body'  => '{{templeShortName}}: மின்னஞ்சலை உறுதிப்படுத்தும் இணைப்பை உங்கள் மின்னஞ்சலுக்கு அனுப்பியுள்ளோம். ஸ்பேம் கோப்புறையையும் பாருங்கள்.',
-                ],
-                'whatsapp' => [
-                    'title' => '',
-                    'body'  => "வணக்கம் {{devoteeName}},\n\nஉங்கள் மின்னஞ்சல் முகவரியை உறுதிப்படுத்தும் இணைப்பை *மின்னஞ்சலில்* அனுப்பியுள்ளோம். அது {{expiresHours}} மணி நேரம் செல்லுபடியாகும். ஸ்பேம் கோப்புறையையும் பாருங்கள்.\n\nநீங்கள் கணக்கு தொடங்கவில்லை என்றால், இதைப் புறக்கணிக்கலாம்.",
-                ],
-            ],
-            'en' => [
-                'any' => [
-                    'title'     => 'Confirm your email address',
-                    'body'      => "Vanakkam {{devoteeName}},\n\nThank you for creating an account with {{templeName}}. Please confirm this email address so we can send you booking confirmations and receipts. Open this link to confirm:\n\n{{verifyUrl}}\n\nThis link works for {{expiresHours}} hours. If you did not create an account, ignore this message and nothing will happen.",
-                    'cta_label' => 'Confirm my email',
-                ],
-                'sms' => [
-                    'title' => '',
-                    'body'  => '{{templeShortName}}: we have emailed you a link to confirm your email address. Please check your inbox and spam folder.',
-                ],
-                'whatsapp' => [
-                    'title' => '',
-                    'body'  => "Vanakkam {{devoteeName}},\n\nWe have sent a link to confirm your email address *by email*. It works for {{expiresHours}} hours; please check your spam folder too.\n\nIf you did not create an account, you can ignore this.",
-                ],
-            ],
-        ],
-    ];
-
-    $t['email_verified'] = [
-        'category'    => 'security',
-        'description' => 'Sent once a devotee has confirmed their email address.',
-        'variables'   => ['devoteeName', 'ctaUrl'],
-        'cta_path'    => '/account',
-        'langs' => [
-            'ta' => [
-                'any' => [
-                    'title'     => 'உங்கள் மின்னஞ்சல் உறுதிப்படுத்தப்பட்டது',
-                    'body'      => "வணக்கம் {{devoteeName}},\n\nஉங்கள் மின்னஞ்சல் முகவரி உறுதிப்படுத்தப்பட்டது. இனி சில நொடிகளில் சேவை பதிவு செய்யலாம்; நீங்கள் பதிவு செய்தவை, வழங்கிய நன்கொடைகள் அனைத்தையும் ஒரே இடத்தில் பார்க்கலாம்.",
-                    'cta_label' => 'என் கணக்கு',
-                ],
-                'sms' => [
-                    'title' => '',
-                    'body'  => '{{templeShortName}}: உங்கள் மின்னஞ்சல் முகவரி உறுதிப்படுத்தப்பட்டது. நன்றி.',
-                ],
-                'whatsapp' => [
-                    'title' => '',
-                    'body'  => "வணக்கம் {{devoteeName}},\n\nஉங்கள் மின்னஞ்சல் முகவரி *உறுதிப்படுத்தப்பட்டது*. இனி சேவை பதிவுகளும் நன்கொடைகளும் உங்கள் கணக்கில் ஒரே இடத்தில்:\n{{ctaUrl}}",
-                ],
-            ],
-            'en' => [
-                'any' => [
-                    'title'     => 'Your email is confirmed',
-                    'body'      => "Vanakkam {{devoteeName}},\n\nYour email address is confirmed. You can now book a seva in a couple of taps, and see everything you have booked or given in one place.",
-                    'cta_label' => 'Open my account',
-                ],
-                'sms' => [
-                    'title' => '',
-                    'body'  => '{{templeShortName}}: your email address is confirmed. You can now see your bookings and offerings in your account.',
-                ],
-                'whatsapp' => [
-                    'title' => '',
-                    'body'  => "Vanakkam {{devoteeName}},\n\nYour email address is *confirmed*. Your bookings and offerings are all in one place in your account:\n{{ctaUrl}}",
-                ],
-            ],
-        ],
-    ];
-
-    $t['password_reset'] = [
-        'category'    => 'security',
-        'description' => 'The link to choose a new password, sent when someone asks to reset it. The link goes only by email.',
-        'variables'   => ['devoteeName', 'resetUrl', 'expiresMinutes', 'ctaUrl'],
-        'cta_path'    => '{{resetUrl}}',
-        'langs' => [
-            'ta' => [
-                'any' => [
-                    'title'     => 'புதிய கடவுச்சொல் அமையுங்கள்',
-                    'body'      => "வணக்கம் {{devoteeName}},\n\n{{templeName}} இணையதளத்தில் உள்ள உங்கள் கணக்கின் கடவுச்சொல்லை மாற்றக் கோரிக்கை வந்துள்ளது. அது நீங்கள்தான் என்றால், புதிய கடவுச்சொல் அமைக்க இந்த இணைப்பைத் திறக்கவும்:\n\n{{resetUrl}}\n\nஇந்த இணைப்பு {{expiresMinutes}} நிமிடங்கள் மட்டுமே செல்லுபடியாகும்; ஒருமுறை மட்டுமே பயன்படுத்த முடியும்.\n\nஇது நீங்கள் இல்லை என்றால், உங்கள் கடவுச்சொல் மாறவில்லை; இந்தச் செய்தியைப் புறக்கணிக்கலாம். இதுபோன்ற செய்திகள் தொடர்ந்து வந்தால், கோயில் அலுவலகத்தை {{supportPhone}} என்ற எண்ணில் அழைக்கவும்.",
-                    'cta_label' => 'புதிய கடவுச்சொல் அமை',
-                ],
-                'sms' => [
-                    'title' => '',
-                    'body'  => '{{templeShortName}}: கடவுச்சொல் மாற்றும் இணைப்பை மின்னஞ்சலில் அனுப்பியுள்ளோம். நீங்கள் கேட்கவில்லை எனில் புறக்கணிக்கவும்.',
-                ],
-                'whatsapp' => [
-                    'title' => '',
-                    'body'  => "வணக்கம் {{devoteeName}},\n\nஉங்கள் கணக்கின் கடவுச்சொல்லை மாற்றக் கோரிக்கை வந்தது. இணைப்பை *மின்னஞ்சலில்* அனுப்பியுள்ளோம்.\n\nநீங்கள் கேட்கவில்லை என்றால், உங்கள் கடவுச்சொல் மாறவில்லை. சந்தேகம் இருந்தால் {{supportPhone}} என்ற எண்ணில் அழைக்கவும்.",
-                ],
-            ],
-            'en' => [
-                'any' => [
-                    'title'     => 'Set a new password',
-                    'body'      => "Vanakkam {{devoteeName}},\n\nSomeone asked to reset the password for your account on the {{templeName}} website. If that was you, open this link to choose a new password:\n\n{{resetUrl}}\n\nThis link works for {{expiresMinutes}} minutes and can be used once.\n\nIf it was not you, your password has not changed and you can ignore this message. If you keep receiving these, call the temple office on {{supportPhone}}.",
-                    'cta_label' => 'Set a new password',
-                ],
-                'sms' => [
-                    'title' => '',
-                    'body'  => '{{templeShortName}}: a password reset was requested. We emailed you the link. Not you? Your password is unchanged; ignore this.',
-                ],
-                'whatsapp' => [
-                    'title' => '',
-                    'body'  => "Vanakkam {{devoteeName}},\n\nSomeone asked to reset your account password. We have sent the link *by email*.\n\nIf it was not you, your password has not changed. If you are worried, call {{supportPhone}}.",
-                ],
-            ],
-        ],
-    ];
-
-    $t['password_changed'] = [
-        'category'    => 'security',
-        'description' => 'Sent after the account password is changed, so the devotee can act if it was not them.',
-        'variables'   => ['devoteeName', 'changedAt', 'ctaUrl'],
-        'cta_path'    => '/forgot-password',
-        'langs' => [
-            'ta' => [
-                'any' => [
-                    'title'     => 'உங்கள் கடவுச்சொல் மாற்றப்பட்டது',
-                    'body'      => "வணக்கம் {{devoteeName}},\n\n{{templeName}} இணையதளத்தில் உள்ள உங்கள் கணக்கின் கடவுச்சொல் {{changedAt}} அன்று மாற்றப்பட்டது.\n\nஇதை நீங்களே மாற்றியிருந்தால், வேறு எதுவும் செய்ய வேண்டியதில்லை.\n\nநீங்கள் மாற்றவில்லை என்றால், உடனே புதிய கடவுச்சொல் அமையுங்கள்; உங்கள் கணக்கைப் பாதுகாக்க கோயில் அலுவலகத்தை {{supportPhone}} என்ற எண்ணில் அழைக்கவும்.",
-                    'cta_label' => 'கடவுச்சொல்லை மீட்டமை',
-                ],
-                'sms' => [
-                    'title' => '',
-                    'body'  => '{{templeShortName}}: கடவுச்சொல் மாற்றப்பட்டது ({{changedAt}}). நீங்கள் இல்லையெனில் அழைக்க: {{supportPhone}}',
-                ],
-                'whatsapp' => [
-                    'title' => '',
-                    'body'  => "வணக்கம் {{devoteeName}},\n\nஉங்கள் கணக்கின் கடவுச்சொல் *{{changedAt}}* அன்று மாற்றப்பட்டது.\n\nநீங்கள் மாற்றவில்லை என்றால், உடனே புதிய கடவுச்சொல் அமையுங்கள்:\n{{ctaUrl}}\nமேலும் {{supportPhone}} என்ற எண்ணில் அழைக்கவும்.",
-                ],
-            ],
-            'en' => [
-                'any' => [
-                    'title'     => 'Your password was changed',
-                    'body'      => "Vanakkam {{devoteeName}},\n\nThe password for your account on the {{templeName}} website was changed on {{changedAt}}.\n\nIf you made this change, there is nothing more to do.\n\nIf you did not, reset your password straight away and call the temple office on {{supportPhone}} so we can help secure your account.",
-                    'cta_label' => 'Reset my password',
-                ],
-                'sms' => [
-                    'title' => '',
-                    'body'  => '{{templeShortName}}: your account password was changed on {{changedAt}}. Not you? Reset it now and call {{supportPhone}}.',
-                ],
-                'whatsapp' => [
-                    'title' => '',
-                    'body'  => "Vanakkam {{devoteeName}},\n\nYour account password was changed on *{{changedAt}}*.\n\nIf this was not you, reset it straight away:\n{{ctaUrl}}\nand call {{supportPhone}}.",
-                ],
-            ],
-        ],
-    ];
-
-    $t['profile_updated'] = [
-        'category'    => 'security',
-        'description' => 'Sent when important account details (name, phone, address) are changed. changedFields is a short readable list.',
-        'variables'   => ['devoteeName', 'changedFields', 'ctaUrl'],
-        'cta_path'    => '/account?tab=profile',
-        'langs' => [
-            'ta' => [
-                'any' => [
-                    'title'     => 'உங்கள் கணக்கு விவரங்கள் மாற்றப்பட்டன',
-                    'body'      => "வணக்கம் {{devoteeName}},\n\nஉங்கள் கோயில் கணக்கில் இந்த விவரங்கள் இப்போது மாற்றப்பட்டன: {{changedFields}}.\n\nஇதை நீங்களே மாற்றியிருந்தால், வேறு எதுவும் செய்ய வேண்டியதில்லை. நீங்கள் மாற்றவில்லை என்றால், உடனே கடவுச்சொல்லை மாற்றி, கோயில் அலுவலகத்தை {{supportPhone}} என்ற எண்ணில் அழைக்கவும்.",
-                    'cta_label' => 'என் விவரங்கள்',
-                ],
-                'sms' => [
-                    'title' => '',
-                    'body'  => '{{templeShortName}}: உங்கள் கணக்கில் {{changedFields}} மாற்றப்பட்டது. நீங்கள் இல்லையெனில் {{supportPhone}} அழைக்கவும்.',
-                ],
-                'whatsapp' => [
-                    'title' => '',
-                    'body'  => "வணக்கம் {{devoteeName}},\n\nஉங்கள் கோயில் கணக்கில் மாற்றப்பட்டவை: *{{changedFields}}*.\n\nஇதை நீங்கள் செய்யவில்லை என்றால், உடனே கடவுச்சொல்லை மாற்றி {{supportPhone}} என்ற எண்ணில் அழைக்கவும்.",
-                ],
-            ],
-            'en' => [
-                'any' => [
-                    'title'     => 'Your account details were updated',
-                    'body'      => "Vanakkam {{devoteeName}},\n\nThese details on your temple account were just changed: {{changedFields}}.\n\nIf you made this change, there is nothing more to do. If you did not, change your password now and call the temple office on {{supportPhone}}.",
-                    'cta_label' => 'Review my details',
-                ],
-                'sms' => [
-                    'title' => '',
-                    'body'  => '{{templeShortName}}: your account details were changed ({{changedFields}}). Not you? Change your password and call {{supportPhone}}.',
-                ],
-                'whatsapp' => [
-                    'title' => '',
-                    'body'  => "Vanakkam {{devoteeName}},\n\nThese details on your temple account were changed: *{{changedFields}}*.\n\nIf this was not you, change your password now and call {{supportPhone}}.",
-                ],
-            ],
-        ],
-    ];
-
-    $t['phone_otp'] = [
-        'category'    => 'security',
-        'description' => 'The one-time code that verifies a mobile number. The code comes first so phones can show it in the notification.',
-        'variables'   => ['devoteeName', 'otpCode', 'expiresMinutes', 'ctaUrl'],
-        'cta_path'    => '/account?tab=profile',
-        'langs' => [
-            'ta' => [
-                'any' => [
-                    'title'     => 'உங்கள் சரிபார்ப்புக் குறியீடு',
-                    'body'      => "{{otpCode}} என்பது உங்கள் {{templeShortName}} சரிபார்ப்புக் குறியீடு. இது {{expiresMinutes}} நிமிடங்களில் காலாவதியாகும்.\n\nஇந்தக் குறியீட்டை யாரிடமும் பகிர வேண்டாம். கோயிலிலிருந்து யாரும் இதை உங்களிடம் கேட்க மாட்டார்கள்.",
-                    'cta_label' => 'என் விவரங்கள்',
-                ],
-                'sms' => [
-                    'title' => '',
-                    'body'  => '{{otpCode}} உங்கள் சரிபார்ப்புக் குறியீடு. {{expiresMinutes}} நிமிடத்தில் காலாவதியாகும். யாரிடமும் பகிர வேண்டாம்.',
-                ],
-                'whatsapp' => [
-                    'title' => '',
-                    'body'  => "*{{otpCode}}* உங்கள் {{templeShortName}} சரிபார்ப்புக் குறியீடு. இது {{expiresMinutes}} நிமிடங்களில் காலாவதியாகும்.\n\nஇந்தக் குறியீட்டை யாரிடமும் பகிர வேண்டாம்.",
-                ],
-            ],
-            'en' => [
-                'any' => [
-                    'title'     => 'Your verification code',
-                    'body'      => "{{otpCode}} is your {{templeShortName}} verification code. It expires in {{expiresMinutes}} minutes.\n\nNever share this code with anyone. No one from the temple will ever ask you for it.",
-                    'cta_label' => 'My details',
-                ],
-                'sms' => [
-                    'title' => '',
-                    'body'  => '{{otpCode}} is your {{templeShortName}} verification code. It expires in {{expiresMinutes}} minutes. Never share this code with anyone.',
-                ],
-                'whatsapp' => [
-                    'title' => '',
-                    'body'  => "*{{otpCode}}* is your {{templeShortName}} verification code. It expires in {{expiresMinutes}} minutes.\n\nNever share this code with anyone.",
-                ],
-            ],
-        ],
-    ];
-
-    $t['phone_verified'] = [
-        'category'    => 'security',
-        'description' => 'Sent when a devotee verifies their mobile number. phoneMasked shows only the last digits, e.g. +91 ******2296.',
-        'variables'   => ['devoteeName', 'phoneMasked', 'ctaUrl'],
-        'cta_path'    => '/account?tab=notifications',
-        'langs' => [
-            'ta' => [
-                'any' => [
-                    'title'     => 'உங்கள் தொலைபேசி எண் சரிபார்க்கப்பட்டது',
-                    'body'      => "வணக்கம் {{devoteeName}},\n\nஉங்கள் தொலைபேசி எண் {{phoneMasked}} இப்போது சரிபார்க்கப்பட்டது. நீங்கள் இயக்கியுள்ள வழிகளில், சேவை பதிவுத் தகவல்களையும் முக்கிய அறிவிப்புகளையும் கோயில் இந்த எண்ணுக்கு அனுப்பும்.\n\nஇதை நீங்கள் செய்யவில்லை என்றால், கோயில் அலுவலகத்தை {{supportPhone}} என்ற எண்ணில் அழைக்கவும்.",
-                    'cta_label' => 'அறிவிப்பு அமைப்புகள்',
-                ],
-                'sms' => [
-                    'title' => '',
-                    'body'  => '{{templeShortName}}: உங்கள் தொலைபேசி எண் {{phoneMasked}} சரிபார்க்கப்பட்டது.',
-                ],
-                'whatsapp' => [
-                    'title' => '',
-                    'body'  => "வணக்கம் {{devoteeName}},\n\nஉங்கள் தொலைபேசி எண் *{{phoneMasked}}* சரிபார்க்கப்பட்டது.\n\nஇதை நீங்கள் செய்யவில்லை என்றால், {{supportPhone}} என்ற எண்ணில் அழைக்கவும்.",
-                ],
-            ],
-            'en' => [
-                'any' => [
-                    'title'     => 'Your mobile number is verified',
-                    'body'      => "Vanakkam {{devoteeName}},\n\nYour mobile number {{phoneMasked}} is now verified. The temple can reach you there with booking updates and important notices, on the channels you have turned on.\n\nIf you did not do this, call the temple office on {{supportPhone}}.",
-                    'cta_label' => 'Notification settings',
-                ],
-                'sms' => [
-                    'title' => '',
-                    'body'  => '{{templeShortName}}: your mobile number {{phoneMasked}} is now verified. Not you? Call {{supportPhone}}.',
-                ],
-                'whatsapp' => [
-                    'title' => '',
-                    'body'  => "Vanakkam {{devoteeName}},\n\nYour mobile number *{{phoneMasked}}* is now verified.\n\nIf you did not do this, call {{supportPhone}}.",
+                    'body'  => "Vanakkam {{devoteeName}} 🙏\n\nThank you for registering with *{{templeName}}*.\n\n*People in this registration:* {{familyCount}}\n\nWe will send you news of festivals, poojas and temple announcements. To change your details later, call {{supportPhone}}.",
                 ],
             ],
         ],
@@ -458,13 +191,13 @@ function notifyTemplateBuiltIn(): array
         'category'    => 'booking',
         'description' => 'Sent when a seva booking request is received, before the office confirms it. bookingDate is the preferred date, or "date to be confirmed".',
         'variables'   => $bookingVars,
-        'cta_path'    => '/account?tab=bookings',
+        'cta_path'    => '/contact',
         'langs' => [
             'ta' => [
                 'any' => [
                     'title'     => 'சேவை கோரிக்கை பெறப்பட்டது: {{sevaName}}',
                     'body'      => "வணக்கம் {{devoteeName}},\n\n{{bookingDate}} அன்று {{sevaName}} சேவைக்கான உங்கள் கோரிக்கை பெறப்பட்டது. உங்கள் பதிவு எண்: {{bookingNumber}}.\n\nகோயில் அலுவலகம் விரைவில் உங்களைத் தொடர்பு கொண்டு, பெரும்பாலும் தொலைபேசியில், உறுதி செய்யும். உறுதியானதும் மீண்டும் தெரிவிக்கிறோம்.\n\nசந்தேகங்களுக்கு கோயில் அலுவலகத்தை {{supportPhone}} என்ற எண்ணில் அழைக்கவும்.",
-                    'cta_label' => 'என் சேவை பதிவுகள்',
+                    'cta_label' => 'கோயிலைத் தொடர்பு கொள்ள',
                 ],
                 'sms' => [
                     'title' => '',
@@ -479,7 +212,7 @@ function notifyTemplateBuiltIn(): array
                 'any' => [
                     'title'     => 'Seva request received: {{sevaName}}',
                     'body'      => "Vanakkam {{devoteeName}},\n\nWe have received your request for {{sevaName}} on {{bookingDate}}. Your booking number is {{bookingNumber}}.\n\nThe temple office will confirm it with you shortly, usually by phone. We will let you know again once it is confirmed.\n\nQuestions? Call the temple office on {{supportPhone}}.",
-                    'cta_label' => 'View my bookings',
+                    'cta_label' => 'Contact the temple',
                 ],
                 'sms' => [
                     'title' => '',
@@ -497,13 +230,13 @@ function notifyTemplateBuiltIn(): array
         'category'    => 'booking',
         'description' => 'Sent when the committee confirms a seva booking.',
         'variables'   => $bookingVars,
-        'cta_path'    => '/account?tab=bookings',
+        'cta_path'    => '/contact',
         'langs' => [
             'ta' => [
                 'any' => [
                     'title'     => 'சேவை உறுதியானது: {{sevaName}}, {{bookingDate}}',
                     'body'      => "வணக்கம் {{devoteeName}},\n\n{{bookingDate}} அன்று உங்கள் {{sevaName}} சேவை உறுதி செய்யப்பட்டது. உங்கள் பதிவு எண்: {{bookingNumber}}.\n\nசற்று முன்னதாக வந்து, கோயில் அலுவலகத்தில் உங்கள் பதிவு எண்ணைத் தெரிவிக்கவும். கோயிலில் உங்களைச் சந்திக்கக் காத்திருக்கிறோம்.\n\nமாற்றவோ ரத்து செய்யவோ, கோயில் அலுவலகத்தை {{supportPhone}} என்ற எண்ணில் அழைக்கவும்.",
-                    'cta_label' => 'பதிவைப் பார்க்க',
+                    'cta_label' => 'கோயிலைத் தொடர்பு கொள்ள',
                 ],
                 'sms' => [
                     'title' => '',
@@ -518,7 +251,7 @@ function notifyTemplateBuiltIn(): array
                 'any' => [
                     'title'     => 'Seva confirmed: {{sevaName}} on {{bookingDate}}',
                     'body'      => "Vanakkam {{devoteeName}},\n\nYour {{sevaName}} on {{bookingDate}} is confirmed. Your booking number is {{bookingNumber}}.\n\nPlease arrive a little early and give your booking number at the temple office. We look forward to seeing you at the temple.\n\nTo change or cancel, call the temple office on {{supportPhone}}.",
-                    'cta_label' => 'View booking',
+                    'cta_label' => 'Contact the temple',
                 ],
                 'sms' => [
                     'title' => '',
@@ -536,13 +269,13 @@ function notifyTemplateBuiltIn(): array
         'category'    => 'booking',
         'description' => 'Sent when the office changes a booking (usually its date). changes is one readable sentence.',
         'variables'   => ['devoteeName', 'bookingNumber', 'sevaName', 'bookingDate', 'changes', 'ctaUrl'],
-        'cta_path'    => '/account?tab=bookings',
+        'cta_path'    => '/contact',
         'langs' => [
             'ta' => [
                 'any' => [
                     'title'     => 'சேவை பதிவு மாற்றப்பட்டது: {{sevaName}}',
                     'body'      => "வணக்கம் {{devoteeName}},\n\n{{sevaName}} சேவைக்கான உங்கள் பதிவு ({{bookingNumber}}) மாற்றப்பட்டுள்ளது.\n\nமாற்றம்: {{changes}}\nதேதி: {{bookingDate}}\n\nஇதில் ஏதேனும் தவறு இருந்தால், கோயில் அலுவலகத்தை {{supportPhone}} என்ற எண்ணில் அழைக்கவும்.",
-                    'cta_label' => 'பதிவைப் பார்க்க',
+                    'cta_label' => 'கோயிலைத் தொடர்பு கொள்ள',
                 ],
                 'sms' => [
                     'title' => '',
@@ -557,7 +290,7 @@ function notifyTemplateBuiltIn(): array
                 'any' => [
                     'title'     => 'Booking updated: {{sevaName}}',
                     'body'      => "Vanakkam {{devoteeName}},\n\nYour booking {{bookingNumber}} for {{sevaName}} has been updated.\n\nWhat changed: {{changes}}\nDate: {{bookingDate}}\n\nIf this does not look right, call the temple office on {{supportPhone}}.",
-                    'cta_label' => 'View booking',
+                    'cta_label' => 'Contact the temple',
                 ],
                 'sms' => [
                     'title' => '',
@@ -653,13 +386,13 @@ function notifyTemplateBuiltIn(): array
         'category'    => 'booking',
         'description' => 'Sent the evening before a confirmed seva, with the address and directions.',
         'variables'   => ['devoteeName', 'bookingNumber', 'sevaName', 'bookingDate', 'templeAddress', 'mapsUrl', 'ctaUrl'],
-        'cta_path'    => '/account?tab=bookings',
+        'cta_path'    => '/contact',
         'langs' => [
             'ta' => [
                 'any' => [
                     'title'     => 'நினைவூட்டல்: நாளை {{sevaName}} சேவை',
                     'body'      => "வணக்கம் {{devoteeName}},\n\nஉங்கள் {{sevaName}} சேவை நாளை, {{bookingDate}} அன்று நடைபெறும். உங்கள் பதிவு எண்: {{bookingNumber}}.\n\nகோயில் முகவரி: {{templeAddress}}\nவழி: {{mapsUrl}}\n\nசற்று முன்னதாக வாருங்கள். வர இயலவில்லை என்றால், கோயில் அலுவலகத்திற்கு {{supportPhone}} என்ற எண்ணில் தெரிவிக்கவும்.",
-                    'cta_label' => 'பதிவைப் பார்க்க',
+                    'cta_label' => 'கோயிலைத் தொடர்பு கொள்ள',
                 ],
                 'sms' => [
                     'title' => '',
@@ -674,7 +407,7 @@ function notifyTemplateBuiltIn(): array
                 'any' => [
                     'title'     => 'Reminder: {{sevaName}} tomorrow',
                     'body'      => "Vanakkam {{devoteeName}},\n\nThis is a reminder that your {{sevaName}} seva is tomorrow, {{bookingDate}}. Your booking number is {{bookingNumber}}.\n\nTemple address: {{templeAddress}}\nDirections: {{mapsUrl}}\n\nPlease arrive a little early. If you cannot come, let the temple office know on {{supportPhone}}.",
-                    'cta_label' => 'View booking',
+                    'cta_label' => 'Contact the temple',
                 ],
                 'sms' => [
                     'title' => '',
@@ -694,13 +427,13 @@ function notifyTemplateBuiltIn(): array
         'category'    => 'donation',
         'description' => 'Sent when a donation pledge is recorded. donationAmount is formatted, e.g. "Rs. 1,001" (₹ would make an SMS twice as long).',
         'variables'   => ['devoteeName', 'receiptNumber', 'donationAmount', 'donationPurpose', 'ctaUrl'],
-        'cta_path'    => '/account?tab=donations',
+        'cta_path'    => '/contact',
         'langs' => [
             'ta' => [
                 'any' => [
                     'title'     => 'உங்கள் நன்கொடைக்கு நன்றி',
-                    'body'      => "வணக்கம் {{devoteeName}},\n\nநன்றி. {{donationPurpose}} நோக்கத்திற்கான உங்கள் {{donationAmount}} நன்கொடை பதிவு செய்யப்பட்டது (குறிப்பு எண் {{receiptNumber}}).\n\nநன்கொடை வந்து சேர்ந்ததும் கோயில் கமிட்டியார் ரசீது அனுப்புவார்கள். உங்கள் முகவரி தெளிவாக இருந்தால் மட்டுமே ரசீது அனுப்ப முடியும்; உங்கள் கணக்கில் முழு முகவரியைச் சேமித்து வையுங்கள்.\n\nகுலதெய்வங்களின் அருள் உங்களுக்கும் உங்கள் குடும்பத்திற்கும் துணை நிற்கட்டும்.",
-                    'cta_label' => 'என் நன்கொடைகள்',
+                    'body'      => "வணக்கம் {{devoteeName}},\n\nநன்றி. {{donationPurpose}} நோக்கத்திற்கான உங்கள் {{donationAmount}} நன்கொடை பதிவு செய்யப்பட்டது (குறிப்பு எண் {{receiptNumber}}).\n\nநன்கொடை வந்து சேர்ந்ததும் கோயில் கமிட்டியார் ரசீது அனுப்புவார்கள். முழு அஞ்சல் முகவரி கோயில் அலுவலகத்திடம் இருந்தால் மட்டுமே ரசீது அனுப்ப முடியும்; முகவரி மாறியிருந்தால் {{supportPhone}} என்ற எண்ணில் தெரிவிக்கவும்.\n\nகுலதெய்வங்களின் அருள் உங்களுக்கும் உங்கள் குடும்பத்திற்கும் துணை நிற்கட்டும்.",
+                    'cta_label' => 'கோயிலைத் தொடர்பு கொள்ள',
                 ],
                 'sms' => [
                     'title' => '',
@@ -708,14 +441,14 @@ function notifyTemplateBuiltIn(): array
                 ],
                 'whatsapp' => [
                     'title' => '',
-                    'body'  => "வணக்கம் {{devoteeName}},\n\nஉங்கள் நன்கொடைக்கு நன்றி 🙏\n\n*தொகை:* {{donationAmount}}\n*நோக்கம்:* {{donationPurpose}}\n*குறிப்பு எண்:* {{receiptNumber}}\n\nநன்கொடை வந்து சேர்ந்ததும் ரசீது அனுப்பப்படும். உங்கள் கணக்கில் முழு முகவரி இருப்பதை உறுதி செய்யுங்கள்.",
+                    'body'  => "வணக்கம் {{devoteeName}},\n\nஉங்கள் நன்கொடைக்கு நன்றி 🙏\n\n*தொகை:* {{donationAmount}}\n*நோக்கம்:* {{donationPurpose}}\n*குறிப்பு எண்:* {{receiptNumber}}\n\nநன்கொடை வந்து சேர்ந்ததும் ரசீது அனுப்பப்படும். முகவரி மாறியிருந்தால் {{supportPhone}} என்ற எண்ணில் தெரிவிக்கவும்.",
                 ],
             ],
             'en' => [
                 'any' => [
                     'title'     => 'Thank you for your offering',
-                    'body'      => "Vanakkam {{devoteeName}},\n\nThank you. Your offering of {{donationAmount}} towards {{donationPurpose}} has been recorded (reference {{receiptNumber}}).\n\nThe temple committee will send your receipt once the offering is received. A receipt can only be sent when your full address is clear, so please keep your postal address saved in your account.\n\nMay the blessings of our kula deivams be with you and your family.",
-                    'cta_label' => 'View my offerings',
+                    'body'      => "Vanakkam {{devoteeName}},\n\nThank you. Your offering of {{donationAmount}} towards {{donationPurpose}} has been recorded (reference {{receiptNumber}}).\n\nThe temple committee will send your receipt once the offering is received. A receipt can only be sent when the temple office has your full postal address, so if it has changed, please call {{supportPhone}}.\n\nMay the blessings of our kula deivams be with you and your family.",
+                    'cta_label' => 'Contact the temple',
                 ],
                 'sms' => [
                     'title' => '',
@@ -723,7 +456,7 @@ function notifyTemplateBuiltIn(): array
                 ],
                 'whatsapp' => [
                     'title' => '',
-                    'body'  => "Vanakkam {{devoteeName}},\n\nThank you for your offering 🙏\n\n*Amount:* {{donationAmount}}\n*Purpose:* {{donationPurpose}}\n*Reference:* {{receiptNumber}}\n\nYour receipt will follow once the offering is received. Please make sure your full postal address is saved in your account.",
+                    'body'  => "Vanakkam {{devoteeName}},\n\nThank you for your offering 🙏\n\n*Amount:* {{donationAmount}}\n*Purpose:* {{donationPurpose}}\n*Reference:* {{receiptNumber}}\n\nYour receipt will follow once the offering is received. If your postal address has changed, please call {{supportPhone}}.",
                 ],
             ],
         ],
@@ -733,13 +466,13 @@ function notifyTemplateBuiltIn(): array
         'category'    => 'donation',
         'description' => 'The receipt for a donation, sent by the committee from Admin → Donations. trustName and taxNote are filled in from the Trust registration automatically.',
         'variables'   => ['devoteeName', 'receiptNumber', 'donationAmount', 'donationPurpose', 'donationDate', 'trustName', 'taxNote', 'ctaUrl'],
-        'cta_path'    => '/account?tab=donations',
+        'cta_path'    => '/contact',
         'langs' => [
             'ta' => [
                 'any' => [
                     'title'     => 'நன்கொடை ரசீது {{receiptNumber}}',
                     'body'      => "வணக்கம் {{devoteeName}},\n\n{{trustName}}-க்கு நீங்கள் வழங்கிய நன்கொடைக்கான ரசீதை நன்றியுடன் அனுப்புகிறோம்.\n\nரசீது எண்: {{receiptNumber}}\nதொகை: {{donationAmount}}\nநோக்கம்: {{donationPurpose}}\nதேதி: {{donationDate}}\n\n{{taxNote}}\n\nஉங்கள் பதிவுகளுக்காக இந்தச் செய்தியைப் பாதுகாத்து வையுங்கள். அருள்மிகு ஸ்ரீ லிங்கம்மாள், ஸ்ரீ ரேணுகாதேவி, ஸ்ரீ சின்னம்மாள் அருள் உங்களுக்கும் உங்கள் குடும்பத்திற்கும் துணை நிற்கட்டும்.\n\n$signTa",
-                    'cta_label' => 'என் நன்கொடைகள்',
+                    'cta_label' => 'கோயிலைத் தொடர்பு கொள்ள',
                 ],
                 'sms' => [
                     'title' => '',
@@ -754,7 +487,7 @@ function notifyTemplateBuiltIn(): array
                 'any' => [
                     'title'     => 'Donation receipt {{receiptNumber}}',
                     'body'      => "Vanakkam {{devoteeName}},\n\nWith gratitude, here is the receipt for your offering to the {{trustName}}.\n\nReceipt number: {{receiptNumber}}\nAmount: {{donationAmount}}\nPurpose: {{donationPurpose}}\nDate: {{donationDate}}\n\n{{taxNote}}\n\nPlease keep this message for your records. May the blessings of Arulmigu Sri Lingammal, Sri Renukadevi and Sri Chinnammal be with you and your family.\n\n$signEn",
-                    'cta_label' => 'View my offerings',
+                    'cta_label' => 'Contact the temple',
                 ],
                 'sms' => [
                     'title' => '',
@@ -772,13 +505,13 @@ function notifyTemplateBuiltIn(): array
         'category'    => 'payment',
         'description' => 'Sent when an online payment succeeds. No payment gateway exists yet; this is ready for when one is added.',
         'variables'   => ['devoteeName', 'paymentReference', 'paymentAmount', 'paymentFor', 'ctaUrl'],
-        'cta_path'    => '/account',
+        'cta_path'    => '/contact',
         'langs' => [
             'ta' => [
                 'any' => [
                     'title'     => 'கட்டணம் பெறப்பட்டது: {{paymentAmount}}',
                     'body'      => "வணக்கம் {{devoteeName}},\n\n{{paymentFor}}-க்கான உங்கள் {{paymentAmount}} கட்டணம் பெறப்பட்டது. நன்றி.\n\nகட்டணக் குறிப்பு எண்: {{paymentReference}}\n\nஇந்தக் கட்டணம் பற்றி கோயில் அலுவலகத்தைத் தொடர்பு கொள்ளும்போது இந்தக் குறிப்பு எண்ணைத் தெரிவிக்கவும்.",
-                    'cta_label' => 'என் கணக்கு',
+                    'cta_label' => 'கோயிலைத் தொடர்பு கொள்ள',
                 ],
                 'sms' => [
                     'title' => '',
@@ -793,7 +526,7 @@ function notifyTemplateBuiltIn(): array
                 'any' => [
                     'title'     => 'Payment received: {{paymentAmount}}',
                     'body'      => "Vanakkam {{devoteeName}},\n\nWe have received your payment of {{paymentAmount}} for {{paymentFor}}. Thank you.\n\nPayment reference: {{paymentReference}}\n\nPlease quote this reference if you contact the temple office about this payment.",
-                    'cta_label' => 'Open my account',
+                    'cta_label' => 'Contact the temple',
                 ],
                 'sms' => [
                     'title' => '',
@@ -811,13 +544,13 @@ function notifyTemplateBuiltIn(): array
         'category'    => 'payment',
         'description' => 'Sent when an online payment fails. No payment gateway exists yet; this is ready for when one is added.',
         'variables'   => ['devoteeName', 'paymentReference', 'paymentAmount', 'paymentFor', 'reason', 'ctaUrl'],
-        'cta_path'    => '/account',
+        'cta_path'    => '/contact',
         'langs' => [
             'ta' => [
                 'any' => [
                     'title'     => 'கட்டணம் நிறைவடையவில்லை: {{paymentAmount}}',
-                    'body'      => "வணக்கம் {{devoteeName}},\n\n{{paymentFor}}-க்கான உங்கள் {{paymentAmount}} கட்டணம் நிறைவடையவில்லை.\n\nகாரணம்: {{reason}}\nகட்டணக் குறிப்பு எண்: {{paymentReference}}\n\nஉங்கள் கணக்கிலிருந்து பணம் எடுக்கப்பட்டிருந்தால், பொதுவாக உங்கள் வங்கி அதைத் தானாகத் திருப்பி அளிக்கும். ஒரு வாரத்திற்குள் திரும்ப வரவில்லை என்றால், மேலே உள்ள குறிப்பு எண்ணுடன் கோயில் அலுவலகத்தை {{supportPhone}} என்ற எண்ணில் அழைக்கவும்.",
-                    'cta_label' => 'என் கணக்கு',
+                    'body'      => "வணக்கம் {{devoteeName}},\n\n{{paymentFor}}-க்கான உங்கள் {{paymentAmount}} கட்டணம் நிறைவடையவில்லை.\n\nகாரணம்: {{reason}}\nகட்டணக் குறிப்பு எண்: {{paymentReference}}\n\nஉங்கள் வங்கியிலிருந்து பணம் எடுக்கப்பட்டிருந்தால், பொதுவாக உங்கள் வங்கி அதைத் தானாகத் திருப்பி அளிக்கும். ஒரு வாரத்திற்குள் திரும்ப வரவில்லை என்றால், மேலே உள்ள குறிப்பு எண்ணுடன் கோயில் அலுவலகத்தை {{supportPhone}} என்ற எண்ணில் அழைக்கவும்.",
+                    'cta_label' => 'கோயிலைத் தொடர்பு கொள்ள',
                 ],
                 'sms' => [
                     'title' => '',
@@ -831,8 +564,8 @@ function notifyTemplateBuiltIn(): array
             'en' => [
                 'any' => [
                     'title'     => 'Payment not completed: {{paymentAmount}}',
-                    'body'      => "Vanakkam {{devoteeName}},\n\nYour payment of {{paymentAmount}} for {{paymentFor}} did not go through.\n\nReason: {{reason}}\nPayment reference: {{paymentReference}}\n\nIf the amount was taken from your account, your bank normally returns it automatically. If it has not come back within a week, call the temple office on {{supportPhone}} with the reference above.",
-                    'cta_label' => 'Open my account',
+                    'body'      => "Vanakkam {{devoteeName}},\n\nYour payment of {{paymentAmount}} for {{paymentFor}} did not go through.\n\nReason: {{reason}}\nPayment reference: {{paymentReference}}\n\nIf the amount has already left your bank, your bank normally returns it automatically. If it has not come back within a week, call the temple office on {{supportPhone}} with the reference above.",
+                    'cta_label' => 'Contact the temple',
                 ],
                 'sms' => [
                     'title' => '',
@@ -1088,13 +821,13 @@ function notifyTemplateBuiltIn(): array
         'category'    => 'volunteer',
         'description' => 'Thanks a devotee who signed up to volunteer. No volunteer module exists yet; this is ready for when one is added.',
         'variables'   => ['devoteeName', 'opportunityName', 'ctaUrl'],
-        'cta_path'    => '/account',
+        'cta_path'    => '/contact',
         'langs' => [
             'ta' => [
                 'any' => [
                     'title'     => 'தன்னார்வ சேவைக்கு நன்றி',
                     'body'      => "வணக்கம் {{devoteeName}},\n\n{{opportunityName}} பணியில் தன்னார்வலராகச் சேவை செய்ய முன்வந்ததற்கு மனமார்ந்த நன்றி. உங்கள் நேரமும் உழைப்பும் கோயிலுக்குப் பெரும் துணை.\n\nகமிட்டி உறுப்பினர் ஒருவர் விவரங்களுடன் உங்களைத் தொடர்பு கொள்வார். சந்தேகங்களுக்கு கோயில் அலுவலகத்தை {{supportPhone}} என்ற எண்ணில் அழைக்கவும்.",
-                    'cta_label' => 'என் கணக்கு',
+                    'cta_label' => 'கோயிலைத் தொடர்பு கொள்ள',
                 ],
                 'sms' => [
                     'title' => '',
@@ -1109,7 +842,7 @@ function notifyTemplateBuiltIn(): array
                 'any' => [
                     'title'     => 'Thank you for volunteering',
                     'body'      => "Vanakkam {{devoteeName}},\n\nThank you for offering to volunteer for {{opportunityName}}. Your time and effort mean a great deal to the temple.\n\nA committee member will contact you with the details. For questions, call the temple office on {{supportPhone}}.",
-                    'cta_label' => 'Open my account',
+                    'cta_label' => 'Contact the temple',
                 ],
                 'sms' => [
                     'title' => '',
@@ -1244,7 +977,7 @@ function notifyTemplateBuiltIn(): array
 
     $t['emergency'] = [
         'category'    => 'emergency',
-        'description' => 'An emergency notice (closure, safety, weather). Reaches devotees even when optional notifications are off.',
+        'description' => 'An emergency notice (closure, safety, weather), sent to every family who agreed to temple updates.',
         'variables'   => ['devoteeName', 'headline', 'message', 'ctaUrl'],
         'cta_path'    => '/contact',
         'langs' => [

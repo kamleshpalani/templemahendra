@@ -204,7 +204,7 @@ a.ntpl-cell:focus-visible {
   gap: var(--space-2);
   margin-bottom: var(--space-5);
 }
-/* Wrap rather than scroll: six languages and six channels must all be visible on a phone. */
+/* Wrap rather than scroll: every language and every channel version must be visible on a phone. */
 .ntpl-variant-nav .tabs {
   flex-wrap: wrap;
   overflow-x: visible;
@@ -411,81 +411,15 @@ a.ntpl-cell:focus-visible {
   padding: 0.5rem;
   border-radius: var(--radius-sm);
   background: var(--white);
-  color: var(--brand-whatsapp-deep);
+  /* WhatsApp's own teal (--brand-whatsapp-deep) is under 4.5:1 on white at this size; this green passes. */
+  color: var(--success-fg);
   font-size: var(--text-sm);
   font-weight: var(--weight-semibold);
   box-shadow: var(--shadow-xs);
 }
-.ntpl-push {
-  display: flex;
-  gap: 0.75rem;
-  align-items: flex-start;
-  max-width: 26rem;
-  padding: 0.75rem 0.9rem;
-  border-radius: var(--radius-lg);
-  background: var(--white);
-  border: 1px solid var(--border);
-  box-shadow: var(--shadow-sm);
-}
-.ntpl-push__icon {
-  flex-shrink: 0;
-  width: 40px;
-  height: 40px;
-  border-radius: var(--radius-sm);
-}
-.ntpl-push__text,
-.ntpl-inapp__text {
-  min-width: 0;
-}
-.ntpl-push__app {
-  font-size: var(--text-2xs);
-  color: var(--text-muted);
-}
-.ntpl-push__title,
-.ntpl-inapp__title {
-  font-weight: var(--weight-bold);
-  color: var(--text-1);
-  overflow-wrap: anywhere;
-}
-.ntpl-push__body {
-  font-size: var(--text-sm);
-  color: var(--text-2);
-  overflow-wrap: anywhere;
-}
-.ntpl-inapp {
-  display: flex;
-  gap: 0.75rem;
-  align-items: flex-start;
-  padding: 0.85rem 1rem;
-  border-radius: var(--radius);
-  background: var(--glass-tint-gold);
-  border: 1px solid var(--glass-border);
-}
-.ntpl-inapp__icon {
-  display: grid;
-  place-items: center;
-  flex-shrink: 0;
-  width: 36px;
-  height: 36px;
-  border-radius: var(--radius-sm);
-  background: var(--white);
-  color: var(--accent-ink);
-}
-.ntpl-inapp__body {
-  font-size: var(--text-sm);
-  color: var(--text-2);
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
-  display: -webkit-box;
-  -webkit-line-clamp: 3;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
-}
-.ntpl-inapp__cta {
-  margin-top: 0.35rem;
-  font-size: var(--text-xs);
-  font-weight: var(--weight-bold);
-  color: var(--maroon-600);
+/* The stop-updates hints under the SMS and WhatsApp previews; .ntpl-preview p would otherwise pull them onto the preview. */
+.ntpl-preview .ntpl-stop {
+  margin-top: var(--space-2);
 }
 
 /* ── Categories ─────────────────────────────────────────────────────── */

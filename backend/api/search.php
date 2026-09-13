@@ -169,6 +169,10 @@ $PAGES = [
      'sub_ta' => 'தொடர்பு', 'sub_en' => 'Contact', 'kw' => 'contact address directions map phone whatsapp email pudupatti thiruvengadam tenkasi reach visit தொடர்பு முகவரி வழிகாட்டி திசை வரைபடம் தொலைபேசி புதுப்பட்டி தென்காசி'],
     ['url' => '/events',              'ta' => 'நிகழ்வுகள் & திருவிழாக்கள்', 'en' => 'Events and festivals',
      'sub_ta' => 'நிகழ்வுகள்', 'sub_en' => 'Events', 'kw' => 'events festivals thiruvizha pournami shivaratri karthigai calendar dates நிகழ்வுகள் திருவிழா பௌர்ணமி சிவராத்திரி கார்த்திகை தேதிகள்'],
+    // People looking for the old sign-up or sign-in type those words too; the
+    // family registration form is what replaced both.
+    ['url' => '/register',            'ta' => 'குடும்பப் பதிவு', 'en' => 'Family registration',
+     'sub_ta' => 'பதிவு', 'sub_en' => 'Register', 'kw' => 'register registration family members member household enrol enroll sign up signup join temple updates whatsapp பதிவு குடும்பம் குடும்பப் பதிவு உறுப்பினர் உறுப்பினர்கள்'],
 ];
 foreach ($PAGES as $p) {
     $score = scoreOf($q, $p['ta'], $p['en']);
