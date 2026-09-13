@@ -39,7 +39,7 @@ Usage: php backend/bin/notify_worker.php [options]
 
   --max-seconds=N         stop claiming after N seconds (default 50)
   --batch=N               deliveries claimed at a time per channel (default 100)
-  --channels=a,b          only these channels: inapp,email,whatsapp,sms,push, or "none"
+  --channels=a,b          only these channels: email,whatsapp,sms, or "none"
   --notification-ids=1,2  only these notifications (no campaigns or reminders)
   --campaign-id=N         only this campaign (expansion and its deliveries)
   --skip-campaigns        do not expand campaigns

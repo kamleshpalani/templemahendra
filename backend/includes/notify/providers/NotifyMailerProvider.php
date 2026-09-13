@@ -56,7 +56,7 @@ final class NotifyMailerProvider implements NotifyProvider
                 return NotifyResult::sent($messageId, 'accepted by the mail transport');
             }
             if ($status === 'logged') {
-                return NotifyResult::sent(null, 'logged to backend/logs/mail.log: MAIL_TRANSPORT is not set, so nothing was sent', [], true);
+                return NotifyResult::sent(null, 'logged to backend/logs/mail.log: MAIL_TRANSPORT is not set, so nothing was sent', true);
             }
             return self::classify($error);
         });

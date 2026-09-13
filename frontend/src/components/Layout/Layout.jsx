@@ -1,15 +1,11 @@
 import { Suspense, lazy, useCallback, useEffect, useRef, useState } from "react";
-import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
+import { NavLink, Outlet, useLocation } from "react-router-dom";
 import {
-  LuBell,
   LuCalendarDays,
-  LuCircleUser,
   LuFlame,
   LuHeartHandshake,
   LuHouse,
   LuLandmark,
-  LuLogIn,
-  LuLogOut,
   LuMapPin,
   LuMenu,
   LuMoon,
@@ -24,11 +20,7 @@ import FloatingActions from "../FloatingActions/FloatingActions";
 import BottomNav from "../BottomNav/BottomNav";
 import Chatbot from "../Chatbot/Chatbot";
 import TemplePulseHeader from "../TemplePulseHeader/TemplePulseHeader";
-import NotificationBell from "../Notifications/NotificationBell";
 import { useLang } from "../../context/LangContext";
-import { useAuth } from "../../context/AuthContext";
-import { useNotifications } from "../../context/NotificationContext";
-import { useToast } from "../../context/ToastContext";
 import { TEMPLE, PRIMARY_CONTACT, telHref, formatPhone } from "../../data/temple";
 import { getISTNow, getNextPooja, isTempleOpen } from "../../lib/templeTime";
 import "./Layout.css";
@@ -51,7 +43,6 @@ export default function Layout() {
   const [scrolled, setScrolled] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const { lang, setLang, t } = useLang();
-  const { user } = useAuth();
   const { pathname } = useLocation();
   const toggleRef = useRef(null);
   const drawerRef = useRef(null);
@@ -120,6 +111,7 @@ export default function Layout() {
 
   // Accessible name starts with the visible brand text (WCAG 2.5.3 Label in Name)
   const brandLabel = `${t(TEMPLE.brand.line1.ta, TEMPLE.brand.line1.en)} ${t(TEMPLE.brand.line2.ta, TEMPLE.brand.line2.en)} — ${t(TEMPLE.fullName.ta, TEMPLE.fullName.en)} — ${t("முகப்பு", "Home")}`;
+  const registerWord = t("குடும்பப் பதிவு", "Register family");
 
   return (
     <>
@@ -129,7 +121,7 @@ export default function Layout() {
 
       <TemplePulseHeader />
 
-      <header className={`navbar${scrolled ? " navbar--scrolled" : ""}${user ? " navbar--member" : ""}`}>
+      <header className={`navbar${scrolled ? " navbar--scrolled" : ""}`}>
         <div className="navbar__bar">
           <div className="navbar__inner">
             <NavLink to="/" className="navbar__brand" aria-label={brandLabel}>
@@ -186,12 +178,18 @@ export default function Layout() {
               </button>
 
               {/* The language toggle used to sit here. It now lives in the
-                  status strip above, which frees the width this row needed for
-                  a readable Login and Sign Up pair. */}
-              {/* The bell sits immediately before the avatar and renders nothing
-                  for a guest, so the guest row is exactly what it was. */}
-              <NotificationBell />
-              <AccountControl />
+                  status strip above, which frees the width this row needs. */}
+              {/* One way in for a family that has not registered yet. It took
+                  the place of Login, Sign Up, the account menu and the bell when
+                  devotee sign-in was removed (docs/registration/SPEC.md §7).
+                  Where the row is short of width the words are hidden visually
+                  but stay in the accessibility tree (Layout.css), so the button
+                  keeps the same accessible name, "Register family", at every
+                  width, and an icon on its own is never left unnamed. */}
+              <NavLink to="/register" className="btn btn-primary btn--sm navbar__register" title={registerWord}>
+                <LuUserPlus aria-hidden="true" />
+                <span className="navbar__register-word">{registerWord}</span>
+              </NavLink>
 
               <NavLink to="/sevas" className="btn btn-primary btn--sm navbar__cta">
                 <LuSparkles aria-hidden="true" />
@@ -274,7 +272,25 @@ export default function Layout() {
         </nav>
 
         <div className="drawer__foot">
-          <DrawerAccount menuOpen={menuOpen} onNavigate={closeMenu} />
+          {/* The same way in as the header button, as a full row with a word on
+              what it involves. Closing on click covers the visitor who is
+              already on /register, where the route does not change. */}
+          <NavLink
+            to="/register"
+            className={({ isActive }) => "drawer__register" + (isActive ? " drawer__register--active" : "")}
+            tabIndex={menuOpen ? 0 : -1}
+            onClick={closeMenu}
+          >
+            <span className="drawer__icon" aria-hidden="true">
+              <LuUserPlus />
+            </span>
+            <span className="drawer__register-text">
+              <span className="drawer__register-label">{t("குடும்பத்தைப் பதிவு செய்ய", "Register your family")}</span>
+              <span className="drawer__register-hint">
+                {t("ஒரு முறை மட்டும் · கடவுச்சொல் தேவையில்லை", "Once only · no password needed")}
+              </span>
+            </span>
+          </NavLink>
 
           <div className="drawer__lang" role="group" aria-label={t("மொழி", "Language")}>
             <button
@@ -324,194 +340,6 @@ export default function Layout() {
       <Chatbot />
       <BottomNav />
     </>
-  );
-}
-
-/**
- * The account control in the navbar: a sign-in link for a guest, and for a
- * signed-in devotee an initials button opening a small menu. Hidden entirely
- * when the devotee tables have not been migrated in.
- */
-function AccountControl() {
-  const { t } = useLang();
-  const { user, ready, accountsEnabled, logout } = useAuth();
-  const toast = useToast();
-  const navigate = useNavigate();
-  const { pathname } = useLocation();
-  const [open, setOpen] = useState(false);
-  const wrapRef = useRef(null);
-  const btnRef = useRef(null);
-
-  // Close on outside click, on Escape, and whenever the route changes.
-  useEffect(() => {
-    if (!open) return undefined;
-    const onDown = (e) => {
-      if (!wrapRef.current?.contains(e.target)) setOpen(false);
-    };
-    const onKey = (e) => {
-      if (e.key !== "Escape") return;
-      setOpen(false);
-      btnRef.current?.focus();
-    };
-    document.addEventListener("mousedown", onDown);
-    document.addEventListener("keydown", onKey);
-    return () => {
-      document.removeEventListener("mousedown", onDown);
-      document.removeEventListener("keydown", onKey);
-    };
-  }, [open]);
-
-  useEffect(() => setOpen(false), [pathname]);
-
-  // While the first /auth/me is in flight, hold the space rather than letting
-  // the row reflow under the visitor's cursor a moment after paint.
-  if (!ready) return <span className="navbar__auth-hold" aria-hidden="true" />;
-  if (!accountsEnabled) return null;
-
-  if (!user) {
-    return (
-      <div className="navbar__auth">
-        {/* The words are hidden below 1280px, so each link carries its own
-            accessible name — an icon alone would leave it unnamed. */}
-        <NavLink to="/login" className="btn btn-outline btn--sm navbar__login" aria-label={t("உள்நுழை", "Login")}>
-          <LuLogIn aria-hidden="true" />
-          <span className="navbar__auth-word">{t("உள்நுழை", "Login")}</span>
-        </NavLink>
-        <NavLink
-          to="/register"
-          className="btn btn-gold btn--sm navbar__signup"
-          aria-label={t("பதிவு செய்யுங்கள்", "Sign Up")}
-        >
-          <LuUserPlus aria-hidden="true" />
-          <span className="navbar__auth-word">{t("பதிவு", "Sign Up")}</span>
-        </NavLink>
-      </div>
-    );
-  }
-
-  const initials =
-    user.name
-      .split(/\s+/)
-      .filter(Boolean)
-      .slice(0, 2)
-      .map((w) => w[0])
-      .join("")
-      .toUpperCase() || "·";
-
-  const signOut = async () => {
-    setOpen(false);
-    await logout();
-    toast.info(t("வெளியேறிவிட்டீர்கள்.", "You are signed out."));
-    navigate("/", { replace: true });
-  };
-
-  return (
-    <div className="dropdown" ref={wrapRef}>
-      <button
-        ref={btnRef}
-        type="button"
-        className="navbar__acct-btn"
-        onClick={() => setOpen((o) => !o)}
-        aria-expanded={open}
-        aria-haspopup="menu"
-        aria-label={`${t("என் கணக்கு", "My account")} — ${user.name}`}
-      >
-        <span className="avatar" aria-hidden="true">
-          {initials}
-        </span>
-      </button>
-      {open && (
-        <div className="menu" role="menu">
-          <span className="menu__label">{user.name}</span>
-          <NavLink to="/account" className="menu__item" role="menuitem">
-            <LuCircleUser aria-hidden="true" />
-            {t("என் கணக்கு", "My account")}
-          </NavLink>
-          <NavLink to="/sevas" className="menu__item" role="menuitem">
-            <LuFlame aria-hidden="true" />
-            {t("சேவை பதிவு", "Book a seva")}
-          </NavLink>
-          <span className="menu__divider" role="separator" />
-          <button type="button" className="menu__item menu__item--danger" role="menuitem" onClick={signOut}>
-            <LuLogOut aria-hidden="true" />
-            {t("வெளியேறு", "Sign out")}
-          </button>
-        </div>
-      )}
-    </div>
-  );
-}
-
-/** The same account entry points, as full-width rows in the mobile drawer. */
-function DrawerAccount({ menuOpen, onNavigate }) {
-  const { t } = useLang();
-  const { user, ready, accountsEnabled, logout } = useAuth();
-  const toast = useToast();
-  const navigate = useNavigate();
-  const tab = menuOpen ? 0 : -1;
-
-  if (!ready || !accountsEnabled) return null;
-
-  if (!user) {
-    return (
-      <div className="drawer__acct">
-        <NavLink to="/login" className="btn btn-soft btn--block" tabIndex={tab} onClick={onNavigate}>
-          <LuLogIn aria-hidden="true" /> {t("உள்நுழை", "Sign in")}
-        </NavLink>
-        <NavLink to="/register" className="btn btn-ghost btn--block" tabIndex={tab} onClick={onNavigate}>
-          <LuUserPlus aria-hidden="true" /> {t("புதிய கணக்கு", "Create account")}
-        </NavLink>
-      </div>
-    );
-  }
-
-  const signOut = async () => {
-    onNavigate();
-    await logout();
-    toast.info(t("வெளியேறிவிட்டீர்கள்.", "You are signed out."));
-    navigate("/", { replace: true });
-  };
-
-  return (
-    <div className="drawer__acct">
-      <DrawerNotifications tab={tab} onNavigate={onNavigate} />
-      <NavLink to="/account" className="btn btn-soft btn--block" tabIndex={tab} onClick={onNavigate}>
-        <LuCircleUser aria-hidden="true" /> {t("என் கணக்கு", "My account")}
-      </NavLink>
-      <button type="button" className="btn btn-ghost btn--block" tabIndex={tab} onClick={signOut}>
-        <LuLogOut aria-hidden="true" /> {t("வெளியேறு", "Sign out")}
-      </button>
-    </div>
-  );
-}
-
-/**
- * The drawer's way to the notifications page, with the unread count. On a phone
- * the header bell is still there; this row is the one a devotee finds while
- * looking through the menu, and it says the count in words for a screen reader.
- */
-function DrawerNotifications({ tab, onNavigate }) {
-  const { t } = useLang();
-  const { enabled, unread } = useNotifications();
-  if (!enabled) return null;
-  return (
-    <NavLink
-      to="/notifications"
-      className={({ isActive }) => "drawer__notif" + (isActive ? " drawer__notif--active" : "")}
-      tabIndex={tab}
-      onClick={onNavigate}
-      aria-label={unread > 0 ? t(`அறிவிப்புகள், ${unread} படிக்கவில்லை`, `Notifications, ${unread} unread`) : undefined}
-    >
-      <span className="drawer__icon" aria-hidden="true">
-        <LuBell />
-      </span>
-      <span className="drawer__notif-label">{t("அறிவிப்புகள்", "Notifications")}</span>
-      {unread > 0 && (
-        <span className="drawer__notif-count" aria-hidden="true">
-          {unread > 99 ? "99+" : unread}
-        </span>
-      )}
-    </NavLink>
   );
 }
 

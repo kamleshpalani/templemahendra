@@ -8,7 +8,9 @@ const only = process.argv.slice(3);
 const PAGES = only.length
   ? only
   : ["", "homepage_widgets.php", "announcements.php", "gallery.php", "poojas.php", "sevas.php", "events.php", "sponsors.php",
-     "devotees.php", "seva_bookings.php", "donations.php", "contact_messages.php",
+     // Family Registrations: the list, a filter with a sort, and an unknown registration id.
+     "devotees.php", "devotees.php?status=duplicates&sort=name&dir=asc", "devotees.php?edit=999999999",
+     "seva_bookings.php", "donations.php", "contact_messages.php",
      "notifications.php", "notification_templates.php", "notification_segments.php", "notification_analytics.php",
      "bulk_upload.php", "settings.php", "users.php", "profile.php"];
 const BAD = /(<b>Warning<\/b>|<b>Fatal error<\/b>|<b>Deprecated<\/b>|<b>Notice<\/b>|Parse error|Uncaught|Stack trace)/;

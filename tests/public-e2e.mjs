@@ -1,9 +1,19 @@
 // End-to-end tests for the public site (Vite dev server + real PHP API + MySQL).
-//   node public.mjs [baseUrl]            (default http://127.0.0.1:5173)
+//   PHP_BIN=/path/to/php node public-e2e.mjs [baseUrl]   (default http://127.0.0.1:5173)
 // Covers: every route at 4 widths (console errors, single h1, no horizontal
 // overflow, axe-core serious/critical violations), language toggle, mobile
 // drawer + keyboard, seva booking modal (focus trap, validation, real submit),
 // contact + donation forms, events filter, panchangam navigation, chatbot, 404.
+// Launch fixes: the donor's thank-you-list consent reaching /api/donors, the
+// honeypot field staying out of sight, Tab order and the accessibility tree,
+// no reviews section without a Google key, the remembered language, and the
+// friendly message every form and the chatbot show for HTTP 429.
+//
+// PHP_BIN (php, or a .sh wrapper that exports the DB environment) is used only
+// to remove the pledges the consent scenario creates and to reset that
+// scenario's own rate-limit buckets, through tests/support/notify_fixtures.php.
+import { spawnSync } from "node:child_process";
+import { fileURLToPath } from "node:url";
 // playwright and axe-core are devDependencies of frontend/, and Node resolves a
 // bare specifier from this file's own directory upwards — which never reaches
 // frontend/node_modules. Resolving explicitly means "cd frontend && npm install"
@@ -21,6 +31,25 @@ const results = [];
 const pass = (name, detail = "") => results.push({ ok: true, name, detail });
 const fail = (name, detail = "") => results.push({ ok: false, name, detail });
 const check = (cond, name, detail = "") => (cond ? pass(name, detail) : fail(name, detail));
+
+/* ── Database access for cleanup, through the shared fixtures script ─────── */
+const REPO = fileURLToPath(new URL("..", import.meta.url));
+const PHP_BIN = process.env.PHP_BIN || "php";
+/** JSON for a command line: non-ASCII escaped, because Windows argv is not UTF-8 all the way down. */
+const cliJson = (obj) => JSON.stringify(obj).replace(/[-￿]/g, (c) => "\\u" + c.charCodeAt(0).toString(16).padStart(4, "0"));
+function sql(query, params = []) {
+  const args = ["tests/support/notify_fixtures.php", "sql", cliJson({ query, params })];
+  const viaBash = PHP_BIN.endsWith(".sh");
+  const r = spawnSync(viaBash ? "bash" : PHP_BIN, viaBash ? [PHP_BIN, ...args] : args, {
+    cwd: REPO, encoding: "utf8", maxBuffer: 8 * 1024 * 1024,
+  });
+  if (r.error) throw r.error;
+  const line = (r.stdout || "").trim().split("\n").filter(Boolean).pop() ?? "";
+  let out;
+  try { out = JSON.parse(line); } catch { throw new Error(`fixtures sql printed no JSON (exit ${r.status}): ${(r.stdout || "").slice(-200)} ${(r.stderr || "").slice(-200)}`); }
+  if (out.error) throw new Error(`fixtures sql: ${out.error}`);
+  return out;
+}
 
 const browser = await chromium.launch();
 const IGNORE = /fonts\.gstatic|googleapis|google\.com\/maps|wa\.me|favicon|ERR_ABORTED|reviews|Download the React DevTools|workbox|sw\.js/;
@@ -512,6 +541,335 @@ try {
   await ctx.close();
 } catch (e) {
   fail("Sharing (scenario threw)", String(e.message || e).split("\n")[0].slice(0, 200));
+}
+
+/* ── Launch fixes ─────────────────────────────────────────────────────────
+   Each scenario below is its own client: API requests carry X-Forwarded-For
+   10.71.<n>.<n> (the PHP server trusts the loopback proxy), so the flood limits
+   they spend never collide with the rest of this suite or with another suite
+   running at the same time. Those buckets are reset first so a second run
+   within the hour starts from the same place. */
+const clientIp = (n) => `10.71.${n}.${n}`;
+async function newClientPage(n, { width = 1440, height = 900, context } = {}) {
+  const ctx = context ?? (await browser.newContext({ viewport: { width, height }, locale: "en-IN" }));
+  // Only the site's own API calls, so no third-party request ever carries it.
+  await ctx.route(`${base}/api/**`, (route) =>
+    route.continue({ headers: { ...route.request().headers(), "x-forwarded-for": clientIp(n) } }),
+  );
+  const page = await ctx.newPage();
+  const errors = [];
+  page.on("pageerror", (e) => errors.push(e.message));
+  page.errors = () => errors;
+  return page;
+}
+async function chooseLang(page, lang) {
+  await page.locator(`.lang-toggle__btn[lang="${lang}"]`).first().click();
+  await page.waitForTimeout(250);
+}
+const htmlLang = (page) => page.evaluate(() => document.documentElement.lang);
+
+try {
+  // Exact suffixes rather than a REGEXP: backslashes do not survive the Windows
+  // command line on their way to the fixtures script.
+  const mine = [1, 2, 3, 4, 5].map((n) => `%:${clientIp(n)}`);
+  const r = sql(`DELETE FROM rate_limits WHERE ${mine.map(() => "bucket LIKE ?").join(" OR ")}`, mine);
+  pass("launch fixes: own rate-limit buckets reset", `${r.affected} row(s)`);
+} catch (e) {
+  fail("launch fixes: resetting own rate-limit buckets (set PHP_BIN)", String(e.message || e).slice(0, 160));
+}
+
+// Donor consent: only a ticked box puts the name on /api/donors.
+const consentNames = [];
+try {
+  const page = await newClientPage(1);
+  const posted = [];
+  page.on("request", (r) => {
+    if (r.method() === "POST" && r.url().includes("/api/donations")) posted.push(r.postDataJSON());
+  });
+  await page.goto(base + "/donations", { waitUntil: "networkidle" });
+  await chooseLang(page, "en");
+
+  const box = page.locator('input[name="showNamePublicly"]');
+  check((await box.count()) === 1 && !(await box.isChecked()), "consent: thank-you-list box is present and unticked by default");
+  check(
+    (await page.getByRole("checkbox", { name: "Show my name on the temple's thank-you list" }).count()) === 1,
+    "consent: the box is labelled for assistive technology",
+  );
+  const hint = await page.locator("#donation-show-name-hint").innerText();
+  check(/only your name and the purpose/i.test(hint) && /never your phone number or the amount/i.test(hint), "consent: hint says only name and purpose are shown", hint);
+  await chooseLang(page, "ta");
+  check(/நன்றிப் பட்டியலில்/.test(await page.locator(".donations-pledge__consent").innerText()), "consent: label is translated into Tamil");
+  await chooseLang(page, "en");
+
+  const stamp = Date.now().toString().slice(-7);
+  const publicName = `E2E-DON-PUB-${stamp}`;
+  const privateName = `E2E-DON-PRIV-${stamp}`;
+  consentNames.push(publicName, privateName);
+
+  async function pledge(name, consent) {
+    await page.fill('input[name="name"]', name);
+    await page.fill('input[name="phone"]', "9876509999");
+    await page.fill('input[name="amount"]', "501");
+    await page.selectOption('select[name="purpose"]', "annadanam");
+    if (consent) await box.check();
+    const response = page.waitForResponse((r) => r.request().method() === "POST" && r.url().includes("/api/donations"));
+    await page.click('form button[type="submit"]');
+    const res = await response;
+    await page.waitForTimeout(400);
+    return res.status();
+  }
+
+  const s1 = await pledge(publicName, true);
+  check(s1 === 201, "consent: pledge with the box ticked is saved", `HTTP ${s1}`);
+  check(!(await box.isChecked()) && (await page.inputValue('input[name="name"]')) === "", "consent: the box and the form reset after a successful pledge");
+  const s2 = await pledge(privateName, false);
+  check(s2 === 201, "consent: pledge without the box is saved", `HTTP ${s2}`);
+
+  check(posted[0]?.showNamePublicly === true && posted[1]?.showNamePublicly === false, "consent: showNamePublicly is sent as a JSON boolean", JSON.stringify(posted.map((p) => p?.showNamePublicly)));
+  check(posted.every((p) => p?.hp_token === ""), "honeypot: an untouched form sends an empty hp_token");
+
+  const donors = await (await page.request.get(base + "/api/donors")).json();
+  const mine = donors.filter((d) => d.name === publicName);
+  check(mine.length === 1 && mine[0].type === "donor", "consent: a ticked pledge appears in /api/donors", JSON.stringify(mine));
+  check(!donors.some((d) => d.name === privateName), "consent: an unticked pledge does not appear in /api/donors");
+  check(
+    mine.length === 1 && Object.keys(mine[0]).every((k) => ["name", "label", "type"].includes(k)),
+    "consent: the donor item carries no phone number or amount",
+    JSON.stringify(mine[0] ?? {}),
+  );
+  check(page.errors().length === 0, "consent: no page errors", page.errors().slice(0, 2).join(" | "));
+  await page.context().close();
+} catch (e) {
+  fail("Donor consent (scenario threw)", String(e.message || e).split("\n")[0].slice(0, 200));
+} finally {
+  if (consentNames.length) {
+    try {
+      const marks = consentNames.map(() => "?").join(",");
+      // Queued thank-you messages first; deliveries cascade from notifications.
+      sql(
+        `DELETE FROM notifications WHERE entity_type = 'donation' AND entity_id IN (SELECT id FROM (SELECT id FROM donations WHERE name IN (${marks})) AS d)`,
+        consentNames,
+      );
+      const r = sql(`DELETE FROM donations WHERE name IN (${marks})`, consentNames);
+      check(r.affected === 2, "consent: test pledges removed from the database", `${r.affected} row(s)`);
+    } catch (e) {
+      fail("consent: removing test pledges (set PHP_BIN)", String(e.message || e).slice(0, 160));
+    }
+  }
+}
+
+// Honeypot: out of sight, out of the Tab order, out of the accessibility tree.
+try {
+  const page = await newClientPage(2);
+  async function honeypot(label, scope, startSelector) {
+    const hp = scope.locator('input[name="hp_token"]');
+    check((await hp.count()) === 1, `${label}: honeypot field present`);
+    // The input keeps its own size; what hides it is the 1px clipping wrapper
+    // (.visually-hidden), so that is what is measured.
+    const hidden = await hp.evaluate((el) => {
+      const wrap = el.parentElement;
+      const box = wrap.getBoundingClientRect();
+      const cs = getComputedStyle(wrap);
+      return { w: box.width, h: box.height, overflow: cs.overflow, clip: cs.clip };
+    });
+    check(
+      hidden.w <= 1 && hidden.h <= 1 && hidden.overflow === "hidden",
+      `${label}: honeypot is not visible`,
+      JSON.stringify(hidden),
+    );
+    check(
+      (await hp.getAttribute("tabindex")) === "-1" && (await hp.getAttribute("autocomplete")) === "off",
+      `${label}: honeypot has tabindex -1 and autocomplete off`,
+    );
+    check(await hp.evaluate((el) => el.closest('[aria-hidden="true"]') !== null), `${label}: honeypot wrapper is aria-hidden`);
+    const HP_LABEL = /Leave this field empty|காலியாக விடவும்/;
+    check((await scope.getByRole("textbox", { name: HP_LABEL }).count()) === 0, `${label}: honeypot is not exposed as a textbox`);
+    check(!HP_LABEL.test(await scope.ariaSnapshot()), `${label}: honeypot is absent from the accessibility tree`);
+    await scope.locator(startSelector).focus();
+    let landed = false;
+    for (let i = 0; i < 10; i++) {
+      await page.keyboard.press("Tab");
+      if (await page.evaluate(() => document.activeElement?.getAttribute("name") === "hp_token")) {
+        landed = true;
+        break;
+      }
+    }
+    check(!landed, `${label}: Tab never lands on the honeypot`);
+  }
+
+  await page.goto(base + "/contact", { waitUntil: "networkidle" });
+  await honeypot("contact", page.locator("form").filter({ has: page.locator('textarea[name="message"]') }), 'input[name="name"]');
+
+  await page.goto(base + "/donations", { waitUntil: "networkidle" });
+  await honeypot("donation", page.locator("form.donations-pledge__form"), 'input[name="name"]');
+
+  await page.goto(base + "/sevas", { waitUntil: "networkidle" });
+  await page.waitForTimeout(500);
+  await page.locator(".seva-card__book").first().click();
+  const dialog = page.locator('[role="dialog"]');
+  await dialog.waitFor({ state: "visible" });
+  await honeypot("seva booking", dialog, 'input[name="devotee_name"]');
+  await page.context().close();
+} catch (e) {
+  fail("Honeypot (scenario threw)", String(e.message || e).split("\n")[0].slice(0, 200));
+}
+
+// Reviews: with no Google key the Home page shows no reviews at all.
+try {
+  const page = await newClientPage(3);
+  const reviewsCall = page.waitForResponse((r) => r.url().includes("/api/reviews"), { timeout: 15000 });
+  await page.goto(base + "/", { waitUntil: "networkidle" });
+  const api = await (await reviewsCall).json().catch(() => null);
+  if (api?.configured && api.reviews?.length) {
+    results.push({ ok: true, name: "reviews: a Google key is configured here — the no-key checks were not exercised", detail: "" });
+  } else {
+    await scrollThrough(page);
+    check(
+      (await page.locator('#home-reviews-title, [aria-labelledby="home-reviews-title"], .reviews-summary, .reviews-card').count()) === 0,
+      "reviews: no reviews section on Home without a Google key",
+      JSON.stringify(api).slice(0, 90),
+    );
+    const text = await page.locator("body").innerText();
+    const SAMPLES = /Kavitha Rajan|Murugan S\b|Lakshmi Priya|Senthil Kumar|Valarmathi D|Rajesh Naidu/;
+    check(!SAMPLES.test(text), "reviews: no sample reviewer names on Home");
+    check(!/Rate on Google|Google-ல் மதிப்பீடு/.test(text), "reviews: no Rate on Google button without reviews");
+    check(
+      await page.evaluate(() => [...document.querySelectorAll("main section")].every((s) => s.getBoundingClientRect().height > 40 || s.hidden)),
+      "reviews: no empty section is left in the Home layout",
+    );
+  }
+  const source = await (await page.request.get(base + "/src/components/Reviews/Reviews.jsx")).text();
+  check(!/Kavitha Rajan|FALLBACK_REVIEWS/.test(source), "reviews: the built-in sample reviews are gone from the component");
+  await page.context().close();
+} catch (e) {
+  fail("Reviews (scenario threw)", String(e.message || e).split("\n")[0].slice(0, 200));
+}
+
+// Remembered language.
+try {
+  const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 }, locale: "en-IN" });
+  const page = await newClientPage(4, { context: ctx });
+  await page.goto(base + "/", { waitUntil: "networkidle" });
+  check((await htmlLang(page)) === "ta", "language: a first visit opens in Tamil");
+  await chooseLang(page, "en");
+  check((await page.evaluate(() => localStorage.getItem("temple:lang"))) === "en", "language: the choice is stored as temple:lang");
+
+  await page.reload({ waitUntil: "networkidle" });
+  check((await htmlLang(page)) === "en" && /Home/.test(await page.locator(".navbar__nav").innerText()), "language: English survives a reload");
+
+  await page.goto(base + "/sevas", { waitUntil: "networkidle" });
+  check((await htmlLang(page)) === "en" && /Sevas/.test(await page.locator("h1").innerText()), "language: English survives a full navigation", await page.locator("h1").innerText());
+  await page.locator('.navbar__nav a[href="/about"]').first().click();
+  await page.waitForTimeout(800);
+  check((await htmlLang(page)) === "en" && new URL(page.url()).pathname === "/about", "language: English survives an in-app navigation");
+
+  // A second tab follows a change made in the first.
+  const other = await ctx.newPage();
+  await other.goto(base + "/", { waitUntil: "networkidle" });
+  check((await htmlLang(other)) === "en", "language: a new tab opens in the remembered language");
+  await chooseLang(other, "ta");
+  await page.waitForTimeout(400);
+  check((await htmlLang(page)) === "ta", "language: switching in one tab updates the other");
+  await ctx.close();
+
+  const fresh = await newClientPage(4);
+  await fresh.goto(base + "/", { waitUntil: "networkidle" });
+  check((await htmlLang(fresh)) === "ta", "language: a fresh browser context starts in Tamil");
+  await fresh.context().close();
+
+  const junk = await newClientPage(4);
+  await junk.addInitScript(() => localStorage.setItem("temple:lang", "fr"));
+  await junk.goto(base + "/", { waitUntil: "networkidle" });
+  check((await htmlLang(junk)) === "ta", "language: an unknown stored value falls back to Tamil");
+  await junk.context().close();
+
+  // Private browsing, or blocked site data: storage throws instead of returning null.
+  const blocked = await newClientPage(4);
+  await blocked.addInitScript(() => {
+    Object.defineProperty(window, "localStorage", {
+      configurable: true,
+      get() {
+        throw new DOMException("The operation is insecure.", "SecurityError");
+      },
+    });
+  });
+  await blocked.goto(base + "/", { waitUntil: "networkidle" });
+  await chooseLang(blocked, "en");
+  check(
+    (await htmlLang(blocked)) === "en" && blocked.errors().length === 0,
+    "language: with storage blocked the site still loads and the toggle still works",
+    blocked.errors().slice(0, 2).join(" | "),
+  );
+  await blocked.context().close();
+} catch (e) {
+  fail("Remembered language (scenario threw)", String(e.message || e).split("\n")[0].slice(0, 200));
+}
+
+// HTTP 429: every form and the chatbot explain it in plain words.
+try {
+  const LIMITED = {
+    status: 429,
+    contentType: "application/json",
+    headers: { "Retry-After": "120" },
+    body: JSON.stringify({ error: "Too many requests. Please try again later.", code: "rate_limited", retryAfter: 120 }),
+  };
+  const FRIENDLY = /Too many requests from this connection\. Please try again in about 2 minutes, or call the temple office\./;
+  const page = await newClientPage(5);
+
+  await page.route("**/api/contact", (r) => r.fulfill(LIMITED));
+  await page.goto(base + "/contact", { waitUntil: "networkidle" });
+  await chooseLang(page, "en");
+  await page.fill('input[name="name"]', "E2E-LIMIT");
+  await page.fill('input[name="phone"]', "9876504321");
+  await page.fill('textarea[name="message"]', "Rate limit message check.");
+  await page.click('form button[type="submit"]');
+  await page.waitForTimeout(900);
+  check((await page.locator(".alert").filter({ hasText: FRIENDLY }).count()) === 1, "429: contact form shows the friendly message with the wait time");
+  await chooseLang(page, "ta");
+  check(
+    (await page.locator(".alert").filter({ hasText: /அதிகமான கோரிக்கைகள்.*சுமார் 2 நிமிடத்தில்/ }).count()) === 1,
+    "429: the message follows a switch to Tamil",
+  );
+
+  await page.route("**/api/donations", (r) => r.fulfill(LIMITED));
+  await page.goto(base + "/donations", { waitUntil: "networkidle" });
+  await chooseLang(page, "en");
+  await page.fill('input[name="name"]', "E2E-LIMIT");
+  await page.fill('input[name="phone"]', "9876509999");
+  await page.fill('input[name="amount"]', "501");
+  await page.click('form button[type="submit"]');
+  await page.waitForTimeout(900);
+  check((await page.locator(".alert").filter({ hasText: FRIENDLY }).count()) === 1, "429: donation form shows the friendly message");
+
+  await page.route("**/api/seva-bookings", (r) => r.fulfill(LIMITED));
+  await page.goto(base + "/sevas", { waitUntil: "networkidle" });
+  await page.waitForTimeout(500);
+  await page.locator(".seva-card__book").first().click();
+  const dialog = page.locator('[role="dialog"]');
+  await dialog.waitFor({ state: "visible" });
+  await dialog.locator('input[name="devotee_name"]').fill("E2E-LIMIT");
+  await dialog.locator('input[name="phone"]').fill("9876501234");
+  await dialog.locator('button[type="submit"]').click();
+  await page.waitForTimeout(900);
+  check((await dialog.locator(".alert").filter({ hasText: FRIENDLY }).count()) === 1, "429: seva booking shows the friendly message");
+  check((await dialog.locator('input[name="devotee_name"]').inputValue()) === "E2E-LIMIT", "429: the booking form keeps what was typed");
+  await page.keyboard.press("Escape");
+
+  await page.route("**/api/chat", (r) => r.fulfill(LIMITED));
+  await page.goto(base + "/", { waitUntil: "networkidle" });
+  await page.click(".chatbot__trigger");
+  await page.waitForTimeout(400);
+  await page.fill(".chatbot__input", "temple timings");
+  await page.keyboard.press("Enter");
+  await page.waitForTimeout(1200);
+  const last = page.locator(".chatbot__bubble--assistant").last();
+  check(FRIENDLY.test(await last.innerText()), "429: chatbot answers with the friendly message as an assistant reply", (await last.innerText()).slice(0, 90));
+  check((await page.locator(".chatbot__bubble--error").count()) === 0, "429: chatbot does not show it as a failure");
+  check(await page.locator(".chatbot__input").isEnabled(), "429: chatbot stays usable");
+  check(page.errors().length === 0, "429: no page errors", page.errors().slice(0, 2).join(" | "));
+  await page.context().close();
+} catch (e) {
+  fail("HTTP 429 messages (scenario threw)", String(e.message || e).split("\n")[0].slice(0, 200));
 }
 
 await browser.close();

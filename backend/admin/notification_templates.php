@@ -11,13 +11,18 @@
 // is never changed from here.
 //
 // Only an owner (notifications.templates) may change wording. An edit reaches
-// every future booking confirmation or password reset at once, with no approval
-// step in between, so it deserves the same trust as the site settings. Everyone
-// who can see notifications may read the wording and its preview.
+// every future booking confirmation or donation receipt at once, with no
+// approval step in between, so it deserves the same trust as the site settings.
+// Everyone who can see notifications may read the wording and its preview.
 //
 // Warnings about variables never block a save. The committee may have a good
 // reason to drop the booking number from an SMS; the page says what will happen
 // and trusts them.
+//
+// Channels are email, WhatsApp and SMS (docs/registration/SPEC.md §6). The
+// preview adds what dispatch adds and the committee cannot edit away: the
+// unsubscribe link, or the stop-updates line, on every update that needs a
+// family's consent.
 require_once __DIR__ . '/../includes/auth.php';
 requireAdminAuth();
 require_once __DIR__ . '/../includes/db.php';
@@ -32,18 +37,16 @@ const NC_PAGE = '/admin/notification_templates.php';
  * [full label, short column label, what the variant is used for].
  */
 const NC_TPL_CHANNELS = [
-    'any'      => ['Shared',   'All',  'Shared wording: the bell, email and push, and every channel without a version of its own'],
+    'any'      => ['Shared',   'All',  'Shared wording: email, and any channel without a version of its own'],
     'email'    => ['Email',    'Mail', 'Email only'],
     'sms'      => ['SMS',      'SMS',  'SMS only: keep it short, every segment is billed'],
     'whatsapp' => ['WhatsApp', 'WA',   'WhatsApp only: *bold* renders as bold'],
-    'push'     => ['Push',     'Push', 'Push notification on a phone or computer'],
-    'inapp'    => ['In-app',   'App',  'The notification bell on the website'],
 ];
 
 /**
- * Icons a category may use. Lucide names, because the devotee site draws them
- * with lucide-react-icons; a name outside this list could render as nothing
- * there, so the page offers a fixed list instead of a free-text field.
+ * Icons a category may use: Lucide names, the icon set the site is drawn with.
+ * The page offers a fixed list instead of a free-text field so that no category
+ * can store a name that would draw nothing wherever its icon is shown.
  */
 const NC_CATEGORY_ICONS = [
     'bell', 'megaphone', 'party-popper', 'flame', 'calendar-days', 'calendar-check', 'sparkles',
@@ -51,8 +54,21 @@ const NC_CATEGORY_ICONS = [
     'gift', 'users', 'star', 'sun', 'moon', 'music', 'book-open', 'info', 'map-pin', 'heart', 'flower',
 ];
 
-/** Kinds the committee may create. The others carry rights devotees cannot opt out of, so they ship with the site. */
-const NC_NEW_KINDS = ['informational', 'promotional'];
+/**
+ * Kinds the committee may create: informational only. A transactional category
+ * is empty unless site code files booking or payment messages under it; the
+ * emergency (critical) category ships with the site and always stays active;
+ * promotional and security are no longer used (see NC_RETIRED_KINDS).
+ */
+const NC_NEW_KINDS = ['informational'];
+
+/**
+ * Kinds whose categories stay switched off since migration 009. Promotional:
+ * the registration form asks families only about temple updates, so no family
+ * has agreed to promotional messages. Security: it carried account messages,
+ * and devotees no longer have accounts.
+ */
+const NC_RETIRED_KINDS = ['promotional', 'security'];
 
 $db  = getDB();
 $str = static fn(array $src, string $k): string => is_scalar($src[$k] ?? null) ? trim((string) $src[$k]) : '';
@@ -191,9 +207,15 @@ function ncTplWarnings(array $def, string $title, string $body, string $cta, arr
 
 /**
  * Render unsaved wording with sample values for the live preview. It mirrors
- * what notifyRender() and the queue do with saved wording (title folded onto
- * one line, blank-line runs collapsed, the link appended to an SMS when it fits,
- * push bodies shortened), so the preview shows what a devotee would receive.
+ * what notifyRender() and the queue (notifyBuildMessage) do with saved wording:
+ * title folded onto one line, blank-line runs collapsed, the link appended to
+ * an SMS when it fits, and — for a category that needs the family's consent —
+ * the unsubscribe link in the email and the stop-updates line on SMS and
+ * WhatsApp, so the preview shows what a family would receive and how long it is.
+ *
+ * The unsubscribe link is notifyPreviewUnsubscribeUrl(): the shape and length
+ * of a real one, but it verifies for nobody, so clicking it in a preview cannot
+ * unsubscribe a family.
  */
 function ncTplPreview(string $key, array $def, string $lang, string $channel, string $title, string $body, string $cta, string $providerTemplate, array $params, ?array $before): array
 {
@@ -208,48 +230,55 @@ function ncTplPreview(string $key, array $def, string $lang, string $channel, st
         $shared = notifyTemplate($key, $lang, 'any');
         $c = trim(notifyInterpolate((string) ($shared['cta_label'] ?? ''), $vars));
     }
-    $ctaUrl   = (string) ($vars['ctaUrl'] ?? '');
-    $category = (string) ($def['category'] ?? 'general');
+    $ctaUrl     = (string) ($vars['ctaUrl'] ?? '');
+    $category   = (string) ($def['category'] ?? 'general');
+    $kind       = notifyCategoryKind($category);
     $shownTitle = $t !== '' ? $t : notifyCategoryLabel($category, $l);
+    // The same test dispatch uses, so a booking message never shows a link that
+    // would suggest an unsubscribe stops it.
+    $unsub = in_array($kind, NOTIFY_CONSENT_KINDS, true) ? notifyPreviewUnsubscribeUrl() : null;
+    $stop  = $unsub !== null ? notifyStopUpdatesLine($lang, $unsub) : null;
 
     $out = [
-        'ok' => true, 'title' => $t, 'body' => $b, 'cta_label' => $c,
-        'email_html' => null, 'sms' => null, 'whatsapp' => null, 'push' => null, 'inapp' => null,
+        'ok' => true, 'title' => $t, 'body' => $b, 'cta_label' => $c, 'stop_line' => $stop,
+        'email_html' => null, 'sms' => null, 'whatsapp' => null,
         'warnings' => ncTplWarnings($def, $title, $body, $cta, $params, $before),
     ];
 
     if ($channel === 'any' || $channel === 'email') {
         $out['email_html'] = notifyEmailHtml([
-            'title' => $shownTitle, 'body' => $b, 'lang' => $lang, 'category' => $category,
+            'title' => $shownTitle, 'body' => $b, 'lang' => $lang, 'category' => $category, 'kind' => $kind,
             'category_label' => notifyCategoryLabel($category, $l),
-            'priority' => $category === 'emergency' ? 'emergency' : 'normal',
+            'priority' => $kind === 'critical' ? 'emergency' : 'normal',
             'cta_url' => $ctaUrl !== '' ? $ctaUrl : null, 'cta_label' => $c,
-            'logo_url' => siteUrl('/icons/icon-192x192.png'), 'preferences_url' => notifyPreferencesUrl(),
+            'logo_url' => siteUrl('/icons/icon-192x192.png'), 'unsubscribe_url' => $unsub,
         ]);
     }
     if ($channel === 'sms') {
-        $text = $b !== '' ? $b : $t;
+        // As queue.php: the stop line always stays; the link is added only when
+        // it does not push the message past the parts the words and the stop
+        // line already need (or two).
+        $text = $b !== '' ? $b : $shownTitle;
+        $tail = $stop !== null ? "\n" . $stop : '';
         if ($ctaUrl !== '' && !str_contains($text, $ctaUrl)) {
             $with = $text . "\n" . $ctaUrl;
-            if (notifySmsInfo($with)['segments'] <= max(2, notifySmsInfo($text)['segments'])) $text = $with;
+            if (notifySmsInfo($with . $tail)['segments'] <= max(2, notifySmsInfo($text . $tail)['segments'])) $text = $with;
         }
+        $text .= $tail;
         $out['sms'] = ['text' => $text] + notifySmsInfo($text);
     }
     if ($channel === 'whatsapp') {
         $values = [];
         foreach ($params as $name) $values[] = ['name' => $name, 'value' => notifyInterpolate('{{' . $name . '}}', $vars)];
+        $text = $b !== '' ? $b : $shownTitle;
+        // An approved template is sent by name, and nothing can be appended to
+        // it: its own registered wording must carry the unsubscribe link.
+        if ($stop !== null && $providerTemplate === '') $text .= "\n\n" . $stop;
         $out['whatsapp'] = [
-            'text' => $b !== '' ? $b : $t, 'cta_label' => $c,
+            'text' => $text, 'cta_label' => $c,
             'provider_template' => $providerTemplate !== '' ? $providerTemplate : null, 'params' => $values,
+            'template_needs_stop' => $stop !== null && $providerTemplate !== '',
         ];
-    }
-    if ($channel === 'any' || $channel === 'push') {
-        $text = trim((string) preg_replace("/\s*\n\s*/u", ' ', $b));
-        if (mb_strlen($text) > NOTIFY_PUSH_BODY_MAX) $text = rtrim(mb_substr($text, 0, NOTIFY_PUSH_BODY_MAX - 1)) . '…';
-        $out['push'] = ['title' => $shownTitle, 'body' => $text];
-    }
-    if ($channel === 'any' || $channel === 'inapp') {
-        $out['inapp'] = ['title' => $shownTitle, 'body' => $b, 'cta_label' => $c];
     }
     return $out;
 }
@@ -394,7 +423,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $params   = ncTplParseParams($str($_POST, 'provider_params'), $formErrors);
         $needsTitle = !in_array($editChannel, ['sms', 'whatsapp'], true);
 
-        if ($needsTitle && $title === '') $formErrors['title'] = 'Enter a title. It is the email subject and the first line of a push or bell notification.';
+        if ($needsTitle && $title === '') $formErrors['title'] = 'Enter a title. It is the email subject.';
         if (mb_strlen($title) > 200)      $formErrors['title'] = 'Keep the title within 200 characters.';
         if ($body === '')                 $formErrors['body'] = 'Enter the message. An empty message would send nothing.';
         if (mb_strlen($body) > 4000)      $formErrors['body'] = 'Keep the message within 4,000 characters.';
@@ -443,9 +472,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $icon    = $str($_POST, 'icon');
         $sortRaw = $str($_POST, 'sort_order');
         $active  = isset($_POST['is_active']) ? 1 : 0;
-        $defOn   = isset($_POST['default_on']) ? 1 : 0;
         $kind    = $str($_POST, 'kind');
-        $catForm = compact('action', 'key', 'labelTa', 'labelEn', 'icon', 'sortRaw', 'active', 'defOn', 'kind');
+        $catForm = compact('action', 'key', 'labelTa', 'labelEn', 'icon', 'sortRaw', 'active', 'kind');
 
         $problems = [];
         if ($labelTa === '' || mb_strlen($labelTa) > 120) $problems[] = 'Enter a Tamil label of up to 120 characters.';
@@ -461,16 +489,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $problems[] = 'A category with the key "' . $key . '" already exists.';
             }
             if (!in_array($kind, NC_NEW_KINDS, true)) {
-                $problems[] = 'A new category is informational or promotional. Transactional, security and emergency categories ship with the site because devotees cannot switch them off.';
+                $problems[] = 'A new category is informational: its messages go only to families who agreed to temple updates. Booking, donation, payment and membership categories ship with the site because its own code sends them; the emergency category ships with the site and always stays active; promotional and security categories are no longer used.';
             }
         } elseif ($before === null) {
             $problems[] = 'That category no longer exists.';
+        } elseif ($active === 1 && in_array($before['kind'], NC_RETIRED_KINDS, true)) {
+            // Switching one on would offer the composer a category that no family
+            // has agreed to (promotional) or that belonged to accounts (security).
+            $problems[] = '"' . $before['label_en'] . '" is a ' . $before['kind'] . ' category, which is no longer used, so it stays switched off. '
+                . ($before['kind'] === 'promotional'
+                    ? 'Families agree only to temple updates when they register; use an informational category for news and appeals.'
+                    : 'It carried account messages, and devotees no longer have accounts.');
         } elseif ((int) $before['is_active'] === 1 && $active === 0) {
-            // Switching a category off hides it from the composer and the devotee's
-            // settings. A security or emergency category must always be there when
-            // it is needed, and a campaign already on its way would lose its label.
-            if (in_array($before['kind'], ['security', 'critical'], true)) {
-                $problems[] = '"' . $before['label_en'] . '" is a ' . ($before['kind'] === 'critical' ? 'emergency' : 'security') . ' category and stays active: account safety and emergency messages must always have it.';
+            // Switching a category off hides it from the composer. The emergency
+            // category must always be there when it is needed, and a campaign
+            // already on its way would lose its label.
+            if ($before['kind'] === 'critical') {
+                $problems[] = '"' . $before['label_en'] . '" is an emergency category and stays active: an emergency notice must always have it.';
             } else {
                 $busy = $db->prepare("SELECT COUNT(*) FROM notification_campaigns WHERE category = :k AND status IN ('scheduled', 'sending')");
                 $busy->execute([':k' => $key]);
@@ -485,29 +520,29 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $catError = implode(' ', $problems);
         } else {
             $sort = (int) $sortRaw;
+            // default_on is left to the column's default and never written: with no
+            // per-family preferences there is nothing for it to switch on.
             if ($action === 'add_category') {
                 $db->prepare(
-                    'INSERT INTO notification_categories (`key`, label_ta, label_en, icon, kind, default_on, is_active, sort_order, updated_by, updated_at)
-                     VALUES (:k, :ta, :en, :i, :kind, :d, :a, :s, :by, UTC_TIMESTAMP())'
+                    'INSERT INTO notification_categories (`key`, label_ta, label_en, icon, kind, is_active, sort_order, updated_by, updated_at)
+                     VALUES (:k, :ta, :en, :i, :kind, :a, :s, :by, UTC_TIMESTAMP())'
                 )->execute([':k' => $key, ':ta' => $labelTa, ':en' => $labelEn, ':i' => $icon, ':kind' => $kind,
-                            ':d' => $defOn, ':a' => $active, ':s' => $sort, ':by' => mb_substr($actor['username'], 0, 120)]);
-                $after = ['label_ta' => $labelTa, 'label_en' => $labelEn, 'icon' => $icon, 'kind' => $kind, 'default_on' => $defOn, 'is_active' => $active, 'sort_order' => $sort];
+                            ':a' => $active, ':s' => $sort, ':by' => mb_substr($actor['username'], 0, 120)]);
+                $after = ['label_ta' => $labelTa, 'label_en' => $labelEn, 'icon' => $icon, 'kind' => $kind, 'is_active' => $active, 'sort_order' => $sort];
                 $flash = 'Added the category "' . $labelEn . '".';
             } else {
-                // Default-on only means something where a devotee can opt out.
-                $defOn = in_array($before['kind'], NOTIFY_MUTABLE_KINDS, true) ? $defOn : (int) $before['default_on'];
                 $db->prepare(
                     'UPDATE notification_categories
-                        SET label_ta = :ta, label_en = :en, icon = :i, default_on = :d, is_active = :a, sort_order = :s,
+                        SET label_ta = :ta, label_en = :en, icon = :i, is_active = :a, sort_order = :s,
                             updated_by = :by, updated_at = UTC_TIMESTAMP()
                       WHERE `key` = :k'
-                )->execute([':k' => $key, ':ta' => $labelTa, ':en' => $labelEn, ':i' => $icon, ':d' => $defOn,
+                )->execute([':k' => $key, ':ta' => $labelTa, ':en' => $labelEn, ':i' => $icon,
                             ':a' => $active, ':s' => $sort, ':by' => mb_substr($actor['username'], 0, 120)]);
-                $after = ['label_ta' => $labelTa, 'label_en' => $labelEn, 'icon' => $icon, 'kind' => $before['kind'], 'default_on' => $defOn, 'is_active' => $active, 'sort_order' => $sort];
+                $after = ['label_ta' => $labelTa, 'label_en' => $labelEn, 'icon' => $icon, 'kind' => $before['kind'], 'is_active' => $active, 'sort_order' => $sort];
                 $flash = 'Saved the category "' . $labelEn . '".';
             }
             notifyCategoriesForget();
-            $snap = static fn(?array $c): ?array => $c === null ? null : array_intersect_key($c, array_flip(['label_ta', 'label_en', 'icon', 'kind', 'default_on', 'is_active', 'sort_order']));
+            $snap = static fn(?array $c): ?array => $c === null ? null : array_intersect_key($c, array_flip(['label_ta', 'label_en', 'icon', 'kind', 'is_active', 'sort_order']));
             notifyAudit(null, 'category_saved', $actor, ['category' => $key, 'created' => $action === 'add_category', 'before' => $snap($before), 'after' => $after]);
             $_SESSION['flash_ntpl'] = ['success', $flash, []];
             header('Location: ' . ncTplUrl(['tab' => 'categories']) . '#cat-' . $key, true, 303);
@@ -551,7 +586,7 @@ if ($flashWarnings) {
 }
 
 echo adminPageIntro(
-    'The words of every automated message — booking confirmations, receipts, reminders, security notices — in each language and channel. '
+    'The words of every automated message — registration and booking confirmations, receipts, reminders, emergency notices — in each language and channel. '
     . 'Built-in wording ships with the site; a customised version saved here replaces it for that language and channel, for messages sent from then on.'
     . ($canEdit ? '' : ' You can read every template; only a committee owner can change wording.')
 );
@@ -657,7 +692,7 @@ if ($tab === 'templates' && $editKey !== ''):
         <input id="t-title" name="title" type="text" maxlength="200" autocomplete="off" lang="<?= h($editLang) ?>" data-var-target
                value="<?= h($values['title']) ?>"<?= $ro ?><?= $invalid('title') ?> />
         <?= $fieldErr('title') ?>
-        <span class="field__hint">The email subject, and the first line of a push or bell notification. No personal names: it shows on lock screens.</span>
+        <span class="field__hint">The email subject. No personal names: phones show it in the new-mail preview.</span>
       </label>
 
       <label for="t-body">
@@ -760,6 +795,9 @@ if ($tab === 'templates' && $editKey !== ''):
       </div>
       <p class="ntpl-meta" data-pv="sms-info"><?= (int) $s['chars'] ?> characters · <?= (int) $s['segments'] ?> segment<?= (int) $s['segments'] === 1 ? '' : 's' ?> · <?= h($s['encoding']) ?></p>
       <p class="field__hint">GSM-7 fits 160 characters in one segment (153 per segment when split). Tamil, emoji and symbols such as ₹ switch the whole message to UCS-2: 70 per segment, 67 when split. Every segment is billed.</p>
+      <?php if ($preview['stop_line'] !== null): ?>
+        <p class="field__hint ntpl-stop" data-pv="sms-stop-hint">The last line lets the family stop temple updates. The site adds it to every update in this category, so it is not part of the wording above and is counted in the segments. An SMS provider that sends a registered DLT template by its id uses that template's wording instead, which must then include the link.</p>
+      <?php endif; ?>
     <?php endif; ?>
 
     <?php if ($preview['whatsapp'] !== null): $wa = $preview['whatsapp']; ?>
@@ -774,30 +812,10 @@ if ($tab === 'templates' && $editKey !== ''):
           <?php foreach ($wa['params'] as $p): ?><li><code><?= h($p['name']) ?></code> <?= h($p['value']) ?></li><?php endforeach; ?>
         </ol>
       </div>
-    <?php endif; ?>
-
-    <?php if ($preview['push'] !== null): $pu = $preview['push']; ?>
-      <h3 class="subhead">Push notification</h3>
-      <div class="ntpl-push">
-        <img class="ntpl-push__icon" src="/icons/icon-192x192.png" alt="" width="40" height="40" />
-        <div class="ntpl-push__text">
-          <p class="ntpl-push__app">Temple · now</p>
-          <p class="ntpl-push__title" data-pv="push-title" lang="<?= h($editLang) ?>"><?= h($pu['title']) ?></p>
-          <p class="ntpl-push__body" data-pv="push-body" lang="<?= h($editLang) ?>"><?= h($pu['body']) ?></p>
-        </div>
-      </div>
-    <?php endif; ?>
-
-    <?php if ($preview['inapp'] !== null): $ia = $preview['inapp']; ?>
-      <h3 class="subhead">Notification bell</h3>
-      <div class="ntpl-inapp">
-        <span class="ntpl-inapp__icon"><?= adminIcon('bell') ?></span>
-        <div class="ntpl-inapp__text">
-          <p class="ntpl-inapp__title" data-pv="inapp-title" lang="<?= h($editLang) ?>"><?= h($ia['title']) ?></p>
-          <p class="ntpl-inapp__body" data-pv="inapp-body" lang="<?= h($editLang) ?>"><?= h($ia['body']) ?></p>
-          <p class="ntpl-inapp__cta" data-pv="inapp-cta"<?= $ia['cta_label'] === '' ? ' hidden' : '' ?>><?= h($ia['cta_label']) ?></p>
-        </div>
-      </div>
+      <?php if ($preview['stop_line'] !== null): ?>
+        <p class="field__hint ntpl-stop" data-pv="wa-stop-hint">The last line lets the family stop temple updates. The site adds it to every update in this category, so it is not part of the wording above.</p>
+        <p class="ntpl-meta ntpl-stop" role="note" data-pv="wa-stop-note"<?= $wa['template_needs_stop'] ? '' : ' hidden' ?>><strong>Nothing can be added to an approved template.</strong> Its wording registered with the provider must include the unsubscribe link itself, or families who receive it will have no way to stop updates.</p>
+      <?php endif; ?>
     <?php endif; ?>
   </section>
 </div>
@@ -811,12 +829,13 @@ elseif ($tab === 'categories'):
         foreach ($list as $name) $out .= '<option value="' . h($name) . '"' . ($name === $current ? ' selected' : '') . '>' . h($name) . '</option>';
         return $out . '</select>';
     };
+    // What each kind means for families (docs/registration/SPEC.md §6).
     $kindHelp = [
-        'transactional' => 'About something the devotee did (a booking, a donation). Always delivered.',
-        'security'      => 'Account safety. Always delivered, by email even when email is switched off.',
-        'critical'      => 'Emergencies. Delivered on every channel except WhatsApp without opt-in.',
-        'informational' => 'Temple news. Devotees can mute it.',
-        'promotional'   => 'Offers and appeals. Only devotees who opted in receive it.',
+        'transactional' => 'A family\'s own booking, donation, payment or membership. Always sent, also to someone who booked without registering; an unsubscribe does not stop it.',
+        'informational' => 'Temple news: festivals, poojas, events, announcements. Sent only to families who agreed to temple updates when they registered, and stops when they unsubscribe.',
+        'critical'      => 'Emergency notices, such as the temple closing. The same rule as informational: only families who agreed to temple updates, and it stops when they unsubscribe.',
+        'promotional'   => 'Not in use. Families agree only to temple updates when they register, so no one has agreed to promotional messages. It stays switched off.',
+        'security'      => 'Not in use. It carried account messages, and devotees no longer have accounts. It stays switched off.',
     ];
 ?>
 <?php if ($catError !== ''): ?>
@@ -825,7 +844,7 @@ elseif ($tab === 'categories'):
 
 <div class="callout mb-4">
   <?= adminIcon('info') ?>
-  <p>Every notification belongs to a category. The <strong>kind</strong> decides what a devotee may switch off, so it cannot be changed after a category is created. Labels, icon, order and whether a category is offered can be edited at any time. Devotees see categories in the order given here.</p>
+  <p>Every notification belongs to a category. The <strong>kind</strong> decides whether a family's consent is needed, so it cannot be changed after a category is created. Labels, icon, order and whether a category is offered can be edited at any time. The composer and this page list categories in the order given here.</p>
 </div>
 
 <div class="ntpl-cats">
@@ -836,7 +855,7 @@ elseif ($tab === 'categories'):
       $vIcon   = $isForm ? $catForm['icon'] : $c['icon'];
       $vSort   = $isForm ? $catForm['sortRaw'] : (string) $c['sort_order'];
       $vActive = $isForm ? $catForm['active'] : $c['is_active'];
-      $vDef    = $isForm ? $catForm['defOn'] : $c['default_on'];
+      $retired = in_array($c['kind'], NC_RETIRED_KINDS, true);
       $slug    = h($key);
   ?>
   <article class="card card--static ntpl-cat<?= $c['is_active'] ? '' : ' ntpl-cat--off' ?>" id="cat-<?= $slug ?>" aria-labelledby="cat-<?= $slug ?>-title">
@@ -868,15 +887,11 @@ elseif ($tab === 'categories'):
         </label>
       </div>
       <div class="ntpl-cat__switches">
+        <?php /* A retired kind's switch is disabled, so it is never submitted and a save keeps the category off. */ ?>
         <label class="switch">
-          <input type="checkbox" name="is_active" value="1"<?= $vActive ? ' checked' : '' ?> />
+          <input type="checkbox" name="is_active" value="1"<?= $vActive && !$retired ? ' checked' : '' ?><?= $retired ? ' disabled' : '' ?> />
           <span class="switch__track" aria-hidden="true"></span>
-          <span class="switch__label"><strong>Active</strong><span class="switch__desc">Offered in the composer and the devotee's settings.</span></span>
-        </label>
-        <label class="switch">
-          <input type="checkbox" name="default_on" value="1"<?= $vDef ? ' checked' : '' ?><?= $c['mutable'] ? '' : ' disabled' ?> />
-          <span class="switch__track" aria-hidden="true"></span>
-          <span class="switch__label"><strong>On by default</strong><span class="switch__desc"><?= $c['mutable'] ? 'Devotees receive it until they mute it.' : 'Not applicable: devotees cannot mute this kind.' ?></span></span>
+          <span class="switch__label"><strong>Active</strong><span class="switch__desc"><?= $retired ? 'Not in use, so it stays off.' : ($c['kind'] === 'critical' ? 'Offered in the composer. An emergency category always stays active.' : 'Offered in the composer.') ?></span></span>
         </label>
       </div>
       <div class="form-actions">
@@ -888,7 +903,7 @@ elseif ($tab === 'categories'):
     <dl class="dl-grid">
       <dt>Icon</dt><dd><code><?= h($c['icon']) ?></code></dd>
       <dt>Order</dt><dd><?= (int) $c['sort_order'] ?></dd>
-      <dt>On by default</dt><dd><?= $c['mutable'] ? ($c['default_on'] ? 'Yes' : 'No — devotees opt in') : 'Always delivered' ?></dd>
+      <dt>Consent</dt><dd><?= $retired ? 'Not in use' : ($c['consent'] ? 'Needed: only families who agreed to temple updates' : 'Not needed: always sent') ?></dd>
     </dl>
     <?php endif; ?>
   </article>
@@ -900,22 +915,17 @@ elseif ($tab === 'categories'):
 ?>
 <section class="card card--solid card--static ntpl-panel mt-6" id="new-category" aria-labelledby="new-cat-title">
   <h2 class="ntpl-panel__title" id="new-cat-title"><?= adminIcon('plus') ?>Add a category</h2>
-  <p class="field__hint">For temple news or appeals the existing categories do not cover, such as annadanam updates or a building fund. Devotees can mute any category added here.</p>
+  <p class="field__hint">For temple news the existing categories do not cover, such as annadanam updates or a building fund. A category added here is informational: its messages go only to families who agreed to temple updates when they registered, and stop when they unsubscribe.</p>
   <form method="POST" action="<?= h(NC_PAGE) ?>?tab=categories" class="ntpl-cat__form">
     <?= csrfField() ?>
     <input type="hidden" name="action" value="add_category" />
+    <?php /* The only kind the committee may create (NC_NEW_KINDS), so there is nothing to choose. */ ?>
+    <input type="hidden" name="kind" value="<?= h(NC_NEW_KINDS[0]) ?>" />
     <div class="ntpl-cat__grid">
       <label for="n-key"><span class="field__label">Key <span class="field__required" aria-hidden="true">*</span></span>
         <input id="n-key" name="cat_key" required pattern="[a-z_]{3,32}" maxlength="32" spellcheck="false" autocomplete="off" aria-describedby="n-key-hint"
                value="<?= h($isAdd ? $catForm['key'] : '') ?>" />
         <span class="field__hint" id="n-key-hint">3–32 lowercase letters or underscores. Permanent.</span>
-      </label>
-      <label for="n-kind"><span class="field__label">Kind <span class="field__required" aria-hidden="true">*</span></span>
-        <select id="n-kind" name="kind" required>
-          <?php foreach (NC_NEW_KINDS as $k): ?>
-            <option value="<?= h($k) ?>"<?= $isAdd && $catForm['kind'] === $k ? ' selected' : '' ?>><?= h(ucfirst($k)) ?></option>
-          <?php endforeach; ?>
-        </select>
       </label>
       <label for="n-ta"><span class="field__label">Tamil label <span class="field__required" aria-hidden="true">*</span></span>
         <input id="n-ta" name="label_ta" lang="ta" maxlength="120" required value="<?= h($isAdd ? $catForm['labelTa'] : '') ?>" />
@@ -932,12 +942,7 @@ elseif ($tab === 'categories'):
       <label class="switch">
         <input type="checkbox" name="is_active" value="1"<?= !$isAdd || $catForm['active'] ? ' checked' : '' ?> />
         <span class="switch__track" aria-hidden="true"></span>
-        <span class="switch__label"><strong>Active</strong><span class="switch__desc">Offer it straight away.</span></span>
-      </label>
-      <label class="switch">
-        <input type="checkbox" name="default_on" value="1"<?= !$isAdd || $catForm['defOn'] ? ' checked' : '' ?> />
-        <span class="switch__track" aria-hidden="true"></span>
-        <span class="switch__label"><strong>On by default</strong><span class="switch__desc">Promotional categories still reach only devotees who opted in.</span></span>
+        <span class="switch__label"><strong>Active</strong><span class="switch__desc">Offer it in the composer straight away.</span></span>
       </label>
     </div>
     <div class="form-actions">

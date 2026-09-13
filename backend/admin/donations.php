@@ -7,14 +7,29 @@
 // deliberate act — a lost email, a corrected address — so each send is its own
 // numbered receipt (sequence = receipts already sent + 1) rather than a
 // duplicate the dedupe key would swallow.
+//
+// "Thank-you list" (migration 008) says whether a donor's name may appear on the
+// public thank-you list on the homepage. Donors who ticked the box on the
+// Donations page are shown automatically; everyone else is hidden until the
+// committee shows them, which it should do only with the donor's permission.
+// Editors and owners can change the flag one row at a time or for the selected
+// rows; every change is written to the activity log so it can be accounted for
+// if a donor asks why their name was published. Before migration 008 the
+// column, the filter and the actions are simply not offered.
 require_once __DIR__ . '/../includes/auth.php';
 requireAdminAuth();
 require_once __DIR__ . '/../includes/db.php';
-require_once __DIR__ . '/../includes/devotee_auth.php';
+require_once __DIR__ . '/../includes/devotee_notify.php';
+require_once __DIR__ . '/../includes/public_guard.php';
 require_once __DIR__ . '/includes/admin_layout.php';
 
 $db      = getDB();
 $perPage = 25;
+
+// Whether the consent column exists, and whether this account may change it.
+// Viewers see the flag but can only read and export.
+$hasListFlag = publicGuardHasColumn('donations', 'show_name_publicly');
+$canList     = $hasListFlag && adminCan('content.edit');
 
 /** Purpose values used by the public Donations form → admin labels. */
 $purposeLabels = [
@@ -89,38 +104,36 @@ function donationsSendReceipt(PDO $db, int $id, string $actor): array
     if (!devoteeNotifyReady()) {
         return ['error', 'Receipts cannot be sent yet: notifications are not installed on this site (migration 007).'];
     }
-    $stmt = $db->prepare('SELECT id, devotee_id, name, phone, phone_country, amount, purpose, created_at FROM donations WHERE id = :id');
+    $stmt = $db->prepare('SELECT * FROM donations WHERE id = :id');
     $stmt->execute([':id' => $id]);
     $d = $stmt->fetch();
     if (!$d) return ['error', "Donation #$id no longer exists."];
 
-    $receipt   = devoteeReceiptNumber($id);
-    $sequence  = (donationsReceiptCounts($db, [$id])[$id] ?? 0) + 1;
-    $devoteeId = $d['devotee_id'] !== null ? (int) $d['devotee_id'] : null;
-    $l         = devoteeCopyLang($devoteeId !== null ? devoteeNotifyLang($devoteeId) : 'ta');
-    $ctx = [
+    $receipt  = devoteeReceiptNumber($id);
+    $sequence = (donationsReceiptCounts($db, [$id])[$id] ?? 0) + 1;
+    $who      = trim((string) $d['name']);
+    // The receipt goes to the phone number given with the pledge, in the language
+    // the Donations form was sent in (a pledge made before migration 009 has none
+    // and is Tamil). A donation is not linked to a family registration.
+    $phone = devoteeIntlPhone((string) $d['phone'], $d['phone_country'] ?? null);
+    if (strlen($phone) < 7) return ['error', "Receipt $receipt was not sent: the donation has no usable phone number."];
+    $lang = devoteeLangFromInput($d['lang'] ?? 'ta');
+    $l    = devoteeCopyLang($lang);
+
+    $r = devoteeNotifyEvent('donation.receipt', [
         'entity_id' => $id,
         'sequence'  => $sequence,
         'actor'     => $actor,
+        'to_phone'  => $phone,
+        'name'      => $who,
+        'lang'      => $lang,
         'vars'      => [
             'receiptNumber'   => $receipt,
             'donationAmount'  => devoteeMoneyLabel((float) $d['amount']),
             'donationPurpose' => devoteeDonationPurposeLabel($d['purpose'], $l),
             'donationDate'    => notifyFormatDate(substr((string) $d['created_at'], 0, 10), $l),
         ],
-    ];
-    $who = trim((string) $d['name']);
-    if ($devoteeId !== null) {
-        $ctx['devotee_id'] = $devoteeId;
-    } else {
-        $phone = devoteeIntlPhone((string) $d['phone'], $d['phone_country'] ?? null);
-        if (strlen($phone) < 7) return ['error', "Receipt $receipt was not sent: the donation has no account and no usable phone number."];
-        $ctx['to_phone'] = $phone;
-        $ctx['name']     = $who;
-        $ctx['lang']     = 'ta';
-    }
-
-    $r = devoteeNotifyEvent('donation.receipt', $ctx);
+    ]);
     if ($r === null || ($r['id'] === null && empty($r['deduped']))) {
         return ['error', "Receipt $receipt could not be sent (" . ($r['skipped'] ?? 'the notification service failed') . '). Please try again.'];
     }
@@ -128,42 +141,102 @@ function donationsSendReceipt(PDO $db, int $id, string $actor): array
         return ['warning', "Receipt $receipt number $sequence was already sent a moment ago, so nothing new was sent."];
     }
 
-    $names   = ['email' => 'email', 'whatsapp' => 'WhatsApp', 'sms' => 'SMS', 'push' => 'push'];
+    $names   = ['email' => 'email', 'whatsapp' => 'WhatsApp', 'sms' => 'SMS'];
     $queued  = [];
     $skipped = [];
-    $inApp   = false;
     foreach ($r['deliveries'] as $channel => $delivery) {
         $ok = in_array($delivery['status'], ['queued', 'sending', 'sent', 'delivered', 'read'], true);
-        if ($channel === 'inapp') {
-            if ($ok) $inApp = true;
-            else $skipped[] = 'their account (' . ($delivery['reason'] ?? 'skipped') . ')';
-            continue;
-        }
         if ($ok) $queued[] = $names[$channel] ?? $channel;
         else $skipped[] = ($names[$channel] ?? $channel) . ' (' . ($delivery['reason'] ?? $delivery['status']) . ')';
     }
 
-    $text = "Receipt $receipt (receipt $sequence)" . ($who !== '' ? " for $who" : '') . ': ';
-    $parts = [];
-    if ($queued) $parts[] = 'queued for ' . donationsJoin($queued);
-    if ($inApp)  $parts[] = 'shown in their account';
-    $text .= ($parts ? implode('; ', $parts) : 'no channel could take it') . '.';
+    $text = "Receipt $receipt (receipt $sequence)" . ($who !== '' ? " for $who" : '') . ': '
+        . ($queued ? 'queued for ' . donationsJoin($queued) : 'no channel could take it') . '.';
     if ($skipped) $text .= ' Skipped: ' . implode(', ', $skipped) . '.';
 
-    adminAudit('donation_receipt', $receipt, "receipt $sequence; queued: " . ($queued ? implode(', ', $queued) : 'none') . ($inApp ? '; in-app' : '') . '; skipped: ' . ($skipped ? implode(', ', $skipped) : 'none'));
-    return [$queued || $inApp ? 'success' : 'warning', $text];
+    adminAudit('donation_receipt', $receipt, "receipt $sequence; language $lang; queued: " . ($queued ? implode(', ', $queued) : 'none') . '; skipped: ' . ($skipped ? implode(', ', $skipped) : 'none'));
+    return [$queued ? 'success' : 'warning', $text];
+}
+
+/**
+ * Show or hide donations on the public thank-you list. Only rows whose flag
+ * really changes are written and logged, one activity entry per donation, so
+ * the log says exactly whose name was published or withdrawn and by whom.
+ * Returns [flash type, flash text].
+ */
+function donationsSetListed(PDO $db, array $ids, bool $show): array
+{
+    if (!$ids) return ['error', 'Select at least one donation first.'];
+
+    $marks = implode(',', array_fill(0, count($ids), '?'));
+    $stmt  = $db->prepare("SELECT id, name, show_name_publicly FROM donations WHERE id IN ($marks)");
+    $stmt->execute($ids);
+    $found = [];
+    foreach ($stmt->fetchAll() as $r) $found[(int) $r['id']] = $r;
+
+    $want     = $show ? 1 : 0;
+    $toChange = array_filter($found, static fn(array $r): bool => (int) $r['show_name_publicly'] !== $want);
+    if ($toChange) {
+        $changeIds = array_keys($toChange);
+        $cmarks    = implode(',', array_fill(0, count($changeIds), '?'));
+        $db->prepare("UPDATE donations SET show_name_publicly = ? WHERE id IN ($cmarks)")
+           ->execute(array_merge([$want], $changeIds));
+        foreach ($toChange as $id => $r) {
+            adminAudit(
+                $show ? 'donation_list_show' : 'donation_list_hide',
+                devoteeReceiptNumber($id),
+                ($show ? 'shown on' : 'hidden from') . ' the public thank-you list: ' . trim((string) $r['name'])
+            );
+        }
+    }
+
+    $n       = count($toChange);
+    $same    = count($found) - $n;
+    $missing = count($ids) - count($found);
+    $where   = $show ? 'shown on the thank-you list' : 'hidden from the thank-you list';
+
+    if (count($ids) === 1 && $found) {
+        $r    = reset($found);
+        $what = devoteeReceiptNumber((int) $r['id']) . (trim((string) $r['name']) !== '' ? ' (' . trim((string) $r['name']) . ')' : '');
+        return ['success', $n > 0 ? "$what is now $where." : "$what was already $where; nothing changed."];
+    }
+    if (!$found) {
+        return ['error', count($ids) === 1 ? 'That donation no longer exists.' : 'None of the selected donations exist any more.'];
+    }
+    $text = $n > 0
+        ? "$n donation" . ($n === 1 ? ' is' : 's are') . " now $where."
+        : 'No donations changed: the selected donation' . (count($found) === 1 ? ' was' : 's were') . " already $where.";
+    if ($n > 0 && $same > 0) $text .= " $same already " . ($same === 1 ? 'was' : 'were') . '.';
+    if ($missing > 0) $text .= " $missing no longer exist" . ($missing === 1 ? 's' : '') . '.';
+    return ['success', $text];
 }
 
 // ── POST actions (Post → Redirect → Get) ─────────────────────────────────────
 // requireAdminAuth() has already refused a viewer's POST (devotees.edit); the
-// explicit check keeps the rule visible where the action lives.
+// explicit checks keep each rule visible where its action lives.
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    $action = (string) ($_POST['action'] ?? '');
     if (adminCsrfGuard() !== '') {
         donationsFlash('error', 'Your session expired or the form was tampered with. Please reload and try again.');
-    } elseif (($_POST['action'] ?? '') === 'send_receipt') {
+    } elseif ($action === 'send_receipt') {
         requireAdminCan('devotees.edit');
         [$fType, $fText] = donationsSendReceipt($db, (int) ($_POST['id'] ?? 0), (string) (currentAdmin()['username'] ?? 'admin'));
         donationsFlash($fType, $fText);
+    } elseif ($action === 'set_listed' || $action === 'bulk_listed') {
+        // Publishing a donor's name is a content decision, so it needs content.edit.
+        requireAdminCan('content.edit');
+        if (!$hasListFlag) {
+            donationsFlash('error', 'The thank-you list setting is not available yet: apply database migration 008 first.');
+        } else {
+            $raw = $action === 'set_listed' ? [$_POST['id'] ?? 0] : (array) ($_POST['ids'] ?? []);
+            // Whole positive ids only, and a sane ceiling: the page shows 25 rows.
+            $ids = array_slice(array_values(array_unique(array_filter(
+                array_map(static fn($v): int => is_scalar($v) ? (int) $v : 0, $raw),
+                static fn(int $i): bool => $i > 0
+            ))), 0, 200);
+            [$fType, $fText] = donationsSetListed($db, $ids, (string) ($_POST['show'] ?? '') === '1');
+            donationsFlash($fType, $fText);
+        }
     } else {
         donationsFlash('error', 'That action is not available on this page.');
     }
@@ -177,9 +250,12 @@ $validDate = static function (string $s): string {
     return preg_match('/^\d{4}-\d{2}-\d{2}$/', $s) && checkdate((int) substr($s, 5, 2), (int) substr($s, 8, 2), (int) substr($s, 0, 4)) ? $s : '';
 };
 
+$listedLabels = ['shown' => 'Shown', 'hidden' => 'Not shown'];
+
 $q       = $str('q');
 $purpose = $str('purpose');
 if (!isset($purposeLabels[$purpose])) $purpose = '';
+$listed  = $hasListFlag && isset($listedLabels[$str('listed')]) ? $str('listed') : '';
 $fromRaw = $str('from');
 $toRaw   = $str('to');
 $from    = $validDate($fromRaw);
@@ -191,8 +267,8 @@ $sort    = isset($sortCols[$str('sort')]) ? $str('sort') : 'created_at';
 $dir     = $str('dir') === 'asc' ? 'asc' : 'desc';
 $page    = max(1, (int) $str('page'));
 
-$query      = ['q' => $q, 'purpose' => $purpose, 'from' => $from, 'to' => $to, 'sort' => $sort, 'dir' => $dir];
-$hasFilters = $q !== '' || $purpose !== '' || $from !== '' || $to !== '';
+$query      = ['q' => $q, 'purpose' => $purpose, 'listed' => $listed, 'from' => $from, 'to' => $to, 'sort' => $sort, 'dir' => $dir];
+$hasFilters = $q !== '' || $purpose !== '' || $listed !== '' || $from !== '' || $to !== '';
 
 $where  = [];
 $params = [];
@@ -210,6 +286,9 @@ if ($purpose === 'other') {
     $where[] = 'purpose = :purpose';
     $params[':purpose'] = $purpose;
 }
+if ($listed !== '') {
+    $where[] = 'show_name_publicly = ' . ($listed === 'shown' ? '1' : '0');
+}
 if ($from !== '') {
     $where[] = 'created_at >= :from_at';
     $params[':from_at'] = $from . ' 00:00:00';
@@ -220,10 +299,11 @@ if ($to !== '') {
 }
 $whereSql = $where ? ' WHERE ' . implode(' AND ', $where) : '';
 $orderSql = ' ORDER BY ' . $sortCols[$sort] . ' ' . strtoupper($dir) . ', id ' . strtoupper($dir);
+$listCol  = $hasListFlag ? ', show_name_publicly' : '';
 
 // ── CSV export (report) — respects the active filters and sort ──────────────
 if ($str('export') === 'csv') {
-    $stmt = $db->prepare('SELECT id, name, phone, amount, purpose, message, created_at FROM donations' . $whereSql . $orderSql);
+    $stmt = $db->prepare('SELECT id, name, phone, amount, purpose, message' . $listCol . ', created_at FROM donations' . $whereSql . $orderSql);
     $stmt->execute($params);
     header('Content-Type: text/csv; charset=utf-8');
     header('Content-Disposition: attachment; filename="donations-' . date('Y-m-d') . '.csv"');
@@ -231,9 +311,15 @@ if ($str('export') === 'csv') {
     fwrite($out, "\xEF\xBB\xBF"); // BOM so Excel reads Tamil correctly
     // Empty escape string = strict RFC 4180 (quotes doubled, no backslash special
     // case) so a message containing \" is not mis-parsed by Excel / pandas.
-    fputcsv($out, ['id', 'name', 'phone', 'amount', 'purpose', 'message', 'created_at'], ',', '"', '');
+    $head = ['id', 'name', 'phone', 'amount', 'purpose', 'message'];
+    if ($hasListFlag) $head[] = 'show_name_publicly';
+    $head[] = 'created_at';
+    fputcsv($out, $head, ',', '"', '');
     while ($r = $stmt->fetch()) {
-        fputcsv($out, [$r['id'], $r['name'], $r['phone'], $r['amount'], $r['purpose'], $r['message'], $r['created_at']], ',', '"', '');
+        $line = [$r['id'], $r['name'], $r['phone'], $r['amount'], $r['purpose'], $r['message']];
+        if ($hasListFlag) $line[] = (int) $r['show_name_publicly'];
+        $line[] = $r['created_at'];
+        fputcsv($out, $line, ',', '"', '');
     }
     fclose($out);
     exit;
@@ -267,7 +353,7 @@ $filtered      = $fstmt->fetch();
 $filteredCount = (int) $filtered['c'];
 $filteredSum   = (float) $filtered['total'];
 
-$result = adminPaginate($db, 'SELECT id, name, phone, amount, purpose, message, created_at FROM donations' . $whereSql . $orderSql, $params, $page, $perPage);
+$result = adminPaginate($db, 'SELECT id, name, phone, amount, purpose, message' . $listCol . ', created_at FROM donations' . $whereSql . $orderSql, $params, $page, $perPage);
 $rows   = $result['rows'];
 
 // Receipts already sent for the rows on this page, so the action can say so.
@@ -345,6 +431,16 @@ echo adminKpi([
         <?php endforeach; ?>
       </select>
     </label>
+    <?php if ($hasListFlag): ?>
+    <label for="f-listed">Thank-you list
+      <select id="f-listed" name="listed">
+        <option value="">Shown or not</option>
+        <?php foreach ($listedLabels as $val => $label): ?>
+          <option value="<?= h($val) ?>"<?= $listed === $val ? ' selected' : '' ?>><?= h($label) ?></option>
+        <?php endforeach; ?>
+      </select>
+    </label>
+    <?php endif; ?>
     <label for="f-from">From
       <input id="f-from" type="date" name="from" value="<?= h($from) ?>"<?= $badFrom ? ' aria-invalid="true"' : '' ?> />
     </label>
@@ -365,47 +461,68 @@ echo adminKpi([
   <?php endforeach; ?>
 </nav>
 
+<?php if ($hasListFlag): ?>
+<p class="text-sm text-muted mb-4" id="thanks-list-note">Thank-you list: donors who ticked “show my name” on the website appear on the homepage list automatically for 30 days. Show anyone else only after the donor has given permission.</p>
+<?php endif; ?>
+
 <?php if ($rows): ?>
 <div class="table-wrap">
-  <table class="table" data-no-search>
+  <table class="table"<?= $canList ? ' data-bulk="bulk-form"' : '' ?> data-no-search>
     <thead>
       <tr>
+        <?php if ($canList): ?><th scope="col" class="cell-select"><input type="checkbox" data-select-all aria-label="Select all donations on this page" /></th><?php endif; ?>
         <th scope="col">#</th>
         <?= adminSortLink('name', 'Devotee', $query) ?>
         <?= adminSortLink('amount', 'Amount', $query) ?>
         <th scope="col">Purpose</th>
         <th scope="col">Message</th>
+        <?php if ($hasListFlag): ?><th scope="col">Thank-you list</th><?php endif; ?>
         <?= adminSortLink('created_at', 'Date', $query) ?>
         <th scope="col"><span class="sr-only">Actions</span></th>
       </tr>
     </thead>
     <tbody>
       <?php foreach ($rows as $i => $row):
+        $id      = (int) $row['id'];
         $n       = ($result['page'] - 1) * $perPage + $i + 1;
         $tel     = preg_replace('/[^\d+]/', '', (string) $row['phone']) ?? '';
         $wa      = donationsWaNumber((string) $row['phone']);
         $pKey    = (string) ($row['purpose'] ?? '');
         $pLabel  = $pKey !== '' ? ($purposeLabels[$pKey] ?? $pKey) : '';
         $message = (string) ($row['message'] ?? '');
+        $shown   = $hasListFlag && (int) $row['show_name_publicly'] === 1;
         $greet   = 'வணக்கம் ' . $row['name'] . ', நன்றி! Thank you for your donation pledge of ' . adminFmtMoney((float) $row['amount'], 2)
                  . ($pLabel !== '' ? ' towards ' . $pLabel : '') . ' to Dhabbalavaar Renuka Devi Temple.';
         $menu    = [];
         if ($tel !== '') $menu[] = ['label' => 'Call', 'href' => 'tel:' . $tel, 'icon' => 'phone'];
         if ($wa !== '')  $menu[] = ['label' => 'WhatsApp', 'href' => 'https://wa.me/' . $wa . '?text=' . rawurlencode($greet), 'icon' => 'external'];
         if ($canReceipt) {
-            $sentCount = $receiptsSent[(int) $row['id']] ?? 0;
+            $sentCount = $receiptsSent[$id] ?? 0;
             if ($menu) $menu[] = 'divider';
             $menu[] = [
                 'label'        => $sentCount > 0 ? 'Send receipt again (' . $sentCount . ' sent)' : 'Send receipt',
                 'icon'         => 'clipboard',
-                'form'         => ['action' => 'send_receipt', 'id' => (int) $row['id']],
-                'confirm'      => 'Send receipt ' . devoteeReceiptNumber((int) $row['id']) . ' for ' . adminFmtMoney((float) $row['amount'], 2) . ' to ' . $row['name'] . '?'
+                'form'         => ['action' => 'send_receipt', 'id' => $id],
+                'confirm'      => 'Send receipt ' . devoteeReceiptNumber($id) . ' for ' . adminFmtMoney((float) $row['amount'], 2) . ' to ' . $row['name'] . '?'
                                 . ($sentCount > 0 ? ' ' . $sentCount . ' receipt' . ($sentCount === 1 ? ' has' : 's have') . ' already been sent.' : ''),
                 'confirmLabel' => 'Send receipt',
             ];
         }
+        if ($canList) {
+            if ($menu) $menu[] = 'divider';
+            $menu[] = $shown
+                ? ['label' => 'Hide from thank-you list', 'icon' => 'x', 'form' => ['action' => 'set_listed', 'id' => $id, 'show' => 0]]
+                : [
+                    'label'        => 'Show on thank-you list',
+                    'icon'         => 'check',
+                    'form'         => ['action' => 'set_listed', 'id' => $id, 'show' => 1],
+                    'confirm'      => 'Show ' . $row['name'] . ' on the public thank-you list? Do this only if the donor has agreed to have their name published.',
+                    'confirmLabel' => 'Confirm and show',
+                ];
+        }
       ?>
       <tr>
+        <?php if ($canList): ?><td class="cell-select"><input type="checkbox" name="ids[]" value="<?= $id ?>" aria-label="Select donation <?= h(devoteeReceiptNumber($id)) ?> from <?= h($row['name']) ?>" /></td><?php endif; ?>
         <td class="cell-muted tabular"><?= $n ?></td>
         <td>
           <span class="cell-title"><?= h($row['name']) ?></span>
@@ -414,6 +531,7 @@ echo adminKpi([
         <td class="cell-money"><?= adminFmtMoney((float) $row['amount'], 2) ?></td>
         <td><?= $pLabel !== '' ? adminBadge($pLabel, 'gold') : '<span class="text-muted">—</span>' ?></td>
         <td><?= $message !== '' ? '<span class="cell-clip">' . h($message) . '</span>' : '<span class="text-muted">—</span>' ?></td>
+        <?php if ($hasListFlag): ?><td><?= $shown ? adminBadge('Shown', 'success') : adminBadge('Not shown', 'muted') ?></td><?php endif; ?>
         <td class="cell-date"><time datetime="<?= h($row['created_at']) ?>"><?= adminFmtDate($row['created_at'], true) ?></time></td>
         <td class="cell-actions"><?= $menu ? adminMenu($menu, 'Actions for ' . $row['name']) : '' ?></td>
       </tr>
@@ -421,9 +539,21 @@ echo adminKpi([
     </tbody>
   </table>
 </div>
+
+<?php if ($canList): ?>
+<form method="POST" action="/admin/donations.php" id="bulk-form" class="bulk-bar" hidden aria-label="Bulk actions">
+  <?= csrfField() ?>
+  <input type="hidden" name="action" value="bulk_listed" />
+  <span class="bulk-bar__count" aria-live="polite">0 selected</span>
+  <button type="submit" name="show" value="1" class="btn btn-gold btn--sm" data-confirm="Show the selected donors on the public thank-you list? Do this only for donors who have agreed to have their names published." data-confirm-label="Confirm and show"><?= adminIcon('check') ?> Show on thank-you list</button>
+  <button type="submit" name="show" value="0" class="btn btn--sm"><?= adminIcon('x') ?> Hide from thank-you list</button>
+  <button type="button" class="btn btn-ghost btn--sm" data-bulk-clear><?= adminIcon('x') ?> Clear selection</button>
+</form>
+<?php endif; ?>
+
 <?= adminPagination($result['page'], $result['pages'], $query, $result['total'], $perPage) ?>
 <?php elseif ($hasFilters): ?>
-  <?= adminEmpty('search', 'No donations match these filters', 'Try a wider date range, a different purpose, or clear the search.', '<a href="donations.php" class="btn btn-primary btn--sm">' . adminIcon('x') . 'Clear filters</a>') ?>
+  <?= adminEmpty('search', 'No donations match these filters', 'Try a wider date range, a different purpose or thank-you list setting, or clear the search.', '<a href="donations.php" class="btn btn-primary btn--sm">' . adminIcon('x') . 'Clear filters</a>') ?>
 <?php else: ?>
   <?= adminEmpty('banknote', 'No donations recorded yet', 'Pledges submitted on the public Donations page will appear here. You can also import past donations from a CSV or Excel file.', '<a href="/admin/bulk_upload.php?entity=donations" class="btn btn-primary btn--sm">' . adminIcon('upload') . 'Import past donations</a>') ?>
 <?php endif; ?>

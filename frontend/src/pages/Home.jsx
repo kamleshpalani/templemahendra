@@ -4,8 +4,6 @@ import {
   LuArrowRight,
   LuCalendarDays,
   LuCamera,
-  LuChevronDown,
-  LuCircleUser,
   LuClock,
   LuConstruction,
   LuCreditCard,
@@ -36,7 +34,6 @@ import {
 } from "react-icons/lu";
 import api from "../services/api";
 import { useLang } from "../context/LangContext";
-import { useAuth } from "../context/AuthContext";
 import {
   TEMPLE,
   ADDRESS,
@@ -494,7 +491,6 @@ export default function Home() {
     show_donor_ticker: true,
   });
   const { lang, t } = useLang();
-  const { user, accountsEnabled } = useAuth();
   const [mode, setMode] = useState(() => detectInitialMode(lang));
 
   // Live IST clock — ticks every second
@@ -640,18 +636,12 @@ export default function Home() {
               <Button to="/sevas" variant="gold" size="lg" icon={<LuSparkles aria-hidden="true" />}>
                 {t("சேவை பதிவு செய்ய", "Book a Seva")}
               </Button>
-              {/* Shown to a guest only, and only once accounts are switched on.
-                  A signed-in devotee gets the route to their own records. */}
-              {accountsEnabled && !user && (
-                <Button to="/register" variant="primary" size="lg" icon={<LuUserPlus aria-hidden="true" />}>
-                  {t("கணக்கு தொடங்க", "Get Started")}
-                </Button>
-              )}
-              {user && (
-                <Button to="/account" variant="primary" size="lg" icon={<LuCircleUser aria-hidden="true" />}>
-                  {t("என் கணக்கு", "My Account")}
-                </Button>
-              )}
+              {/* The one-time family registration that replaced devotee sign-in
+                  (docs/registration/SPEC.md §7). There is nothing to sign in
+                  to, so there is no second line for returning visitors. */}
+              <Button to="/register" variant="primary" size="lg" icon={<LuUserPlus aria-hidden="true" />}>
+                {t("குடும்பத்தைப் பதிவு செய்ய", "Register your family")}
+              </Button>
               <Button to="/contact" variant="outline-light" size="lg" icon={<LuMapPin aria-hidden="true" />}>
                 {t("வழி அறிய", "Get Directions")}
               </Button>
@@ -663,12 +653,6 @@ export default function Home() {
                 to="/"
               />
             </div>
-            {accountsEnabled && !user && (
-              <p className="home-hero__signin">
-                {t("ஏற்கனவே கணக்கு உள்ளதா?", "Already have an account?")}{" "}
-                <Link to="/login">{t("உள்நுழையுங்கள்", "Sign in")}</Link>
-              </p>
-            )}
             <ul className="home-hero__proof" aria-label={t("கோயில் சிறப்புகள்", "Temple highlights")}>
               {PROOF.map(({ Icon, ta, en }) => (
                 <li key={en} className="home-hero__chip">
@@ -731,9 +715,6 @@ export default function Home() {
               <small>{t(PRIMARY_CONTACT.role.ta, PRIMARY_CONTACT.role.en)}</small>
             </a>
           </aside>
-        </div>
-        <div className="home-hero__scroll" aria-hidden="true">
-          <LuChevronDown />
         </div>
       </section>
 
@@ -833,7 +814,7 @@ export default function Home() {
       {(widgetsLoading ||
         widgets.length > 0 ||
         (siteSettings.show_pournami_section && pournamis.length > 0)) && (
-        <section className="section section--flush-bottom reveal" aria-labelledby="home-upcoming-title">
+        <section className="section home-section reveal" aria-labelledby="home-upcoming-title">
           <div className="container">
             <SectionHeader
               id="home-upcoming-title"
@@ -858,7 +839,7 @@ export default function Home() {
       )}
 
       {/* ── Digital Darshan Flow: Mode Switcher ── */}
-      <section className="section home-visit reveal" aria-labelledby="home-visit-title">
+      <section className="section home-section home-visit reveal" aria-labelledby="home-visit-title">
         <div className="container">
           <SectionHeader
             id="home-visit-title"
@@ -904,21 +885,27 @@ export default function Home() {
       </section>
 
       {/* ── Featured Sevas ── */}
-      <section className="section reveal" aria-labelledby="home-sevas-title">
+      <section className="section home-section reveal" aria-labelledby="home-sevas-title">
         <div className="container">
           <SectionHeader
             id="home-sevas-title"
+            align="split"
             eyebrow={t("ஆன்லைன் பதிவு", "Online booking")}
             title={t("சேவைகள்", "Sevas")}
             subtitle={t(
               "கோயிலில் தினசரி மற்றும் சிறப்பு பூஜைகளை பதிவு செய்யுங்கள்",
               "Book daily and special poojas at the temple",
             )}
+            actions={
+              <Button to="/sevas" variant="outline" size="sm">
+                {t("அனைத்து சேவைகளும் →", "View All Sevas →")}
+              </Button>
+            }
           />
           {sevasLoading ? (
             <SkeletonCards count={4} />
           ) : (
-            <div className="grid-4">
+            <div className="grid-4 home-seva-grid">
               {sevas.length > 0
                 ? sevas.map((s, i) => {
                     const Icon = SEVA_ICONS[i % SEVA_ICONS.length];
@@ -953,27 +940,28 @@ export default function Home() {
                   })}
             </div>
           )}
-          <div className="section-cta">
-            <Button to="/sevas" variant="outline">
-              {t("அனைத்து சேவைகளும் →", "View All Sevas →")}
-            </Button>
-          </div>
         </div>
       </section>
 
       {/* ── Upcoming Events ── */}
-      <section className="section section--alt reveal" aria-labelledby="home-events-title">
+      <section className="section section--alt home-section reveal" aria-labelledby="home-events-title">
         <div className="container">
           <SectionHeader
             id="home-events-title"
+            align="split"
             eyebrow={t("திருவிழாக்கள்", "Festivals")}
             title={t("நிகழ்வுகள்", "Events")}
             subtitle={t(
               "வரவிருக்கும் திருவிழாக்கள் மற்றும் சிறப்பு நிகழ்வுகள்",
               "Upcoming festivals and special occasions",
             )}
+            actions={
+              <Button to="/events" variant="outline" size="sm">
+                {t("அனைத்து நிகழ்வுகளும் →", "View All Events →")}
+              </Button>
+            }
           />
-          <div className="grid-4">
+          <div className="home-event-grid">
             {events.length > 0
               ? events.map((e, i) => {
                   const d = new Date(e.event_date + "T00:00:00");
@@ -1007,18 +995,13 @@ export default function Home() {
                   </article>
                 ))}
           </div>
-          <div className="section-cta">
-            <Button to="/events" variant="outline">
-              {t("அனைத்து நிகழ்வுகளும் →", "View All Events →")}
-            </Button>
-          </div>
         </div>
       </section>
 
       {/* ── Quick actions ── */}
-      <section className="section reveal" aria-label={t("விரைவு இணைப்புகள்", "Quick links")}>
+      <section className="section home-section reveal" aria-label={t("விரைவு இணைப்புகள்", "Quick links")}>
         <div className="container">
-          <div className="grid-3">
+          <div className="grid-3 home-quick">
             <Link to="/donations" className="home-quick__card card card--interactive rise" style={{ "--i": 0 }}>
               <span className="card__icon" aria-hidden="true">
                 <LuHeartHandshake />
@@ -1059,8 +1042,8 @@ export default function Home() {
         </div>
       </section>
 
-      {/* ── Google Reviews ── */}
-      <Reviews t={t} />
+      {/* ── Google Reviews — renders nothing unless Google returned real reviews ── */}
+      <Reviews />
     </>
   );
 }

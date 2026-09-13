@@ -23,15 +23,7 @@ require_once __DIR__ . '/service.php';
 
 const NOTIFY_BACKOFF             = [60, 300, 1800, 7200, 21600];
 const NOTIFY_STALE_CLAIM_SECONDS = 600;
-const NOTIFY_RATE_DEFAULTS       = ['email' => 60, 'whatsapp' => 80, 'sms' => 30, 'push' => 600];
-const NOTIFY_PUSH_BODY_MAX       = 180;
-/**
- * Channel-policy reasons that come from the devotee's own choices. A delivery
- * can wait in the queue for hours (a recipient-timezone campaign, a retry
- * backlog); a devotee who unsubscribes or switches a channel off meanwhile has
- * said no, so these are checked again at dispatch.
- */
-const NOTIFY_PREFERENCE_REASONS  = ['turned off', 'muted', 'unsubscribed', 'no promotional consent', 'email not verified', 'phone not verified'];
+const NOTIFY_RATE_DEFAULTS       = ['email' => 60, 'whatsapp' => 80, 'sms' => 30];
 
 /** Record one step in a delivery's history. Never throws. */
 function notifyDeliveryEvent(int $deliveryId, string $event, ?string $detail = null): void
@@ -96,13 +88,6 @@ function notifyDispatchDelivery(int $deliveryId, array $secretVars = []): array
         $row = $load->fetch(PDO::FETCH_ASSOC);
         if (!$row) return notifyDispatchOutcome('skipped', 'no such delivery');
 
-        if ($row['channel'] === 'inapp') {
-            if ($row['status'] === 'queued') {
-                notifyReleaseInApp((int) $row['id']);
-                return notifyDispatchOutcome('sent', null);
-            }
-            return notifyDispatchOutcome($row['status'], null);
-        }
         if ($row['status'] === 'sending') return notifyDispatchOutcome('sending', 'already being sent');
         if (!in_array($row['status'], ['queued', 'failed'], true)) {
             return notifyDispatchOutcome($row['status'], $row['failure_reason'] ?? $row['skip_reason'], $row['provider'] === 'log', $row['provider_message_id']);
@@ -150,35 +135,29 @@ function notifyDispatchClaimed(array $d, array $secretVars): array
 
     // The recipient as they are now: an address changed since the message was
     // queued is the address that should receive it.
+    $category = (string) $notif['category'];
     if ($notif['devotee_id'] !== null) {
         $recipient = notifyRecipientFromDevotee((int) $notif['devotee_id']);
-        if (empty($recipient['devotee_id'])) return notifyApplyResult($d, NotifyResult::skipped('account removed'), null, $hasSecret);
-        if (!$recipient['active'] && notifyCategoryKind((string) $notif['category']) !== 'security') {
-            return notifyApplyResult($d, NotifyResult::skipped('account closed'), null, $hasSecret);
+        if (empty($recipient['devotee_id'])) return notifyApplyResult($d, NotifyResult::skipped('registration removed'), null, $hasSecret);
+        // An archived registration receives no more temple updates. A message
+        // about its own booking or donation still goes: the family is owed it.
+        if (!$recipient['active'] && notifyCategoryNeedsConsent($category)) {
+            return notifyApplyResult($d, NotifyResult::skipped('registration archived'), null, $hasSecret, 'the registration was archived after it was queued');
         }
     } else {
-        $recipient = [
-            'devotee_id' => null, 'name' => '', 'email' => null, 'email_verified' => false, 'phone' => null,
-            'phone_verified' => false, 'country' => null, 'lang' => $notif['lang'], 'timezone' => notifyTempleTz(),
-            'prefs' => null, 'active' => true, 'devices' => 0,
-        ];
+        $recipient = notifyGuestRecipient(null, null, (string) $notif['lang']);
     }
-    if ($notif['to_email'] !== null) {
-        $recipient['email'] = $notif['to_email'];
-        $recipient['email_verified'] = false; // an override address was never verified (notify() decided on the same basis)
-    }
-    if ($notif['to_phone'] !== null) {
-        $recipient['phone'] = $notif['to_phone'];
-        $recipient['phone_verified'] = false;
-    }
+    if ($notif['to_email'] !== null) $recipient['email'] = $notif['to_email'];
+    if ($notif['to_phone'] !== null) $recipient['phone'] = $notif['to_phone'];
 
-    // What the devotee has chosen since the message was queued still counts.
-    // Only preference reasons are re-applied: contact details and providers are
-    // checked below anyway, and nothing else about the decision can change.
+    // A family that unsubscribed, or whose consent the committee withdrew, after
+    // the message was queued has said no, and that wins over a campaign queued
+    // a day ago. Only consent reasons are re-applied: contact details and
+    // providers are checked below anyway, and nothing else can have changed.
     if ($notif['devotee_id'] !== null) {
-        $decision = notifyChannelDecision((string) $d['channel'], (string) $notif['category'], (string) $notif['priority'], $recipient, $notif['campaign_id'] !== null);
-        if ($decision['status'] === 'skipped' && in_array($decision['reason'], NOTIFY_PREFERENCE_REASONS, true)) {
-            return notifyApplyResult($d, NotifyResult::skipped((string) $decision['reason']), null, $hasSecret, 'the devotee\'s settings changed after it was queued');
+        $decision = notifyChannelDecision((string) $d['channel'], $category, (string) $notif['priority'], $recipient, $notif['campaign_id'] !== null);
+        if ($decision['status'] === 'skipped' && in_array($decision['reason'], NOTIFY_CONSENT_REASONS, true)) {
+            return notifyApplyResult($d, NotifyResult::skipped((string) $decision['reason']), null, $hasSecret, 'consent changed after it was queued');
         }
     }
 
@@ -204,8 +183,22 @@ function notifyDispatchClaimed(array $d, array $secretVars): array
 }
 
 /**
+ * The short line that lets a family stop temple updates from a WhatsApp message
+ * or an SMS, where there is no footer to put an unsubscribe link in.
+ *
+ * It is added to the message text at dispatch, never to a template, so the
+ * committee cannot edit it away. A provider-approved template (a Meta WhatsApp
+ * template) cannot have text appended; such a template must include the
+ * unsubscribe link itself (docs/notifications/SPEC.md §5.10).
+ */
+function notifyStopUpdatesLine(string $lang, string $unsubscribeUrl): string
+{
+    return ($lang === 'ta' ? 'கோயில் அறிவிப்புகளை நிறுத்த: ' : 'To stop temple updates: ') . $unsubscribeUrl;
+}
+
+/**
  * The words and addressing for one channel, as a NotifyMessage — or a
- * NotifyResult when there is nothing to send to (no address, no device).
+ * NotifyResult when there is nothing to send to (no address).
  */
 function notifyBuildMessage(array $d, array $notif, array $recipient, array $vars, array $secretVars): NotifyMessage|NotifyResult
 {
@@ -264,27 +257,30 @@ function notifyBuildMessage(array $d, array $notif, array $recipient, array $var
         'imageUrl' => $image, 'idempotencyKey' => $idem,
     ];
 
+    // Every update to a registered family (a kind that needs consent) carries a
+    // way to stop them, on every channel. A booking or donation message does
+    // not: an unsubscribe does not stop those, so offering one there would
+    // mislead. A guest gave no consent and has no registration to unsubscribe.
+    $unsubscribe = $notif['devotee_id'] !== null && in_array($kind, NOTIFY_CONSENT_KINDS, true)
+        ? notifyUnsubscribeUrl((int) $notif['devotee_id'])
+        : null;
+
     switch ($channel) {
         case 'email': {
             $to = (string) ($recipient['email'] ?? '');
             if (!filter_var($to, FILTER_VALIDATE_EMAIL)) return NotifyResult::skipped('no email');
-            $isDevotee = $notif['devotee_id'] !== null;
-            // Optional mail gets one-click unsubscribe (RFC 8058). Security and
-            // transactional mail carries only the preferences link: unsubscribing
-            // from a password reset would help nobody.
-            $unsubscribe = $isDevotee && in_array($kind, NOTIFY_MUTABLE_KINDS, true) ? notifyUnsubscribeUrl((int) $notif['devotee_id']) : null;
             $p = [
                 'title'           => $title,
                 'body'            => $body,
                 'lang'            => $lang,
                 'category'        => $category,
+                'kind'            => $kind,
                 'category_label'  => notifyCategoryLabel($category, $lang),
                 'priority'        => $priority,
                 'cta_url'         => $link,
                 'cta_label'       => $ctaLabel,
                 'details'         => (array) ($vars['_details'] ?? []),
                 'logo_url'        => siteUrl('/icons/icon-192x192.png'),
-                'preferences_url' => $isDevotee ? notifyPreferencesUrl() : null,
                 'unsubscribe_url' => $unsubscribe,
                 'open_pixel_url'  => notifyOpenPixelUrl($deliveryId),
             ];
@@ -301,13 +297,18 @@ function notifyBuildMessage(array $d, array $notif, array $recipient, array $var
             $phone = preg_replace('/\D+/', '', (string) ($recipient['phone'] ?? '')) ?? '';
             if (strlen($phone) < 7) return NotifyResult::skipped('no phone');
             $text = trim($body) !== '' ? trim($body) : $title;
-            // A link is worth adding when the template did not already include one
-            // and it does not push the message past two parts (or past the parts
-            // the words alone already need).
+            // The stop-updates line is always kept. The call-to-action link is
+            // worth adding when the template did not already include one and it
+            // does not push the message past two parts (or past the parts the
+            // words and the stop line already need). A DLT template sent by id
+            // (MSG91) ignores this text: its registered wording must carry the
+            // unsubscribe link.
+            $stop = $unsubscribe !== null ? "\n" . notifyStopUpdatesLine($lang, $unsubscribe) : '';
             if ($link !== null && !str_contains($text, $link)) {
                 $with = $text . "\n" . $link;
-                if (notifySmsInfo($with)['segments'] <= max(2, notifySmsInfo($text)['segments'])) $text = $with;
+                if (notifySmsInfo($with . $stop)['segments'] <= max(2, notifySmsInfo($text . $stop)['segments'])) $text = $with;
             }
+            $text .= $stop;
             return new NotifyMessage(...$base + [
                 'title' => '', 'body' => $text, 'ctaUrl' => $link, 'toPhone' => $phone,
                 'providerTemplate' => $providerTemplate, 'templateParams' => $templateParams,
@@ -328,44 +329,16 @@ function notifyBuildMessage(array $d, array $notif, array $recipient, array $var
             if (in_array($kind, ['transactional', 'critical'], true) && strlen($support) >= 7) {
                 $buttons[] = ['type' => 'call', 'text' => $lang === 'ta' ? 'கோயிலை அழைக்க' : 'Call the temple', 'value' => '+' . $support];
             }
+            $text = $body !== '' ? $body : $title;
+            // A free-form message gets the stop-updates line. An approved
+            // template is sent by name with its parameters, so its own wording
+            // must include the link (see notifyStopUpdatesLine()).
+            if ($unsubscribe !== null && $providerTemplate === null) $text .= "\n\n" . notifyStopUpdatesLine($lang, $unsubscribe);
             return new NotifyMessage(...$base + [
-                'title' => $title, 'body' => $body !== '' ? $body : $title, 'ctaUrl' => $link,
+                'title' => $title, 'body' => $text, 'ctaUrl' => $link,
                 'ctaLabel' => $ctaLabel === '' ? null : $ctaLabel, 'toPhone' => $phone,
                 'providerTemplate' => $providerTemplate, 'templateParams' => $providerTemplate !== null ? $templateParams : [],
                 'buttons' => $buttons,
-            ]);
-        }
-
-        case 'push': {
-            if ($notif['devotee_id'] === null) return NotifyResult::skipped('no device');
-            $stmt = getDB()->prepare(
-                'SELECT id, provider, endpoint, keys_json FROM devotee_devices
-                  WHERE devotee_id = :d AND is_active = 1 ORDER BY id DESC LIMIT 20'
-            );
-            $stmt->execute([':d' => (int) $notif['devotee_id']]);
-            $devices = [];
-            foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
-                $keys = json_decode((string) ($row['keys_json'] ?? ''), true);
-                $devices[] = [
-                    'id' => (int) $row['id'], 'provider' => (string) $row['provider'], 'endpoint' => (string) $row['endpoint'],
-                    'keys' => is_array($keys) ? ['p256dh' => (string) ($keys['p256dh'] ?? ''), 'auth' => (string) ($keys['auth'] ?? '')] : null,
-                ];
-            }
-            if (!$devices) return NotifyResult::skipped('no device');
-            $text = trim((string) preg_replace("/\s*\n\s*/u", ' ', $body));
-            if (mb_strlen($text) > NOTIFY_PUSH_BODY_MAX) $text = rtrim(mb_substr($text, 0, NOTIFY_PUSH_BODY_MAX - 1)) . '…';
-            return new NotifyMessage(...$base + [
-                'title' => $title, 'body' => $text, 'ctaUrl' => $ctaTarget, 'ctaLabel' => $ctaLabel === '' ? null : $ctaLabel,
-                'devices' => $devices,
-                'data' => [
-                    'url'            => $ctaTarget ?? siteUrl('/notifications'),
-                    'trackUrl'       => $tracked,
-                    'notificationId' => $notificationId,
-                    'category'       => $category,
-                    'priority'       => $priority,
-                    'tag'            => 'n' . $notificationId,
-                    'image'          => $image,
-                ],
             ]);
         }
     }
@@ -395,37 +368,6 @@ function notifyApplyResult(array $d, NotifyResult $result, ?string $providerName
 
     $status = $result->status;
     $reason = $result->reason;
-
-    // Push reports per device: retire the gone ones, then decide for the delivery.
-    if ($d['channel'] === 'push' && $result->deviceResults) {
-        $ok = 0;
-        $gone = 0;
-        foreach ($result->deviceResults as $deviceId => $dr) {
-            if (!empty($dr['gone'])) {
-                $gone++;
-                $db->prepare('UPDATE devotee_devices SET is_active = 0, failures = LEAST(failures + 1, 255) WHERE id = :id')
-                   ->execute([':id' => (int) $deviceId]);
-                notifyDeliveryEvent($id, 'device_gone', 'device #' . (int) $deviceId . ' retired: ' . mb_substr((string) ($dr['reason'] ?? 'gone'), 0, 200));
-            } elseif (!empty($dr['ok'])) {
-                $ok++;
-                $db->prepare('UPDATE devotee_devices SET failures = 0, last_seen_at = :now WHERE id = :id')
-                   ->execute([':now' => $now, ':id' => (int) $deviceId]);
-            } else {
-                $db->prepare('UPDATE devotee_devices SET failures = LEAST(failures + 1, 255) WHERE id = :id')
-                   ->execute([':id' => (int) $deviceId]);
-            }
-        }
-        $total = count($result->deviceResults);
-        if ($ok > 0) {
-            $status = NotifyResult::SENT;
-        } elseif ($gone === $total) {
-            $status = NotifyResult::REJECTED;
-            $reason = 'every device has unsubscribed';
-        } elseif ($status === NotifyResult::SENT) {
-            $status = NotifyResult::RETRY;
-            $reason = 'no device accepted the message';
-        }
-    }
 
     $response = mb_substr($result->response, 0, 2000);
 
@@ -498,27 +440,14 @@ function notifyApplyTerminal(array $d, string $status, string $reason, ?string $
     return notifyDispatchOutcome($status, $reason);
 }
 
-/** A held in-app message whose time has come becomes visible. */
-function notifyReleaseInApp(int $deliveryId): bool
-{
-    $stmt = getDB()->prepare(
-        "UPDATE notification_deliveries SET status = 'sent', sent_at = :now, next_attempt_at = NULL
-          WHERE id = :id AND channel = 'inapp' AND status = 'queued'"
-    );
-    $stmt->execute([':now' => notifyNow(), ':id' => $deliveryId]);
-    if ($stmt->rowCount() === 0) return false;
-    notifyDeliveryEvent($deliveryId, 'sent', 'now visible in the app');
-    return true;
-}
-
 /* ── The worker ─────────────────────────────────────────────────────────── */
 
 /**
  * One worker run. See SPEC §5.7 for the order of work.
  *
- * opts: max_seconds (50), batch (100), channels (default: every external
- * channel plus releasing held in-app messages; [] processes no channel),
- * notification_ids (int[]; limits recovery, release and claims to those
+ * opts: max_seconds (50), batch (100), channels (default: email, whatsapp and
+ * sms; [] processes no channel),
+ * notification_ids (int[]; limits recovery and claims to those
  * notifications and skips campaigns and reminders), campaign_id (limits the
  * same to one campaign's notifications and expands only that campaign; skips
  * reminders), skip_campaigns, skip_reminders, trigger ('cli'|'http'),
@@ -622,18 +551,6 @@ function notifyWorkerRun(array $opts = []): array
             if (empty($opts['skip_reminders']) && !$scoped) {
                 $step('reminders', static function () use (&$result, $testClock): void {
                     $result['reminders_created'] = notifyRemindersMaybeRun($testClock);
-                });
-            }
-
-            if (in_array('inapp', $channels, true)) {
-                $step('in-app release', static function () use ($scope): void {
-                    $stmt = getDB()->prepare(
-                        "SELECT id FROM notification_deliveries
-                          WHERE channel = 'inapp' AND status = 'queued' AND next_attempt_at <= :now{$scope['sql']}
-                          ORDER BY id LIMIT 2000"
-                    );
-                    $stmt->execute([':now' => notifyNow()] + $scope['params']);
-                    foreach ($stmt->fetchAll(PDO::FETCH_COLUMN) as $id) notifyReleaseInApp((int) $id);
                 });
             }
 

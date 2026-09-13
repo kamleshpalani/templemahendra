@@ -7,10 +7,18 @@
 // kept for reporting. Definitions (they are shown on the page too):
 //
 //   sent       the provider accepted it: status sent, delivered or read
-//   delivered  the provider confirmed it (delivered, read), or an in-app
-//              notification is on the bell — in-app has no provider in between
+//   delivered  the provider confirmed it: status delivered or read
 //   failed     failed (retry pending), rejected or dead
+//   skipped for consent
+//              skipped because the family had not agreed to temple updates
+//              ("no consent") or had unsubscribed ("unsubscribed")
 //   rates      numerator ÷ denominator, one decimal, "—" when nothing qualifies
+//
+// Channels are email, WhatsApp and SMS. The bell (inapp) and web push are
+// retired (docs/registration/SPEC.md §6), but delivery history still holds their
+// rows: those are counted as what happened and shown as "In-app (retired)" and
+// "Push (retired)" wherever the range contains them — never offered as a live
+// channel, and never requeued.
 //
 // Dates are chosen in the temple's timezone and converted to UTC before they
 // reach SQL, because every notification DATETIME is UTC (SPEC §3). All filters
@@ -27,7 +35,6 @@ require_once __DIR__ . '/includes/admin_layout.php';
 
 const NA_PAGE     = '/admin/notification_analytics.php';
 const NA_STATUSES = ['queued', 'sending', 'sent', 'delivered', 'read', 'failed', 'rejected', 'dead', 'skipped', 'cancelled'];
-const NA_CHANNEL_LABELS = ['inapp' => 'In-app', 'email' => 'Email', 'whatsapp' => 'WhatsApp', 'sms' => 'SMS', 'push' => 'Push'];
 const NA_MAX_DAYS = 366;
 
 $db  = getDB();
@@ -98,6 +105,21 @@ function naCsvCell(mixed $value): string
     return preg_match('/^[=+\-@\t\r]/', $s) ? "'" . $s : $s;
 }
 
+/**
+ * The channels a per-channel list shows, in order: the live channels, then a
+ * retired channel only when $present (channel => anything) has rows for it.
+ */
+function naChannels(array $present): array
+{
+    return [...NOTIFY_CHANNELS, ...array_values(array_intersect(NOTIFY_RETIRED_CHANNELS, array_keys($present)))];
+}
+
+/** A comma-separated SQL list of code-defined strings (channel names, skip reasons), quoted by the driver. */
+function naSqlList(PDO $db, array $values): string
+{
+    return implode(',', array_map(static fn(string $v): string => (string) $db->quote($v), $values));
+}
+
 /** KPI cards in the dashboard's .stat markup, with data-kpi hooks and the n/d of a rate in a title. */
 function naKpiGrid(array $items, string $label): string
 {
@@ -131,7 +153,8 @@ if ($span > NA_MAX_DAYS) {
     $clamped = true;
 }
 
-$channel  = in_array($str($src, 'channel'), NOTIFY_CHANNELS, true) ? $str($src, 'channel') : '';
+// A retired channel is a valid filter: it is how the committee looks at the history it left behind.
+$channel  = in_array($str($src, 'channel'), [...NOTIFY_CHANNELS, ...NOTIFY_RETIRED_CHANNELS], true) ? $str($src, 'channel') : '';
 $status   = in_array($str($src, 'status'), NA_STATUSES, true) ? $str($src, 'status') : '';
 $campaign = preg_match('/^\d{1,10}$/', $str($src, 'campaign')) ? (int) $str($src, 'campaign') : 0;
 $category = $str($src, 'category');
@@ -179,11 +202,15 @@ $whereSql = ' WHERE ' . implode(' AND ', $where);
 
 // Status groups, written once so every query counts the same way.
 $SENT      = "d.status IN ('sent','delivered','read')";
-$DELIVERED = "(d.status IN ('delivered','read') OR (d.channel = 'inapp' AND d.status = 'sent'))";
+$DELIVERED = "d.status IN ('delivered','read')";
 $FAILED    = "d.status IN ('failed','rejected','dead')";
 $ATTEMPTED = "d.status IN ('sent','delivered','read','failed','rejected','dead')";
 $OPENED    = "($SENT AND (d.read_at IS NOT NULL OR d.status = 'read'))";
 $CLICKED   = "($SENT AND d.clicked_at IS NOT NULL)";
+// Skip reasons are stored exactly as policy.php returns them.
+$NO_CONSENT   = "(d.status = 'skipped' AND d.skip_reason = " . $db->quote('no consent') . ')';
+$UNSUBSCRIBED = "(d.status = 'skipped' AND d.skip_reason = " . $db->quote('unsubscribed') . ')';
+$CONSENT_SKIP = "(d.status = 'skipped' AND d.skip_reason IN (" . naSqlList($db, NOTIFY_CONSENT_REASONS) . '))';
 
 /* ── Requeue (POST) ──────────────────────────────────────────────────────── */
 
@@ -207,10 +234,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $_SESSION['flash_nanalytics'] = ['warning', 'Delivery #' . $id . ' no longer exists.'];
             } elseif (!in_array($d['status'], ['failed', 'rejected', 'dead'], true)) {
                 $_SESSION['flash_nanalytics'] = ['info', 'Delivery #' . $id . ' is ' . $d['status'] . ' now, so there is nothing to requeue.'];
+            } elseif (in_array($d['channel'], NOTIFY_RETIRED_CHANNELS, true)) {
+                // Nothing sends on a retired channel; a requeued row would only sit in the queue.
+                $_SESSION['flash_nanalytics'] = ['error', 'Delivery #' . $id . ' was for ' . notifyChannelLabel((string) $d['channel']) . ', a channel that is no longer used, so it cannot be sent again.'];
             } elseif ((int) $d['has_secret'] === 1) {
-                $_SESSION['flash_nanalytics'] = ['error', 'Delivery #' . $id . ' carried a one-time code or link, which is never stored, so it cannot be sent again. The devotee can ask for a new one.'];
+                $_SESSION['flash_nanalytics'] = ['error', 'Delivery #' . $id . ' carried a one-time code or link, which is never stored, so it cannot be sent again.'];
             } elseif (notifyRequeue($id, $actorName)) {
-                $_SESSION['flash_nanalytics'] = ['success', 'Delivery #' . $id . ' (' . (NA_CHANNEL_LABELS[$d['channel']] ?? $d['channel']) . ') is back in the queue with its attempts reset. The worker sends it on its next run.'];
+                $_SESSION['flash_nanalytics'] = ['success', 'Delivery #' . $id . ' (' . notifyChannelLabel((string) $d['channel']) . ') is back in the queue with its attempts reset. The worker sends it on its next run.'];
             } else {
                 $_SESSION['flash_nanalytics'] = ['error', 'Delivery #' . $id . ' could not be requeued. It may have changed in the meantime; reload and try again.'];
             }
@@ -276,19 +306,35 @@ $totals = $db->prepare(
             COALESCE(SUM($FAILED), 0) AS failed,
             COALESCE(SUM(d.channel = 'email' AND $SENT), 0) AS email_sent,
             COALESCE(SUM(d.channel = 'email' AND $OPENED), 0) AS email_opened,
-            COALESCE(SUM(d.channel = 'inapp' AND $SENT), 0) AS inapp_sent,
-            COALESCE(SUM(d.channel = 'inapp' AND $OPENED), 0) AS inapp_read,
             COALESCE(SUM($CLICKED), 0) AS clicked,
             COALESCE(SUM(d.channel = 'whatsapp' AND $ATTEMPTED), 0) AS wa_attempted,
-            COALESCE(SUM(d.channel = 'whatsapp' AND d.status IN ('delivered','read')), 0) AS wa_delivered,
+            COALESCE(SUM(d.channel = 'whatsapp' AND $DELIVERED), 0) AS wa_delivered,
             COALESCE(SUM(d.channel = 'sms' AND $ATTEMPTED), 0) AS sms_attempted,
-            COALESCE(SUM(d.channel = 'sms' AND d.status IN ('delivered','read')), 0) AS sms_delivered,
-            COALESCE(SUM(d.channel = 'push' AND $SENT), 0) AS push_sent,
-            COALESCE(SUM(d.channel = 'push' AND $CLICKED), 0) AS push_clicked"
+            COALESCE(SUM(d.channel = 'sms' AND $DELIVERED), 0) AS sms_delivered,
+            COALESCE(SUM($CONSENT_SKIP), 0) AS skipped_consent,
+            COALESCE(SUM($NO_CONSENT), 0) AS skipped_no_consent,
+            COALESCE(SUM($UNSUBSCRIBED), 0) AS skipped_unsubscribed"
     . $fromSql . $whereSql
 );
 $totals->execute($params);
 $t = array_map('intval', $totals->fetch(PDO::FETCH_ASSOC) ?: []);
+
+// Families who unsubscribed in the range. This is a fact about registrations,
+// not deliveries, so the channel, status, category and campaign filters do not
+// narrow it; the page says so next to the number.
+$stmt = $db->prepare('SELECT COUNT(*) FROM devotees WHERE unsubscribed_at >= :from AND unsubscribed_at < :to');
+$stmt->execute([':from' => $fromUtc, ':to' => $toUtc]);
+$unsubscribes = (int) $stmt->fetchColumn();
+
+// Retired channels with history in the range, so the channel filter can offer
+// exactly those (and keeps offering one that is already selected).
+$stmt = $db->prepare(
+    'SELECT DISTINCT channel FROM notification_deliveries
+      WHERE channel IN (' . naSqlList($db, NOTIFY_RETIRED_CHANNELS) . ') AND created_at >= :from AND created_at < :to'
+);
+$stmt->execute([':from' => $fromUtc, ':to' => $toUtc]);
+$retiredInRange = array_fill_keys($stmt->fetchAll(PDO::FETCH_COLUMN), true);
+if (in_array($channel, NOTIFY_RETIRED_CHANNELS, true)) $retiredInRange[$channel] = true;
 
 // Notifications created in the range. Without delivery filters this counts the
 // notifications table itself (a notification whose every channel was skipped
@@ -359,11 +405,11 @@ $stmt = $db->prepare(
 $stmt->execute($params);
 $byChannel = [];
 foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $r) $byChannel[$r['channel']] = array_map('intval', array_diff_key($r, ['channel' => 1]));
-$shareTones = ['inapp' => 'gold', 'email' => 'maroon', 'whatsapp' => 'sage', 'sms' => 'moon', 'push' => 'info'];
+$shareTones = ['email' => 'maroon', 'whatsapp' => 'sage', 'sms' => 'moon', 'inapp' => 'gold', 'push' => 'info'];
 $shares = [];
-foreach (NA_CHANNEL_LABELS as $ch => $label) {
+foreach (naChannels($byChannel) as $ch) {
     if (!isset($byChannel[$ch])) continue;
-    $shares[] = ['label' => $label, 'value' => $byChannel[$ch]['total'], 'hint' => number_format($byChannel[$ch]['total']), 'tone' => $shareTones[$ch]];
+    $shares[] = ['label' => notifyChannelLabel($ch), 'value' => $byChannel[$ch]['total'], 'hint' => number_format($byChannel[$ch]['total']), 'tone' => $shareTones[$ch] ?? 'muted'];
 }
 
 // Per campaign
@@ -455,7 +501,7 @@ echo adminPageIntro(
     <label for="f-channel"><span class="field__label">Channel</span>
       <select id="f-channel" name="channel">
         <option value="">All channels</option>
-        <?php foreach (NA_CHANNEL_LABELS as $ch => $label): ?><option value="<?= h($ch) ?>"<?= $channel === $ch ? ' selected' : '' ?>><?= h($label) ?></option><?php endforeach; ?>
+        <?php foreach (naChannels($retiredInRange) as $ch): ?><option value="<?= h($ch) ?>"<?= $channel === $ch ? ' selected' : '' ?>><?= h(notifyChannelLabel($ch)) ?></option><?php endforeach; ?>
       </select>
     </label>
     <label for="f-status"><span class="field__label">Status</span>
@@ -505,27 +551,30 @@ echo adminPageIntro(
 
 <?php
 $opensRate = naRate($t['email_opened'] ?? 0, $t['email_sent'] ?? 0);
-$readRate  = naRate($t['inapp_read'] ?? 0, $t['inapp_sent'] ?? 0);
 $ctr       = naRate($t['clicked'] ?? 0, $t['sent'] ?? 0);
 $waRate    = naRate($t['wa_delivered'] ?? 0, $t['wa_attempted'] ?? 0);
 $smsRate   = naRate($t['sms_delivered'] ?? 0, $t['sms_attempted'] ?? 0);
-$pushRate  = naRate($t['push_clicked'] ?? 0, $t['push_sent'] ?? 0);
 
 echo naKpiGrid([
-    ['key' => 'notifications', 'icon' => 'bell',         'value' => number_format($notificationsCreated), 'label' => 'Notifications created', 'sub' => number_format($t['total'] ?? 0) . ' deliveries across channels'],
-    ['key' => 'sent',          'icon' => 'arrow-up-right','value' => number_format($t['sent'] ?? 0),      'label' => 'Deliveries sent',       'sub' => 'Accepted by the provider or shown on the bell'],
-    ['key' => 'delivered',     'icon' => 'check-circle', 'value' => number_format($t['delivered'] ?? 0),  'label' => 'Delivered',             'sub' => 'Confirmed by the provider; in-app counts once shown'],
+    ['key' => 'notifications', 'icon' => 'send',         'value' => number_format($notificationsCreated), 'label' => 'Notifications created', 'sub' => number_format($t['total'] ?? 0) . ' deliveries across channels'],
+    ['key' => 'sent',          'icon' => 'arrow-up-right','value' => number_format($t['sent'] ?? 0),      'label' => 'Deliveries sent',       'sub' => 'Accepted by the provider'],
+    ['key' => 'delivered',     'icon' => 'check-circle', 'value' => number_format($t['delivered'] ?? 0),  'label' => 'Delivered',             'sub' => 'Confirmed delivered or read by the provider'],
     ['key' => 'failed',        'icon' => 'alert',        'value' => number_format($t['failed'] ?? 0),     'label' => 'Failed',                'sub' => 'Retrying, rejected or dead'],
 ], 'Delivery counts');
 
 echo naKpiGrid([
     ['key' => 'email_open_rate', 'icon' => 'mail',     'value' => $opensRate['text'], 'title' => $opensRate['title'], 'label' => 'Email open rate',        'sub' => ($t['email_opened'] ?? 0) . ' of ' . ($t['email_sent'] ?? 0) . ' sent emails opened'],
-    ['key' => 'inapp_read_rate', 'icon' => 'bell',     'value' => $readRate['text'],  'title' => $readRate['title'],  'label' => 'In-app read rate',       'sub' => ($t['inapp_read'] ?? 0) . ' of ' . ($t['inapp_sent'] ?? 0) . ' read'],
     ['key' => 'click_rate',      'icon' => 'external', 'value' => $ctr['text'],       'title' => $ctr['title'],       'label' => 'Click-through rate',     'sub' => ($t['clicked'] ?? 0) . ' of ' . ($t['sent'] ?? 0) . ' sent were clicked'],
     ['key' => 'whatsapp_rate',   'icon' => 'phone',    'value' => $waRate['text'],    'title' => $waRate['title'],    'label' => 'WhatsApp delivery rate', 'sub' => ($t['wa_delivered'] ?? 0) . ' of ' . ($t['wa_attempted'] ?? 0) . ' attempted'],
     ['key' => 'sms_rate',        'icon' => 'phone',    'value' => $smsRate['text'],   'title' => $smsRate['title'],   'label' => 'SMS delivery rate',      'sub' => ($t['sms_delivered'] ?? 0) . ' of ' . ($t['sms_attempted'] ?? 0) . ' attempted'],
-    ['key' => 'push_rate',       'icon' => 'activity', 'value' => $pushRate['text'],  'title' => $pushRate['title'],  'label' => 'Push engagement',        'sub' => ($t['push_clicked'] ?? 0) . ' of ' . ($t['push_sent'] ?? 0) . ' push messages opened'],
 ], 'Delivery rates');
+
+echo naKpiGrid([
+    ['key' => 'skipped_consent', 'icon' => 'shield',   'value' => number_format($t['skipped_consent'] ?? 0), 'label' => 'Skipped: no consent',
+     'sub' => number_format($t['skipped_no_consent'] ?? 0) . ' had not agreed to temple updates · ' . number_format($t['skipped_unsubscribed'] ?? 0) . ' had unsubscribed'],
+    ['key' => 'unsubscribes',    'icon' => 'x-circle', 'value' => number_format($unsubscribes), 'label' => 'Unsubscribes in range',
+     'sub' => 'Families who stopped temple updates in these dates. The other filters do not narrow it.'],
+], 'Consent');
 ?>
 
 <div class="dash-grid">
@@ -570,9 +619,9 @@ echo naKpiGrid([
         </tr>
       </thead>
       <tbody>
-        <?php foreach (NA_CHANNEL_LABELS as $ch => $label): if (!isset($byChannel[$ch])) continue; $c = $byChannel[$ch]; ?>
+        <?php foreach (naChannels($byChannel) as $ch): if (!isset($byChannel[$ch])) continue; $c = $byChannel[$ch]; ?>
         <tr data-channel="<?= h($ch) ?>">
-          <td><span class="cell-title"><?= h($label) ?></span></td>
+          <td><span class="cell-title"><?= h(notifyChannelLabel($ch)) ?></span></td>
           <td class="cell-num"><?= number_format($c['total']) ?></td>
           <td class="cell-num"><?= number_format($c['pending']) ?></td>
           <td class="cell-num"><?= number_format($c['sent']) ?></td>
@@ -581,14 +630,14 @@ echo naKpiGrid([
           <td class="cell-num"><?= number_format($c['clicked']) ?></td>
           <td class="cell-num"><?= number_format($c['failed']) ?></td>
           <td class="cell-num"><?= number_format($c['skipped'] + $c['cancelled']) ?></td>
-          <td class="cell-num"><?= $rate(naRate($c['delivered'], $ch === 'inapp' ? $c['sent'] : $c['attempted'])) ?></td>
+          <td class="cell-num"><?= $rate(naRate($c['delivered'], $c['attempted'])) ?></td>
           <td class="cell-num"><?= $rate(naRate($c['clicked'], $c['sent'])) ?></td>
         </tr>
         <?php endforeach; ?>
       </tbody>
     </table>
   </div>
-  <p class="field__hint na-note">Skipped includes cancelled deliveries and channels a devotee switched off or has no contact for. Delivery rate is delivered ÷ attempted (in-app: ÷ sent). Hover a rate for its count.</p>
+  <p class="field__hint na-note">Skipped includes cancelled deliveries, families who had not agreed to temple updates or had unsubscribed, and missing email addresses or phone numbers. Delivery rate is delivered ÷ attempted. Retired channels appear only for history in this range. Hover a rate for its count.</p>
   <?php else: ?>
     <div class="card__body"><?= adminEmpty('table', 'No deliveries in this range', '', '', true) ?></div>
   <?php endif; ?>
@@ -641,7 +690,7 @@ echo naKpiGrid([
           <?= adminIcon('alert') ?>
           <p><?= $lastRun
               ? 'The worker last ran ' . h(naAgoText((int) $runAge)) . '. It should run every minute, so nothing external is being sent. Check the cron job for backend/bin/notify_worker.php, or the /api/notify-cron trigger.'
-              : 'The worker has never run, so no email, WhatsApp, SMS or push message has been sent. Set up the cron job for backend/bin/notify_worker.php (every minute), or the /api/notify-cron trigger.' ?></p>
+              : 'The worker has never run, so no email, WhatsApp or SMS message has been sent. Set up the cron job for backend/bin/notify_worker.php (every minute), or the /api/notify-cron trigger.' ?></p>
         </div>
       <?php endif; ?>
       <dl class="dl-grid">
@@ -665,8 +714,8 @@ echo naKpiGrid([
         <table class="table table--compact" data-no-search data-no-responsive>
           <thead><tr><th scope="col">Channel</th><th scope="col" class="cell-num">Queued</th><th scope="col" class="cell-num">Sending</th><th scope="col" class="cell-num">Retrying</th><th scope="col" class="cell-num">Dead</th></tr></thead>
           <tbody>
-            <?php foreach (NA_CHANNEL_LABELS as $ch => $label): if (!isset($queue[$ch])) continue; $qd = $queue[$ch]; ?>
-            <tr data-queue="<?= h($ch) ?>"><th scope="row"><?= h($label) ?></th><td class="cell-num"><?= $qd['queued'] ?></td><td class="cell-num"><?= $qd['sending'] ?></td><td class="cell-num"><?= $qd['retrying'] ?></td><td class="cell-num"><?= $qd['dead'] ?></td></tr>
+            <?php foreach (naChannels($queue) as $ch): if (!isset($queue[$ch])) continue; $qd = $queue[$ch]; ?>
+            <tr data-queue="<?= h($ch) ?>"><th scope="row"><?= h(notifyChannelLabel($ch)) ?></th><td class="cell-num"><?= $qd['queued'] ?></td><td class="cell-num"><?= $qd['sending'] ?></td><td class="cell-num"><?= $qd['retrying'] ?></td><td class="cell-num"><?= $qd['dead'] ?></td></tr>
             <?php endforeach; ?>
           </tbody>
         </table>
@@ -696,14 +745,15 @@ echo naKpiGrid([
       </thead>
       <tbody>
         <?php foreach ($failed['rows'] as $f):
-            $fid = (int) $f['id'];
-            $who = $f['devotee_id'] !== null
-                ? '<a href="/admin/devotees.php?edit=' . (int) $f['devotee_id'] . '">' . h($f['devotee_name'] ?? ('Devotee #' . $f['devotee_id'])) . '</a>'
+            $fid     = (int) $f['id'];
+            $retired = in_array($f['channel'], NOTIFY_RETIRED_CHANNELS, true);
+            $who     = $f['devotee_id'] !== null
+                ? '<a href="/admin/devotees.php?edit=' . (int) $f['devotee_id'] . '">' . h($f['devotee_name'] ?? ('Registration #' . $f['devotee_id'])) . '</a>'
                 : 'Guest';
         ?>
         <tr data-delivery="<?= $fid ?>">
           <td>
-            <span class="cell-title">#<?= $fid ?> · <?= h(NA_CHANNEL_LABELS[$f['channel']] ?? $f['channel']) ?></span>
+            <span class="cell-title">#<?= $fid ?> · <?= h(notifyChannelLabel((string) $f['channel'])) ?></span>
             <span class="cell-sub"><?= $who ?><?= $f['provider'] ? ' · ' . h((string) $f['provider']) : '' ?></span>
           </td>
           <td>
@@ -725,7 +775,9 @@ echo naKpiGrid([
           </td>
           <td class="cell-date"><time datetime="<?= h(notifyIso($f['updated_at'])) ?>"><?= h(naLocal($f['updated_at'], $tz)) ?></time></td>
           <td class="cell-actions">
-            <?php if ($canCompose && (int) $f['has_secret'] !== 1): ?>
+            <?php if ($retired): ?>
+              <span class="cell-sub">Retired channel; cannot be re-sent</span>
+            <?php elseif ($canCompose && (int) $f['has_secret'] !== 1): ?>
               <form method="POST" action="<?= h($selfUrl) ?>" class="na-requeue">
                 <?= csrfField() ?>
                 <input type="hidden" name="action" value="requeue" />

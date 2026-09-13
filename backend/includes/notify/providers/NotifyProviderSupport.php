@@ -5,8 +5,8 @@
  *
  * Reading Retry-After, decoding a response body without trusting it, turning a
  * site path into an absolute link, composing the plain text of a free-form
- * message, combining per-device push outcomes into one result, and making sure
- * nothing a provider does can escape as an exception into the worker.
+ * message, and making sure nothing a provider does can escape as an exception
+ * into the worker.
  *
  * Static methods on a class rather than plain functions because the provider
  * autoloader in contracts.php loads classes by name: a function file would need
@@ -104,42 +104,6 @@ final class NotifyProviderSupport
             $body .= ($body !== '' ? "\n\n" : '') . $label . $link;
         }
         return $body;
-    }
-
-    /**
-     * Combine per-device push outcomes into the delivery's result (SPEC §5.7).
-     *
-     * @param array $devices deviceId => ['ok' => bool, 'gone' => bool, 'retry' => bool, 'reason' => string]
-     *
-     *   any device accepted                  → sent (gone devices still reported, so they are retired)
-     *   every device gone                    → rejected "every device is gone"
-     *   nothing left that a retry could fix  → rejected with the first refusal's reason
-     *   otherwise                            → retry
-     *
-     * The third rule is the one judgement call: a 413 or 400 from every device
-     * will be a 413 or 400 next time too, so retrying would only burn attempts.
-     */
-    public static function pushOutcome(array $devices, ?string $messageId, string $response, ?int $retryAfter, string $label): NotifyResult
-    {
-        if ($devices === []) return NotifyResult::skipped('no ' . $label . ' device');
-
-        $ok = $gone = $retryable = 0;
-        $firstRefusal = $firstRetry = null;
-        foreach ($devices as $d) {
-            if (!empty($d['ok'])) { $ok++; continue; }
-            if (!empty($d['gone'])) { $gone++; continue; }
-            if (!empty($d['retry'])) {
-                $retryable++;
-                $firstRetry ??= (string) ($d['reason'] ?? '');
-            } else {
-                $firstRefusal ??= (string) ($d['reason'] ?? '');
-            }
-        }
-
-        if ($ok > 0) return NotifyResult::sent($messageId, $response, $devices);
-        if ($gone === count($devices)) return NotifyResult::rejected('every device is gone', $response, $devices);
-        if ($retryable === 0) return NotifyResult::rejected((string) $firstRefusal, $response, $devices);
-        return NotifyResult::retry((string) $firstRetry, $response, $retryAfter, $devices);
     }
 
     /**

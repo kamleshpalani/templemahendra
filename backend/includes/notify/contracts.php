@@ -5,14 +5,13 @@
  *
  * The service decides WHAT to send, to WHOM, on WHICH channels, and WHEN. A
  * provider only knows HOW to hand one already-rendered message to one outside
- * system — SMTP, Meta's WhatsApp Cloud API, Twilio, MSG91, a Web Push endpoint,
- * Firebase. Swapping Twilio for MSG91 is a change to one environment variable,
- * because nothing outside a provider class ever names a provider.
+ * system — SMTP, Meta's WhatsApp Cloud API, Twilio, MSG91. Swapping Twilio for
+ * MSG91 is a change to one environment variable, because nothing outside a
+ * provider class ever names a provider.
  *
  *   NOTIFY_EMAIL_DRIVER     mailer (default) | log | test
  *   NOTIFY_WHATSAPP_DRIVER  log (default) | meta | twilio | test
  *   NOTIFY_SMS_DRIVER       log (default) | twilio | msg91 | test
- *   NOTIFY_PUSH_DRIVER      log (default) | webpush | fcm | test
  *
  * `log` records the message in backend/logs/notify.log instead of sending it,
  * and says so: its results carry recordedOnly = true, and the delivery is
@@ -26,19 +25,37 @@
 
 require_once __DIR__ . '/../helpers.php';
 
-const NOTIFY_CHANNELS          = ['inapp', 'email', 'whatsapp', 'sms', 'push'];
-const NOTIFY_EXTERNAL_CHANNELS = ['email', 'whatsapp', 'sms', 'push'];
+/** The channels the temple sends on. */
+const NOTIFY_CHANNELS          = ['email', 'whatsapp', 'sms'];
+/** Every channel goes through an outside provider; kept as its own name for the callers that mean exactly that. */
+const NOTIFY_EXTERNAL_CHANNELS = NOTIFY_CHANNELS;
+/**
+ * Channels that existed while devotees could sign in: the notification bell and
+ * web push. Delivery history still holds rows for them (the enum values stay in
+ * the database), so reports can label those rows — but nothing offers, sends or
+ * counts them as a live channel any more.
+ */
+const NOTIFY_RETIRED_CHANNELS  = ['inapp', 'push'];
 const NOTIFY_PRIORITIES        = ['normal', 'important', 'urgent', 'emergency'];
 const NOTIFY_PRIORITY_RANK     = ['emergency' => 0, 'urgent' => 1, 'important' => 2, 'normal' => 3];
+
+/** A channel's name for the committee: "Email", "WhatsApp", "SMS", or "In-app (retired)" for a historic row. */
+function notifyChannelLabel(string $channel): string
+{
+    return [
+        'email' => 'Email', 'whatsapp' => 'WhatsApp', 'sms' => 'SMS',
+        'inapp' => 'In-app (retired)', 'push' => 'Push (retired)',
+    ][$channel] ?? $channel;
+}
 
 /* ── The provider interface ─────────────────────────────────────────────── */
 
 interface NotifyProvider
 {
-    /** The driver name as configured: log, test, mailer, meta, twilio, msg91, webpush, fcm. */
+    /** The driver name as configured: log, test, mailer, meta, twilio, msg91. */
     public function name(): string;
 
-    /** The channel this instance delivers: email, whatsapp, sms or push. */
+    /** The channel this instance delivers: email, whatsapp or sms. */
     public function channel(): string;
 
     /**
@@ -82,16 +99,11 @@ interface NotifyProvider
 final class NotifyMessage
 {
     /**
-     * @param array $devices  push only: [['id' => int, 'provider' => 'webpush'|'fcm'|'apns',
-     *                          'endpoint' => string, 'keys' => ['p256dh' => string, 'auth' => string]|null]]
      * @param array $templateParams  ordered string values for an approved provider template
      * @param array $buttons  [['type' => 'url'|'call'|'quick_reply', 'text' => string, 'value' => string]]
      *                        url: absolute https URL; call: E.164 with plus; quick_reply: payload id
      * @param array $headers  email only: extra headers, e.g. ['List-Unsubscribe' => '<https://…>',
      *                        'List-Unsubscribe-Post' => 'List-Unsubscribe=One-Click']
-     * @param array $data     push only: ['url' => absolute deep link, 'trackUrl' => ?string,
-     *                        'notificationId' => int, 'category' => string, 'priority' => string,
-     *                        'tag' => string, 'image' => ?string]
      */
     public function __construct(
         public readonly int $deliveryId,
@@ -109,12 +121,10 @@ final class NotifyMessage
         public readonly ?string $imageUrl = null,
         public readonly ?string $toEmail = null,
         public readonly ?string $toPhone = null,
-        public readonly array $devices = [],
         public readonly ?string $providerTemplate = null,
         public readonly array $templateParams = [],
         public readonly array $buttons = [],
         public readonly array $headers = [],
-        public readonly array $data = [],
         public readonly string $idempotencyKey = '',
     ) {
     }
@@ -136,9 +146,9 @@ final class NotifyMessage
  *             provider has them, arrive later through handleWebhook().
  *   retry     a transient failure: the queue tries again with backoff until the
  *             channel's attempt limit, then marks the delivery dead.
- *   rejected  a permanent failure (bad number, template not approved, endpoint
- *             gone). Never retried.
- *   skipped   nothing was attempted (not configured, no device).
+ *   rejected  a permanent failure (bad number, template not approved). Never
+ *             retried.
+ *   skipped   nothing was attempted (not configured, no address).
  *
  * Responses are redacted and trimmed on construction, so a provider cannot
  * accidentally store a phone number or an access token in the delivery log.
@@ -150,39 +160,34 @@ final class NotifyResult
     public const REJECTED = 'rejected';
     public const SKIPPED  = 'skipped';
 
-    /**
-     * @param array $deviceResults push only: [deviceId => ['ok' => bool, 'gone' => bool, 'reason' => string]]
-     *                             A device reported gone (HTTP 404/410, UNREGISTERED) is retired.
-     */
     private function __construct(
         public readonly string $status,
         public readonly ?string $messageId,
         public readonly string $reason,
         public readonly string $response,
         public readonly ?int $retryAfter,
-        public readonly array $deviceResults,
         public readonly bool $recordedOnly,
     ) {
     }
 
-    public static function sent(?string $messageId, string $response = '', array $deviceResults = [], bool $recordedOnly = false): self
+    public static function sent(?string $messageId, string $response = '', bool $recordedOnly = false): self
     {
-        return new self(self::SENT, $messageId, '', notifyRedact($response), null, $deviceResults, $recordedOnly);
+        return new self(self::SENT, $messageId, '', notifyRedact($response), null, $recordedOnly);
     }
 
-    public static function retry(string $reason, string $response = '', ?int $retryAfterSeconds = null, array $deviceResults = []): self
+    public static function retry(string $reason, string $response = '', ?int $retryAfterSeconds = null): self
     {
-        return new self(self::RETRY, null, mb_substr($reason, 0, 300), notifyRedact($response), $retryAfterSeconds, $deviceResults, false);
+        return new self(self::RETRY, null, mb_substr($reason, 0, 300), notifyRedact($response), $retryAfterSeconds, false);
     }
 
-    public static function rejected(string $reason, string $response = '', array $deviceResults = []): self
+    public static function rejected(string $reason, string $response = ''): self
     {
-        return new self(self::REJECTED, null, mb_substr($reason, 0, 300), notifyRedact($response), null, $deviceResults, false);
+        return new self(self::REJECTED, null, mb_substr($reason, 0, 300), notifyRedact($response), null, false);
     }
 
     public static function skipped(string $reason): self
     {
-        return new self(self::SKIPPED, null, mb_substr($reason, 0, 120), '', null, [], false);
+        return new self(self::SKIPPED, null, mb_substr($reason, 0, 120), '', null, false);
     }
 
     public function ok(): bool
@@ -201,8 +206,8 @@ function notifyEnv(string $key, string $default = ''): string
 
 /**
  * Remove what must never reach a log: email addresses, phone numbers, bearer
- * and access tokens, API keys, OTP-looking codes after "code". Keeps enough of
- * each (domain, last four digits) to tell two failures apart.
+ * and access tokens, API keys. Keeps enough of each (domain, last four digits)
+ * to tell two failures apart.
  */
 function notifyRedact(string $text, int $max = 2000): string
 {
@@ -259,21 +264,16 @@ function notifyHttp(string $method, string $url, array $headers = [], string|arr
     return ['status' => $out === false ? 0 : $status, 'headers' => $respHeaders, 'body' => $out === false ? '' : (string) $out, 'error' => $error];
 }
 
-/** Base64url without padding, as Web Push, VAPID and JWTs use. */
+/** Base64url without padding, as the signed tracking tokens use. */
 function notifyB64u(string $raw): string
 {
     return rtrim(strtr(base64_encode($raw), '+/', '-_'), '=');
 }
 
-function notifyB64uDecode(string $text): string
-{
-    $t = strtr($text, '-_', '+/');
-    return (string) base64_decode($t . str_repeat('=', (4 - strlen($t) % 4) % 4), true);
-}
-
 /**
  * Append one line to a file in backend/logs/, creating the directory with the
- * deny-all guard the mailer uses — these logs can hold one-time codes.
+ * deny-all guard the mailer uses — these logs hold whole messages, names and
+ * unsubscribe links.
  */
 function notifyLogWrite(string $file, string $text): void
 {
@@ -283,7 +283,7 @@ function notifyLogWrite(string $file, string $text): void
     if (is_dir($dir) && !file_exists($guard)) {
         @file_put_contents(
             $guard,
-            "# Contains verification links and one-time codes. Never serve this.\n"
+            "# Contains whole messages and unsubscribe links. Never serve this.\n"
             . "<IfModule mod_authz_core.c>\n  Require all denied\n</IfModule>\n"
             . "<IfModule !mod_authz_core.c>\n  Order Allow,Deny\n  Deny from all\n</IfModule>\n"
         );
@@ -303,14 +303,13 @@ function notifyProviderRegistry(): array
         'email'    => ['log' => 'NotifyLogProvider', 'test' => 'NotifyTestProvider', 'mailer' => 'NotifyMailerProvider'],
         'whatsapp' => ['log' => 'NotifyLogProvider', 'test' => 'NotifyTestProvider', 'meta' => 'NotifyMetaWhatsAppProvider', 'twilio' => 'NotifyTwilioWhatsAppProvider'],
         'sms'      => ['log' => 'NotifyLogProvider', 'test' => 'NotifyTestProvider', 'twilio' => 'NotifyTwilioSmsProvider', 'msg91' => 'NotifyMsg91SmsProvider'],
-        'push'     => ['log' => 'NotifyLogProvider', 'test' => 'NotifyTestProvider', 'webpush' => 'NotifyWebPushProvider', 'fcm' => 'NotifyFcmProvider'],
     ];
 }
 
 /** The driver configured for a channel. Email defaults to the existing mailer, the rest to log. */
 function notifyDriverName(string $channel): string
 {
-    $defaults = ['email' => 'mailer', 'whatsapp' => 'log', 'sms' => 'log', 'push' => 'log'];
+    $defaults = ['email' => 'mailer', 'whatsapp' => 'log', 'sms' => 'log'];
     $value = strtolower(trim(notifyEnv('NOTIFY_' . strtoupper($channel) . '_DRIVER', $defaults[$channel] ?? 'log')));
     return $value === '' ? ($defaults[$channel] ?? 'log') : $value;
 }
@@ -376,8 +375,7 @@ final class NotifyUnavailableProvider implements NotifyProvider
 
 /**
  * Records messages in backend/logs/notify.log instead of sending them. The
- * default for WhatsApp, SMS and push until a provider is configured — and the
- * way a developer reads a one-time code locally.
+ * default for WhatsApp and SMS until a provider is configured.
  */
 final class NotifyLogProvider implements NotifyProvider
 {
@@ -391,11 +389,7 @@ final class NotifyLogProvider implements NotifyProvider
 
     public function send(NotifyMessage $m): NotifyResult
     {
-        $to = match ($m->channel) {
-            'email'   => (string) $m->toEmail,
-            'push'    => count($m->devices) . ' device(s)',
-            default   => (string) $m->phoneE164(),
-        };
+        $to = $m->channel === 'email' ? (string) $m->toEmail : (string) $m->phoneE164();
         $id = 'log-' . bin2hex(random_bytes(6));
         notifyLogWrite('notify.log', sprintf(
             "===== %s  %s  delivery #%d  attempt %d  %s\nTo: %s\nTitle: %s\n%s%s%s\n",
@@ -403,9 +397,7 @@ final class NotifyLogProvider implements NotifyProvider
             $m->ctaUrl ? "\nLink: " . $m->ctaUrl : '',
             $m->providerTemplate ? "\nProvider template: " . $m->providerTemplate . ' ' . json_encode($m->templateParams, JSON_UNESCAPED_UNICODE) : ''
         ));
-        $devices = [];
-        foreach ($m->devices as $d) $devices[(int) $d['id']] = ['ok' => true, 'gone' => false, 'reason' => 'recorded'];
-        return NotifyResult::sent($id, 'recorded in backend/logs/notify.log; no provider is configured', $devices, true);
+        return NotifyResult::sent($id, 'recorded in backend/logs/notify.log; no provider is configured', true);
     }
 
     public function handleWebhook(string $method, array $headers, string $rawBody, array $query, string $requestUrl): array
@@ -419,11 +411,10 @@ final class NotifyLogProvider implements NotifyProvider
  * NOTIFY_ALLOW_TEST_DRIVER=1.
  *
  * Behaviour is chosen by the recipient, so a test can provoke each outcome:
- *   email local part, phone number or device endpoint containing / ending in
+ *   email local part or phone number containing / ending in
  *     "retry"  or digits ending 0001  → retry (retryAfter 1 second)
  *     "reject" or digits ending 0002  → rejected
  *     "flaky"  or digits ending 0003  → retry on attempt 1, sent afterwards
- *     "gone"   (device endpoint)      → sent, with that device reported gone
  *   anything else                      → sent, message id "test-<deliveryId>"
  *
  * Every call appends one JSON line to backend/logs/notify-test.log with the
@@ -450,13 +441,12 @@ final class NotifyTestProvider implements NotifyProvider
             'notificationId' => $m->notificationId, 'attempt' => $m->attempt, 'lang' => $m->lang,
             'category' => $m->category, 'priority' => $m->priority, 'title' => $m->title, 'body' => $m->body,
             'html' => $m->html !== null, 'ctaUrl' => $m->ctaUrl, 'ctaLabel' => $m->ctaLabel, 'imageUrl' => $m->imageUrl,
-            'toEmail' => $m->toEmail, 'toPhone' => $m->toPhone, 'devices' => array_map(fn($d) => $d['endpoint'] ?? '', $m->devices),
+            'toEmail' => $m->toEmail, 'toPhone' => $m->toPhone,
             'providerTemplate' => $m->providerTemplate, 'templateParams' => $m->templateParams, 'buttons' => $m->buttons,
-            'headers' => $m->headers, 'data' => $m->data, 'idempotencyKey' => $m->idempotencyKey,
+            'headers' => $m->headers, 'idempotencyKey' => $m->idempotencyKey,
         ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
 
         $key = strtolower((string) ($m->toEmail ?? '')) . ' ' . preg_replace('/\D+/', '', (string) $m->toPhone);
-        foreach ($m->devices as $d) $key .= ' ' . strtolower((string) ($d['endpoint'] ?? ''));
 
         if (str_contains($key, 'reject') || preg_match('/0002(\s|$)/', $key)) {
             return NotifyResult::rejected('simulated permanent rejection', '{"error":"rejected by test driver"}');
@@ -467,12 +457,7 @@ final class NotifyTestProvider implements NotifyProvider
         if ((str_contains($key, 'flaky') || preg_match('/0003(\s|$)/', $key)) && $m->attempt <= 1) {
             return NotifyResult::retry('simulated first-attempt failure', '{"error":"flaky"}', 1);
         }
-        $devices = [];
-        foreach ($m->devices as $d) {
-            $gone = str_contains(strtolower((string) ($d['endpoint'] ?? '')), 'gone');
-            $devices[(int) $d['id']] = ['ok' => !$gone, 'gone' => $gone, 'reason' => $gone ? 'simulated 410 Gone' : 'accepted'];
-        }
-        return NotifyResult::sent('test-' . $m->deliveryId, '{"ok":true}', $devices);
+        return NotifyResult::sent('test-' . $m->deliveryId, '{"ok":true}');
     }
 
     public function handleWebhook(string $method, array $headers, string $rawBody, array $query, string $requestUrl): array

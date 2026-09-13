@@ -73,10 +73,11 @@ async function axe(page) {
 /**
  * Navigate, then switch the interface to English.
  *
- * The site opens in Tamil, and the choice lives in React state rather than
- * storage, so it resets on every full page load. These assertions read English
- * copy, so the toggle is pressed after each navigation. (SPA navigation inside
- * a scenario keeps the choice, so it only needs pressing once per goto.)
+ * The site opens in Tamil. The choice is remembered in localStorage, so within
+ * one browser context it survives reloads — but every scenario starts from a
+ * fresh context, which begins in Tamil again. These assertions read English
+ * copy, so the toggle is pressed after each navigation; pressing it when English
+ * is already chosen changes nothing.
  */
 async function go(page, path) {
   await page.goto(base + path, { waitUntil: "networkidle" });
@@ -284,10 +285,12 @@ try {
   await page.reload({ waitUntil: "networkidle" });
   await page.waitForTimeout(1200);
   check(page.url().endsWith("/account"), "a reload keeps the devotee on /account", page.url());
-  // A full reload resets the language to Tamil (LangProvider keeps the choice in
-  // React state only), so English has to be chosen again before reading labels.
-  await page.locator('.lang-toggle__btn[lang="en"]').first().click();
-  await page.waitForTimeout(300);
+  // The language choice is remembered, so the English chosen at sign-in is
+  // still in force after the reload; the labels below are read in English.
+  check(
+    (await page.evaluate(() => document.documentElement.lang)) === "en",
+    "a reload keeps the English interface chosen before it",
+  );
 
   // Tabs
   await page.click('[role="tab"]:has-text("Bookings")');

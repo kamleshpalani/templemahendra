@@ -3,15 +3,17 @@
 // paginate, quick/bulk status changes, reach devotees, CSV export.
 //
 // Confirming, cancelling or completing a booking tells the devotee
-// (booking.confirmed / booking.cancelled / booking.completed, SPEC §8.3): the
-// account when the booking carries one, otherwise the phone number the guest
-// gave. Only a booking whose status really changes is notified, and every event
-// is deduped per booking, so re-applying a status — or flipping it back and
-// forth — never sends the same news twice.
+// (booking.confirmed / booking.cancelled / booking.completed): by WhatsApp or
+// SMS to the phone number given on the booking, in the language the booking
+// form was sent in (docs/registration/SPEC.md §3, §6). A booking is not linked
+// to a family registration, so the number typed on the form is the one that
+// hears back. Only a booking whose status really changes is notified, and every
+// event is deduped per booking, so re-applying a status — or flipping it back
+// and forth — never sends the same news twice.
 require_once __DIR__ . '/../includes/auth.php';
 requireAdminAuth();
 require_once __DIR__ . '/../includes/db.php';
-require_once __DIR__ . '/../includes/devotee_auth.php';
+require_once __DIR__ . '/../includes/devotee_notify.php';
 require_once __DIR__ . '/includes/admin_layout.php';
 
 $db = getDB();
@@ -48,10 +50,13 @@ function sbNotifyStatusChange(array $b, string $status, string $actor): bool
 {
     if (!isset(SB_EVENTS[$status]) || !devoteeNotifyReady()) return false;
     try {
-        $id        = (int) $b['id'];
-        $devoteeId = $b['devotee_id'] !== null ? (int) $b['devotee_id'] : null;
-        $l         = devoteeCopyLang($devoteeId !== null ? devoteeNotifyLang($devoteeId) : 'ta');
-        $seva      = trim((string) ($l === 'ta' ? ($b['seva_name_ta'] ?? '') : ($b['seva_name_en'] ?? ''))) ?: (string) $b['seva_name'];
+        $id    = (int) $b['id'];
+        $phone = devoteeIntlPhone((string) $b['phone'], $b['phone_country'] ?? null);
+        if (strlen($phone) < 7) return false;
+        // The booking's own language; a booking made before migration 009 has none and is Tamil.
+        $lang  = devoteeLangFromInput($b['lang'] ?? 'ta');
+        $l     = devoteeCopyLang($lang);
+        $seva  = trim((string) ($l === 'ta' ? ($b['seva_name_ta'] ?? '') : ($b['seva_name_en'] ?? ''))) ?: (string) $b['seva_name'];
         $vars      = [
             'bookingNumber' => devoteeBookingNumber($id),
             'sevaName'      => $seva,
@@ -62,17 +67,14 @@ function sbNotifyStatusChange(array $b, string $status, string $actor): bool
             // message says who cancelled it and the template offers the phone number.
             $vars['reason'] = $l === 'ta' ? 'கோயில் அலுவலகம் இந்தப் பதிவை ரத்து செய்துள்ளது' : 'The temple office has cancelled this booking';
         }
-        $ctx = ['entity_id' => $id, 'vars' => $vars, 'actor' => $actor];
-        if ($devoteeId !== null) {
-            $ctx['devotee_id'] = $devoteeId;
-        } else {
-            $phone = devoteeIntlPhone((string) $b['phone'], $b['phone_country'] ?? null);
-            if (strlen($phone) < 7) return false;
-            $ctx['to_phone'] = $phone;
-            $ctx['name']     = (string) $b['devotee_name'];
-            $ctx['lang']     = 'ta';
-        }
-        $r = devoteeNotifyEvent(SB_EVENTS[$status], $ctx);
+        $r = devoteeNotifyEvent(SB_EVENTS[$status], [
+            'entity_id' => $id,
+            'to_phone'  => $phone,
+            'name'      => (string) $b['devotee_name'],
+            'lang'      => $lang,
+            'vars'      => $vars,
+            'actor'     => $actor,
+        ]);
         return $r !== null && $r['id'] !== null && empty($r['deduped']);
     } catch (Throwable $e) {
         error_log('[notify] booking status notification for #' . (int) $b['id'] . ' failed: ' . $e->getMessage());

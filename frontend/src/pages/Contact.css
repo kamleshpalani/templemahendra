@@ -7,28 +7,70 @@
    ══════════════════════════════════════════════════════════════════ */
 
 /* ── Split: info column a touch wider than the sticky form ───────── */
+/* ── Page rhythm: closer than the site-wide .section and .page-hero ── */
+.section.contact-main,
+.section.contact-committee {
+  padding-block: clamp(1.75rem, 3.5vw, 2.75rem);
+}
+.page-hero--contact .page-hero__content {
+  padding-block: clamp(1.75rem, 4vw, 3rem) clamp(1.5rem, 3.5vw, 2.5rem);
+}
+/* No aside here, so the 760px text cap only broke a two-word title onto a
+   second line beside empty space. The lead keeps its own 64ch measure. */
+.page-hero--contact .page-hero__text {
+  max-width: none;
+}
+.page-hero--contact .page-hero__lead {
+  margin-top: var(--space-2);
+}
+.page-hero--contact .page-hero__actions {
+  margin-top: var(--space-4);
+}
+
+/* The "Visit Us" heading takes a row of its own, so the message card starts
+   level with the first details card instead of with the eyebrow above it.
+   .contact-visit steps out of the box tree (display: contents) so its heading
+   and its card stack can sit in separate grid rows. */
 .contact-split {
   grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr);
+  column-gap: clamp(1.5rem, 3.5vw, 2.5rem);
+  row-gap: 0;
 }
-.contact-visit,
+.contact-visit {
+  display: contents;
+}
+.contact-visit__stack,
 .contact-form-col {
   min-width: 0;
 }
 .contact-visit .section-head {
-  margin-bottom: var(--space-6);
+  grid-column: 1;
+  grid-row: 1;
+  margin-bottom: var(--space-4);
+}
+.contact-split .contact-visit__stack {
+  grid-column: 1;
+  grid-row: 2;
+}
+.contact-split .contact-form-col {
+  grid-column: 2;
+  grid-row: 2;
+}
+.contact-visit .section-title {
+  font-size: var(--text-xl);
 }
 .contact-visit__stack {
   display: flex;
   flex-direction: column;
-  gap: var(--space-4);
+  gap: var(--space-3);
 }
 
 /* ── Info card: icon tile + body ─────────────────────────────────── */
 .contact-card {
   display: flex;
   align-items: flex-start;
-  gap: var(--space-4);
-  padding: var(--space-5);
+  gap: var(--space-3);
+  padding: var(--space-4);
 }
 .contact-card__body {
   flex: 1;
@@ -43,7 +85,7 @@
   text-transform: uppercase;
   color: var(--text-3);
   line-height: 1.4;
-  margin: 0.4rem 0 var(--space-3);
+  margin: 0.3rem 0 var(--space-2);
 }
 .contact-card__hint {
   margin-top: var(--space-2);
@@ -74,8 +116,7 @@
   font-family: var(--font-tamil);
 }
 
-/* Plain links inside cards (email, "full committee below") */
-.contact-card__link,
+/* "Full committee contacts below" link */
 .contact-card__more a {
   display: inline-flex;
   align-items: center;
@@ -86,20 +127,11 @@
   overflow-wrap: anywhere;
   transition: color var(--transition);
 }
-.contact-card__link:hover,
 .contact-card__more a:hover {
   color: var(--accent-ink);
 }
-.contact-card__link {
-  font-size: var(--text-md);
-}
-.contact-card__link > svg {
-  flex-shrink: 0;
-  width: 1em;
-  height: 1em;
-}
 .contact-card__more {
-  margin-top: var(--space-1);
+  margin-top: 0;
   font-size: var(--text-sm);
 }
 
@@ -116,8 +148,8 @@
   display: flex;
   align-items: center;
   gap: var(--space-3);
-  min-height: 60px;
-  padding: 0.6rem 0.75rem 0.6rem 0.9rem;
+  min-height: 56px;
+  padding: 0.5rem 0.7rem 0.5rem 0.9rem;
   border-radius: var(--radius);
   background: var(--glass-1);
   border: 1px solid var(--glass-border);
@@ -149,6 +181,13 @@
   letter-spacing: 0.02em;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
+}
+/* An address, not a number: it may wrap on a narrow phone rather than overflow. */
+.contact-tel__num--mail {
+  font-size: var(--text-base);
+  letter-spacing: 0;
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 .contact-tel__meta {
   display: flex;
@@ -220,8 +259,8 @@
   display: flex;
   align-items: flex-start;
   gap: var(--space-3);
-  margin-top: var(--space-4);
-  padding: var(--space-3) var(--space-4);
+  margin-top: var(--space-3);
+  padding: var(--space-2) var(--space-3);
   border-radius: var(--radius);
   background: color-mix(in srgb, var(--moon-100) 70%, transparent);
   border: 1px solid color-mix(in srgb, var(--moon-300) 55%, transparent);
@@ -250,14 +289,17 @@
   text-decoration-color: currentColor;
 }
 
-/* ── Map card ────────────────────────────────────────────────────── */
+/* ── Map band (full width, below the details and the form) ───────── */
+.contact-map-band {
+  margin-top: clamp(1.25rem, 2.5vw, 2rem);
+}
 .contact-map {
   padding: 0;
 }
 .contact-map__frame {
   display: block;
   width: 100%;
-  height: 260px;
+  height: clamp(220px, 26vw, 320px);
   border: 0;
   filter: saturate(0.9);
   transition: filter var(--transition);
@@ -275,33 +317,50 @@
   border-top: 1px solid var(--glass-border);
   background: var(--glass-tint-gold);
 }
-.contact-map__addr {
+.contact-map__text {
+  flex: 1 1 260px;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+}
+/* (0,2,0) so the body-font label beats the :lang(ta) h2 family rule */
+.contact-map .contact-map__title {
   display: inline-flex;
   align-items: center;
   gap: 0.45rem;
-  flex: 1 1 220px;
-  min-width: 0;
-  font-size: var(--text-sm);
-  color: var(--text-3);
+  margin: 0;
+  font-family: var(--font-body);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-bold);
+  letter-spacing: var(--tracking-caps);
+  text-transform: uppercase;
+  line-height: 1.4;
+  color: var(--maroon-600);
 }
-.contact-map__addr > svg {
+.contact-map__title > svg {
   flex-shrink: 0;
   width: 1rem;
   height: 1rem;
   color: var(--accent-ink);
 }
+.contact-map__hint {
+  margin: 0;
+  font-size: var(--text-sm);
+  color: var(--text-3);
+}
 
 /* ── Message form (sticky on desktop via .split__sticky) ─────────── */
 .contact-form {
-  padding: var(--space-8);
+  padding: var(--space-6);
 }
 .contact-form__head {
-  margin-bottom: var(--space-6);
+  margin-bottom: var(--space-4);
 }
 .contact-form__title {
   font-size: var(--text-xl);
   color: var(--maroon-600);
-  margin: var(--space-3) 0 var(--space-2);
+  margin: var(--space-2) 0 var(--space-1);
 }
 .contact-form__lead {
   font-size: var(--text-sm);
@@ -315,8 +374,8 @@
   align-items: center;
   justify-content: center;
   gap: 0.25rem var(--space-2);
-  margin-top: var(--space-5);
-  padding-top: var(--space-4);
+  margin-top: var(--space-4);
+  padding-top: var(--space-3);
   border-top: 1px dashed var(--border);
   font-size: var(--text-sm);
   color: var(--text-3);
@@ -340,22 +399,49 @@
 }
 
 /* ── Committee band ──────────────────────────────────────────────── */
+.contact-committee .committee__heading {
+  font-size: var(--text-xl);
+  text-align: center;
+}
+.contact-committee .divider + .section-subtitle {
+  margin-bottom: var(--space-5);
+}
+.contact-committee .committee__grid {
+  gap: var(--space-4);
+}
+.contact-committee .committee-card {
+  gap: var(--space-2);
+  padding: var(--space-4);
+}
+.contact-committee .committee .committee__signoff {
+  margin-top: var(--space-4);
+}
 .contact-committee .section-cta {
-  margin-top: var(--space-8);
+  margin-top: var(--space-4);
 }
 
 /* ── Responsive (1024 · 820 · 640 · 480) ─────────────────────────── */
 @media (max-width: 1024px) {
   .contact-split {
-    gap: var(--space-8);
+    column-gap: var(--space-6);
   }
   .contact-form {
-    padding: var(--space-6);
+    padding: var(--space-5);
   }
 }
 @media (max-width: 820px) {
   .contact-split {
     grid-template-columns: minmax(0, 1fr);
+  }
+  /* One column: heading, details, then the form, in source order. */
+  .contact-visit .section-head,
+  .contact-split .contact-visit__stack,
+  .contact-split .contact-form-col {
+    grid-column: auto;
+    grid-row: auto;
+  }
+  .contact-split .contact-form-col {
+    margin-top: var(--space-6);
   }
 }
 @media (max-width: 640px) {
@@ -373,21 +459,23 @@
     height: 1.2rem;
   }
   .contact-form {
-    padding: var(--space-5) var(--space-4);
-  }
-  .contact-map__frame {
-    height: 220px;
+    padding: var(--space-4);
   }
 }
 @media (max-width: 480px) {
+  /* Two by two: the four hero actions in two short rows. */
+  .page-hero--contact .page-hero__actions {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--space-2);
+  }
   .contact-hero__btn {
-    flex: 1 1 auto;
+    min-width: 0;
   }
-  .contact-card {
-    flex-direction: column;
-  }
-  .contact-card .contact-card__title {
-    margin-top: 0;
+  .contact-card .card__icon {
+    width: 38px;
+    height: 38px;
+    border-radius: 12px;
   }
   .contact-tel__row {
     padding-inline: 0.75rem;

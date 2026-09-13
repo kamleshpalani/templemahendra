@@ -96,17 +96,13 @@ function notifyUnsubscribeUrl(int $devoteeId): string
     return siteUrl('/api/n/u/' . notifyToken('u', $devoteeId));
 }
 
-function notifyPreferencesUrl(): string
-{
-    return siteUrl('/account?tab=notifications');
-}
-
 /**
  * A devotee (or their mail client) followed a tracked link. Recorded once.
  *
- * In-app: the click is also a read, of both the delivery and the notification.
  * Email: a click proves the message was opened even when the client blocked
- * the tracking pixel, so an unrecorded open is recorded too. Never throws.
+ * the tracking pixel, so an unrecorded open is recorded too. WhatsApp and SMS
+ * have their own read receipts (or none), so a click there is only a click.
+ * Never throws.
  */
 function notifyRecordClick(int $deliveryId): void
 {
@@ -114,7 +110,7 @@ function notifyRecordClick(int $deliveryId): void
     try {
         $db  = getDB();
         $now = notifyNow();
-        $stmt = $db->prepare('SELECT id, notification_id, channel, status, clicked_at, read_at FROM notification_deliveries WHERE id = :id');
+        $stmt = $db->prepare('SELECT id, channel FROM notification_deliveries WHERE id = :id');
         $stmt->execute([':id' => $deliveryId]);
         $d = $stmt->fetch(PDO::FETCH_ASSOC);
         if (!$d) return;
@@ -123,13 +119,7 @@ function notifyRecordClick(int $deliveryId): void
         $upd->execute([':now' => $now, ':id' => $deliveryId]);
         if ($upd->rowCount() > 0) notifyDeliveryEvent($deliveryId, 'clicked');
 
-        if ($d['channel'] === 'inapp' || $d['channel'] === 'email') {
-            notifyMarkDeliveryRead($deliveryId, $now, $d['channel'] === 'inapp' ? 'read (clicked in the app)' : 'read (link clicked)');
-        }
-        if ($d['channel'] === 'inapp') {
-            $db->prepare('UPDATE notifications SET read_at = :now WHERE id = :n AND read_at IS NULL')
-               ->execute([':now' => $now, ':n' => (int) $d['notification_id']]);
-        }
+        if ($d['channel'] === 'email') notifyMarkDeliveryRead($deliveryId, $now, 'read (link clicked)');
     } catch (Throwable $e) {
         error_log('[notify] recording a click failed: ' . $e->getMessage());
     }

@@ -3,9 +3,29 @@
 require_once __DIR__ . '/../includes/auth.php';
 requireAdminAuth();
 require_once __DIR__ . '/../includes/db.php';
+require_once __DIR__ . '/../includes/registration.php';
 require_once __DIR__ . '/includes/admin_layout.php';
 
 $db = getDB();
+
+// Family registrations (migration 009). Guarded on its own: a site that has not
+// applied the migration yet, or whose registration tables cannot be read, shows
+// the rest of the dashboard as before, without these two figures.
+$registrations = null;
+try {
+    if (registrationReady() && publicGuardHasColumn('devotees', 'duplicate_of')) {
+        $registrations = $db->query(
+            'SELECT COALESCE(SUM(is_active = 1), 0)                             AS families,
+                    COALESCE(SUM(is_active = 1 AND duplicate_of IS NOT NULL), 0) AS duplicates,
+                    (SELECT COUNT(*) FROM devotee_family_members m
+                       JOIN devotees a ON a.id = m.devotee_id AND a.is_active = 1) AS members
+               FROM devotees'
+        )->fetch() ?: null;
+    }
+} catch (Throwable $e) {
+    error_log('[dashboard] family registration figures: ' . $e->getMessage());
+    $registrations = null;
+}
 
 // ── Counts ───────────────────────────────────────────────────────────────────
 $counts = [];
@@ -98,16 +118,24 @@ echo adminPageIntro(
     '<a href="/admin/gallery.php#new" class="btn btn--sm">' . adminIcon('image') . 'Photo</a>'
 );
 
-echo adminKpi([
+$kpis = [
     ['label' => 'Total donations',  'value' => adminFmtMoney($donations_total), 'icon' => 'banknote', 'href' => '/admin/donations.php', 'variant' => 'accent', 'sub' => $counts['donations'] . ' pledges recorded'],
     ['label' => 'This month',       'value' => adminFmtMoney($donations_month), 'icon' => 'trending', 'href' => '/admin/donations.php', 'delta' => $delta, 'deltaDown' => $deltaDown],
     ['label' => 'Pending bookings', 'value' => $pending_bookings,               'icon' => 'clipboard', 'href' => '/admin/seva_bookings.php?status=pending', 'sub' => $counts['seva_bookings'] . ' total'],
     ['label' => 'Upcoming events',  'value' => $upcoming_events,                'icon' => 'calendar',  'href' => '/admin/events.php', 'sub' => $counts['events'] . ' in total'],
     ['label' => 'Messages (7 days)','value' => $messages_week,                  'icon' => 'mail',      'href' => '/admin/contact_messages.php', 'sub' => $counts['contact_messages'] . ' all time'],
-    ['label' => 'Sevas',            'value' => $counts['sevas'],                'icon' => 'sparkles',  'href' => '/admin/sevas.php'],
-    ['label' => 'Poojas',           'value' => $counts['poojas'],               'icon' => 'flame',     'href' => '/admin/poojas.php'],
-    ['label' => 'Sponsors',         'value' => $counts['sponsors'],             'icon' => 'heart-hands','href' => '/admin/sponsors.php'],
-]);
+];
+if ($registrations !== null) {
+    $familyMembers = (int) $registrations['members'];
+    $kpis[] = ['label' => 'Registered families', 'value' => (int) $registrations['families'], 'icon' => 'users', 'href' => '/admin/devotees.php',
+               'sub' => $familyMembers . ' family member' . ($familyMembers === 1 ? '' : 's')];
+    $kpis[] = ['label' => 'Possible duplicates', 'value' => (int) $registrations['duplicates'], 'icon' => 'alert', 'href' => '/admin/devotees.php?status=duplicates',
+               'sub' => 'Registrations sharing a phone'];
+}
+$kpis[] = ['label' => 'Sevas',    'value' => $counts['sevas'],    'icon' => 'sparkles',   'href' => '/admin/sevas.php'];
+$kpis[] = ['label' => 'Poojas',   'value' => $counts['poojas'],   'icon' => 'flame',      'href' => '/admin/poojas.php'];
+$kpis[] = ['label' => 'Sponsors', 'value' => $counts['sponsors'], 'icon' => 'heart-hands','href' => '/admin/sponsors.php'];
+echo adminKpi($kpis);
 ?>
 
 <div class="dash-grid">

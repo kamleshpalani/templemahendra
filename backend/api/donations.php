@@ -3,7 +3,7 @@
 
 require_once __DIR__ . '/../includes/db.php';
 require_once __DIR__ . '/../includes/helpers.php';
-require_once __DIR__ . '/../includes/devotee_auth.php';
+require_once __DIR__ . '/../includes/devotee_notify.php';
 require_once __DIR__ . '/../includes/public_guard.php';
 
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
@@ -25,6 +25,8 @@ $purpose = sanitizeText(is_string($body['purpose'] ?? null) ? $body['purpose'] :
 $message = sanitizeText(is_string($body['message'] ?? null) ? $body['message'] : '', 1000);
 // Only an explicit yes puts a donor's name on the public thank-you list.
 $showNamePublicly = publicGuardConsent($body['showNamePublicly'] ?? null);
+// The language the site was showing, so the thank-you and receipt read the same way.
+$lang    = devoteeLangFromInput($body['lang'] ?? null);
 
 if ($name === '' || $phone === '') {
     sendError('Name and phone are required');
@@ -42,10 +44,7 @@ if ($ph['error'] !== '') {
 // their own, tighter limit.
 publicGuardLimit('donation-saved');
 
-// A signed-in devotee's pledge carries their account id so it appears in their
-// own history. An anonymous pledge is recorded exactly as before.
 $db      = getDB();
-$linkId  = devoteeLinkId('donations');
 $columns = ['name', 'phone', 'phone_country', 'amount', 'purpose', 'message'];
 $params  = [
     ':name'    => $name,
@@ -55,14 +54,15 @@ $params  = [
     ':purpose' => $purpose,
     ':message' => $message,
 ];
-if ($linkId !== null) {
-    $columns[]             = 'devotee_id';
-    $params[':devotee_id'] = $linkId;
-}
 // Migration 008 adds the consent column; before it, pledges save as they always did.
 if (publicGuardHasColumn('donations', 'show_name_publicly')) {
     $columns[]                     = 'show_name_publicly';
     $params[':show_name_publicly'] = $showNamePublicly ? 1 : 0;
+}
+// Migration 009 stores the language, for the receipt the committee sends later.
+if (publicGuardHasColumn('donations', 'lang')) {
+    $columns[]       = 'lang';
+    $params[':lang'] = $lang;
 }
 $stmt = $db->prepare(
     'INSERT INTO donations (' . implode(', ', $columns) . ', created_at)'
@@ -72,29 +72,23 @@ $stmt->execute($params);
 $donationId = (int) $db->lastInsertId();
 
 // ── Thank them ───────────────────────────────────────────────────────────────
-// donation.received, to the account when signed in or to the guest's phone.
-// The formal receipt is a separate message the committee sends from the admin
-// once the money has actually arrived. Queued, and it never changes this
-// response: the pledge is recorded whatever happens to the message.
+// donation.received, to the phone number the donor gave, in the language the
+// site was in. The formal receipt is a separate message the committee sends
+// from the admin once the money has actually arrived. Queued, and it never
+// changes this response: the pledge is recorded whatever happens to the message.
 try {
     if (devoteeNotifyReady()) {
-        $lang = $linkId !== null ? devoteeNotifyLang($linkId) : 'ta';
-        $ctx  = [
+        devoteeNotifyEvent('donation.received', [
             'entity_id' => $donationId,
+            'to_phone'  => devoteeIntlPhone($phone, $ph['country']),
+            'name'      => $name,
+            'lang'      => $lang,
             'vars'      => [
                 'receiptNumber'   => devoteeReceiptNumber($donationId),
                 'donationAmount'  => devoteeMoneyLabel((float) $amount),
                 'donationPurpose' => devoteeDonationPurposeLabel($purpose, $lang),
             ],
-        ];
-        if ($linkId !== null) {
-            $ctx['devotee_id'] = $linkId;
-        } else {
-            $ctx['to_phone'] = devoteeIntlPhone($phone, $ph['country']);
-            $ctx['name']     = $name;
-            $ctx['lang']     = 'ta';
-        }
-        devoteeNotifyEvent('donation.received', $ctx);
+        ]);
     }
 } catch (Throwable $e) {
     error_log('[notify] donation.received for donation ' . $donationId . ' failed: ' . $e->getMessage());

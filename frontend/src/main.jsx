@@ -6,8 +6,6 @@ import { HelmetProvider } from "react-helmet-async";
 import "./index.css";
 import { LangProvider } from "./context/LangContext";
 import { ToastProvider } from "./context/ToastContext";
-import { AuthProvider } from "./context/AuthContext";
-import { NotificationProvider } from "./context/NotificationContext";
 import App from "./App";
 import ErrorBoundary from "./components/ErrorBoundary";
 
@@ -18,13 +16,7 @@ ReactDOM.createRoot(document.getElementById("root")).render(
         <BrowserRouter>
           <LangProvider>
             <ToastProvider>
-              <AuthProvider>
-                {/* Inside AuthProvider: the bell exists only for a signed-in devotee,
-                    and it uses the same get/post (session cookie, CSRF) as the rest. */}
-                <NotificationProvider>
-                  <App />
-                </NotificationProvider>
-              </AuthProvider>
+              <App />
             </ToastProvider>
           </LangProvider>
         </BrowserRouter>

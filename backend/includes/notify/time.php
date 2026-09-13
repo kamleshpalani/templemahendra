@@ -19,12 +19,12 @@ require_once __DIR__ . '/contracts.php';
 require_once __DIR__ . '/../db.php';
 
 /**
- * True once migration 007 has been applied. Cached for the request: every
- * public entry point asks, and the answer cannot change mid-request.
+ * True once migrations 007 and 009 have been applied. Cached for the request:
+ * every public entry point asks, and the answer cannot change mid-request.
  *
- * Probes the first and last tables the migration creates plus the column it
- * adds, so a migration that stopped half-way reads as "not installed" instead
- * of failing one query at a time inside a devotee's booking.
+ * Probes the first and last tables 007 creates plus the consent columns 009
+ * adds to devotees, so a migration that stopped half-way reads as "not
+ * installed" instead of failing one query at a time inside a devotee's booking.
  */
 function notifyTablesExist(): bool
 {
@@ -34,12 +34,25 @@ function notifyTablesExist(): bool
         $db = getDB();
         $db->query('SELECT 1 FROM notification_categories LIMIT 0')->closeCursor();
         $db->query('SELECT 1 FROM notification_kv LIMIT 0')->closeCursor();
-        $db->query('SELECT phone_verified_at FROM devotees LIMIT 0')->closeCursor();
+        $db->query('SELECT lang, updates_consent_at, unsubscribed_at FROM devotees LIMIT 0')->closeCursor();
         return $exists = true;
     } catch (Throwable $e) {
         error_log('[notify] notification tables unavailable: ' . $e->getMessage());
         return $exists = false;
     }
+}
+
+/** A boolean from JSON or a form: true/false, 1/0, "1"/"0", "true"/"false", "on"/"off", "yes"/"no". Null when it is none of them. */
+function notifyBool(mixed $v): ?bool
+{
+    if (is_bool($v)) return $v;
+    if ($v === 1 || $v === 0) return (bool) $v;
+    if (is_string($v)) {
+        $s = strtolower(trim($v));
+        if (in_array($s, ['1', 'true', 'on', 'yes'], true)) return true;
+        if (in_array($s, ['0', 'false', 'off', 'no'], true)) return false;
+    }
+    return null;
 }
 
 /* ── Clock ──────────────────────────────────────────────────────────────── */
@@ -141,7 +154,8 @@ function notifyFromUtc(string $utc, string $tz, string $format = 'Y-m-d H:i:s'):
 /**
  * Where most devotees in a country keep their clocks. Countries spanning several
  * zones get the one most of the temple's devotees there would live in (the US
- * east coast, Sydney); a devotee elsewhere sets their own zone in preferences.
+ * east coast, Sydney). A registration records the country, not a zone, so this
+ * is the zone a recipient-time campaign uses for a family.
  */
 function notifyCountryTimezones(): array
 {

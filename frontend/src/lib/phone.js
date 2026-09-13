@@ -82,33 +82,54 @@ export function placeholderFor(country) {
   return mask ? mask.replace(/#/g, "0") : "0".repeat(country?.max ?? 10);
 }
 
+/** The English half of a bilingual pair, for callers that pass no `t`. */
+const englishOnly = (ta, en) => en;
+
 /**
  * Validate a national number for a country.
  * Returns a sentence explaining the problem, or '' when acceptable.
  * `required` false lets an empty value pass, which is what optional fields want.
+ * `t` is LangContext's t(ta, en); pass it and the sentence follows the site's
+ * language. Without it the answer is English, as it always was.
+ * Country names stay in English in both languages: that is how the country
+ * list beside the number shows them, so the message names what the eye sees.
  */
-export function phoneProblem(national, iso2, { required = false } = {}) {
+export function phoneProblem(national, iso2, { required = false, t = englishOnly } = {}) {
   const country = countryOf(iso2);
   const d = digitsOf(national);
 
-  if (!d) return required ? "Enter your phone number." : "";
+  if (!d) return required ? t("தொலைபேசி எண்ணை உள்ளிடவும்.", "Enter your phone number.") : "";
   if (/^0/.test(d)) {
     // A trunk prefix is how the number is dialled inside the country, not part
     // of it. Saying so is more useful than rejecting the length that results.
-    return "Leave off the leading 0 — the country code replaces it.";
+    return t(
+      "முன்னால் உள்ள 0-ஐ விட்டுவிடுங்கள் — நாட்டுக் குறியீடு அதன் இடத்தில் வருகிறது.",
+      "Leave off the leading 0 — the country code replaces it.",
+    );
   }
   if (d.length < country.min) {
     return country.min === country.max
-      ? `A ${country.name} number has ${country.min} digits.`
-      : `A ${country.name} number has at least ${country.min} digits.`;
+      ? t(`${country.name} எண்ணில் ${country.min} இலக்கங்கள் இருக்கும்.`, `A ${country.name} number has ${country.min} digits.`)
+      : t(
+          `${country.name} எண்ணில் குறைந்தது ${country.min} இலக்கங்கள் இருக்கும்.`,
+          `A ${country.name} number has at least ${country.min} digits.`,
+        );
   }
   if (d.length > country.max) {
     return country.min === country.max
-      ? `A ${country.name} number has ${country.max} digits.`
-      : `A ${country.name} number has at most ${country.max} digits.`;
+      ? t(`${country.name} எண்ணில் ${country.max} இலக்கங்கள் இருக்கும்.`, `A ${country.name} number has ${country.max} digits.`)
+      : t(
+          `${country.name} எண்ணில் அதிகபட்சம் ${country.max} இலக்கங்கள் இருக்கும்.`,
+          `A ${country.name} number has at most ${country.max} digits.`,
+        );
   }
   // E.164 caps the whole international number, dial code included.
-  if (country.dial.length + d.length > 15) return "That number is too long to dial internationally.";
+  if (country.dial.length + d.length > 15) {
+    return t(
+      "இந்த எண் வெளிநாட்டிலிருந்து அழைக்க முடியாத அளவுக்கு நீளமாக உள்ளது.",
+      "That number is too long to dial internationally.",
+    );
+  }
   return "";
 }
 

@@ -60,11 +60,11 @@
   gap: var(--space-3);
   min-width: 0;
   /* Clip sideways only. A plain `overflow: hidden` here also clips downwards,
-     which cut the signed-in account menu off at the bar's own height — the
-     popover is absolutely positioned inside this row, so this box is in its
-     containing-block chain. `clip` is the one value that lets the other axis
-     stay `visible`; browsers too old to know it drop the pair entirely and
-     simply do not clip, which is safe because the row is sized to fit. */
+     at the bar's own height, which would cut off a focus ring or a button's
+     hover lift that crosses the bar's bottom edge. `clip` is the one value that
+     lets the other axis stay `visible`; browsers too old to know it drop the
+     pair entirely and simply do not clip, which is safe because the row is
+     sized to fit. */
   overflow-x: clip;
   overflow-y: visible;
 }
@@ -152,8 +152,8 @@
   border-radius: var(--radius-pill);
   /* The nav is what gives way if the row ever runs short — under a browser's
      text-only zoom, say, where the breakpoints cannot help. Without this the
-     deficit lands on the right cluster instead and takes search, Login and
-     Sign Up off the edge, which is the opposite of the right priority. */
+     deficit lands on the right cluster instead and takes call, search and
+     Register family off the edge, which is the opposite of the right priority. */
   min-width: 0;
   overflow: hidden;
 }
@@ -229,47 +229,37 @@
   }
 }
 
-/* ── Sign in / Sign up ───────────────────────────────────────────── */
-/* Two steps of emphasis: Login is quiet and bordered, Sign Up is the filled
-   gold pill. They sit together so the pair reads as one control group. */
-.navbar__auth {
-  display: flex;
-  align-items: center;
-  gap: 0.4rem;
+/* ── Register family ─────────────────────────────────────────────── */
+/* The one entry point to the family registration form. It renders on the first
+   paint with nothing to wait for, so there is no placeholder holding its width.
+   Maroon rather than gold: white on the saffron-gold gradient is too faint for
+   a label this small, and this button carries words at most widths. */
+.navbar__register {
   flex-shrink: 0;
-}
-.navbar__login,
-.navbar__signup {
-  white-space: nowrap;
-}
-.navbar__signup {
   font-weight: var(--weight-bold);
 }
-/* Reserves the pair's width until /auth/me answers, so the row does not jump */
-.navbar__auth-hold {
-  display: none;
-  width: 176px;
-  flex-shrink: 0;
+/* Icon only. The words leave the layout but not the accessibility tree — the
+   same clipping as .sr-only, applied from the breakpoints below — so the
+   button's accessible name is "Register family" whether they show or not. */
+.navbar__register--compact,
+.navbar__register-word--hidden {
+  position: absolute;
 }
-@media (min-width: 1024px) {
-  .navbar__auth-hold {
-    display: block;
-  }
-}
-/* Below the widest layouts the labels go and the icons carry the meaning */
-@media (max-width: 1249px) {
-  .navbar__auth-word {
-    display: none;
-  }
-  .navbar__login,
-  .navbar__signup {
+@media (max-width: 1279px) and (min-width: 1024px), (max-width: 699px) {
+  .navbar__register {
     width: 38px;
     min-width: 38px;
     padding-inline: 0;
     justify-content: center;
   }
-  .navbar__auth-hold {
-    width: 84px;
+  .navbar__register-word {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
   }
 }
 
@@ -589,6 +579,45 @@
   background: linear-gradient(135deg, var(--saffron-500), var(--gold-500));
   color: var(--white);
   border-color: transparent;
+}
+/* Family registration: the drawer's one call to action, set apart from the
+   page links by a gold tint so it reads as something to do, not somewhere to go. */
+.drawer__register {
+  display: flex;
+  align-items: center;
+  gap: 0.85rem;
+  min-height: 56px;
+  padding: 0.75rem 1rem;
+  border: 1px solid var(--warning-border);
+  border-radius: var(--radius);
+  background: var(--glass-tint-gold);
+  color: var(--text-1);
+  transition:
+    background var(--transition),
+    border-color var(--transition);
+}
+.drawer__register:hover,
+.drawer__register:focus-visible {
+  border-color: var(--gold-500);
+  background: var(--gold-100);
+}
+.drawer__register--active {
+  border-color: var(--maroon-500);
+  box-shadow: inset 3px 0 0 var(--maroon-500);
+}
+.drawer__register-text {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  min-width: 0;
+}
+.drawer__register-label {
+  color: var(--maroon-700);
+  font-weight: var(--weight-bold);
+}
+.drawer__register-hint {
+  color: var(--text-3);
+  font-size: var(--text-xs);
 }
 .drawer__foot {
   display: flex;

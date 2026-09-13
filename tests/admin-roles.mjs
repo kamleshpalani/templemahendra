@@ -33,6 +33,19 @@ let dash = await (await owner.get("/admin/")).text();
 ok(!BAD.test(dash), "dashboard renders without PHP errors");
 ok(dash.includes("Committee Accounts"), "owner sees the Committee Accounts nav item");
 
+// Accounts left by an earlier run that stopped before its cleanup would make
+// "create editor" fail as a duplicate, so the suite removes them first and
+// again at the end, through the page's own Delete action.
+async function deleteTestAccounts() {
+  const html = await (await owner.get("/admin/users.php")).text();
+  const ids = html.split("<tr")
+    .filter((row) => /class="cell-sub">e2e_(editor|viewer|weak)\b/.test(row))
+    .map((row) => /users\.php\?edit=(\d+)/.exec(row)?.[1])
+    .filter(Boolean);
+  for (const id of ids) await owner.post("/admin/users.php", { _csrf: csrfOf(html), action: "delete", id });
+}
+await deleteTestAccounts();
+
 // ── 2. users page + create an editor ────────────────────────────────────────
 let usersHtml = await (await owner.get("/admin/users.php")).text();
 ok(!BAD.test(usersHtml), "users page renders");
@@ -116,6 +129,10 @@ ok(r.status === 302 && (r.headers.get("location") || "") === "/admin/", "externa
 usersHtml = await (await owner.get("/admin/users.php")).text();
 ok(/Recent account activity/.test(usersHtml) && /e2e_editor/.test(usersHtml), "activity log shows account events");
 
+// ── 9. clean up ─────────────────────────────────────────────────────────────
+await deleteTestAccounts();
+r = await login(jar(), uname, "Vilakku42Raja");
+ok(r.status !== 302, "the test accounts are deleted afterwards and can no longer sign in", `status ${r.status}`);
+
 console.log(`\n${pass} passed, ${fail} failed`);
-console.log("CLEANUP: delete from admin_users where username like 'e2e_%'");
 process.exit(fail ? 1 : 0);

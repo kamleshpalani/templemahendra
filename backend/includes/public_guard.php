@@ -2,11 +2,11 @@
 /**
  * backend/includes/public_guard.php — protection for the forms anyone can post.
  *
- * The seva booking, donation and contact forms and the chat need no account, so
- * nothing but these checks stands between them and a script that posts in a
- * loop. Each saved row lands in the committee's admin and can trigger an SMS or
- * WhatsApp message that costs the temple money, and each chat message can cost
- * an AI call.
+ * The family registration, seva booking, donation and contact forms and the chat
+ * need no account, so nothing but these checks stands between them and a script
+ * that posts in a loop. Each saved row lands in the committee's admin and can
+ * trigger an SMS or WhatsApp message that costs the temple money, and each chat
+ * message can cost an AI call.
  *
  *   • Honeypot. The forms carry a hidden field people never see. A bot that fills
  *     every input gives itself away, and is told it succeeded so it has no reason
@@ -22,7 +22,7 @@
 
 require_once __DIR__ . '/db.php';
 require_once __DIR__ . '/helpers.php';
-require_once __DIR__ . '/devotee_auth.php';
+require_once __DIR__ . '/rate_limit.php';
 
 /**
  * Limits per client address: [max, window seconds]. Kept together so the
@@ -35,6 +35,10 @@ const PUBLIC_GUARD_LIMITS = [
     'donation-saved'       => [8, 3600],
     'contact-attempt'      => [15, 3600],
     'contact-saved'        => [5, 3600],
+    // Family registration. More room than contact: a temple gathering on shared
+    // Wi-Fi or one mobile carrier's address can register several families an hour.
+    'registration-attempt' => [15, 3600],
+    'registration-saved'   => [10, 3600],
     'chat-window'          => [30, 600],
     'chat-day'             => [150, 86400],
 ];

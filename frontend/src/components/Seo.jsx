@@ -43,10 +43,11 @@ export default function Seo({
   imageAlt,
   type = "website",
   /**
-   * A robots directive, when this page needs one. Account pages are per-person
-   * ("noindex, nofollow"); a results list is not a destination but its links are
-   * worth following ("noindex, follow"). Left unset, the site-wide default
-   * applies and nothing is emitted.
+   * A robots directive, when this page needs one. A results list is not a
+   * destination but its links are worth following ("noindex, follow"). Left
+   * unset, the site-wide default applies and nothing is emitted — which is what
+   * every public page wants, the family registration form included, since the
+   * committee shares that link.
    */
   robots,
   children,

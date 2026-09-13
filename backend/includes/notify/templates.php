@@ -391,23 +391,15 @@ function notifyTemplateSample(string $key, string $lang): array
     $def = notifyTemplateDefaults()[$key] ?? null;
 
     $names = (array) ($def['variables'] ?? []);
-    foreach (['any', 'email', 'inapp', 'push', 'sms', 'whatsapp'] as $c) {
+    foreach (['any', 'email', 'sms', 'whatsapp'] as $c) {
         $tpl = notifyTemplate($key, $lang, $c);
         if ($tpl) $names = [...$names, ...notifyTemplateVarsUsed($tpl['title'], $tpl['body'], $tpl['cta_label']), ...$tpl['provider_params']];
     }
 
-    $token = str_repeat('7c3e9a51', 8);
     $samples = [
         'devoteeName'      => ['ta' => 'கவிதா ராமசாமி', 'en' => 'Kavitha Ramasamy'],
-        'verifyUrl'        => siteUrl('/verify-email?token=' . $token),
-        'resetUrl'         => siteUrl('/reset-password?token=' . $token),
-        'expiresHours'     => '48',
-        'expiresMinutes'   => $key === 'phone_otp' ? '10' : '60',
-        'changedAt'        => ['ta' => '13 செப்டம்பர் 2026, மாலை 6:45 (IST)', 'en' => '13 Sep 2026, 6:45 pm IST'],
-        'changedFields'    => ['ta' => 'தொலைபேசி எண், முகவரி', 'en' => 'phone number, address'],
-        'otpCode'          => '482913',
-        'phoneMasked'      => '+91 ******2296',
-        'bookingNumber'    => 'SB-1042',
+        'familyCount'      => '4',
+        'bookingNumber'    => 'B-001042',
         'sevaName'         => ['ta' => 'அபிஷேகம்', 'en' => 'Abhishekam'],
         'bookingDate'      => ['ta' => '20 செப்டம்பர் 2026', 'en' => '20 Sep 2026'],
         'changes'          => ['ta' => 'தேதி 18 செப்டம்பரிலிருந்து 20 செப்டம்பருக்கு மாற்றப்பட்டது', 'en' => 'Date moved from 18 Sep to 20 Sep 2026'],
@@ -444,9 +436,9 @@ function notifyTemplateSample(string $key, string $lang): array
     }
 
     // A preview should show where the button really goes.
-    $path = (string) ($def['cta_path'] ?? '/account');
+    $path = (string) ($def['cta_path'] ?? '/');
     $cta  = notifyInterpolate($path, $out);
-    $out['ctaUrl'] = preg_match('~^https?://~i', $cta) ? $cta : siteUrl($cta === '' ? '/account' : $cta);
+    $out['ctaUrl'] = preg_match('~^https?://~i', $cta) ? $cta : siteUrl($cta === '' ? '/' : $cta);
 
     return $out + notifyTemplateAutoVars($l);
 }

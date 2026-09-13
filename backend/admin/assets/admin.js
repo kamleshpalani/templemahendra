@@ -443,6 +443,53 @@
     if (location.hash === "#new" || wrap.dataset.editing === "1") setOpen(true);
     window.addEventListener("hashchange", () => location.hash === "#new" && setOpen(true));
   });
+  // A summary of problems a server-rendered form came back with takes focus, so
+  // a keyboard or screen reader user starts where the fixing starts.
+  $("[data-focus-on-load]")?.focus();
+  // Repeatable rows (family members on devotees.php). A <template
+  // data-repeat-template="key"> holds one blank row whose names and ids carry
+  // __N__; the [data-repeat-add="key"] button, hidden until this runs so a page
+  // without JavaScript keeps its single blank row, appends copies to
+  // [data-repeat-list="key"] up to data-repeat-max rows; [data-repeat-remove]
+  // inside a copy takes it away again. Both are announced politely.
+  $$("[data-repeat-add]").forEach((addBtn) => {
+    const key = addBtn.dataset.repeatAdd;
+    const list = $(`[data-repeat-list="${key}"]`);
+    const tpl = $(`template[data-repeat-template="${key}"]`);
+    const status = $(`[data-repeat-status="${key}"]`);
+    if (!list || !tpl) return;
+    const max = Number(addBtn.dataset.repeatMax) || Infinity;
+    let next = Number(tpl.dataset.repeatNext) || list.children.length;
+    const announce = (text) => {
+      if (!status || !text) return;
+      status.textContent = "";
+      setTimeout(() => { status.textContent = text; }, 40);
+    };
+    const sync = () => { addBtn.hidden = list.children.length >= max; };
+    addBtn.addEventListener("click", () => {
+      if (list.children.length >= max) return;
+      const holder = document.createElement("div");
+      holder.innerHTML = tpl.innerHTML.replace(/__N__/g, String(next++));
+      const row = holder.firstElementChild;
+      if (!row) return;
+      list.appendChild(row);
+      sync();
+      $("input:not([type=hidden]), select, textarea", row)?.focus();
+      announce(addBtn.dataset.repeatAdded);
+    });
+    list.addEventListener("click", (e) => {
+      const btn = e.target.closest("[data-repeat-remove]");
+      const row = btn?.closest("[data-repeat-row]");
+      if (!row) return;
+      const neighbour = row.previousElementSibling || row.nextElementSibling;
+      row.remove();
+      sync();
+      const target = neighbour ? $("input:not([type=hidden]), select, textarea", neighbour) : null;
+      (target || addBtn).focus();
+      announce(addBtn.dataset.repeatRemoved);
+    });
+    sync();
+  });
   // Auto-submit selects marked data-autosubmit (status quick-change) with a toast
   $$("select[data-autosubmit]").forEach((sel) => {
     sel.addEventListener("change", () => {

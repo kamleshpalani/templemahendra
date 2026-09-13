@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { Link } from "react-router-dom";
 import {
   LuArrowRight,
@@ -12,9 +12,8 @@ import {
 } from "react-icons/lu";
 import { useLang, rateLimitInfo, rateLimitMessage } from "../context/LangContext";
 import { useToast } from "../context/ToastContext";
-import { useAuth } from "../context/AuthContext";
 import PhoneInput from "../components/ui/PhoneInput";
-import { parseInternational, phoneProblem, toE164 } from "../lib/phone";
+import { phoneProblem, toE164 } from "../lib/phone";
 import { DEFAULT_COUNTRY } from "../data/countries";
 import { TRUST, KUMBABHISHEKAM_APPEAL, DONATION_NOTE } from "../data/temple";
 import TrustDetails from "../components/TrustDetails/TrustDetails";
@@ -43,27 +42,9 @@ const EMPTY_PLEDGE = {
 };
 
 export default function Donations() {
-  const { t } = useLang();
+  const { lang, t } = useLang();
   const toast = useToast();
-  // Prefilled for a signed-in devotee; the pledge is then attached to their
-  // account so it shows in their own history.
-  const { user } = useAuth();
   const [form, setForm] = useState({ ...EMPTY_PLEDGE, phoneCountry: DEFAULT_COUNTRY });
-
-  // The session resolves after this page mounts, so prefilling from the initial
-  // state alone leaves a direct load or a refresh of /donations with an empty
-  // form for someone who is signed in. Fill in whatever the devotee has not
-  // already typed, once their details arrive.
-  useEffect(() => {
-    if (!user) return;
-    const saved = parseInternational(user.phone ?? "", user.phoneCountry);
-    setForm((f) => ({
-      ...f,
-      name: f.name || user.name || "",
-      phone: f.phone || saved?.national || "",
-      phoneCountry: f.phone ? f.phoneCountry : saved?.country || user.phoneCountry || DEFAULT_COUNTRY,
-    }));
-  }, [user]);
   const [errors, setErrors] = useState({});
   const [status, setStatus] = useState(null); // null | sending | success | error | limited
   // Kept as seconds, not as a sentence, so the notice follows a language switch.

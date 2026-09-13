@@ -13,6 +13,12 @@ import { useLang } from "../../context/LangContext";
  * `children` may be a render function receiving { id, "aria-invalid",
  * "aria-describedby" } or a plain element (the id is then applied via
  * htmlFor only when you pass `id` yourself).
+ *
+ * `announce` (default true) makes a new error an alert, spoken the moment it
+ * appears. A form that gathers every error into one focused summary passes
+ * `announce={false}`: the summary is what gets read, and a dozen alerts firing
+ * at once would talk over it. The error stays tied to its control through
+ * aria-describedby either way.
  */
 export function Field({
   label,
@@ -22,6 +28,7 @@ export function Field({
   error,
   success = false,
   inline = false,
+  announce = true,
   id: idProp,
   className = "",
   children,
@@ -70,7 +77,7 @@ export function Field({
         {typeof children === "function" ? children(a11y) : children}
       </div>
       {error ? (
-        <span id={errId} className="field__error" role="alert">
+        <span id={errId} className="field__error" role={announce ? "alert" : undefined}>
           <LuCircleAlert aria-hidden="true" />
           {error}
         </span>

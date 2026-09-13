@@ -12,15 +12,42 @@
  *
  * It becomes SQL here and nowhere else. Every value travels as a bound
  * parameter; field names, operators and table names come only from the fixed
- * table below, never from the input. Closed accounts are excluded from every
- * audience, whatever the rules say.
+ * table below, never from the input.
+ *
+ * Two limits apply whatever the rules say:
+ *
+ *   • An archived registration (devotees.is_active = 0) is never in an audience.
+ *   • A campaign whose category needs consent (informational and critical
+ *     kinds, docs/registration/SPEC.md §6) reaches only families who agreed to
+ *     temple updates and have not unsubscribed. The channel policy would skip
+ *     the others anyway; filtering here as well keeps the committee's estimate,
+ *     the approval threshold and "families reached" honest, and saves writing a
+ *     skipped notification for every family that never said yes.
  */
 
-require_once __DIR__ . '/prefs.php';
+require_once __DIR__ . '/consent.php';
 
 const NOTIFY_AUDIENCE_MAX_SELECTED = 5000;
 const NOTIFY_AUDIENCE_MAX_RULES    = 50;
 const NOTIFY_BOOKING_STATUSES      = ['pending', 'confirmed', 'completed', 'cancelled'];
+/** The most family members a registration can hold, plus the registrant; the family_size rule allows some room above it for committee edits. */
+const NOTIFY_FAMILY_SIZE_MAX       = 100;
+/** The SQL that means "agreed to temple updates and has not unsubscribed". */
+const NOTIFY_AUDIENCE_CONSENT_SQL  = 'd.updates_consent_at IS NOT NULL AND d.unsubscribed_at IS NULL';
+
+/**
+ * Fields that existed while devotees signed in, with the label the committee
+ * knew them by. A saved segment or campaign that still uses one is flagged in
+ * the admin and refused with a sentence naming the rule, instead of failing
+ * with "a field this site does not know".
+ */
+const NOTIFY_AUDIENCE_RETIRED_FIELDS = [
+    'email_verified'     => 'Email confirmed',
+    'phone_verified'     => 'Mobile number verified',
+    'last_login_days'    => 'Days since last sign-in',
+    'channel_enabled'    => 'Has this channel switched on',
+    'category_not_muted' => 'Has not muted the category',
+];
 
 /**
  * field => ['label','ops','type','options'] for the rules builder. Options are
@@ -28,12 +55,10 @@ const NOTIFY_BOOKING_STATUSES      = ['pending', 'confirmed', 'completed', 'canc
  */
 function notifyAudienceFields(): array
 {
-    $langOptions = [];
-    foreach (notifyLanguages() as $code => $label) $langOptions[] = ['value' => $code, 'label' => $label];
+    $langOptions = [['value' => 'ta', 'label' => 'தமிழ் (Tamil)'], ['value' => 'en', 'label' => 'English']];
 
     $sevas = [];
     $tags  = [];
-    $cats  = [];
     if (notifyTablesExist()) {
         try {
             $db = getDB();
@@ -46,34 +71,27 @@ function notifyAudienceFields(): array
         } catch (Throwable $e) {
             error_log('[notify] audience options unavailable: ' . $e->getMessage());
         }
-        foreach (notifyCategories(true) as $key => $c) {
-            if ($c['mutable']) $cats[] = ['value' => (string) $key, 'label' => (string) $c['label_en']];
-        }
     }
-    $channelLabels = ['inapp' => 'In-app', 'email' => 'Email', 'whatsapp' => 'WhatsApp', 'sms' => 'SMS', 'push' => 'Push'];
-    $channels = [];
-    foreach (NOTIFY_CHANNELS as $c) $channels[] = ['value' => $c, 'label' => $channelLabels[$c]];
 
     return [
-        'country'            => ['label' => 'Country',                       'ops' => ['in', 'not_in'], 'type' => 'iso2list', 'options' => null],
-        'state'              => ['label' => 'State or region',               'ops' => ['in', 'not_in'], 'type' => 'strlist',  'options' => null],
-        'city'               => ['label' => 'City or town',                  'ops' => ['contains', 'equals'], 'type' => 'string', 'options' => null],
-        'lang'               => ['label' => 'Preferred language',            'ops' => ['in'],   'type' => 'enum',   'options' => $langOptions],
-        'email_verified'     => ['label' => 'Email confirmed',               'ops' => ['is'],   'type' => 'bool',   'options' => null],
-        'phone_verified'     => ['label' => 'Mobile number verified',        'ops' => ['is'],   'type' => 'bool',   'options' => null],
-        'registered_days'    => ['label' => 'Days since registering',        'ops' => ['lte', 'gte'], 'type' => 'int', 'options' => null],
-        'last_login_days'    => ['label' => 'Days since last sign-in',       'ops' => ['lte', 'gte'], 'type' => 'int', 'options' => null],
-        'has_booking'        => ['label' => 'Has booked a seva',             'ops' => ['is'],   'type' => 'bool',   'options' => null],
-        'booked_seva'        => ['label' => 'Booked one of these sevas',     'ops' => ['in'],   'type' => 'idlist', 'options' => $sevas],
-        'booking_status'     => ['label' => 'Has a booking with status',     'ops' => ['in'],   'type' => 'enum',
-                                 'options' => array_map(static fn($s) => ['value' => $s, 'label' => ucfirst($s)], NOTIFY_BOOKING_STATUSES)],
-        'booking_days'       => ['label' => 'Booked within the last N days', 'ops' => ['lte'],  'type' => 'int',    'options' => null],
-        'has_donated'        => ['label' => 'Has donated',                   'ops' => ['is'],   'type' => 'bool',   'options' => null],
-        'donated_total'      => ['label' => 'Total donated (Rs.)',           'ops' => ['gte', 'lte'], 'type' => 'number', 'options' => null],
-        'donated_days'       => ['label' => 'Donated within the last N days', 'ops' => ['lte'], 'type' => 'int',    'options' => null],
-        'tag'                => ['label' => 'Tag',                           'ops' => ['in', 'not_in'], 'type' => 'strlist', 'options' => $tags],
-        'channel_enabled'    => ['label' => 'Has this channel switched on',  'ops' => ['in'],   'type' => 'enum',   'options' => $channels],
-        'category_not_muted' => ['label' => 'Has not muted the category',    'ops' => ['is'],   'type' => 'enum',   'options' => $cats],
+        'country'         => ['label' => 'Country',                         'ops' => ['in', 'not_in'], 'type' => 'iso2list', 'options' => null],
+        'state'           => ['label' => 'State or region',                 'ops' => ['in', 'not_in'], 'type' => 'strlist',  'options' => null],
+        'city'            => ['label' => 'City or town',                    'ops' => ['contains', 'equals'], 'type' => 'string', 'options' => null],
+        'lang'            => ['label' => 'Language chosen at registration', 'ops' => ['in'],   'type' => 'enum',   'options' => $langOptions],
+        'consent'         => ['label' => 'Agreed to receive temple updates', 'ops' => ['is'],  'type' => 'bool',   'options' => null],
+        'has_email'       => ['label' => 'Has an email address',            'ops' => ['is'],   'type' => 'bool',   'options' => null],
+        'has_phone'       => ['label' => 'Has a phone number',              'ops' => ['is'],   'type' => 'bool',   'options' => null],
+        'family_size'     => ['label' => 'Family size (registrant and members)', 'ops' => ['gte', 'lte'], 'type' => 'int', 'options' => null],
+        'registered_days' => ['label' => 'Days since registering',          'ops' => ['lte', 'gte'], 'type' => 'int', 'options' => null],
+        'has_booking'     => ['label' => 'Has booked a seva',               'ops' => ['is'],   'type' => 'bool',   'options' => null],
+        'booked_seva'     => ['label' => 'Booked one of these sevas',       'ops' => ['in'],   'type' => 'idlist', 'options' => $sevas],
+        'booking_status'  => ['label' => 'Has a booking with status',       'ops' => ['in'],   'type' => 'enum',
+                              'options' => array_map(static fn($s) => ['value' => $s, 'label' => ucfirst($s)], NOTIFY_BOOKING_STATUSES)],
+        'booking_days'    => ['label' => 'Booked within the last N days',   'ops' => ['lte'],  'type' => 'int',    'options' => null],
+        'has_donated'     => ['label' => 'Has donated',                     'ops' => ['is'],   'type' => 'bool',   'options' => null],
+        'donated_total'   => ['label' => 'Total donated (Rs.)',             'ops' => ['gte', 'lte'], 'type' => 'number', 'options' => null],
+        'donated_days'    => ['label' => 'Donated within the last N days',  'ops' => ['lte'],  'type' => 'int',    'options' => null],
+        'tag'             => ['label' => 'Tag',                             'ops' => ['in', 'not_in'], 'type' => 'strlist', 'options' => $tags],
     ];
 }
 
@@ -82,12 +100,29 @@ function notifyAudienceFieldOps(): array
 {
     return [
         'country' => ['in', 'not_in'], 'state' => ['in', 'not_in'], 'city' => ['contains', 'equals'],
-        'lang' => ['in'], 'email_verified' => ['is'], 'phone_verified' => ['is'],
-        'registered_days' => ['lte', 'gte'], 'last_login_days' => ['lte', 'gte'],
+        'lang' => ['in'], 'consent' => ['is'], 'has_email' => ['is'], 'has_phone' => ['is'],
+        'family_size' => ['gte', 'lte'], 'registered_days' => ['lte', 'gte'],
         'has_booking' => ['is'], 'booked_seva' => ['in'], 'booking_status' => ['in'], 'booking_days' => ['lte'],
         'has_donated' => ['is'], 'donated_total' => ['gte', 'lte'], 'donated_days' => ['lte'],
-        'tag' => ['in', 'not_in'], 'channel_enabled' => ['in'], 'category_not_muted' => ['is'],
+        'tag' => ['in', 'not_in'],
     ];
+}
+
+/**
+ * The retired fields (NOTIFY_AUDIENCE_RETIRED_FIELDS) an audience still uses,
+ * as field => label. Accepts the rules array or its JSON text and never throws,
+ * so the admin can flag a stored segment or campaign that no longer validates.
+ */
+function notifyAudienceRetiredFieldsIn(mixed $rules): array
+{
+    if (is_string($rules)) $rules = json_decode($rules, true);
+    if (!is_array($rules) || ($rules['mode'] ?? null) !== 'rules' || !is_array($rules['rules'] ?? null)) return [];
+    $found = [];
+    foreach ($rules['rules'] as $rule) {
+        $field = is_array($rule) ? ($rule['field'] ?? null) : null;
+        if (is_string($field) && isset(NOTIFY_AUDIENCE_RETIRED_FIELDS[$field])) $found[$field] = NOTIFY_AUDIENCE_RETIRED_FIELDS[$field];
+    }
+    return $found;
 }
 
 /**
@@ -104,7 +139,7 @@ function notifyAudienceNormalize(array|string $rules): array
     }
     $mode = $rules['mode'] ?? null;
     if (!in_array($mode, ['all_devotees', 'selected', 'rules'], true)) {
-        throw new InvalidArgumentException('Choose who should receive this: all devotees, selected devotees, or devotees matching rules.');
+        throw new InvalidArgumentException('Choose who should receive this: all registered families, selected families, or families matching rules.');
     }
 
     if ($mode === 'all_devotees') return ['mode' => 'all_devotees'];
@@ -117,29 +152,28 @@ function notifyAudienceNormalize(array|string $rules): array
                 if ($n > 0) $ids[$n] = $n;
             }
         }
-        if (!$ids) throw new InvalidArgumentException('Choose at least one devotee.');
+        if (!$ids) throw new InvalidArgumentException('Choose at least one family.');
         if (count($ids) > NOTIFY_AUDIENCE_MAX_SELECTED) {
-            throw new InvalidArgumentException('Choose at most ' . NOTIFY_AUDIENCE_MAX_SELECTED . ' devotees by hand; use rules or a tag for a larger group.');
+            throw new InvalidArgumentException('Choose at most ' . NOTIFY_AUDIENCE_MAX_SELECTED . ' families by hand; use rules or a tag for a larger group.');
         }
         sort($ids);
         return ['mode' => 'selected', 'devotee_ids' => array_values($ids)];
     }
 
     $match = $rules['match'] ?? 'all';
-    if (!in_array($match, ['all', 'any'], true)) throw new InvalidArgumentException('Choose whether devotees must match all rules or any rule.');
+    if (!in_array($match, ['all', 'any'], true)) throw new InvalidArgumentException('Choose whether families must match all rules or any rule.');
     $list = $rules['rules'] ?? [];
-    if (!is_array($list) || !$list) throw new InvalidArgumentException('Add at least one rule, or choose all devotees.');
+    if (!is_array($list) || !$list) throw new InvalidArgumentException('Add at least one rule, or choose all registered families.');
     if (count($list) > NOTIFY_AUDIENCE_MAX_RULES) throw new InvalidArgumentException('Use at most ' . NOTIFY_AUDIENCE_MAX_RULES . ' rules.');
 
     $ops = notifyAudienceFieldOps();
     $labels = [
         'country' => 'Country', 'state' => 'State', 'city' => 'City', 'lang' => 'Language',
-        'email_verified' => 'Email confirmed', 'phone_verified' => 'Mobile verified',
-        'registered_days' => 'Days since registering', 'last_login_days' => 'Days since last sign-in',
+        'consent' => 'Agreed to updates', 'has_email' => 'Has email', 'has_phone' => 'Has phone',
+        'family_size' => 'Family size', 'registered_days' => 'Days since registering',
         'has_booking' => 'Has booked', 'booked_seva' => 'Booked seva', 'booking_status' => 'Booking status',
         'booking_days' => 'Booked within', 'has_donated' => 'Has donated', 'donated_total' => 'Total donated',
-        'donated_days' => 'Donated within', 'tag' => 'Tag', 'channel_enabled' => 'Channel switched on',
-        'category_not_muted' => 'Category not muted',
+        'donated_days' => 'Donated within', 'tag' => 'Tag',
     ];
 
     $out = [];
@@ -147,6 +181,10 @@ function notifyAudienceNormalize(array|string $rules): array
         $n = $i + 1;
         if (!is_array($rule)) throw new InvalidArgumentException("Rule {$n} is incomplete.");
         $field = $rule['field'] ?? null;
+        if (is_string($field) && isset(NOTIFY_AUDIENCE_RETIRED_FIELDS[$field])) {
+            throw new InvalidArgumentException("Rule {$n} uses \"" . NOTIFY_AUDIENCE_RETIRED_FIELDS[$field]
+                . '", which no longer exists now that families register instead of signing in. Remove that rule.');
+        }
         if (!is_string($field) || !isset($ops[$field])) throw new InvalidArgumentException("Rule {$n} uses a field this site does not know.");
         $label = $labels[$field];
         $op = $rule['op'] ?? null;
@@ -189,21 +227,27 @@ function notifyAudienceValue(string $field, mixed $value, int $n, string $label)
             return $s;
 
         case 'lang':
+            // A registration records Tamil or English, nothing else.
             $v = array_map('strtolower', $list($value));
-            $langs = notifyLanguages();
-            foreach ($v as $l) if (!isset($langs[$l])) $fail('choose from the languages offered.');
+            foreach ($v as $l) if (!in_array($l, ['ta', 'en'], true)) $fail('choose Tamil or English.');
             return array_values(array_unique($v));
 
-        case 'email_verified':
-        case 'phone_verified':
+        case 'consent':
+        case 'has_email':
+        case 'has_phone':
         case 'has_booking':
         case 'has_donated':
             $b = notifyBool($value);
             if ($b === null) $fail('choose yes or no.');
             return $b;
 
+        case 'family_size':
+            if (!(is_int($value) || (is_string($value) && preg_match('/^\d{1,3}$/', trim($value))))) $fail('enter a whole number of people.');
+            $size = (int) $value;
+            if ($size < 1 || $size > NOTIFY_FAMILY_SIZE_MAX) $fail('enter between 1 and ' . NOTIFY_FAMILY_SIZE_MAX . ' people.');
+            return $size;
+
         case 'registered_days':
-        case 'last_login_days':
         case 'booking_days':
         case 'donated_days':
             if (!(is_int($value) || (is_string($value) && preg_match('/^\d{1,5}$/', trim($value))))) $fail('enter a whole number of days.');
@@ -234,25 +278,28 @@ function notifyAudienceValue(string $field, mixed $value, int $n, string $label)
             $v = array_map('mb_strtolower', $list($value));
             foreach ($v as $t) if (!preg_match('/^[a-z0-9:_-]{1,40}$/', $t)) $fail('tags use lowercase letters, digits, colon, dash and underscore.');
             return array_values(array_unique($v));
-
-        case 'channel_enabled':
-            $v = array_map('strtolower', $list($value));
-            foreach ($v as $c) if (!in_array($c, NOTIFY_CHANNELS, true)) $fail('choose from in-app, email, WhatsApp, SMS and push.');
-            return array_values(array_unique($v));
-
-        case 'category_not_muted':
-            $k = is_scalar($value) ? trim((string) $value) : '';
-            if ($k === '' || (notifyTablesExist() && notifyCategory($k) === null)) $fail('choose a category.');
-            return $k;
     }
     $fail('unknown field.');
 }
 
 /**
+ * True when an audience for this category is limited to consenting families.
+ * No category (a saved segment on its own) means no limit: the segment page
+ * shows both numbers instead.
+ */
+function notifyAudienceNeedsConsent(?string $category): bool
+{
+    return $category !== null && $category !== '' && notifyCategoryNeedsConsent($category);
+}
+
+/**
  * The WHERE clause and parameters for normalised rules. Parameter names are
  * numbered, because native prepared statements cannot bind one name twice.
+ *
+ * $category is the campaign's: when it needs consent the clause also requires
+ * it (see the top of this file).
  */
-function notifyAudienceWhere(array $rules): array
+function notifyAudienceWhere(array|string $rules, ?string $category = null): array
 {
     $r = notifyAudienceNormalize($rules);
     $params = [];
@@ -269,6 +316,7 @@ function notifyAudienceWhere(array $rules): array
     $daysAgo = static fn(int $days): string => notifyNowPlus(-$days * 86400);
 
     $where = ['d.is_active = 1'];
+    if (notifyAudienceNeedsConsent($category)) $where[] = NOTIFY_AUDIENCE_CONSENT_SQL;
 
     if ($r['mode'] === 'selected') {
         $where[] = 'd.id IN (' . $in($r['devotee_ids']) . ')';
@@ -296,23 +344,29 @@ function notifyAudienceWhere(array $rules): array
                     : 'd.city LIKE ' . $bind('%' . addcslashes($v, '%_\\') . '%');
                 break;
             case 'lang':
-                $parts[] = "COALESCE(p.lang, 'ta') IN (" . $in($v) . ')';
+                $parts[] = 'd.lang IN (' . $in($v) . ')';
                 break;
-            case 'email_verified':
-                $parts[] = $v ? 'd.email_verified_at IS NOT NULL' : 'd.email_verified_at IS NULL';
+            case 'consent':
+                $parts[] = $v ? '(' . NOTIFY_AUDIENCE_CONSENT_SQL . ')' : 'NOT (' . NOTIFY_AUDIENCE_CONSENT_SQL . ')';
                 break;
-            case 'phone_verified':
-                $parts[] = $v ? 'd.phone_verified_at IS NOT NULL' : 'd.phone_verified_at IS NULL';
+            case 'has_email':
+                $parts[] = $v ? "(d.email IS NOT NULL AND d.email <> '')" : "(d.email IS NULL OR d.email = '')";
+                break;
+            case 'has_phone':
+                $parts[] = $v ? "(d.phone IS NOT NULL AND d.phone <> '')" : "(d.phone IS NULL OR d.phone = '')";
+                break;
+            case 'family_size':
+                // The registrant is not a member row, so a family with no members has size 1.
+                $parts[] = '(1 + (SELECT COUNT(*) FROM devotee_family_members fm WHERE fm.devotee_id = d.id)) '
+                    . ($rule['op'] === 'gte' ? '>= ' : '<= ') . $bind($v);
                 break;
             case 'registered_days':
                 $parts[] = $rule['op'] === 'lte' ? 'd.created_at >= ' . $bind($daysAgo($v)) : 'd.created_at <= ' . $bind($daysAgo($v));
                 break;
-            case 'last_login_days':
-                // Never signed in counts as "a long time ago", not as unknown.
-                $parts[] = $rule['op'] === 'lte'
-                    ? 'd.last_login_at >= ' . $bind($daysAgo($v))
-                    : '(d.last_login_at IS NULL OR d.last_login_at <= ' . $bind($daysAgo($v)) . ')';
-                break;
+            // Bookings and donations are linked to a registration only when they
+            // were made while devotees could sign in (seva_bookings.devotee_id and
+            // donations.devotee_id are no longer written). These rules read those
+            // links as they stand.
             case 'has_booking':
                 $parts[] = ($v ? '' : 'NOT ') . 'EXISTS (SELECT 1 FROM seva_bookings b WHERE b.devotee_id = d.id)';
                 break;
@@ -339,26 +393,6 @@ function notifyAudienceWhere(array $rules): array
                 $parts[] = ($rule['op'] === 'in' ? '' : 'NOT ')
                     . 'EXISTS (SELECT 1 FROM devotee_tags t WHERE t.devotee_id = d.id AND t.tag IN (' . $in($v) . '))';
                 break;
-            case 'channel_enabled':
-                // No preferences row means every channel is on. Column names come
-                // from NOTIFY_CHANNELS, already checked by normalisation.
-                $any = array_map(static fn(string $c): string => "COALESCE(p.{$c}_on, 1) = 1", $v);
-                $parts[] = '(' . implode(' OR ', $any) . ')';
-                break;
-            case 'category_not_muted':
-                $cat = notifyCategory($v);
-                if ($cat === null || !$cat['mutable']) {
-                    // A category that cannot be muted is "not muted" for everyone.
-                    $parts[] = '1 = 1';
-                    break;
-                }
-                $notInList = 'FIND_IN_SET(' . $bind($v) . ', p.muted_categories) = 0';
-                // Mirrors notifyPrefsFromRow(): with no row, an informational
-                // category that is off by default counts as muted.
-                $parts[] = ($cat['kind'] === 'informational' && $cat['default_on'] === 0)
-                    ? "(p.devotee_id IS NOT NULL AND {$notInList})"
-                    : "(p.devotee_id IS NULL OR {$notInList})";
-                break;
         }
     }
     $where[] = '(' . implode($r['match'] === 'any' ? ' OR ' : ' AND ', $parts) . ')';
@@ -366,36 +400,49 @@ function notifyAudienceWhere(array $rules): array
 }
 
 /** ['sql' => 'SELECT d.id FROM devotees d … ORDER BY d.id', 'params' => [':a0' => …]] */
-function notifyAudienceQuery(array $rules): array
+function notifyAudienceQuery(array|string $rules, ?string $category = null): array
 {
-    $w = notifyAudienceWhere($rules);
+    $w = notifyAudienceWhere($rules, $category);
     return [
-        'sql'    => 'SELECT d.id FROM devotees d LEFT JOIN devotee_notification_prefs p ON p.devotee_id = d.id WHERE '
-                  . $w['where'] . ' ORDER BY d.id',
+        'sql'    => 'SELECT d.id FROM devotees d WHERE ' . $w['where'] . ' ORDER BY d.id',
         'params' => $w['params'],
     ];
 }
 
-/** How many devotees the rules reach now. Zero when the tables are missing. */
-function notifyAudienceCount(array $rules): int
+/** How many registrations the rules reach now (limited to consenting ones for a category that needs it). Zero when the tables are missing. */
+function notifyAudienceCount(array|string $rules, ?string $category = null): int
 {
-    $w = notifyAudienceWhere($rules);
+    $w = notifyAudienceWhere($rules, $category);
     if (!notifyTablesExist()) return 0;
-    $stmt = getDB()->prepare(
-        'SELECT COUNT(*) FROM devotees d LEFT JOIN devotee_notification_prefs p ON p.devotee_id = d.id WHERE ' . $w['where']
-    );
+    $stmt = getDB()->prepare('SELECT COUNT(*) FROM devotees d WHERE ' . $w['where']);
     $stmt->execute($w['params']);
     return (int) $stmt->fetchColumn();
 }
 
-/** The next batch of devotee ids after $afterId, for campaign expansion. */
-function notifyAudienceBatch(array $rules, int $afterId, int $limit): array
+/**
+ * ['all' => active registrations the rules match, 'consenting' => those of them
+ * who agreed to temple updates and have not unsubscribed]. The segment page and
+ * the composer show both, so the committee sees who an update would reach.
+ */
+function notifyAudienceBreakdown(array|string $rules): array
 {
     $w = notifyAudienceWhere($rules);
+    if (!notifyTablesExist()) return ['all' => 0, 'consenting' => 0];
+    $stmt = getDB()->prepare(
+        'SELECT COUNT(*) AS all_n, COALESCE(SUM(' . NOTIFY_AUDIENCE_CONSENT_SQL . '), 0) AS consenting_n FROM devotees d WHERE ' . $w['where']
+    );
+    $stmt->execute($w['params']);
+    $row = $stmt->fetch(PDO::FETCH_ASSOC) ?: [];
+    return ['all' => (int) ($row['all_n'] ?? 0), 'consenting' => (int) ($row['consenting_n'] ?? 0)];
+}
+
+/** The next batch of registration ids after $afterId, for campaign expansion. */
+function notifyAudienceBatch(array|string $rules, int $afterId, int $limit, ?string $category = null): array
+{
+    $w = notifyAudienceWhere($rules, $category);
     $params = $w['params'] + [':after' => $afterId];
     $stmt = getDB()->prepare(
-        'SELECT d.id FROM devotees d LEFT JOIN devotee_notification_prefs p ON p.devotee_id = d.id WHERE '
-        . $w['where'] . ' AND d.id > :after ORDER BY d.id LIMIT ' . max(1, min(1000, $limit))
+        'SELECT d.id FROM devotees d WHERE ' . $w['where'] . ' AND d.id > :after ORDER BY d.id LIMIT ' . max(1, min(1000, $limit))
     );
     $stmt->execute($params);
     return array_map('intval', $stmt->fetchAll(PDO::FETCH_COLUMN));
