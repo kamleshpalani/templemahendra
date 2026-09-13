@@ -12,6 +12,22 @@ Options -Indexes
   # Pass /api/* and /admin/* straight through to PHP
   RewriteRule ^(api|admin|uploads)(/.*)?$ - [L]
 
+  # ── Rich previews for shared links ─────────────────────────
+  # Link unfurlers fetch the HTML once and never run JavaScript, so the React
+  # app's own Open Graph tags are invisible to them and every shared link would
+  # preview identically. Send those user agents to api/og.php, which renders the
+  # real title, description and image for the path they asked about.
+  #
+  # Search engines are deliberately NOT in this list. Google and Bing execute
+  # JavaScript and should index the full page; handing them the small preview
+  # document instead would make the site look thinner than it is.
+  #
+  # Browsers are unaffected and fall through to index.html below.
+  RewriteCond %{HTTP_USER_AGENT} (facebookexternalhit|Facebot|Twitterbot|LinkedInBot|WhatsApp|TelegramBot|Slackbot|Discordbot|SkypeUriPreview|Pinterest|redditbot|vkShare|Embedly|Iframely|Mastodon|Nuzzel|Viber|Line) [NC]
+  RewriteCond %{REQUEST_FILENAME} !-f
+  RewriteCond %{REQUEST_FILENAME} !-d
+  RewriteRule ^(.*)$ api/og.php?path=/$1 [QSA,L]
+
   # For everything else that is not a real file/dir, serve React's index.html
   RewriteCond %{REQUEST_FILENAME} !-f
   RewriteCond %{REQUEST_FILENAME} !-d

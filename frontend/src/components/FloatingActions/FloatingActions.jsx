@@ -1,12 +1,12 @@
-import { LuPhone } from "react-icons/lu";
 import { FaWhatsapp } from "react-icons/fa";
 import { useLang } from "../../context/LangContext";
-import { TEMPLE, PRIMARY_CONTACT, formatPhone } from "../../data/temple";
+import { TEMPLE, PRIMARY_CONTACT } from "../../data/temple";
 import "./FloatingActions.css";
 
 // President's number (first on the committee's printed list).
-// tel: needs the E.164 "+"; WhatsApp's wa.me wants country code + digits, no "+".
-const PHONE_NUMBER = `+91${PRIMARY_CONTACT.phone}`;
+// WhatsApp's wa.me wants country code + digits, no "+".
+// The call button that used to sit here now lives in the sticky header, where it
+// is visible without covering the page.
 const WHATSAPP_NUMBER = `91${PRIMARY_CONTACT.phone}`;
 const WHATSAPP_MSG = encodeURIComponent(
   `வணக்கம் 🙏 ${TEMPLE.name.ta} பற்றி மேலும் அறிய விரும்புகிறேன்.\nNamaskar 🙏 I would like to know more about ${TEMPLE.name.en}.`,
@@ -27,16 +27,6 @@ export default function FloatingActions() {
       >
         <FaWhatsapp aria-hidden="true" />
         <span className="fab__label">{t("வாட்ஸ்அப்", "WhatsApp")}</span>
-      </a>
-
-      <a
-        href={`tel:${PHONE_NUMBER}`}
-        className="fab fab--phone"
-        aria-label={`${t("அழைக்கவும்", "Call us")} — ${formatPhone(PRIMARY_CONTACT.phone)}`}
-        data-tip={formatPhone(PRIMARY_CONTACT.phone)}
-      >
-        <LuPhone aria-hidden="true" />
-        <span className="fab__label">{t("அழைக்கவும்", "Call")}</span>
       </a>
     </div>
   );

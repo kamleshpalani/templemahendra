@@ -2,10 +2,11 @@
 // backend/api/donors.php
 // Returns a combined list of donors (from donations table) and
 // sponsors (from sponsors table linked to poojas) for display on homepage.
-// Sensitive data (phone) is never exposed.
+// Sensitive data (phone, amount, message) is never exposed.
 
 require_once __DIR__ . '/../includes/db.php';
 require_once __DIR__ . '/../includes/helpers.php';
+require_once __DIR__ . '/../includes/public_guard.php';
 
 setCorsHeaders();
 
@@ -15,14 +16,20 @@ if ($_SERVER['REQUEST_METHOD'] !== 'GET') {
 
 $db = getDB();
 
-// ── Recent donors from the donations table (last 30 days, approved) ──────────
-$donations = $db->query(
-    "SELECT name, purpose, created_at
-       FROM donations
-      WHERE created_at >= DATE_SUB(NOW(), INTERVAL 30 DAY)
-      ORDER BY created_at DESC
-      LIMIT 50"
-)->fetchAll(PDO::FETCH_ASSOC);
+// ── Recent donors who agreed to be thanked by name (last 30 days) ────────────
+// A donor's name appears only with their consent (migration 008). Without the
+// column nobody has agreed to anything, so no donation is listed at all.
+$donations = [];
+if (publicGuardHasColumn('donations', 'show_name_publicly')) {
+    $donations = $db->query(
+        "SELECT name, purpose, created_at
+           FROM donations
+          WHERE show_name_publicly = 1
+            AND created_at >= DATE_SUB(NOW(), INTERVAL 30 DAY)
+          ORDER BY created_at DESC
+          LIMIT 50"
+    )->fetchAll(PDO::FETCH_ASSOC);
+}
 
 // ── Active sponsors linked to poojas ─────────────────────────────────────────
 $sponsors = $db->query(

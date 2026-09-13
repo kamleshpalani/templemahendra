@@ -7,6 +7,7 @@ import "./index.css";
 import { LangProvider } from "./context/LangContext";
 import { ToastProvider } from "./context/ToastContext";
 import { AuthProvider } from "./context/AuthContext";
+import { NotificationProvider } from "./context/NotificationContext";
 import App from "./App";
 import ErrorBoundary from "./components/ErrorBoundary";
 
@@ -18,7 +19,11 @@ ReactDOM.createRoot(document.getElementById("root")).render(
           <LangProvider>
             <ToastProvider>
               <AuthProvider>
-                <App />
+                {/* Inside AuthProvider: the bell exists only for a signed-in devotee,
+                    and it uses the same get/post (session cookie, CSRF) as the rest. */}
+                <NotificationProvider>
+                  <App />
+                </NotificationProvider>
               </AuthProvider>
             </ToastProvider>
           </LangProvider>

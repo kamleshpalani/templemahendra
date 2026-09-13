@@ -1,4 +1,5 @@
 import { useId, useRef } from "react";
+import { createPortal } from "react-dom";
 import { LuX } from "react-icons/lu";
 import { useLang } from "../../context/LangContext";
 import useDialogBehaviour from "../../hooks/useDialogBehaviour";
@@ -36,7 +37,21 @@ export default function Modal({
 
   if (!open) return null;
 
-  return (
+  /**
+ * Dialogs render into document.body through a portal.
+ *
+ * A `position: fixed` overlay is positioned against the viewport only while no
+ * ancestor establishes a containing block for it. The page-transition wrapper
+ * in App.jsx animates a transform, which does exactly that — so a modal opened
+ * from any page was positioned against that wrapper instead. On a phone, deep
+ * in a long page, the booking dialog landed more than a thousand pixels below
+ * the fold: the visitor tapped Book and saw nothing happen.
+ *
+ * Portalling puts the overlay outside every page wrapper, where fixed means
+ * fixed. React keeps the component in its original tree for state, context and
+ * events, so nothing else about the caller changes.
+ */
+  return createPortal(
     <div className="modal-overlay" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
       <div
         ref={panelRef}
@@ -69,6 +84,7 @@ export default function Modal({
         )}
         {children}
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }

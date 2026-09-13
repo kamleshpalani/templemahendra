@@ -17,17 +17,23 @@ const MIN_CHARS = 2;
 
 export default function useSiteSearch(query, { enabled = true, limit = 8 } = {}) {
   const [state, setState] = useState({ groups: [], total: 0, status: "idle" });
+  // Bumped by retry(). Part of the effect's deps, so asking again re-runs the
+  // fetch even though the query itself has not changed.
+  const [nonce, setNonce] = useState(0);
   const controller = useRef(null);
   const cache = useRef(new Map());
 
   const run = useCallback(
     async (q) => {
       const key = `${q}|${limit}`;
+      // Abort first, cache hit or not. Answering instantly from cache while an
+      // older request was still in flight let that slow answer land afterwards
+      // and overwrite the newer results.
+      controller.current?.abort();
       if (cache.current.has(key)) {
         setState({ ...cache.current.get(key), status: "ready" });
         return;
       }
-      controller.current?.abort();
       controller.current = new AbortController();
       setState((s) => ({ ...s, status: "loading" }));
       try {
@@ -64,11 +70,17 @@ export default function useSiteSearch(query, { enabled = true, limit = 8 } = {})
     }
     const id = setTimeout(() => run(q), DEBOUNCE_MS);
     return () => clearTimeout(id);
-  }, [query, enabled, run]);
+  }, [query, enabled, run, nonce]);
+
+  /** Ask again for the same query — what an error state's "Try again" needs. */
+  const retry = useCallback(() => {
+    cache.current.clear();
+    setNonce((n) => n + 1);
+  }, []);
 
   // Abort whatever is in flight when the caller unmounts.
   useEffect(() => () => controller.current?.abort(), []);
 
   const flat = state.groups.flatMap((g) => g.items.map((item) => ({ ...item, type: g.type })));
-  return { ...state, flat, minChars: MIN_CHARS };
+  return { ...state, flat, retry, minChars: MIN_CHARS };
 }

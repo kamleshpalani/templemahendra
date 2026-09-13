@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Helmet } from "react-helmet-async";
 import {
   LuCalendar,
   LuCalendarDays,
@@ -15,10 +14,12 @@ import { useLang } from "../context/LangContext";
 import Badge from "../components/ui/Badge";
 import Button from "../components/ui/Button";
 import PageHero from "../components/ui/PageHero";
+import Seo from "../components/Seo";
+import ShareButton from "../components/Share/ShareButton";
 import SectionHeader from "../components/ui/SectionHeader";
 import SegmentedControl from "../components/ui/Tabs";
 import { EmptyState, SkeletonCards, SkeletonText } from "../components/ui/Feedback";
-import { TEMPLE, OBSERVANCES } from "../data/temple";
+import { OBSERVANCES } from "../data/temple";
 import "./Events.css";
 
 // Badge tone per event type (Badge primitive tones — no raw colours)
@@ -306,6 +307,14 @@ export default function Events() {
     return upcoming.reduce((a, b) => (b.date < a.date ? b : a));
   }, [pournamis, todayStr]);
 
+  // Named once: the hero shows them, <Seo> puts them in the page's description
+  // and its preview card, and the share sheet passes them to WhatsApp.
+  const heading = t("நிகழ்வுகள் & திருவிழாக்கள்", "Events & Festivals");
+  const lead = t(
+    "பவுர்ணமி பூஜைகள், திருவிழாக்கள் மற்றும் சிறப்பு நிகழ்வுகள் — ஒரே இடத்தில்.",
+    "Pournami poojas, festivals and special occasions — all in one place.",
+  );
+
   const filterItems = [
     {
       value: "all",
@@ -329,22 +338,15 @@ export default function Events() {
 
   return (
     <>
-      <Helmet>
-        <title>
-          {t("நிகழ்வுகள்", "Events")} —{" "}
-          {t(TEMPLE.name.ta, TEMPLE.name.en)}
-        </title>
-      </Helmet>
+      <Seo title={t("நிகழ்வுகள்", "Events")} description={lead} />
 
       <PageHero
         variant="events"
         eyebrow={t("பஞ்சாங்க அடிப்படையில்", "Panchangam-based calendar")}
-        title={t("நிகழ்வுகள் & திருவிழாக்கள்", "Events & Festivals")}
-        lead={t(
-          "பவுர்ணமி பூஜைகள், திருவிழாக்கள் மற்றும் சிறப்பு நிகழ்வுகள் — ஒரே இடத்தில்.",
-          "Pournami poojas, festivals and special occasions — all in one place.",
-        )}
+        title={heading}
+        lead={lead}
         crumbs={[{ label: t("நிகழ்வுகள்", "Events") }]}
+        actions={<ShareButton variant="outline-light" title={heading} text={lead} />}
         aside={<NextPournami pournami={nextPournami} loading={loading} lang={lang} t={t} />}
       />
 

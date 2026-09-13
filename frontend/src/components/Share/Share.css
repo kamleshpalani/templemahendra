@@ -1,0 +1,114 @@
+/**
+ * Share.css — the share sheet's own layout.
+ *
+ * The panel, the bottom-sheet treatment on phones, the focus trap and the close
+ * button all come from `.modal` in components.css. What is here is the channel
+ * grid, the link row, and one brand accent per channel. Every surface, radius
+ * and space is a token, so the sheet follows the rest of the site.
+ */
+
+/* ── Trigger ─────────────────────────────────────────────────────────────── */
+/* "Share" / "பங்கிடு" is short; let it sit on one line in a hero action row
+   rather than wrapping and making the button two lines tall. */
+.share-btn {
+  white-space: nowrap;
+}
+
+/* A shared item's name arrives from the database and can be one long unbroken
+   run of characters, which would otherwise push past the sheet's edge. */
+.share-sheet .modal__title {
+  overflow-wrap: anywhere;
+}
+
+/* ── Channel grid ────────────────────────────────────────────────────────── */
+.share-grid {
+  list-style: none;
+  margin: var(--space-5) 0 0;
+  padding: 0;
+  display: grid;
+  /* Two per row on a phone, three or four as the sheet widens — the labels are
+     short in both languages, and auto-fit stops a lone item stretching. */
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 8.5rem), 1fr));
+  gap: var(--space-2);
+}
+
+/*
+ * The surface stays the site's soft maroon; only the glyph carries the
+ * network's colour. Five saturated brand-coloured blocks would shout over the
+ * temple's palette, and the brand mark alone is what people actually scan for.
+ */
+.share-opt {
+  justify-content: flex-start;
+  gap: var(--space-2);
+}
+.share-opt > svg {
+  color: var(--share-brand, currentColor);
+  flex: none;
+}
+.share-opt:hover {
+  --btn-bg: color-mix(in srgb, var(--share-brand, var(--maroon)) 12%, transparent);
+  --btn-fg: var(--text-1);
+}
+
+.share-opt--whatsapp {
+  --share-brand: var(--brand-whatsapp);
+}
+.share-opt--facebook {
+  --share-brand: var(--brand-facebook);
+}
+.share-opt--linkedin {
+  --share-brand: var(--brand-linkedin);
+}
+/* X's mark is black; the site's near-black reads as deliberate beside it. */
+.share-opt--x {
+  --share-brand: var(--text-1);
+}
+/* Email is not a brand — it keeps the site's own accent. */
+.share-opt--email {
+  --share-brand: var(--maroon-600);
+}
+
+/* ── The link, and the copy control ──────────────────────────────────────── */
+.share-link {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-top: var(--space-5);
+  padding-top: var(--space-5);
+  border-top: 1px solid var(--border-soft);
+}
+.share-link__url {
+  /* min-width: 0 or the input refuses to shrink below its size attribute and
+     pushes the copy button out of the sheet. */
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: var(--text-xs);
+  font-family: var(--font-mono);
+  color: var(--text-3);
+  text-overflow: ellipsis;
+}
+.share-link__btn {
+  flex: none;
+}
+
+.share-note {
+  margin-top: var(--space-3);
+  font-size: var(--text-xs);
+  line-height: 1.5;
+  color: var(--text-muted);
+}
+/* Nothing to announce yet — do not hold a blank line open under the field. */
+.share-note:empty {
+  display: none;
+}
+
+@media (max-width: 420px) {
+  /* Below this the URL and the button cannot share a row without the button
+     losing its label. */
+  .share-link {
+    flex-wrap: wrap;
+  }
+  .share-link__btn {
+    width: 100%;
+  }
+}

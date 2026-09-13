@@ -15,31 +15,26 @@
  *                          can say so instead of pretending.
  *
  * MAIL_FROM / MAIL_FROM_NAME set the sender. SITE_URL builds absolute links.
+ *
+ * sendMail() takes optional extra headers — List-Unsubscribe for notifications
+ * a devotee can opt out of, and the Message-ID the notification service records
+ * against a delivery. Every transport sends them and the log transport records
+ * them. A name or value with a line break, or one that would replace a header
+ * this file writes itself, refuses the whole message (see mailHeaderProblem()).
  */
 
 require_once __DIR__ . '/db.php';
 
+// envValue() and siteUrl() live in helpers.php: emails are not the only thing
+// that needs the site's public address — the Open Graph renderer needs it too.
+require_once __DIR__ . '/helpers.php';
+
 if (!function_exists('mailEnv')) {
+    /** Kept as the name this file has always used for its settings lookups. */
     function mailEnv(string $key, string $default = ''): string
     {
-        $v = getenv($key);
-        if ($v !== false && $v !== '') return $v;
-        if (!empty($_ENV[$key]))    return (string) $_ENV[$key];
-        if (!empty($_SERVER[$key])) return (string) $_SERVER[$key];
-        return $default;
+        return envValue($key, $default);
     }
-}
-
-/** Absolute site URL with no trailing slash, for links inside emails. */
-function siteUrl(string $path = ''): string
-{
-    $base = rtrim(mailEnv('SITE_URL', ''), '/');
-    if ($base === '') {
-        $scheme = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
-        $host   = $_SERVER['HTTP_HOST'] ?? 'localhost';
-        $base   = $scheme . '://' . $host;
-    }
-    return $base . ($path === '' ? '' : '/' . ltrim($path, '/'));
 }
 
 /** Record the attempt. Never throws: logging must not break a user flow. */
@@ -64,9 +59,17 @@ function mailRecord(string $to, string $subject, string $template, string $statu
 /**
  * Minimal SMTP client: EHLO, optional STARTTLS, AUTH LOGIN, MAIL/RCPT/DATA.
  * Returns '' on success or a human-readable error.
+ *
+ * $extraHeaders are added after the ones this function writes (see
+ * mailHeaderProblem() for what is refused). A Message-ID among them replaces
+ * the generated one.
  */
-function smtpSend(string $to, string $subject, string $html, string $text): string
+function smtpSend(string $to, string $subject, string $html, string $text, array $extraHeaders = []): string
 {
+    // sendMail() has checked these already; a direct caller gets the same refusal.
+    $headerProblem = mailHeaderProblem($extraHeaders);
+    if ($headerProblem !== '') return $headerProblem;
+
     $host   = mailEnv('SMTP_HOST');
     $port   = (int) (mailEnv('SMTP_PORT', '587'));
     $user   = mailEnv('SMTP_USER');
@@ -140,8 +143,13 @@ function smtpSend(string $to, string $subject, string $html, string $text): stri
         'MIME-Version: 1.0',
         'Content-Type: multipart/alternative; boundary="' . $boundary . '"',
         'Date: ' . date('r'),
-        'Message-ID: <' . bin2hex(random_bytes(10)) . '@' . $ehloHost . '>',
     ];
+    // A caller that must recognise this message later (the notification service
+    // stores it against the delivery) supplies its own Message-ID.
+    if (!mailHasHeader($extraHeaders, 'Message-ID')) {
+        $headers[] = 'Message-ID: <' . bin2hex(random_bytes(10)) . '@' . $ehloHost . '>';
+    }
+    $headers = array_merge($headers, mailHeaderLines($extraHeaders));
     $body = implode("\r\n", $headers) . "\r\n\r\n"
         . "--$boundary\r\nContent-Type: text/plain; charset=UTF-8\r\nContent-Transfer-Encoding: base64\r\n\r\n"
         . chunk_split(base64_encode($text)) . "\r\n"
@@ -168,21 +176,74 @@ function mailEncodeName(string $s): string
 }
 
 /**
+ * Why a set of extra headers cannot be sent, or '' when every one is safe.
+ *
+ * Extra headers exist for List-Unsubscribe and for a Message-ID the
+ * notification service can match later. A line break inside a name or value
+ * would let whatever follows it become a header of its own — a Bcc to anyone,
+ * or a second body — so a message carrying one is refused outright rather than
+ * "cleaned": input that tried that is not input to deliver. Headers this file
+ * writes itself cannot be replaced from outside either.
+ */
+function mailHeaderProblem(array $headers): string
+{
+    $reserved = ['from', 'to', 'cc', 'bcc', 'subject', 'date', 'sender', 'return-path',
+                 'mime-version', 'content-type', 'content-transfer-encoding'];
+    foreach ($headers as $name => $value) {
+        $name = (string) $name;
+        if (preg_match('/[\r\n\0]/', $name)) return 'Refused an email header containing a line break';
+        if (!preg_match('/^[A-Za-z][A-Za-z0-9-]{0,75}$/', $name)) return 'Refused an email header with an invalid name';
+        if (!is_scalar($value)) return 'Refused an email header whose value is not text: ' . $name;
+        if (preg_match('/[\r\n\0]/', (string) $value)) return 'Refused an email header containing a line break';
+        if (in_array(strtolower($name), $reserved, true)) return 'Refused an email header the mailer sets itself: ' . $name;
+        if (strlen((string) $value) > 900) return 'Refused an email header longer than 900 characters: ' . $name;
+    }
+    return '';
+}
+
+/** "Name: value" lines for headers that passed mailHeaderProblem(); non-ASCII values are encoded. */
+function mailHeaderLines(array $headers): array
+{
+    $lines = [];
+    foreach ($headers as $name => $value) {
+        $lines[] = $name . ': ' . mailEncodeHeader((string) $value);
+    }
+    return $lines;
+}
+
+function mailHasHeader(array $headers, string $name): bool
+{
+    foreach (array_keys($headers) as $key) {
+        if (strcasecmp((string) $key, $name) === 0) return true;
+    }
+    return false;
+}
+
+/**
  * Send a message. Returns ['ok' => bool, 'status' => sent|failed|logged, 'error' => string].
  * `ok` is false whenever the devotee will not receive anything, so callers can
  * tell the truth on screen instead of claiming an email is on its way.
  */
-function sendMail(string $to, string $subject, string $html, string $text, string $template = 'generic'): array
+function sendMail(string $to, string $subject, string $html, string $text, string $template = 'generic', array $headers = []): array
 {
     if (!filter_var($to, FILTER_VALIDATE_EMAIL)) {
         mailRecord($to, $subject, $template, 'failed', 'none', 'Invalid recipient address');
         return ['ok' => false, 'status' => 'failed', 'error' => 'Invalid recipient address'];
     }
 
+    // Checked before any transport, so a refused header is refused the same way
+    // whether the message would have gone by SMTP, mail() or only to the log.
+    $headerProblem = mailHeaderProblem($headers);
+    if ($headerProblem !== '') {
+        mailRecord($to, $subject, $template, 'failed', 'none', $headerProblem);
+        error_log("[mail] $headerProblem; message to $to not sent");
+        return ['ok' => false, 'status' => 'failed', 'error' => $headerProblem];
+    }
+
     $transport = strtolower(mailEnv('MAIL_TRANSPORT', ''));
 
     if ($transport === 'smtp') {
-        $err = smtpSend($to, $subject, $html, $text);
+        $err = smtpSend($to, $subject, $html, $text, $headers);
         $ok  = $err === '';
         mailRecord($to, $subject, $template, $ok ? 'sent' : 'failed', 'smtp', $ok ? null : $err);
         if (!$ok) error_log("[mail] SMTP failure to $to: $err");
@@ -192,9 +253,11 @@ function sendMail(string $to, string $subject, string $html, string $text, strin
     if ($transport === 'mail') {
         $from    = mailEnv('MAIL_FROM', 'no-reply@' . ($_SERVER['HTTP_HOST'] ?? 'localhost'));
         $fromNm  = mailEnv('MAIL_FROM_NAME', 'Temple');
-        $headers = "From: " . mailEncodeName($fromNm) . " <$from>\r\n"
-                 . "MIME-Version: 1.0\r\nContent-Type: text/html; charset=UTF-8\r\n";
-        $ok = @mail($to, mailEncodeHeader($subject), $html, $headers);
+        $extra   = mailHeaderLines($headers);
+        $headerText = "From: " . mailEncodeName($fromNm) . " <$from>\r\n"
+                 . "MIME-Version: 1.0\r\nContent-Type: text/html; charset=UTF-8\r\n"
+                 . ($extra ? implode("\r\n", $extra) . "\r\n" : '');
+        $ok = @mail($to, mailEncodeHeader($subject), $html, $headerText);
         mailRecord($to, $subject, $template, $ok ? 'sent' : 'failed', 'mail', $ok ? null : 'mail() returned false');
         return ['ok' => (bool) $ok, 'status' => $ok ? 'sent' : 'failed', 'error' => $ok ? '' : 'mail() returned false'];
     }
@@ -215,9 +278,16 @@ function sendMail(string $to, string $subject, string $html, string $text, strin
         );
     }
     $file = $dir . '/mail.log';
+    // Extra headers are recorded after Template: so a developer can see the
+    // List-Unsubscribe and Message-ID a real transport would have sent. With none,
+    // the entry keeps exactly the shape the account test suites read.
+    $recorded = mailHeaderLines($headers);
     @file_put_contents(
         $file,
-        sprintf("\n===== %s\nTo: %s\nSubject: %s\nTemplate: %s\n\n%s\n", date('c'), $to, $subject, $template, $text),
+        sprintf(
+            "\n===== %s\nTo: %s\nSubject: %s\nTemplate: %s\n%s\n%s\n",
+            date('c'), $to, $subject, $template, $recorded ? implode("\n", $recorded) . "\n" : '', $text
+        ),
         FILE_APPEND
     );
     mailRecord($to, $subject, $template, 'logged', 'none', 'MAIL_TRANSPORT is not configured');

@@ -88,15 +88,63 @@ function devoteeRequireCsrf(): void
 
 /* ── Rate limiting ──────────────────────────────────────────────────────── */
 
+/**
+ * The caller's address, for rate limiting.
+ *
+ * REMOTE_ADDR is the only value a client cannot choose, so it is the default.
+ * X-Forwarded-For and CF-Connecting-IP are request headers: anyone can send
+ * them, and trusting them unconditionally meant every per-IP limit could be
+ * stepped around by changing one header on each attempt — which is to say
+ * there was no per-IP limit at all.
+ *
+ * Behind a real proxy the forwarded header is the only way to see the visitor,
+ * so it is honoured when the connection itself arrives from an address listed
+ * in TRUSTED_PROXIES (comma-separated, CIDR or plain addresses). On Hostinger
+ * there is no such proxy and the variable stays unset, which is correct.
+ */
 function clientIp(): string
 {
-    foreach (['HTTP_CF_CONNECTING_IP', 'HTTP_X_FORWARDED_FOR', 'REMOTE_ADDR'] as $k) {
-        if (!empty($_SERVER[$k])) {
-            $v = explode(',', (string) $_SERVER[$k])[0];
-            return trim($v);
+    $remote = (string) ($_SERVER['REMOTE_ADDR'] ?? '');
+
+    $trusted = array_filter(array_map('trim', explode(',', (string) (getenv('TRUSTED_PROXIES') ?: ''))));
+    if ($remote !== '' && $trusted && ipInAnyRange($remote, $trusted)) {
+        foreach (['HTTP_CF_CONNECTING_IP', 'HTTP_X_FORWARDED_FOR'] as $k) {
+            if (empty($_SERVER[$k])) continue;
+            // Left-most entry is the original client; the rest is the proxy chain.
+            $candidate = trim(explode(',', (string) $_SERVER[$k])[0]);
+            if (filter_var($candidate, FILTER_VALIDATE_IP)) return $candidate;
         }
     }
-    return 'unknown';
+
+    return $remote !== '' ? $remote : 'unknown';
+}
+
+/** True when $ip falls inside any of the given addresses or CIDR ranges. */
+function ipInAnyRange(string $ip, array $ranges): bool
+{
+    $packed = @inet_pton($ip);
+    if ($packed === false) return false;
+
+    foreach ($ranges as $range) {
+        if (!str_contains($range, '/')) {
+            if ($range === $ip) return true;
+            continue;
+        }
+        [$subnet, $bitsRaw] = explode('/', $range, 2);
+        $subnetPacked = @inet_pton($subnet);
+        $bits = (int) $bitsRaw;
+        if ($subnetPacked === false || strlen($subnetPacked) !== strlen($packed) || $bits < 0) continue;
+        if ($bits > strlen($packed) * 8) continue;
+
+        $whole = intdiv($bits, 8);
+        $rest  = $bits % 8;
+        if ($whole > 0 && strncmp($packed, $subnetPacked, $whole) !== 0) continue;
+        if ($rest === 0) return true;
+
+        $mask = chr(0xFF << (8 - $rest) & 0xFF);
+        if ((($packed[$whole] ?? "\0") & $mask) === (($subnetPacked[$whole] ?? "\0") & $mask)) return true;
+    }
+    return false;
 }
 
 /**
@@ -128,6 +176,41 @@ function rateLimitAllow(string $action, int $max, int $windowSeconds, ?string $w
     } catch (Throwable $e) {
         error_log('[rate-limit] ' . $e->getMessage());
         return true; // never lock people out because the limiter broke
+    }
+}
+
+/**
+ * Read a bucket without spending from it.
+ *
+ * Sign-in uses this so only *failed* attempts count: incrementing on every
+ * attempt meant a devotee who signed in normally six times was then locked out
+ * of their own account.
+ */
+function rateLimitPeek(string $action, int $max, int $windowSeconds, ?string $who = null): bool
+{
+    if (!devoteeTablesExist()) return true;
+    $bucket = mb_substr($action . ':' . ($who ?? clientIp()), 0, 190);
+    try {
+        $stmt = getDB()->prepare(
+            'SELECT hits FROM rate_limits WHERE bucket = :b AND window_start >= (NOW() - INTERVAL ' . max(1, $windowSeconds) . ' SECOND)'
+        );
+        $stmt->execute([':b' => $bucket]);
+        $hits = $stmt->fetchColumn();
+        return $hits === false || (int) $hits < $max;
+    } catch (Throwable $e) {
+        error_log('[rate-limit peek] ' . $e->getMessage());
+        return true;
+    }
+}
+
+/** Forget a bucket entirely — used after a successful sign-in. */
+function rateLimitClear(string $action, ?string $who = null): void
+{
+    if (!devoteeTablesExist()) return;
+    try {
+        getDB()->prepare('DELETE FROM rate_limits WHERE bucket = :b')
+               ->execute([':b' => mb_substr($action . ':' . ($who ?? clientIp()), 0, 190)]);
+    } catch (Throwable) {
     }
 }
 
@@ -205,7 +288,22 @@ function devoteePublic(array $row): array
         'name'      => $row['name'],
         'email'     => $row['email'],
         'phone'     => $row['phone'],
+        // Which country the number belongs to, because E.164 cannot always say:
+        // +1 covers the United States, Canada and much of the Caribbean. Rows
+        // written before migration 004 have none, and those were all Indian.
+        'phoneCountry' => $row['phone_country'] ?? null,
+        // The postal address, for receipts. Absent before migration 006.
+        'address1'  => $row['address1'] ?? null,
+        'address2'  => $row['address2'] ?? null,
+        'country'   => $row['country'] ?? null,
+        'state'     => $row['state'] ?? null,
+        'city'      => $row['city'] ?? null,
+        'postcode'  => $row['postcode'] ?? null,
         'verified'  => $row['email_verified_at'] !== null,
+        // Set once a one-time code sent to the number is typed back (migration
+        // 007). Saving a different number clears it, so it always describes the
+        // number shown above rather than one the devotee used to have.
+        'phoneVerified' => !empty($row['phone_verified_at'] ?? null),
         'createdAt' => $row['created_at'],
     ];
 }
@@ -280,12 +378,226 @@ function devoteeConsumeToken(string $raw, string $kind): ?array
     return $row;
 }
 
+/* ── Notifications ──────────────────────────────────────────────────────── */
+
+/**
+ * True when the Notification Service can be used: its code loads and migration
+ * 007 has been applied. Loaded lazily, because most requests that include this
+ * file (a search, a sign-in) never notify anyone.
+ *
+ * When this is false every function below takes the path the site used before
+ * notifications existed, so an install that has not run 007 keeps working.
+ */
+function devoteeNotifyReady(): bool
+{
+    static $ready = null;
+    if ($ready !== null) return $ready;
+    try {
+        require_once __DIR__ . '/notify.php';
+        return $ready = notifyTablesExist();
+    } catch (Throwable $e) {
+        error_log('[notify] the notification service could not be loaded: ' . $e->getMessage());
+        return $ready = false;
+    }
+}
+
+/**
+ * notifyEvent(), or null when the service is not available. Never throws: a
+ * notification is never a reason for a sign-up, booking or donation to fail.
+ */
+function devoteeNotifyEvent(string $event, array $ctx): ?array
+{
+    if (!devoteeNotifyReady()) return null;
+    try {
+        return notifyEvent($event, $ctx);
+    } catch (Throwable $e) {
+        error_log("[notify] {$event} failed: " . $e->getMessage());
+        return null;
+    }
+}
+
+/**
+ * The sendMail()-shaped answer ['ok','status','error'] for a notification's
+ * email delivery, so the endpoints can keep telling the truth on screen
+ * ("emailDelivery": sent | unavailable) exactly as before.
+ *
+ *   sent by a real transport        → ok true,  status sent
+ *   sent but only written to a log  → ok false, status logged
+ *   waiting for the worker          → ok true,  status queued
+ *   skipped, failed, dead, rejected → ok false, status failed
+ *
+ * Returns null when no notification was created at all (the service errored),
+ * which tells the caller to fall back to the mailer so the devotee still gets
+ * their link.
+ */
+function devoteeMailFromNotify(?array $result): ?array
+{
+    if ($result === null || ($result['id'] === null && empty($result['deduped']))) return null;
+    $d = $result['deliveries']['email'] ?? null;
+    if ($d === null) return ['ok' => false, 'status' => 'failed', 'error' => 'No email was attempted.'];
+    $status = (string) $d['status'];
+    if (in_array($status, ['sent', 'delivered', 'read'], true)) {
+        return !empty($d['recordedOnly'])
+            ? ['ok' => false, 'status' => 'logged', 'error' => 'Email is not configured on this server.']
+            : ['ok' => true, 'status' => 'sent', 'error' => ''];
+    }
+    if (in_array($status, ['queued', 'sending'], true)) {
+        return ['ok' => true, 'status' => 'queued', 'error' => ''];
+    }
+    return ['ok' => false, 'status' => 'failed', 'error' => (string) ($d['reason'] ?? 'The email could not be sent.')];
+}
+
+/** The language a devotee reads notifications in ('ta' until they choose). */
+function devoteeNotifyLang(int $devoteeId): string
+{
+    if ($devoteeId < 1 || !devoteeNotifyReady()) return 'ta';
+    try {
+        return (string) (notifyPrefs($devoteeId)['lang'] ?? 'ta');
+    } catch (Throwable) {
+        return 'ta';
+    }
+}
+
+/** 'ta' or 'en' — the two languages the site's own wording (dates, labels) exists in. */
+function devoteeCopyLang(string $lang): string
+{
+    return $lang === 'ta' ? 'ta' : 'en';
+}
+
+/** "13 செப்டம்பர் 2026, மாலை 4:05 IST" / "13 Sep 2026, 4:05 pm IST" — now, on the temple's clock. */
+function devoteeNowLabel(string $lang): string
+{
+    $l     = devoteeCopyLang($lang);
+    $tz    = notifyTempleTz();
+    $local = notifyFromUtc(notifyNow(), $tz);
+    return notifyFormatDate(substr($local, 0, 10), $l) . ', ' . notifyFormatClock(substr($local, 11, 5), $l)
+        . ' ' . ($tz === 'Asia/Kolkata' ? 'IST' : $tz);
+}
+
+/**
+ * The booking number devotees and the office both quote: "B-000091". Padded so
+ * it reads as a reference rather than a count, and sorts correctly in a list.
+ */
+function devoteeBookingNumber(int $bookingId): string
+{
+    return 'B-' . str_pad((string) $bookingId, 6, '0', STR_PAD_LEFT);
+}
+
+/** The donation reference printed on acknowledgements and receipts: "D-000012". */
+function devoteeReceiptNumber(int $donationId): string
+{
+    return 'D-' . str_pad((string) $donationId, 6, '0', STR_PAD_LEFT);
+}
+
+/**
+ * "Rs. 1,001" or "Rs. 501.50". Written out rather than ₹ because the rupee sign
+ * turns an SMS into a Unicode message with half the room.
+ */
+function devoteeMoneyLabel(float $amount): string
+{
+    $decimals = abs($amount - round($amount)) >= 0.005 ? 2 : 0;
+    return 'Rs. ' . number_format($amount, $decimals);
+}
+
+/**
+ * A donation purpose as the devotee chose it on the Donations page, in their
+ * language. The keys and wording mirror the <select> in pages/Donations.jsx.
+ * A purpose the form does not offer (a bulk import, say) is shown as stored.
+ */
+function devoteeDonationPurposeLabel(?string $purpose, string $lang): string
+{
+    $l = devoteeCopyLang($lang);
+    $labels = [
+        'kumbabhishekam' => ['ta' => 'கும்பாபிஷேகம்', 'en' => 'Kumbabhishekam'],
+        'annadanam_hall' => ['ta' => 'அன்னதான கூடம் கட்டுமானம்', 'en' => 'Annadanam Hall construction'],
+        'annadanam'      => ['ta' => 'அன்னதானம்', 'en' => 'Annadanam'],
+        'abhishekam'     => ['ta' => 'அபிஷேகம்', 'en' => 'Abhishekam'],
+        'festival'       => ['ta' => 'திருவிழா நிதி', 'en' => 'the Festival Fund'],
+        'maintenance'    => ['ta' => 'கோயில் பராமரிப்பு', 'en' => 'Temple Maintenance'],
+        'other'          => ['ta' => 'கோயிலின் பிற தேவைகள்', 'en' => 'the temple\'s other needs'],
+        ''               => ['ta' => 'கோயில் பொது நிதி', 'en' => 'the temple\'s general fund'],
+    ];
+    $key = trim((string) $purpose);
+    return $labels[$key][$l] ?? $key;
+}
+
+/** "20 செப்டம்பர் 2026" / "20 Sep 2026", or a polite placeholder when no date was chosen. */
+function devoteeBookingDateLabel(?string $ymd, string $lang): string
+{
+    $l = devoteeCopyLang($lang);
+    if ($ymd === null || !isValidDate((string) $ymd)) {
+        return $l === 'ta' ? 'தேதி உறுதி செய்யப்பட வேண்டும்' : 'a date to be confirmed';
+    }
+    return notifyFormatDate((string) $ymd, $l);
+}
+
+/**
+ * A phone number as international digits for WhatsApp and SMS. Numbers saved
+ * before the site asked for a country were ten Indian digits with no code; the
+ * reminder worker treats them the same way.
+ */
+function devoteeIntlPhone(?string $phone, ?string $country): string
+{
+    $digits = preg_replace('/\D+/', '', (string) $phone) ?? '';
+    if (strlen($digits) === 11 && $digits[0] === '0' && in_array($country, [null, '', 'IN'], true)) $digits = substr($digits, 1);
+    if (strlen($digits) === 10 && in_array($country, [null, '', 'IN'], true)) $digits = '91' . $digits;
+    return $digits;
+}
+
+/** "+91 ******3210" — enough for the devotee to recognise the number, not enough to use it. */
+function devoteeMaskPhone(?string $phone): string
+{
+    $digits = preg_replace('/\D+/', '', (string) $phone) ?? '';
+    if (strlen($digits) < 7) return '';
+    $last = substr($digits, -4);
+    if (strlen($digits) > 10) {
+        return '+' . substr($digits, 0, strlen($digits) - 10) . ' ******' . $last;
+    }
+    return '******' . $last;
+}
+
+/**
+ * Tell the devotee their password changed — after a reset link or from the
+ * account page — so whoever really owns the address can act if it was not them.
+ * The email goes inside the request (the catalogue marks it sync).
+ */
+function devoteeNotifyPasswordChanged(array $devotee): ?array
+{
+    if (!devoteeNotifyReady()) return null;
+    $id = (int) $devotee['id'];
+    return devoteeNotifyEvent('security.password_changed', [
+        'devotee_id' => $id,
+        'vars'       => ['changedAt' => devoteeNowLabel(devoteeNotifyLang($id))],
+    ]);
+}
+
 /* ── Emails ─────────────────────────────────────────────────────────────── */
 
+/**
+ * The confirmation link. With the Notification Service it is an
+ * account.email_verification event: the link travels in secret_vars, so it is
+ * rendered only into the email that leaves in this request and is never stored.
+ * The plain-text email keeps the link on a line of its own.
+ */
 function devoteeSendVerification(array $devotee): array
 {
     $raw  = devoteeIssueToken((int) $devotee['id'], 'verify');
     $link = siteUrl('/verify-email?token=' . $raw);
+
+    if (devoteeNotifyReady()) {
+        $mail = devoteeMailFromNotify(devoteeNotifyEvent('account.email_verification', [
+            'devotee_id'  => (int) $devotee['id'],
+            'secret_vars' => ['verifyUrl' => $link],
+            'vars'        => ['expiresHours' => VERIFY_TTL_HOURS],
+        ]));
+        if ($mail !== null) return $mail;
+    }
+    return devoteeMailVerification($devotee, $link);
+}
+
+/** The pre-notification confirmation email, sent straight through the mailer. */
+function devoteeMailVerification(array $devotee, string $link): array
+{
     $name = htmlspecialchars($devotee['name'], ENT_QUOTES, 'UTF-8');
     $html = mailTemplate(
         'வணக்கம்',
@@ -302,10 +614,26 @@ function devoteeSendVerification(array $devotee): array
     return sendMail($devotee['email'], 'Confirm your email — Temple', $html, $text, 'verify');
 }
 
+/** The reset link: a security.password_reset event, the link in secret_vars like the confirmation. */
 function devoteeSendReset(array $devotee): array
 {
     $raw  = devoteeIssueToken((int) $devotee['id'], 'reset');
     $link = siteUrl('/reset-password?token=' . $raw);
+
+    if (devoteeNotifyReady()) {
+        $mail = devoteeMailFromNotify(devoteeNotifyEvent('security.password_reset', [
+            'devotee_id'  => (int) $devotee['id'],
+            'secret_vars' => ['resetUrl' => $link],
+            'vars'        => ['expiresMinutes' => RESET_TTL_MINUTES],
+        ]));
+        if ($mail !== null) return $mail;
+    }
+    return devoteeMailReset($devotee, $link);
+}
+
+/** The pre-notification reset email, sent straight through the mailer. */
+function devoteeMailReset(array $devotee, string $link): array
+{
     $name = htmlspecialchars($devotee['name'], ENT_QUOTES, 'UTF-8');
     $html = mailTemplate(
         'கடவுச்சொல் மீட்பு',
@@ -326,8 +654,51 @@ function devoteeSendReset(array $devotee): array
  * Sent when someone registers with an address that already has an account.
  * The registration endpoint answers identically either way, so this is what
  * tells the real owner something happened.
+ *
+ * The event catalogue has no entry for this (it is not something a module
+ * announces; it is the sign-up form protecting an address), so it is a plain
+ * notify(): a security email only, sent now, with no in-app notification —
+ * the bell must not light up because a stranger typed someone's address.
  */
 function devoteeSendAlreadyRegistered(array $devotee): array
+{
+    if (devoteeNotifyReady()) {
+        $login  = siteUrl('/login');
+        $forgot = siteUrl('/forgot-password');
+        try {
+            $result = notify([
+                'event'       => 'account.already_registered',
+                'category'    => 'security',
+                'priority'    => 'important',
+                'channels'    => ['email'],
+                'sync'        => true,
+                'devotee_id'  => (int) $devotee['id'],
+                'entity_type' => 'devotee',
+                'entity_id'   => (int) $devotee['id'],
+                'cta_url'     => '/login',
+                'title'       => ['ta' => 'உங்களுக்கு ஏற்கெனவே கணக்கு உள்ளது', 'en' => 'You already have an account'],
+                'cta_label'   => ['ta' => 'உள்நுழைய', 'en' => 'Go to sign in'],
+                'body'        => [
+                    'ta' => "இந்த மின்னஞ்சல் முகவரியைக் கொண்டு யாரோ இப்போது புதிய கணக்கு தொடங்க முயன்றார்கள். ஆனால் இந்த முகவரிக்கு ஏற்கெனவே கணக்கு உள்ளது. புதிய கணக்கு எதுவும் உருவாக்கப்படவில்லை; எதுவும் மாறவில்லை.\n\n"
+                            . "அது நீங்கள்தான் என்றால், உள்நுழையுங்கள்:\n{$login}\n\nகடவுச்சொல் மறந்துவிட்டால்:\n{$forgot}\n\n"
+                            . 'இது நீங்கள் இல்லை என்றால், இந்தச் செய்தியைப் பாதுகாப்பாகப் புறக்கணிக்கலாம்.',
+                    'en' => "Someone just tried to create an account with this email address, but one already exists. No new account was made and nothing has changed.\n\n"
+                            . "If that was you, sign in instead:\n{$login}\n\nForgotten your password? Choose a new one:\n{$forgot}\n\n"
+                            . 'If this was not you, you can safely ignore this message.',
+                ],
+            ]);
+        } catch (Throwable $e) {
+            error_log('[notify] account.already_registered failed: ' . $e->getMessage());
+            $result = null;
+        }
+        $mail = devoteeMailFromNotify($result);
+        if ($mail !== null) return $mail;
+    }
+    return devoteeMailAlreadyRegistered($devotee);
+}
+
+/** The pre-notification "you already have an account" email, sent straight through the mailer. */
+function devoteeMailAlreadyRegistered(array $devotee): array
 {
     $html = mailTemplate(
         'உங்கள் கணக்கு',
@@ -344,7 +715,25 @@ function devoteeSendAlreadyRegistered(array $devotee): array
     return sendMail($devotee['email'], 'You already have an account — Temple', $html, $text, 'already_registered');
 }
 
+/**
+ * Sent once the address is confirmed. With the Notification Service this is
+ * account.email_verified — one in-app notification and one email, deduped per
+ * devotee, so confirming never sends a second "welcome" email on top of it. The
+ * email is queued for the worker: nothing in it is secret or urgent.
+ */
 function devoteeSendWelcome(array $devotee): array
+{
+    if (devoteeNotifyReady()) {
+        $mail = devoteeMailFromNotify(devoteeNotifyEvent('account.email_verified', [
+            'devotee_id' => (int) $devotee['id'],
+        ]));
+        if ($mail !== null) return $mail;
+    }
+    return devoteeMailWelcome($devotee);
+}
+
+/** The pre-notification "email confirmed" message, sent straight through the mailer. */
+function devoteeMailWelcome(array $devotee): array
 {
     $name = htmlspecialchars($devotee['name'], ENT_QUOTES, 'UTF-8');
     $html = mailTemplate(

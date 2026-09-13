@@ -151,6 +151,18 @@
 .donations-pledge__submit {
   margin-top: var(--space-2);
 }
+/* Thank-you-list consent: the hint lines up under the label text, not under
+   the box (20px checkbox + the .checkbox-label gap). */
+.donations-pledge__consent .checkbox-label {
+  margin-bottom: 0;
+}
+.donations-pledge__consent .checkbox-label > input {
+  align-self: flex-start;
+  margin-top: 0.1rem;
+}
+.donations-pledge__consent-hint {
+  padding-left: calc(20px + 0.65rem);
+}
 
 /* ── "What happens next" callout ─────────────────────────────────── */
 .donations-next {

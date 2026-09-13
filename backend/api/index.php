@@ -52,11 +52,46 @@ $method = $_SERVER['REQUEST_METHOD'];
 $path = preg_replace('#^/api#', '', $uri);
 $path = rtrim($path, '/') ?: '/';
 
+// Signed links from inside a notification: tracked clicks, the email open
+// pixel and unsubscribe. They answer a redirect, a GIF or an HTML page rather
+// than JSON, so they are matched first and exactly; the token's signature is
+// checked in n.php. Any other shape under /n/ is simply not a route.
+if (preg_match('#^/n/([cou])/([cou][0-9]{1,10}\.[A-Za-z0-9_-]{16})$#', $path, $trackMatch)) {
+    $trackKind  = $trackMatch[1];
+    $trackToken = $trackMatch[2];
+    require __DIR__ . '/n.php';
+    exit;
+}
+if (str_starts_with($path, '/n/')) {
+    sendError('Not found', 404);
+}
+
+// Delivery status callbacks from WhatsApp, SMS and push providers, any method.
+// notify_webhook.php verifies the provider's signature and answers the body
+// and Content-Type that provider expects.
+if (preg_match('#^/notify-webhook/([a-z0-9]{2,16})$#', $path, $webhookMatch)) {
+    $webhookDriver = $webhookMatch[1];
+    require __DIR__ . '/notify_webhook.php';
+    exit;
+}
+if (str_starts_with($path, '/notify-webhook/')) {
+    sendError('Not found', 404);
+}
+
+// The notification worker over HTTP, for hosts without CLI cron. The endpoint
+// itself answers 404 until NOTIFY_CRON_KEY is set, and 405 for anything but
+// GET or POST once it is.
+if ($path === '/notify-cron') {
+    require __DIR__ . '/notify_cron.php';
+    exit;
+}
+
 // Prefixed groups: one file handles every action under the prefix and reads
 // the remaining segment from the variable named here.
 $groups = [
-    '/auth/'    => ['file' => 'auth.php',    'var' => 'authAction'],
-    '/account/' => ['file' => 'account.php', 'var' => 'accountAction'],
+    '/auth/'          => ['file' => 'auth.php',          'var' => 'authAction'],
+    '/account/'       => ['file' => 'account.php',       'var' => 'accountAction'],
+    '/notifications/' => ['file' => 'notifications.php', 'var' => 'notificationsAction'],
 ];
 foreach ($groups as $prefix => $group) {
     if (str_starts_with($path, $prefix)) {

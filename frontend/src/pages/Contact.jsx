@@ -1,5 +1,4 @@
 import { useState } from "react";
-import { Helmet } from "react-helmet-async";
 import { Link } from "react-router-dom";
 import {
   LuClock,
@@ -14,8 +13,11 @@ import {
   LuSunset,
 } from "react-icons/lu";
 import { FaWhatsapp } from "react-icons/fa";
-import { useLang } from "../context/LangContext";
+import { useLang, rateLimitInfo, rateLimitMessage } from "../context/LangContext";
 import { useToast } from "../context/ToastContext";
+import PhoneInput from "../components/ui/PhoneInput";
+import { parseInternational, phoneProblem, toE164 } from "../lib/phone";
+import { DEFAULT_COUNTRY } from "../data/countries";
 import {
   TEMPLE,
   ADDRESS,
@@ -28,6 +30,8 @@ import {
 } from "../data/temple";
 import CommitteeGrid from "../components/CommitteeGrid/CommitteeGrid";
 import PageHero from "../components/ui/PageHero";
+import Seo from "../components/Seo";
+import ShareButton from "../components/Share/ShareButton";
 import SectionHeader from "../components/ui/SectionHeader";
 import Button from "../components/ui/Button";
 import Alert from "../components/ui/Alert";
@@ -46,9 +50,11 @@ const EMAIL = "info@dhabbalavaartemple.in";
 export default function Contact() {
   const { t } = useLang();
   const toast = useToast();
-  const [form, setForm] = useState({ name: "", phone: "", message: "" });
+  const [form, setForm] = useState({ name: "", phone: "", phoneCountry: DEFAULT_COUNTRY, message: "", hp_token: "" });
   const [errors, setErrors] = useState({});
-  const [status, setStatus] = useState(null);
+  const [status, setStatus] = useState(null); // null | sending | success | error | limited
+  // Kept as seconds, not as a sentence, so the notice follows a language switch.
+  const [retryAfter, setRetryAfter] = useState(null);
 
   const handleChange = (e) => {
     const { name, value } = e.target;
@@ -59,8 +65,8 @@ export default function Contact() {
   const validate = () => {
     const next = {};
     if (form.name.trim().length < 2) next.name = t("பெயரை உள்ளிடவும்", "Please enter your name");
-    if (!/^[0-9]{10}$/.test(form.phone))
-      next.phone = t("10 இலக்க தொலைபேசி எண் தேவை", "Enter a 10-digit phone number");
+    const pe = phoneProblem(form.phone, form.phoneCountry, { required: true });
+    if (pe) next.phone = pe;
     if (form.message.trim().length < 5)
       next.message = t("செய்தியை உள்ளிடவும்", "Please write a short message");
     setErrors(next);
@@ -75,11 +81,21 @@ export default function Contact() {
       const res = await fetch("/api/contact", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(form),
+        body: JSON.stringify({ ...form, phone: toE164(form.phone, form.phoneCountry) }),
       });
-      if (!res.ok) throw new Error();
+      if (!res.ok) {
+        const body = await res.json().catch(() => null);
+        const limited = rateLimitInfo(res.status, body, res.headers.get("Retry-After"));
+        if (limited) {
+          setRetryAfter(limited.retryAfter);
+          setStatus("limited");
+          toast.error(rateLimitMessage(t, limited.retryAfter));
+          return;
+        }
+        throw new Error();
+      }
       setStatus("success");
-      setForm({ name: "", phone: "", message: "" });
+      setForm((f) => ({ name: "", phone: "", phoneCountry: f.phoneCountry, message: "", hp_token: "" }));
       toast.success(
         t("செய்தி அனுப்பப்பட்டது. விரைவில் தொடர்பு கொள்வோம்.", "Message sent. We'll reach out soon."),
         t("நன்றி", "Thank you"),
@@ -95,11 +111,7 @@ export default function Contact() {
 
   return (
     <>
-      <Helmet>
-        <title>
-          {t("தொடர்பு", "Contact")} — {t(TEMPLE.name.ta, TEMPLE.name.en)}
-        </title>
-      </Helmet>
+      <Seo title={t("தொடர்பு", "Contact")} description={t(ADDRESS.printed.ta, ADDRESS.printed.en)} />
 
       <PageHero
         variant="contact"
@@ -138,6 +150,12 @@ export default function Contact() {
             >
               {t("வழிகாட்டி", "Directions")}
             </Button>
+            <ShareButton
+              variant="outline-light"
+              className="contact-hero__btn"
+              title={t("தொடர்பு கொள்ளுங்கள்", "Contact Us")}
+              text={t(ADDRESS.printed.ta, ADDRESS.printed.en)}
+            />
           </>
         }
       />
@@ -325,6 +343,11 @@ export default function Contact() {
                   )}
                 </Alert>
               )}
+              {status === "limited" && (
+                <Alert tone="warning" onClose={() => setStatus(null)}>
+                  {rateLimitMessage(t, retryAfter)}
+                </Alert>
+              )}
 
               <form onSubmit={handleSubmit} noValidate>
                 <Field label={t("பெயர்", "Name")} required error={errors.name}>
@@ -339,23 +362,40 @@ export default function Contact() {
                     />
                   )}
                 </Field>
+                {/* Honeypot. People never see it and cannot Tab to it; form-filling
+                    bots do fill it, and the server then quietly saves nothing.
+                    Sits between two real fields, not first or last, so no focus
+                    logic that picks "the first input" can land on it. */}
+                <div className="visually-hidden" aria-hidden="true">
+                  <label htmlFor="contact-hp-token">
+                    {t("இந்தப் புலத்தை காலியாக விடவும்", "Leave this field empty")}
+                  </label>
+                  <input
+                    id="contact-hp-token"
+                    type="text"
+                    name="hp_token"
+                    value={form.hp_token}
+                    onChange={handleChange}
+                    tabIndex={-1}
+                    autoComplete="off"
+                  />
+                </div>
                 <Field
                   label={t("தொலைபேசி", "Phone")}
                   required
                   error={errors.phone}
-                  hint={t("10 இலக்க மொபைல் எண்", "10-digit mobile number")}
+                  hint={t("நாட்டைத் தேர்ந்தெடுத்து, முன்னால் உள்ள 0 இல்லாமல் எண்ணை உள்ளிடவும்", "Pick your country, then type the number without its leading 0")}
                 >
                   {(a11y) => (
-                    <input
+                    <PhoneInput
                       {...a11y}
-                      required
-                      type="tel"
                       name="phone"
-                      value={form.phone}
-                      onChange={handleChange}
-                      inputMode="numeric"
-                      autoComplete="tel"
-                      placeholder="9999999999"
+                      country={form.phoneCountry}
+                      national={form.phone}
+                      onChange={({ country, national }) => {
+                        setForm((f) => ({ ...f, phoneCountry: country, phone: national }));
+                        if (errors.phone) setErrors((er) => ({ ...er, phone: undefined }));
+                      }}
                     />
                   )}
                 </Field>

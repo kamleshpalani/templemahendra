@@ -24,6 +24,7 @@ const ForgotPassword = lazy(() => import("./pages/ForgotPassword"));
 const ResetPassword = lazy(() => import("./pages/ResetPassword"));
 const VerifyEmail = lazy(() => import("./pages/VerifyEmail"));
 const Account = lazy(() => import("./pages/Account"));
+const Notifications = lazy(() => import("./pages/Notifications"));
 const RequireAuth = lazy(() => import("./components/Auth/RequireAuth"));
 
 /** Re-mounts on every path change so CSS `page-in` plays; Suspense shows the glass loader. */
@@ -86,6 +87,7 @@ function App() {
             <Route path="verify-email" element={<VerifyEmail />} />
             <Route element={<RequireAuth />}>
               <Route path="account" element={<Account />} />
+              <Route path="notifications" element={<Notifications />} />
             </Route>
 
             <Route path="*" element={<NotFound />} />

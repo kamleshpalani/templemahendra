@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Helmet } from "react-helmet-async";
+import { useSearchParams } from "react-router-dom";
 import {
   LuBookOpen,
   LuCircleCheck,
@@ -14,18 +14,23 @@ import {
   LuUtensils,
 } from "react-icons/lu";
 import api from "../services/api";
-import { useLang } from "../context/LangContext";
+import { useLang, rateLimitInfo, rateLimitMessage } from "../context/LangContext";
 import { useToast } from "../context/ToastContext";
 import { useAuth } from "../context/AuthContext";
+import PhoneInput from "../components/ui/PhoneInput";
+import { parseInternational, phoneProblem, toE164 } from "../lib/phone";
+import { DEFAULT_COUNTRY } from "../data/countries";
 import Button from "../components/ui/Button";
 import Badge from "../components/ui/Badge";
 import Alert from "../components/ui/Alert";
 import { Field } from "../components/ui/Field";
 import PageHero from "../components/ui/PageHero";
+import Seo from "../components/Seo";
+import ShareButton from "../components/Share/ShareButton";
 import SectionHeader from "../components/ui/SectionHeader";
 import Modal from "../components/ui/Modal";
 import { SkeletonCards } from "../components/ui/Feedback";
-import { TEMPLE, SECONDARY_CONTACT, formatPhone, telHref } from "../data/temple";
+import { SECONDARY_CONTACT, formatPhone, telHref } from "../data/temple";
 import { todayIST } from "../lib/templeTime";
 import "./Sevas.css";
 
@@ -47,6 +52,17 @@ function sevaIcon(seva, index) {
   const hit = SEVA_ICON_RULES.find(([re]) => re.test(key));
   return hit ? hit[1] : SEVA_ICON_CYCLE[index % SEVA_ICON_CYCLE.length];
 }
+
+/*
+ * A seva's name and note in the reading language. Defined once: the card, the
+ * page's own <Seo> and the share sheet all have to say the same thing about the
+ * same offering.
+ */
+const sevaName = (seva, lang) => (lang === "ta" ? seva.name_ta : seva.name_en) || seva.name_en || seva.name_ta || "";
+const sevaDescription = (seva, lang) => {
+  if (!seva.description_ta && !seva.description_en && !seva.description) return null;
+  return (lang === "ta" ? (seva.description_ta ?? seva.description) : (seva.description_en ?? seva.description)) || null;
+};
 
 /* Standard list shown whenever the API returns nothing (or fails). */
 const FALLBACK_SEVAS = [
@@ -106,15 +122,23 @@ function BookingModal({ seva, onClose, t, lang }) {
   // A signed-in devotee should not retype what the temple already holds. The
   // server stamps the booking with their account id either way.
   const { user } = useAuth();
+  const saved = parseInternational(user?.phone ?? "", user?.phoneCountry) ?? {
+    country: user?.phoneCountry || DEFAULT_COUNTRY,
+    national: "",
+  };
   const [form, setForm] = useState({
     devotee_name: user?.name ?? "",
-    phone: user?.phone ?? "",
+    phone: saved.national,
+    phoneCountry: saved.country,
     preferred_date: "",
     message: "",
+    hp_token: "",
   });
   const [errors, setErrors] = useState({});
-  const [status, setStatus] = useState("idle"); // idle | loading | success | error
+  const [status, setStatus] = useState("idle"); // idle | loading | success | error | limited
   const [errMsg, setErrMsg] = useState("");
+  // Kept as seconds, not as a sentence, so the notice follows a language switch.
+  const [retryAfter, setRetryAfter] = useState(null);
   const closeRef = useRef(null);
 
   // The form unmounts on success; move focus to the Close button so the
@@ -133,8 +157,8 @@ function BookingModal({ seva, onClose, t, lang }) {
     const next = {};
     if (form.devotee_name.trim().length < 2)
       next.devotee_name = t("பெயரை உள்ளிடவும்", "Please enter your name");
-    if (!/^[0-9]{7,15}$/.test(form.phone))
-      next.phone = t("சரியான தொலைபேசி எண் தேவை", "Enter a valid phone number");
+    const pe = phoneProblem(form.phone, form.phoneCountry, { required: true });
+    if (pe) next.phone = pe;
     setErrors(next);
     return Object.keys(next).length === 0;
   }
@@ -147,11 +171,13 @@ function BookingModal({ seva, onClose, t, lang }) {
     try {
       await api.post("/seva-bookings", {
         seva_id: seva.id,
-        seva_name: lang === "ta" ? seva.name_ta : seva.name_en,
+        seva_name: sevaName(seva, lang),
         devotee_name: form.devotee_name,
-        phone: form.phone,
+        phone: toE164(form.phone, form.phoneCountry),
+        phoneCountry: form.phoneCountry,
         preferred_date: form.preferred_date || null,
         message: form.message,
+        hp_token: form.hp_token,
       });
       setStatus("success");
       toast.success(
@@ -159,6 +185,16 @@ function BookingModal({ seva, onClose, t, lang }) {
         t("பதிவு வெற்றி", "Booking received"),
       );
     } catch (err) {
+      const limited = rateLimitInfo(
+        err?.response?.status,
+        err?.response?.data,
+        err?.response?.headers?.["retry-after"],
+      );
+      if (limited) {
+        setRetryAfter(limited.retryAfter);
+        setStatus("limited");
+        return;
+      }
       setErrMsg(
         err?.response?.data?.error ||
           t(
@@ -170,7 +206,9 @@ function BookingModal({ seva, onClose, t, lang }) {
     }
   }
 
-  const sevaName = lang === "ta" ? seva.name_ta : seva.name_en;
+  // The same helper the cards use, so the dialog cannot disagree with the tile
+  // it was opened from.
+  const name = sevaName(seva, lang);
   const busy = status === "loading";
 
   if (status === "success") {
@@ -190,7 +228,7 @@ function BookingModal({ seva, onClose, t, lang }) {
             )}
           </p>
           <div className="booking-success__meta">
-            <Badge tone="gold">{sevaName}</Badge>
+            <Badge tone="gold">{name}</Badge>
             <Badge tone="muted">₹{seva.amount}</Badge>
           </div>
           <Button ref={closeRef} variant="primary" onClick={onClose}>
@@ -207,7 +245,7 @@ function BookingModal({ seva, onClose, t, lang }) {
       onClose={onClose}
       size="md"
       eyebrow={t("சேவை பதிவு", "Book Seva")}
-      title={sevaName}
+      title={name}
       description={t(
         "விவரங்களை நிரப்பவும் — கோயில் அலுவலகம் தொலைபேசியில் உறுதி செய்யும்.",
         "Fill in your details — the temple office will confirm by phone.",
@@ -237,25 +275,42 @@ function BookingModal({ seva, onClose, t, lang }) {
           )}
         </Field>
 
+        {/* Honeypot. People never see it and cannot Tab to it; form-filling bots
+            do fill it, and the server then quietly saves nothing. It must not be
+            the first or last input: the dialog's focus trap counts every input,
+            so either end would steal the initial focus or break Tab wrapping. */}
+        <div className="visually-hidden" aria-hidden="true">
+          <label htmlFor="booking-hp-token">
+            {t("இந்தப் புலத்தை காலியாக விடவும்", "Leave this field empty")}
+          </label>
+          <input
+            id="booking-hp-token"
+            type="text"
+            name="hp_token"
+            value={form.hp_token}
+            onChange={handleChange}
+            tabIndex={-1}
+            autoComplete="off"
+          />
+        </div>
+
         <div className="field-row">
           <Field
             label={t("தொலைபேசி", "Phone Number")}
             required
             error={errors.phone}
-            hint={t("7–15 இலக்கங்கள், எண்கள் மட்டும்", "7–15 digits, numbers only")}
+            hint={t("நாட்டைத் தேர்ந்தெடுத்து, முன்னால் உள்ள 0 இல்லாமல் எண்ணை உள்ளிடவும்", "Pick your country, then type the number without its leading 0")}
           >
             {(a11y) => (
-              <input
-                type="tel"
-                name="phone"
-                value={form.phone}
-                onChange={handleChange}
-                required
-                maxLength={15}
-                placeholder="9999999999"
-                inputMode="numeric"
-                autoComplete="tel"
+              <PhoneInput
                 {...a11y}
+                name="phone"
+                country={form.phoneCountry}
+                national={form.phone}
+                onChange={({ country, national }) => {
+                  setForm((f) => ({ ...f, phoneCountry: country, phone: national }));
+                  if (errors.phone) setErrors((er) => ({ ...er, phone: undefined }));
+                }}
               />
             )}
           </Field>
@@ -291,7 +346,8 @@ function BookingModal({ seva, onClose, t, lang }) {
           )}
         </Field>
 
-        {errMsg && <Alert tone="error">{errMsg}</Alert>}
+        {status === "limited" && <Alert tone="warning">{rateLimitMessage(t, retryAfter)}</Alert>}
+        {status === "error" && errMsg && <Alert tone="error">{errMsg}</Alert>}
 
         <div className="modal__actions booking-form__actions">
           <Button type="button" variant="ghost" onClick={onClose}>
@@ -358,6 +414,7 @@ export default function Sevas() {
   const [failed, setFailed] = useState(false);
   const [selectedSeva, setSelectedSeva] = useState(null);
   const { lang, t } = useLang();
+  const [params, setParams] = useSearchParams();
 
   const load = useCallback(() => {
     setLoading(true);
@@ -375,6 +432,54 @@ export default function Sevas() {
 
   const closeBooking = useCallback(() => setSelectedSeva(null), []);
 
+  /*
+   * ?seva=<id> opens that offering's booking form, so a shared seva arrives
+   * ready to book instead of dropping the visitor at the top of the list.
+   *
+   * The id is captured at the first render, before either effect below can
+   * touch the URL: the list arrives from the API a moment later, and reading the
+   * parameter only then would race the write that keeps the address bar in step.
+   */
+  const wantedSeva = useRef(params.get("seva"));
+  const deepLinkDone = useRef(false);
+
+  // Matched against the live list only. The standard fallback list has ids of
+  // its own, and honouring the link against those could open a different
+  // offering than the one that was sent.
+  useEffect(() => {
+    if (deepLinkDone.current || sevas.length === 0) return;
+    deepLinkDone.current = true;
+    const match = sevas.find((s) => String(s.id) === wantedSeva.current);
+    if (match) setSelectedSeva(match);
+  }, [sevas]);
+
+  /*
+   * The other direction, so the address bar always names the open form and can
+   * be copied out of it. Skipped on the first run, where the URL is the truth.
+   *
+   * setParams is read through a ref because react-router hands back a new
+   * function whenever the location changes — as a dependency it would re-run
+   * this effect on its own writes and clear the parameter it had just set.
+   */
+  const setParamsRef = useRef(setParams);
+  setParamsRef.current = setParams;
+  const mounted = useRef(false);
+  useEffect(() => {
+    if (!mounted.current) {
+      mounted.current = true;
+      return;
+    }
+    setParamsRef.current(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        if (selectedSeva) next.set("seva", String(selectedSeva.id));
+        else next.delete("seva");
+        return next;
+      },
+      { replace: true },
+    );
+  }, [selectedSeva]);
+
   // Whole card is a pointer convenience; the Book button is the accessible
   // control. Skip when the visitor is selecting text to copy a name/price.
   // Focus that card's Book button first so the dialog has a real opener to
@@ -387,25 +492,28 @@ export default function Sevas() {
 
   const items = sevas.length > 0 ? sevas : FALLBACK_SEVAS;
   const callLabel = t("அழைத்து பதிவு செய்ய", "Book by phone");
+  const heading = t("சேவைகள் & பூஜைகள்", "Sevas & Poojas");
+  const lead = t(
+    "உங்கள் பெயரில் அல்லது குடும்பத்தினர் பெயரில் ஒரு பூஜையை நடத்தி ஆசி பெறுங்கள்.",
+    "Offer a pooja in your name or your family's name and receive the blessings of the Goddess.",
+  );
 
   return (
     <>
-      <Helmet>
-        <title>
-          {t("சேவைகள்", "Sevas")} —{" "}
-          {t(TEMPLE.name.ta, TEMPLE.name.en)}
-        </title>
-      </Helmet>
+      {/* With ?seva= in the URL the page is about that one offering, and that is
+          what a preview should say. */}
+      <Seo
+        title={selectedSeva ? sevaName(selectedSeva, lang) : t("சேவைகள்", "Sevas")}
+        description={selectedSeva ? sevaDescription(selectedSeva, lang) || lead : lead}
+      />
 
       <PageHero
         variant="sevas"
         eyebrow={t("ஆன்லைன் பதிவு", "Online booking")}
-        title={t("சேவைகள் & பூஜைகள்", "Sevas & Poojas")}
-        lead={t(
-          "உங்கள் பெயரில் அல்லது குடும்பத்தினர் பெயரில் ஒரு பூஜையை நடத்தி ஆசி பெறுங்கள்.",
-          "Offer a pooja in your name or your family's name and receive the blessings of the Goddess.",
-        )}
+        title={heading}
+        lead={lead}
         crumbs={[{ label: t("சேவைகள்", "Sevas") }]}
+        actions={<ShareButton variant="outline-light" title={heading} text={lead} to="/sevas" />}
         aside={<HowItWorks t={t} />}
       />
 
@@ -460,14 +568,9 @@ export default function Sevas() {
             <ul className="grid-auto sevas-grid" role="list">
               {items.map((s, i) => {
                 const Icon = sevaIcon(s, i);
-                const primaryName = lang === "ta" ? s.name_ta : s.name_en;
+                const primaryName = sevaName(s, lang);
                 const altName = lang === "ta" ? s.name_en : s.name_ta;
-                const description =
-                  s.description_ta || s.description
-                    ? lang === "ta"
-                      ? (s.description_ta ?? s.description)
-                      : (s.description_en ?? s.description)
-                    : null;
+                const description = sevaDescription(s, lang);
                 return (
                   <li
                     key={s.id}
@@ -504,10 +607,21 @@ export default function Sevas() {
                           e.stopPropagation();
                           setSelectedSeva(s);
                         }}
-                        aria-label={`${t("பதிவு செய்", "Book")} — ${lang === "ta" ? s.name_ta : s.name_en}`}
+                        aria-label={`${t("பதிவு செய்", "Book")} — ${primaryName}`}
                       >
                         {t("பதிவு செய் →", "Book →")}
                       </Button>
+                      {/* Icon-only: the price and the Book button own this row.
+                          ?seva= reopens this offering's form for whoever
+                          receives the link. */}
+                      <ShareButton
+                        iconOnly
+                        variant="ghost"
+                        className="seva-card__share"
+                        title={primaryName}
+                        text={description || lead}
+                        to={`/sevas?seva=${s.id}`}
+                      />
                     </div>
                   </li>
                 );

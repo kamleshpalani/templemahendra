@@ -10,6 +10,25 @@ if (str_starts_with($uri, '/api')) {
     return true;
 }
 
+// Link unfurlers (WhatsApp, Facebook, LinkedIn, X, …) never run JavaScript, so
+// on Hostinger .htaccess routes them to the Open Graph renderer instead of the
+// React shell. Reproduced here, because a preview that only works in production
+// is a preview nobody can check before shipping it. Vite serves the real pages
+// to browsers on its own port; this only ever answers a crawler.
+//
+//   curl -A "WhatsApp/2.23" http://127.0.0.1:8000/gallery?photo=7
+$unfurlers = '/(facebookexternalhit|Facebot|Twitterbot|LinkedInBot|WhatsApp|TelegramBot|Slackbot|Discordbot|SkypeUriPreview|Pinterest|redditbot|vkShare|Embedly|Iframely|Mastodon|Nuzzel|Viber|Line)/i';
+if (
+    !str_starts_with($uri, '/admin')
+    && !str_starts_with($uri, '/uploads')
+    && preg_match($unfurlers, (string) ($_SERVER['HTTP_USER_AGENT'] ?? ''))
+    && !is_file(__DIR__ . $uri)
+) {
+    $_GET['path'] = $uri;
+    require __DIR__ . '/api/og.php';
+    return true;
+}
+
 // Directories that are never web entry points. On Hostinger a .htaccess in each
 // of these denies HTTP access; the built-in server honours no .htaccess, so the
 // same rule is applied here. Without it, local behaviour is more permissive than

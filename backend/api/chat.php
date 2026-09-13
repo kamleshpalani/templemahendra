@@ -2,6 +2,7 @@
 // backend/api/chat.php — POST only (AI / rule-based chatbot)
 
 require_once __DIR__ . '/../includes/helpers.php';
+require_once __DIR__ . '/../includes/public_guard.php';
 
 setCorsHeaders();
 
@@ -9,8 +10,13 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     sendError('Method not allowed', 405);
 }
 
+// A conversation is a few messages a minute. Both limits count every post, so a
+// script cannot run up AI calls or load by sending blanks either.
+publicGuardLimit('chat-window');
+publicGuardLimit('chat-day');
+
 $body    = getJsonBody();
-$message = sanitizeText($body['message'] ?? '', 500);
+$message = sanitizeText(is_string($body['message'] ?? null) ? $body['message'] : '', 500);
 $history = is_array($body['history'] ?? null) ? array_slice($body['history'], -8) : [];
 
 if ($message === '') {
@@ -42,10 +48,25 @@ PROMPT;
 // ── Try Gemini 1.5 Flash if API key is configured ─────────────────────
 $apiKey = getenv('GEMINI_API_KEY') ?: '';
 
-if ($apiKey !== '') {
+// Every AI call is billed to the temple, and the per-visitor limits above do not
+// stop many visitors (or many addresses) together. CHAT_AI_DAILY_LIMIT caps the
+// calls across everyone for one temple day; 0 turns the AI off. Past the cap
+// the built-in answers below reply as usual, which is not an error to the
+// visitor. The limit is checked before the call is spent, so a cap of 0 never
+// touches the network or the database.
+$aiLimitRaw   = envValue('CHAT_AI_DAILY_LIMIT', '300');
+$aiDailyLimit = filter_var($aiLimitRaw, FILTER_VALIDATE_INT, ['options' => ['min_range' => 0]]);
+if ($aiDailyLimit === false) $aiDailyLimit = 300;
+$templeDay = (new DateTime('now', new DateTimeZone('Asia/Kolkata')))->format('Y-m-d');
+$aiAllowed = $apiKey !== ''
+    && $aiDailyLimit > 0
+    && rateLimitAllow('chat-ai', $aiDailyLimit, 86400, 'all-' . $templeDay);
+
+if ($aiAllowed) {
     $contents = [];
 
     foreach ($history as $h) {
+        if (!is_array($h)) continue;
         $role       = ($h['role'] ?? 'user') === 'assistant' ? 'model' : 'user';
         $contents[] = ['role' => $role, 'parts' => [['text' => sanitizeText((string)($h['text'] ?? ''), 500)]]];
     }

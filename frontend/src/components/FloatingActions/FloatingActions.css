@@ -77,10 +77,8 @@
   background: linear-gradient(135deg, var(--brand-whatsapp) 0%, var(--brand-whatsapp-deep) 100%);
   box-shadow: 0 8px 26px rgba(18, 140, 126, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.3);
 }
-.fab--phone {
-  background: linear-gradient(135deg, var(--maroon-500) 0%, var(--maroon-700) 100%);
-  box-shadow: 0 8px 26px rgba(153, 27, 27, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.25);
-}
+/* The call button that used to sit here moved into the sticky header, where it
+   is visible on every page without covering the left edge of the content. */
 
 /* Mobile: icon-only circles above the bottom nav */
 @media (max-width: 768px) {

@@ -1,9 +1,16 @@
 <?php
 // backend/admin/donations.php — Donations report: KPIs, filters, sortable list,
 // purpose breakdown and a filter-aware CSV export.
+//
+// "Send receipt" (a row action, editors and owners) sends the donation.receipt
+// notification once the committee has the money in hand. Sending it again is a
+// deliberate act — a lost email, a corrected address — so each send is its own
+// numbered receipt (sequence = receipts already sent + 1) rather than a
+// duplicate the dedupe key would swallow.
 require_once __DIR__ . '/../includes/auth.php';
 requireAdminAuth();
 require_once __DIR__ . '/../includes/db.php';
+require_once __DIR__ . '/../includes/devotee_auth.php';
 require_once __DIR__ . '/includes/admin_layout.php';
 
 $db      = getDB();
@@ -29,6 +36,139 @@ function donationsWaNumber(string $phone): string
     if (strlen($d) === 11 && $d[0] === '0') $d = substr($d, 1);
     if (strlen($d) === 10) $d = '91' . $d;
     return $d;
+}
+
+/** Same-origin referer on this page only, so a POST lands back on the filtered list. */
+function donationsBackUrl(): string
+{
+    $base = '/admin/donations.php';
+    $ref  = (string) ($_SERVER['HTTP_REFERER'] ?? '');
+    $p    = $ref !== '' ? parse_url($ref) : false;
+    if (!$p || empty($p['host'])) return $base;
+    $host = $p['host'] . (isset($p['port']) ? ':' . $p['port'] : '');
+    if (strcasecmp($host, (string) ($_SERVER['HTTP_HOST'] ?? '')) !== 0 || ($p['path'] ?? '') !== $base) return $base;
+    return $base . (!empty($p['query']) ? '?' . $p['query'] : '');
+}
+
+function donationsFlash(string $type, string $text): void
+{
+    $_SESSION['flash_donations'] = [$type, $text];
+}
+
+/** "email", "email and WhatsApp", "email, WhatsApp and SMS". */
+function donationsJoin(array $items): string
+{
+    if (count($items) <= 1) return (string) ($items[0] ?? '');
+    $last = array_pop($items);
+    return implode(', ', $items) . ' and ' . $last;
+}
+
+/** How many receipts have gone out for each donation id. */
+function donationsReceiptCounts(PDO $db, array $ids): array
+{
+    if (!$ids || !devoteeNotifyReady()) return [];
+    $marks = implode(',', array_fill(0, count($ids), '?'));
+    $stmt  = $db->prepare(
+        "SELECT entity_id, COUNT(*) AS c FROM notifications
+          WHERE entity_type = 'donation' AND event = 'donation.receipt' AND entity_id IN ($marks)
+          GROUP BY entity_id"
+    );
+    $stmt->execute(array_values($ids));
+    $out = [];
+    foreach ($stmt->fetchAll() as $r) $out[(int) $r['entity_id']] = (int) $r['c'];
+    return $out;
+}
+
+/**
+ * Send donation.receipt for one donation. Returns [flash type, flash text]
+ * saying which channels it was queued on and which were skipped, and why — the
+ * committee needs to know when a receipt could not reach anyone.
+ */
+function donationsSendReceipt(PDO $db, int $id, string $actor): array
+{
+    if (!devoteeNotifyReady()) {
+        return ['error', 'Receipts cannot be sent yet: notifications are not installed on this site (migration 007).'];
+    }
+    $stmt = $db->prepare('SELECT id, devotee_id, name, phone, phone_country, amount, purpose, created_at FROM donations WHERE id = :id');
+    $stmt->execute([':id' => $id]);
+    $d = $stmt->fetch();
+    if (!$d) return ['error', "Donation #$id no longer exists."];
+
+    $receipt   = devoteeReceiptNumber($id);
+    $sequence  = (donationsReceiptCounts($db, [$id])[$id] ?? 0) + 1;
+    $devoteeId = $d['devotee_id'] !== null ? (int) $d['devotee_id'] : null;
+    $l         = devoteeCopyLang($devoteeId !== null ? devoteeNotifyLang($devoteeId) : 'ta');
+    $ctx = [
+        'entity_id' => $id,
+        'sequence'  => $sequence,
+        'actor'     => $actor,
+        'vars'      => [
+            'receiptNumber'   => $receipt,
+            'donationAmount'  => devoteeMoneyLabel((float) $d['amount']),
+            'donationPurpose' => devoteeDonationPurposeLabel($d['purpose'], $l),
+            'donationDate'    => notifyFormatDate(substr((string) $d['created_at'], 0, 10), $l),
+        ],
+    ];
+    $who = trim((string) $d['name']);
+    if ($devoteeId !== null) {
+        $ctx['devotee_id'] = $devoteeId;
+    } else {
+        $phone = devoteeIntlPhone((string) $d['phone'], $d['phone_country'] ?? null);
+        if (strlen($phone) < 7) return ['error', "Receipt $receipt was not sent: the donation has no account and no usable phone number."];
+        $ctx['to_phone'] = $phone;
+        $ctx['name']     = $who;
+        $ctx['lang']     = 'ta';
+    }
+
+    $r = devoteeNotifyEvent('donation.receipt', $ctx);
+    if ($r === null || ($r['id'] === null && empty($r['deduped']))) {
+        return ['error', "Receipt $receipt could not be sent (" . ($r['skipped'] ?? 'the notification service failed') . '). Please try again.'];
+    }
+    if (!empty($r['deduped'])) {
+        return ['warning', "Receipt $receipt number $sequence was already sent a moment ago, so nothing new was sent."];
+    }
+
+    $names   = ['email' => 'email', 'whatsapp' => 'WhatsApp', 'sms' => 'SMS', 'push' => 'push'];
+    $queued  = [];
+    $skipped = [];
+    $inApp   = false;
+    foreach ($r['deliveries'] as $channel => $delivery) {
+        $ok = in_array($delivery['status'], ['queued', 'sending', 'sent', 'delivered', 'read'], true);
+        if ($channel === 'inapp') {
+            if ($ok) $inApp = true;
+            else $skipped[] = 'their account (' . ($delivery['reason'] ?? 'skipped') . ')';
+            continue;
+        }
+        if ($ok) $queued[] = $names[$channel] ?? $channel;
+        else $skipped[] = ($names[$channel] ?? $channel) . ' (' . ($delivery['reason'] ?? $delivery['status']) . ')';
+    }
+
+    $text = "Receipt $receipt (receipt $sequence)" . ($who !== '' ? " for $who" : '') . ': ';
+    $parts = [];
+    if ($queued) $parts[] = 'queued for ' . donationsJoin($queued);
+    if ($inApp)  $parts[] = 'shown in their account';
+    $text .= ($parts ? implode('; ', $parts) : 'no channel could take it') . '.';
+    if ($skipped) $text .= ' Skipped: ' . implode(', ', $skipped) . '.';
+
+    adminAudit('donation_receipt', $receipt, "receipt $sequence; queued: " . ($queued ? implode(', ', $queued) : 'none') . ($inApp ? '; in-app' : '') . '; skipped: ' . ($skipped ? implode(', ', $skipped) : 'none'));
+    return [$queued || $inApp ? 'success' : 'warning', $text];
+}
+
+// ── POST actions (Post → Redirect → Get) ─────────────────────────────────────
+// requireAdminAuth() has already refused a viewer's POST (devotees.edit); the
+// explicit check keeps the rule visible where the action lives.
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    if (adminCsrfGuard() !== '') {
+        donationsFlash('error', 'Your session expired or the form was tampered with. Please reload and try again.');
+    } elseif (($_POST['action'] ?? '') === 'send_receipt') {
+        requireAdminCan('devotees.edit');
+        [$fType, $fText] = donationsSendReceipt($db, (int) ($_POST['id'] ?? 0), (string) (currentAdmin()['username'] ?? 'admin'));
+        donationsFlash($fType, $fText);
+    } else {
+        donationsFlash('error', 'That action is not available on this page.');
+    }
+    header('Location: ' . donationsBackUrl(), true, 303);
+    exit;
 }
 
 // ── Filters (GET, whitelisted) ───────────────────────────────────────────────
@@ -130,6 +270,10 @@ $filteredSum   = (float) $filtered['total'];
 $result = adminPaginate($db, 'SELECT id, name, phone, amount, purpose, message, created_at FROM donations' . $whereSql . $orderSql, $params, $page, $perPage);
 $rows   = $result['rows'];
 
+// Receipts already sent for the rows on this page, so the action can say so.
+$canReceipt   = adminCan('devotees.edit') && devoteeNotifyReady();
+$receiptsSent = $canReceipt ? donationsReceiptCounts($db, array_map(static fn(array $r): int => (int) $r['id'], $rows)) : [];
+
 // Donations by purpose over the same filtered set
 $pstmt = $db->prepare("SELECT COALESCE(NULLIF(purpose,''),'other') p, SUM(amount) total, COUNT(*) c FROM donations" . $whereSql . ' GROUP BY p ORDER BY total DESC');
 $pstmt->execute($params);
@@ -157,6 +301,12 @@ $exportHref = 'donations.php' . adminQuery($query, ['export' => 'csv', 'page' =>
 
 // ── Page ─────────────────────────────────────────────────────────────────────
 $msg = adminCsrfGuard();
+if ($msg === '' && !empty($_SESSION['flash_donations'])) {
+    [$fType, $fText] = $_SESSION['flash_donations'];
+    unset($_SESSION['flash_donations']);
+    $tone = in_array($fType, ['success', 'warning', 'error'], true) ? $fType : 'success';
+    $msg  = '<p class="alert alert--' . $tone . '" role="' . ($tone === 'success' ? 'status' : 'alert') . '">' . h($fText) . '</p>';
+}
 if ($badFrom || $badTo) {
     $msg .= '<p class="alert alert--warning" role="status">The date filter was ignored because it was not a valid date (use YYYY-MM-DD).</p>';
 }
@@ -242,6 +392,18 @@ echo adminKpi([
         $menu    = [];
         if ($tel !== '') $menu[] = ['label' => 'Call', 'href' => 'tel:' . $tel, 'icon' => 'phone'];
         if ($wa !== '')  $menu[] = ['label' => 'WhatsApp', 'href' => 'https://wa.me/' . $wa . '?text=' . rawurlencode($greet), 'icon' => 'external'];
+        if ($canReceipt) {
+            $sentCount = $receiptsSent[(int) $row['id']] ?? 0;
+            if ($menu) $menu[] = 'divider';
+            $menu[] = [
+                'label'        => $sentCount > 0 ? 'Send receipt again (' . $sentCount . ' sent)' : 'Send receipt',
+                'icon'         => 'clipboard',
+                'form'         => ['action' => 'send_receipt', 'id' => (int) $row['id']],
+                'confirm'      => 'Send receipt ' . devoteeReceiptNumber((int) $row['id']) . ' for ' . adminFmtMoney((float) $row['amount'], 2) . ' to ' . $row['name'] . '?'
+                                . ($sentCount > 0 ? ' ' . $sentCount . ' receipt' . ($sentCount === 1 ? ' has' : 's have') . ' already been sent.' : ''),
+                'confirmLabel' => 'Send receipt',
+            ];
+        }
       ?>
       <tr>
         <td class="cell-muted tabular"><?= $n ?></td>

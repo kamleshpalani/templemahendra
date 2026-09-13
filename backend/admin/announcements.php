@@ -1,12 +1,58 @@
 <?php
 // backend/admin/announcements.php — Announcements: short notices for the homepage ticker.
+//
+// "Also notify devotees" (new announcements only) turns the notice into a DRAFT
+// notification campaign (SPEC §8.3). It never sends anything by itself: a
+// broadcast to every devotee goes through the campaign flow — review, approval
+// when the size or channels call for it, scheduling — on the Notifications page.
 require_once __DIR__ . '/../includes/auth.php';
 requireAdminAuth();
 require_once __DIR__ . '/../includes/db.php';
 require_once __DIR__ . '/../includes/helpers.php';
+require_once __DIR__ . '/../includes/devotee_auth.php';
 require_once __DIR__ . '/includes/admin_layout.php';
 
 $db = getDB();
+
+/**
+ * Create the draft campaign for a new announcement and return the flash that
+ * says what happened. The committee writes an announcement once, in whichever
+ * language it chose, so the same words become both the Tamil and the English
+ * translation; they can be refined in the composer before it is submitted.
+ */
+function announcementDraftNotification(string $title, string $body): string
+{
+    if (!devoteeNotifyReady()) {
+        return '<p class="alert alert--warning" role="status">Created. Devotees were not notified: notifications are not installed on this site yet.</p>';
+    }
+    $admin    = currentAdmin() ?? [];
+    $headline = mb_strlen($title) > 200 ? rtrim(mb_substr($title, 0, 199)) . '…' : $title;
+    $message  = $body !== '' ? $body : $title;
+    $words    = ['title' => $headline, 'body' => $message, 'cta_label' => null];
+    try {
+        $save = notifyCampaignSave([
+            'name'          => mb_substr('Announcement: ' . $title, 0, 160),
+            'category'      => 'announcement',
+            'priority'      => 'normal',
+            'channels'      => ['inapp', 'push'],
+            'template_key'  => 'announcement',
+            'audience'      => ['mode' => 'all_devotees'],
+            'translations'  => ['ta' => $words, 'en' => $words],
+            'schedule_tz'   => 'temple',
+            'recurrence'    => 'none',
+        ], ['username' => (string) ($admin['username'] ?? 'admin'), 'role' => adminRole()]);
+    } catch (Throwable $e) {
+        error_log('[notify] draft campaign for an announcement failed: ' . $e->getMessage());
+        $save = ['ok' => false, 'id' => null, 'errors' => ['_' => 'The notification service failed.']];
+    }
+    if (!$save['ok']) {
+        return '<p class="alert alert--warning" role="alert">Created. The draft notification could not be made: '
+            . h(implode(' ', $save['errors'])) . ' You can compose one on the Notifications page.</p>';
+    }
+    return '<p class="alert alert--success" role="status">Created. A draft notification to all devotees is ready: '
+        . '<a href="/admin/notifications.php?edit=' . (int) $save['id'] . '">review and submit it</a>. '
+        . 'Nothing is sent until it goes through the notification flow.</p>';
+}
 
 /** String value from a request array ('' when missing or not scalar). */
 $str = static fn(array $src, string $key): string => is_scalar($src[$key] ?? null) ? (string) $src[$key] : '';
@@ -44,6 +90,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             'title'     => $str($_POST, 'title'),
             'body'      => $str($_POST, 'body'),
             'is_active' => isset($_POST['is_active']) ? 1 : 0,
+            'notify_devotees' => isset($_POST['notify_devotees']) ? 1 : 0,
         ];
     }
 
@@ -53,12 +100,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $body      = sanitizeText($str($_POST, 'body'), 2000);
         $is_active = isset($_POST['is_active']) ? 1 : 0;
         $id        = (int) $str($_POST, 'id');
+        // Offered only when creating: an edit must not quietly start a second broadcast.
+        $notifyDevotees = $id === 0 && isset($_POST['notify_devotees']);
 
         if ($title === '') $errors['title'] = true;
 
         if ($errors) {
             $msg     = '<p class="alert alert--error">Title is required.</p>';
-            $editing = ['id' => $id, 'title' => $title, 'body' => $body, 'is_active' => $is_active];
+            $editing = ['id' => $id, 'title' => $title, 'body' => $body, 'is_active' => $is_active, 'notify_devotees' => $notifyDevotees ? 1 : 0];
         } else {
             if ($id > 0) {
                 $db->prepare('UPDATE announcements SET title=:t, body=:b, is_active=:a WHERE id=:id')
@@ -67,7 +116,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             } else {
                 $db->prepare('INSERT INTO announcements (title, body, is_active, created_at) VALUES (:t,:b,:a,CURRENT_TIMESTAMP)')
                    ->execute([':t' => $title, ':b' => $body, ':a' => $is_active]);
-                $_SESSION['flash'] = '<p class="alert alert--success">Created.</p>';
+                $_SESSION['flash'] = $notifyDevotees
+                    ? announcementDraftNotification($title, $body)
+                    : '<p class="alert alert--success">Created.</p>';
             }
             header('Location: ' . $back, true, 303);
             exit;
@@ -169,6 +220,14 @@ echo adminPageIntro(
         <span class="switch__track" aria-hidden="true"></span>
         <span class="switch__label"><strong>Active</strong><span class="switch__desc">Shown in the homepage ticker. Hidden announcements stay saved.</span></span>
       </label>
+
+      <?php if (!$isEdit && devoteeNotifyReady()): ?>
+      <label class="switch">
+        <input type="checkbox" name="notify_devotees" value="1"<?= !empty($editing['notify_devotees']) ? ' checked' : '' ?> />
+        <span class="switch__track" aria-hidden="true"></span>
+        <span class="switch__label"><strong>Also notify devotees</strong><span class="switch__desc">Creates a draft notification (in the app and as a push message) for you to review. Nothing is sent until it is submitted from the Notifications page.</span></span>
+      </label>
+      <?php endif; ?>
 
       <div class="form-actions">
         <button type="submit" class="btn btn-primary"><?= adminIcon('check') ?> <?= $isEdit ? 'Save changes' : 'Publish announcement' ?></button>

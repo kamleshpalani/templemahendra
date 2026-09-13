@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { useNavigate } from "react-router-dom";
 import {
   LuArrowRight,
@@ -142,7 +143,9 @@ export default function SearchDialog({ open, onClose }) {
 
   let cursor = -1; // running index across groups, to match `flat`
 
-  return (
+  // Portalled for the same reason as <Modal>: a fixed overlay must not sit
+  // inside anything that could become its containing block.
+  return createPortal(
     <div className="modal-overlay cmdk-overlay" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
       <div
         ref={panelRef}
@@ -244,8 +247,11 @@ export default function SearchDialog({ open, onClose }) {
               {groups.map((g) => {
                 const Icon = GROUP_ICONS[g.type] ?? LuFileText;
                 return (
-                  <section key={g.type} className="cmdk__group">
-                    <h2 className="cmdk__group-title">{t(g.label_ta, g.label_en)}</h2>
+                  // A listbox may only own options and groups, so this is a
+                  // role="group" with an accessible name rather than a section
+                  // with a heading — the heading stays as visible text only.
+                  <div key={g.type} className="cmdk__group" role="group" aria-label={t(g.label_ta, g.label_en)}>
+                    <h2 className="cmdk__group-title" aria-hidden="true">{t(g.label_ta, g.label_en)}</h2>
                     {g.items.map((item) => {
                       cursor += 1;
                       const idx = cursor;
@@ -275,7 +281,7 @@ export default function SearchDialog({ open, onClose }) {
                         </button>
                       );
                     })}
-                  </section>
+                  </div>
                 );
               })}
             </div>
@@ -299,6 +305,7 @@ export default function SearchDialog({ open, onClose }) {
           )}
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }

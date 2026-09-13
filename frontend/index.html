@@ -7,10 +7,53 @@
       name="viewport"
       content="width=device-width, initial-scale=1.0, viewport-fit=cover"
     />
+    <!--
+      data-rh on this and every share tag below is not decoration.
+      react-helmet-async only reconciles tags carrying that attribute; without
+      it, <Seo> would append a second <meta name="description"> and a second
+      og:title beside these, and a platform that reads the first one would show
+      the site's generic copy on every page. Marked, these are adopted and
+      replaced. Leave the attribute in place.
+    -->
     <meta
+      data-rh="true"
       name="description"
       content="அருள்மிகு ஸ்ரீ லிங்கம்மாள், ஸ்ரீ ரேணுகாதேவி, ஸ்ரீ சின்னம்மாள் திருக்கோவில், புதுப்பட்டி - Dhabbalavaar Renuka Devi Lingamma Sinnammal Temple, Pudupatti — poojas, sevas, events & donations."
     />
+
+    <!--
+      Site-level share preview — the floor, not the answer. <Seo> replaces these
+      per page once React runs, and api/og.php answers the link unfurlers that
+      never run it. Whatever reads this file raw still gets the temple's name, a
+      sentence and a picture rather than nothing.
+
+      og:url is deliberately absent: a fixed value here would claim every page is
+      the front page, and platforms fall back to the URL they fetched.
+    -->
+    <meta data-rh="true" property="og:type" content="website" />
+    <meta
+      data-rh="true"
+      property="og:site_name"
+      content="அருள்மிகு ஸ்ரீ லிங்கம்மாள், ஸ்ரீ ரேணுகாதேவி, ஸ்ரீ சின்னம்மாள் திருக்கோவில்"
+    />
+    <meta data-rh="true" property="og:locale" content="ta_IN" />
+    <meta
+      data-rh="true"
+      property="og:title"
+      content="அருள்மிகு ஸ்ரீ லிங்கம்மாள், ஸ்ரீ ரேணுகாதேவி, ஸ்ரீ சின்னம்மாள் திருக்கோவில்"
+    />
+    <meta
+      data-rh="true"
+      property="og:description"
+      content="பக்தி, பாரம்பரியம் மற்றும் சமூகம் — ஒரு புனிதத் தலம்"
+    />
+    <meta data-rh="true" property="og:image" content="/icons/icon-512x512.png" />
+    <meta
+      data-rh="true"
+      property="og:image:alt"
+      content="மலர் அலங்காரத்தில் மூன்று தெய்வங்கள் — ஸ்ரீ லிங்கம்மாள், ஸ்ரீ ரேணுகாதேவி, ஸ்ரீ சின்னம்மாள்"
+    />
+    <meta data-rh="true" name="twitter:card" content="summary_large_image" />
 
     <!-- PWA / Mobile App meta -->
     <meta name="theme-color" content="#3d0707" />

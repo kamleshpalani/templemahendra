@@ -1,7 +1,8 @@
-import { Helmet } from "react-helmet-async";
+import { useId } from "react";
 import { Link } from "react-router-dom";
 import { LuHeartHandshake, LuReceipt, LuSparkles } from "react-icons/lu";
 import { useLang } from "../../context/LangContext";
+import Seo from "../Seo";
 import { TEMPLE } from "../../data/temple";
 import "./AuthShell.css";
 
@@ -15,6 +16,7 @@ import "./AuthShell.css";
  */
 export default function AuthShell({ eyebrow, title, lead, children, foot, docTitle, wide = false }) {
   const { t } = useLang();
+  const titleId = useId();
 
   const reasons = [
     {
@@ -36,13 +38,8 @@ export default function AuthShell({ eyebrow, title, lead, children, foot, docTit
 
   return (
     <>
-      <Helmet>
-        <title>
-          {docTitle ?? title} — {t(TEMPLE.name.ta, TEMPLE.name.en)}
-        </title>
-        {/* Account pages are per-person; keep them out of search results. */}
-        <meta name="robots" content="noindex, nofollow" />
-      </Helmet>
+      {/* Account pages are per-person; keep them out of search results. */}
+      <Seo title={docTitle ?? title} robots="noindex, nofollow" />
 
       <div className={`authx${wide ? " authx--wide" : ""}`}>
         <div className="authx__grid">
@@ -77,13 +74,17 @@ export default function AuthShell({ eyebrow, title, lead, children, foot, docTit
             </p>
           </aside>
 
-          <main className="authx__card card card--solid card--static">
+          {/* A section, not a main: Layout already provides the page's single
+              main landmark, and a second one makes both ambiguous. */}
+          <section className="authx__card card card--solid card--static" aria-labelledby={`authx-title-${titleId}`}>
             {eyebrow && <span className="eyebrow">{eyebrow}</span>}
-            <h1 className="authx__title">{title}</h1>
+            <h1 id={`authx-title-${titleId}`} className="authx__title">
+              {title}
+            </h1>
             {lead && <p className="authx__lead">{lead}</p>}
             {children}
             {foot && <div className="authx__foot">{foot}</div>}
-          </main>
+          </section>
         </div>
       </div>
     </>

@@ -1,14 +1,16 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Helmet } from "react-helmet-async";
+import { createPortal } from "react-dom";
+import { useSearchParams } from "react-router-dom";
 import { LuChevronLeft, LuChevronRight, LuImages, LuMaximize2, LuX } from "react-icons/lu";
 import api from "../services/api";
 import { useLang } from "../context/LangContext";
 import Badge from "../components/ui/Badge";
 import Button from "../components/ui/Button";
 import PageHero from "../components/ui/PageHero";
+import Seo from "../components/Seo";
+import ShareButton from "../components/Share/ShareButton";
 import SectionHeader from "../components/ui/SectionHeader";
 import { EmptyState, ErrorState, SkeletonCards } from "../components/ui/Feedback";
-import { TEMPLE } from "../data/temple";
 import useDialogBehaviour from "../hooks/useDialogBehaviour";
 import "./Gallery.css";
 
@@ -21,12 +23,16 @@ const tileShape = (i) => {
   return "";
 };
 
+/** Where a photo's file actually lives. One definition, used by the tile, the lightbox and the share preview. */
+const photoSrc = (img) => (img ? `/uploads/${img.filename}` : undefined);
+
 export default function Gallery() {
   const [images, setImages] = useState([]);
   const [loading, setLoading] = useState(true);
   const [failed, setFailed] = useState(false);
   const [lightbox, setLightbox] = useState(null); // index into `images`, or null
   const { t } = useLang();
+  const [params, setParams] = useSearchParams();
 
   const dialogRef = useRef(null);
   const closeRef = useRef(null);
@@ -69,27 +75,85 @@ export default function Gallery() {
   );
   useDialogBehaviour({ open, onClose: close, panelRef: dialogRef, initialFocusRef: closeRef, onKey: onLightboxKey });
 
+  /*
+   * ?photo=<id> makes one photograph a link someone can send. Two effects, one
+   * each way, and they must not fight.
+   *
+   * The id is captured at the first render, before either effect can touch the
+   * URL: the photos arrive from the API a moment later, and reading the
+   * parameter only then would race the write that keeps the address bar in step.
+   */
+  const wantedPhoto = useRef(params.get("photo"));
+  const deepLinkDone = useRef(false);
+
+  // URL → lightbox, once the photos are in. Matched on the id rather than a
+  // position, so the link survives new uploads reordering the grid.
+  useEffect(() => {
+    if (deepLinkDone.current || images.length === 0) return;
+    deepLinkDone.current = true;
+    const i = images.findIndex((img) => String(img.id) === wantedPhoto.current);
+    if (i >= 0) setLightbox(i);
+  }, [images]);
+
+  /*
+   * lightbox → URL, so the address bar always names what is on screen and can be
+   * copied straight out of it. Skipped on the first run, where the URL is the
+   * truth. `images` and setParams are read through refs: photos arriving must
+   * not trigger a write, and react-router hands back a new setParams whenever
+   * the location changes, which as a dependency would make this effect undo its
+   * own work.
+   */
+  const imagesRef = useRef(images);
+  imagesRef.current = images;
+  const setParamsRef = useRef(setParams);
+  setParamsRef.current = setParams;
+  const mounted = useRef(false);
+  useEffect(() => {
+    if (!mounted.current) {
+      mounted.current = true;
+      return;
+    }
+    const id = lightbox != null ? imagesRef.current[lightbox]?.id : null;
+    setParamsRef.current(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        if (id) next.set("photo", String(id));
+        else next.delete("photo");
+        return next;
+      },
+      // replace, not push: opening three photos in a row should not leave three
+      // entries for the Back button to walk through.
+      { replace: true },
+    );
+  }, [lightbox]);
+
   const current = open ? images[lightbox] : null;
   const total = images.length;
   const photoLabel = (img) => img?.caption || t("கோயில் புகைப்படம்", "Temple photo");
+  const heading = t("புகைப்பட தொகுப்பு", "Photo Gallery");
+  const lead = t(
+    "திருவிழாக்கள், பூஜைகள் மற்றும் கோயில் நிகழ்வுகளின் தருணங்கள்.",
+    "Moments from festivals, poojas and temple gatherings.",
+  );
 
   return (
     <>
-      <Helmet>
-        <title>
-          {t("தொகுப்பு", "Gallery")} — {t(TEMPLE.name.ta, TEMPLE.name.en)}
-        </title>
-      </Helmet>
+      {/* Whichever photograph is open is the one a shared link previews; with
+          none open, the newest upload stands for the gallery. */}
+      <Seo
+        title={current ? photoLabel(current) : t("தொகுப்பு", "Gallery")}
+        description={current?.caption || lead}
+        image={photoSrc(current || images[0])}
+        imageAlt={current ? photoLabel(current) : undefined}
+      />
 
       <PageHero
         variant="gallery"
         eyebrow={t("தொகுப்பு", "Gallery")}
-        title={t("புகைப்பட தொகுப்பு", "Photo Gallery")}
-        lead={t(
-          "திருவிழாக்கள், பூஜைகள் மற்றும் கோயில் நிகழ்வுகளின் தருணங்கள்.",
-          "Moments from festivals, poojas and temple gatherings.",
-        )}
+        title={heading}
+        lead={lead}
         crumbs={[{ label: t("தொகுப்பு", "Gallery") }]}
+        actions={<ShareButton variant="outline-light" title={heading} text={lead} to="/gallery" />}
         aside={
           !loading && total > 0 ? (
             <Badge tone="on-dark" size="lg">
@@ -148,7 +212,7 @@ export default function Gallery() {
                     onClick={() => setLightbox(i)}
                     aria-label={`${photoLabel(img)} — ${t("பெரிதாக்கு", "Enlarge")}`}
                   >
-                    <img src={`/uploads/${img.filename}`} alt={img.caption || ""} loading="lazy" decoding="async" />
+                    <img src={photoSrc(img)} alt={img.caption || ""} loading="lazy" decoding="async" />
                     <span className="gallery-tile__overlay" aria-hidden="true">
                       <span className="gallery-tile__zoom">
                         <LuMaximize2 />
@@ -163,12 +227,16 @@ export default function Gallery() {
         </div>
       </section>
 
-      {current && (
-        <div
-          className="gallery-lightbox"
-          data-surface="dark"
-          onMouseDown={(e) => e.target === e.currentTarget && close()}
-        >
+      {current &&
+        createPortal(
+          // Portalled: this page sits inside the transform-animated page wrapper,
+          // which would otherwise become the containing block for this fixed
+          // overlay and drop the lightbox somewhere off-screen.
+          <div
+            className="gallery-lightbox"
+            data-surface="dark"
+            onMouseDown={(e) => e.target === e.currentTarget && close()}
+          >
           <div
             ref={dialogRef}
             className="gallery-lightbox__dialog"
@@ -182,6 +250,15 @@ export default function Gallery() {
                 <LuImages aria-hidden="true" />
                 {lightbox + 1} / {total}
               </Badge>
+              {/* Shares this photograph, not the gallery: ?photo=<id> reopens it
+                  on whatever device the link is sent to. */}
+              <ShareButton
+                variant="outline-light"
+                className="gallery-lightbox__share"
+                title={photoLabel(current)}
+                text={current.caption || lead}
+                to={`/gallery?photo=${current.id}`}
+              />
               <Button
                 ref={closeRef}
                 variant="outline-light"
@@ -210,7 +287,7 @@ export default function Gallery() {
               <figure className="gallery-lightbox__figure" key={current.id}>
                 <img
                   className="gallery-lightbox__img"
-                  src={`/uploads/${current.filename}`}
+                  src={photoSrc(current)}
                   alt={current.caption || ""}
                   decoding="async"
                 />
@@ -235,8 +312,9 @@ export default function Gallery() {
               {current.caption ? ` — ${current.caption}` : ""}
             </span>
           </div>
-        </div>
-      )}
+          </div>,
+          document.body,
+        )}
     </>
   );
 }

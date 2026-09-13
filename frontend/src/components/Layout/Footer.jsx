@@ -1,5 +1,5 @@
 import { NavLink } from "react-router-dom";
-import { LuArrowUp, LuClock, LuMail, LuMapPin, LuPhone, LuShieldCheck } from "react-icons/lu";
+import { LuArrowUp, LuClock, LuLanguages, LuMail, LuMapPin, LuPhone, LuShieldCheck } from "react-icons/lu";
 import { FaWhatsapp } from "react-icons/fa";
 import { useLang } from "../../context/LangContext";
 import {
@@ -15,7 +15,7 @@ import {
 import "./Footer.css";
 
 export default function Footer() {
-  const { t } = useLang();
+  const { lang, setLang, t } = useLang();
 
   const quickLinks = [
     { to: "/about#history", ta: "கோவில் வரலாறு", en: "History" },
@@ -133,6 +133,30 @@ export default function Footer() {
             )}
           </p>
           <div className="footer__bottom-actions">
+            {/* The other language toggle is in the status strip at the top of
+                the page, which scrolls away. This one means the choice is still
+                one click from the bottom of a long page. */}
+            <div className="lang-toggle" role="group" aria-label={t("மொழி", "Language")}>
+              <LuLanguages className="lang-toggle__icon" aria-hidden="true" />
+              <button
+                type="button"
+                className={`lang-toggle__btn${lang === "ta" ? " lang-toggle__btn--active" : ""}`}
+                onClick={() => setLang("ta")}
+                aria-pressed={lang === "ta"}
+                lang="ta"
+              >
+                தமிழ்
+              </button>
+              <button
+                type="button"
+                className={`lang-toggle__btn${lang === "en" ? " lang-toggle__btn--active" : ""}`}
+                onClick={() => setLang("en")}
+                aria-pressed={lang === "en"}
+                lang="en"
+              >
+                EN
+              </button>
+            </div>
             <a href="/admin/" className="footer__admin" rel="nofollow">
               {t("கமிட்டி உள்நுழைவு", "Committee sign-in")}
             </a>

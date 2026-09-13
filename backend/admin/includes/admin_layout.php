@@ -23,9 +23,16 @@ function adminNavGroups(): array
             'sponsors.php'         => ['heart-hands', 'Sponsors',         'Devotees sponsoring poojas'],
         ],
         'Devotees' => [
+            'devotees.php'         => ['users',       'Devotee Accounts', 'People registered on the public site'],
             'seva_bookings.php'    => ['clipboard',   'Seva Bookings',    'Online seva requests'],
             'donations.php'        => ['banknote',    'Donations',        'Pledges, totals and CSV reports'],
             'contact_messages.php' => ['mail',        'Messages',         'Enquiries from the contact form'],
+        ],
+        'Communication' => [
+            'notifications.php'          => ['bell',     'Notifications',      'Campaigns, broadcasts and scheduling'],
+            'notification_templates.php' => ['mail',     'Message Templates',  'Wording of every automated message'],
+            'notification_segments.php'  => ['users',    'Audiences',          'Saved devotee segments'],
+            'notification_analytics.php' => ['activity', 'Delivery Analytics', 'Sends, opens, clicks and failures'],
         ],
         'Data & System' => [
             'bulk_upload.php'      => ['upload',      'Bulk Upload',      'Import CSV / Excel data'],
@@ -51,6 +58,10 @@ function adminQuickActions(): array
         ['label' => 'Add pooja',              'href' => '/admin/poojas.php#new',         'icon' => 'plus',        'can' => 'content.edit'],
         ['label' => 'Upload photo',           'href' => '/admin/gallery.php#new',        'icon' => 'upload',      'can' => 'content.edit'],
         ['label' => 'Bulk upload CSV / Excel','href' => '/admin/bulk_upload.php',        'icon' => 'spreadsheet', 'can' => 'import'],
+        ['label' => 'New notification',       'href' => '/admin/notifications.php?new=1', 'icon' => 'plus',      'can' => 'notifications.compose'],
+        ['label' => 'Delivery analytics',     'href' => '/admin/notification_analytics.php', 'icon' => 'activity', 'can' => 'notifications.view'],
+        ['label' => 'Devotees awaiting confirmation', 'href' => '/admin/devotees.php?status=unverified', 'icon' => 'alert', 'can' => 'view'],
+        ['label' => 'Export devotees CSV',    'href' => '/admin/devotees.php?export=csv','icon' => 'download',   'can' => 'export'],
         ['label' => 'Export donations CSV',   'href' => '/admin/donations.php?export=csv','icon' => 'download',   'can' => 'export'],
         ['label' => 'Export bookings CSV',    'href' => '/admin/seva_bookings.php?export=csv','icon' => 'download','can' => 'export'],
         ['label' => 'Committee accounts',     'href' => '/admin/users.php',              'icon' => 'users',       'can' => 'users.manage'],
@@ -120,6 +131,8 @@ function adminHeader(string $pageTitle, string $crumb = 'Temple Admin', array $o
 <link rel="stylesheet" href="/admin/assets/ds/components.css" />
 <link rel="stylesheet" href="/admin/assets/ds/utilities.css" />
 <link rel="stylesheet" href="/admin/assets/admin.css" />
+<link rel="stylesheet" href="/admin/assets/notify-campaigns.css" />
+<link rel="stylesheet" href="/admin/assets/notify-content.css" />
 <script>
   // Restore sidebar collapse state before paint to avoid a flash
   try { if (localStorage.getItem('admin.sidebar') === 'collapsed') document.documentElement.classList.add('sidebar-collapsed'); } catch (e) {}
@@ -191,7 +204,8 @@ function adminHeader(string $pageTitle, string $crumb = 'Temple Admin', array $o
       <?= $actions ?>
       <button type="button" class="btn btn-ghost btn--icon" data-palette-open aria-label="Search (Ctrl+K)" data-tip="Search · Ctrl K"><?= adminIcon('search') ?></button>
       <div class="dropdown">
-        <button type="button" class="topbar-user" data-menu-toggle aria-haspopup="menu" aria-expanded="false" aria-controls="user-menu">
+        <?php // The visible name is hidden on phones, so the button carries its own accessible name. ?>
+        <button type="button" class="topbar-user" data-menu-toggle aria-haspopup="menu" aria-expanded="false" aria-controls="user-menu" aria-label="Account menu for <?= h($name) ?>">
           <span class="avatar" aria-hidden="true"><?= h($initials) ?></span>
           <span class="topbar-user__name"><?= h($name) ?></span>
           <?= adminIcon('chevron-down', 'ico--sm') ?>
@@ -242,6 +256,8 @@ function adminFooter(): void
     'settings' => adminIcon('settings'), 'plus' => adminIcon('plus'), 'download' => adminIcon('download'), 'external' => adminIcon('external'),
     'logout' => adminIcon('logout'), 'spreadsheet' => adminIcon('spreadsheet'), 'trash' => adminIcon('trash'), 'alert' => adminIcon('alert'),
     'check-circle' => adminIcon('check-circle'), 'alert-circle' => adminIcon('alert-circle'), 'info' => adminIcon('info'), 'x' => adminIcon('x'),
+    // The Communication pages in the command palette.
+    'bell' => adminIcon('bell'), 'users' => adminIcon('users'), 'activity' => adminIcon('activity'),
 ], JSON_UNESCAPED_SLASHES | JSON_HEX_TAG) ?></script>
 <script src="/admin/assets/admin.js" defer></script>
 </body>

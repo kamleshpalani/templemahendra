@@ -1,5 +1,5 @@
 /* ══════════════════════════════════════════════════════════════════
-   Layout.css — floating glass navbar, language toggle, mobile drawer
+   Layout.css — floating glass navbar and mobile drawer
    ══════════════════════════════════════════════════════════════════ */
 
 /* ── Navbar shell ────────────────────────────────────────────────── */
@@ -7,10 +7,6 @@
   position: sticky;
   top: 0;
   z-index: var(--z-header);
-  /* The header band is wider than the 1200px reading column: it has to hold the
-     brand, seven Tamil nav labels and the right-hand controls on one line. Both
-     the static bar and the scrolled island use this, so they stay aligned. */
-  --header-max: 1560px;
   /* Height is constant across states (76px) so the sticky header never shifts content */
   padding: 0;
   transition: padding var(--transition-slow);
@@ -63,7 +59,14 @@
   justify-content: space-between;
   gap: var(--space-3);
   min-width: 0;
-  overflow: hidden;
+  /* Clip sideways only. A plain `overflow: hidden` here also clips downwards,
+     which cut the signed-in account menu off at the bar's own height — the
+     popover is absolutely positioned inside this row, so this box is in its
+     containing-block chain. `clip` is the one value that lets the other axis
+     stay `visible`; browsers too old to know it drop the pair entirely and
+     simply do not clip, which is safe because the row is sized to fit. */
+  overflow-x: clip;
+  overflow-y: visible;
 }
 .navbar--scrolled .navbar__inner {
   padding-inline: 0.9rem 0.75rem;
@@ -147,6 +150,12 @@
   justify-content: center;
   padding: 0.25rem;
   border-radius: var(--radius-pill);
+  /* The nav is what gives way if the row ever runs short — under a browser's
+     text-only zoom, say, where the breakpoints cannot help. Without this the
+     deficit lands on the right cluster instead and takes search, Login and
+     Sign Up off the edge, which is the opposite of the right priority. */
+  min-width: 0;
+  overflow: hidden;
 }
 .navbar__link {
   position: relative;
@@ -207,12 +216,14 @@
 .navbar__cta {
   display: none;
 }
-@media (min-width: 1560px) {
+@media (min-width: 1400px) {
   .navbar__cta {
     display: inline-flex;
   }
-  /* The row has ~80px spare once it stops growing, so the temple's name gets
-     it back rather than staying truncated on a large screen. */
+}
+@media (min-width: 1560px) {
+  /* The row stops growing at --header-max, so the spare width above that is
+     fixed. It goes to the temple's name rather than leaving it truncated. */
   .navbar__brand {
     max-width: 300px;
   }
@@ -246,7 +257,7 @@
   }
 }
 /* Below the widest layouts the labels go and the icons carry the meaning */
-@media (max-width: 1339px) {
+@media (max-width: 1249px) {
   .navbar__auth-word {
     display: none;
   }
@@ -262,43 +273,8 @@
   }
 }
 
-/* Language toggle */
-.lang-toggle {
-  display: flex;
-  align-items: center;
-  gap: 2px;
-  padding: 3px;
-  border-radius: var(--radius-pill);
-  background: var(--glass-1);
-  border: 1px solid var(--glass-border-strong);
-  box-shadow: var(--inset-highlight);
-}
-.lang-toggle__btn {
-  min-height: 32px;
-  padding: 0.25rem 0.75rem;
-  border: none;
-  border-radius: var(--radius-pill);
-  background: transparent;
-  color: var(--text-3);
-  font-size: var(--text-xs);
-  font-weight: var(--weight-semibold);
-  letter-spacing: 0.03em;
-  cursor: pointer;
-  transition:
-    background var(--transition),
-    color var(--transition),
-    box-shadow var(--transition);
-}
-.lang-toggle__btn--active {
-  background: var(--maroon-500);
-  color: var(--white);
-  font-weight: var(--weight-bold);
-  box-shadow: 0 2px 10px rgba(153, 27, 27, 0.35);
-}
-.lang-toggle__btn:not(.lang-toggle__btn--active):hover {
-  color: var(--maroon-600);
-  background: rgba(153, 27, 27, 0.07);
-}
+/* The language toggle moved to the status strip above the navbar; its styles
+   live with it in TemplePulseHeader.css. */
 
 /* ── Search and account (right cluster) ──────────────────────────── */
 /* One skin for both, though search is a <button> and sign-in is a <NavLink> */
@@ -334,13 +310,44 @@
 }
 
 /* The search control is the icon alone. A "Ctrl K" legend was tried here and
-   removed: the header row is capped at --container-wide on every screen, so
-   there is no width at which it fits. The shortcut is in the button's title
-   and spelled out along the bottom of the palette itself. */
+   removed: the header row is capped at --header-max on every screen, so there
+   is no width at which it fits. The shortcut is in the button's title and
+   spelled out along the bottom of the palette itself. */
 .navbar__search {
   width: 40px;
   justify-content: center;
   padding-inline: 0;
+}
+
+/* Call the temple. Greened like the WhatsApp action would be out of place here,
+   so it takes the brand's maroon and reads as the one "reach a person" control
+   in the row. The number shows when the row can spare the width. */
+.navbar__call {
+  color: var(--maroon-600);
+  border-color: var(--maroon-300);
+  background: var(--glass-tint-maroon);
+  font-variant-numeric: tabular-nums;
+}
+.navbar__call:hover,
+.navbar__call:focus-visible {
+  color: var(--white);
+  background: linear-gradient(135deg, var(--maroon-500), var(--maroon-700));
+  border-color: transparent;
+}
+.navbar__call-num {
+  display: none;
+}
+@media (min-width: 1560px) {
+  .navbar__call-num {
+    display: inline;
+  }
+}
+@media (max-width: 1559px) {
+  .navbar__call {
+    width: 40px;
+    justify-content: center;
+    padding-inline: 0;
+  }
 }
 
 .navbar__acct-btn {
@@ -599,6 +606,50 @@
   border-bottom: 1px solid var(--border-soft);
   margin-bottom: var(--space-2);
 }
+/* Notifications, for a signed-in devotee: a full row above the account buttons,
+   with the unread count where the eye lands at the end of the label. */
+.drawer__notif {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  gap: 0.85rem;
+  min-height: 50px;
+  padding: 0.45rem 0.75rem 0.45rem 0.5rem;
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius);
+  background: var(--glass-2);
+  color: var(--text-2);
+  font-size: var(--text-base);
+  font-weight: var(--weight-semibold);
+  box-shadow: var(--inset-highlight);
+  transition: background var(--transition), color var(--transition), border-color var(--transition);
+}
+.drawer__notif:hover,
+.drawer__notif:focus-visible {
+  background: var(--glass-3);
+  border-color: var(--maroon-300);
+  color: var(--maroon-600);
+}
+.drawer__notif--active {
+  border-color: var(--saffron-400);
+  color: var(--maroon-600);
+  box-shadow: inset 3px 0 0 var(--maroon-500);
+}
+.drawer__notif-label {
+  flex: 1;
+  min-width: 0;
+}
+.drawer__notif-count {
+  min-width: 24px;
+  padding: 0.12rem 0.5rem;
+  border-radius: var(--radius-pill);
+  background: linear-gradient(135deg, var(--maroon-400), var(--maroon-600));
+  color: var(--white);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-bold);
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
 
 .drawer__lang {
   display: flex;
@@ -618,7 +669,7 @@
    ──────────────────────────────────────────────────────────────────── */
 @media (max-width: 1330px) {
   .navbar__brand {
-    max-width: 220px;
+    max-width: 240px;
   }
   .navbar__brand-line2 {
     display: none;
@@ -630,20 +681,20 @@
 }
 @media (max-width: 1200px) {
   .navbar__link {
-    padding: 0.38rem 0.45rem;
-    font-size: 0.74rem;
+    padding: 0.38rem 0.5rem;
+    font-size: 0.75rem;
   }
   .navbar__brand {
-    max-width: 200px;
+    max-width: 220px;
   }
 }
 @media (max-width: 1100px) {
   .navbar__link {
-    padding: 0.36rem 0.38rem;
-    font-size: 0.72rem;
+    padding: 0.36rem 0.42rem;
+    font-size: 0.73rem;
   }
   .navbar__brand {
-    max-width: 186px;
+    max-width: 200px;
   }
 }
 /* Below 1024 the seven Tamil labels can no longer sit honestly in one row, so
@@ -711,9 +762,6 @@
    earlier would simply be ignored. Keep the narrowest block last.
    ──────────────────────────────────────────────────────────────────── */
 @media (max-width: 480px) {
-  .lang-toggle__btn {
-    padding: 0.25rem 0.55rem;
-  }
   .navbar__brand-line2 {
     display: none;
   }
@@ -723,23 +771,40 @@
 }
 @media (max-width: 460px) {
   /* Search moves into the drawer, where it has a full-width row of its own.
-     What must survive here is the language toggle and the menu. */
+     What must survive here is the sign-up button and the menu. */
   .navbar__search {
     display: none;
   }
   /* Search leaving the row buys the temple name back some characters */
   .navbar__brand {
-    max-width: 178px;
+    max-width: 200px;
   }
 }
 @media (max-width: 400px) {
   /* Fluid rather than fixed: between 340 and 400 every pixel is spoken for, and
      a fixed cap that fits at 400 spills at 375. */
   .navbar__brand {
-    max-width: min(162px, 40vw);
+    max-width: min(186px, 46vw);
   }
-  .lang-toggle__btn {
-    padding: 0.25rem 0.42rem;
+}
+
+/* ── Signed in: bell and avatar in the row ───────────────────────────
+   A signed-in devotee's row carries one more round control than a guest's
+   (call · search · bell · avatar · menu against call · search · sign up · menu),
+   and the floating island the header becomes on scroll is ~14px narrower than
+   the band at the top. Below 520px the controls close up a little, and below
+   460px the temple's name gives up the rest: it truncates with an ellipsis,
+   while a control pushed past the edge would simply vanish. The guest row is
+   untouched. The brand cap leaves room for a classic scrollbar too.
+   ──────────────────────────────────────────────────────────────────── */
+@media (max-width: 520px) {
+  .navbar--member .navbar__right {
+    gap: 0.3rem;
+  }
+}
+@media (max-width: 460px) {
+  .navbar--member .navbar__brand {
+    max-width: min(200px, calc(100vw - 248px));
   }
 }
 @media (max-width: 370px) {

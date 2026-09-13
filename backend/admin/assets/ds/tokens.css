@@ -113,6 +113,14 @@
   --neutral-bg: rgba(61, 7, 7, 0.06);
   --neutral-border: rgba(61, 7, 7, 0.12);
 
+  /* Other people's brand colours, used only on their own mark in the share
+     sheet. Not part of the palette and never for the site's own surfaces —
+     they live here because a brand hex is a fact to look up, not a choice to
+     make in a component. */
+  --brand-whatsapp: #25d366;
+  --brand-facebook: #1877f2;
+  --brand-linkedin: #0a66c2;
+
   /* ── 3. Backgrounds ───────────────────────────────────────────── */
   --bg-root: #fffbf5; /* ivory page ground */
   --bg-deep: #fff7ee;
@@ -277,6 +285,10 @@
   --container: 1200px;
   --container-narrow: 840px;
   --container-wide: 1440px;
+  /* The header band is wider than the reading column: it carries the brand,
+     seven Tamil nav labels and the right-hand controls on one line. The status
+     strip above it uses the same width so their right edges line up. */
+  --header-max: 1560px;
   --gutter: clamp(1rem, 4vw, 2rem);
   --header-h: 76px;
   --header-h-compact: 64px;

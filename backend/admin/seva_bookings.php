@@ -1,16 +1,96 @@
 <?php
 // backend/admin/seva_bookings.php — Seva bookings work queue: filter, sort,
 // paginate, quick/bulk status changes, reach devotees, CSV export.
+//
+// Confirming, cancelling or completing a booking tells the devotee
+// (booking.confirmed / booking.cancelled / booking.completed, SPEC §8.3): the
+// account when the booking carries one, otherwise the phone number the guest
+// gave. Only a booking whose status really changes is notified, and every event
+// is deduped per booking, so re-applying a status — or flipping it back and
+// forth — never sends the same news twice.
 require_once __DIR__ . '/../includes/auth.php';
 requireAdminAuth();
 require_once __DIR__ . '/../includes/db.php';
+require_once __DIR__ . '/../includes/devotee_auth.php';
 require_once __DIR__ . '/includes/admin_layout.php';
 
 $db = getDB();
 
 const SB_BASE     = '/admin/seva_bookings.php';
 const SB_PER_PAGE = 25;
+/** Status → the event that tells the devotee. Moving back to pending tells nobody anything. */
+const SB_EVENTS   = ['confirmed' => 'booking.confirmed', 'cancelled' => 'booking.cancelled', 'completed' => 'booking.completed'];
 $statuses = ['pending', 'confirmed', 'completed', 'cancelled'];
+
+/** Bookings by id, with the seva's own Tamil and English names for the message. */
+function sbLoadBookings(PDO $db, array $ids): array
+{
+    if (!$ids) return [];
+    $marks = implode(',', array_fill(0, count($ids), '?'));
+    $stmt  = $db->prepare(
+        "SELECT b.*, s.name_ta AS seva_name_ta, s.name_en AS seva_name_en
+           FROM seva_bookings b LEFT JOIN sevas s ON s.id = b.seva_id
+          WHERE b.id IN ($marks)"
+    );
+    $stmt->execute(array_values($ids));
+    $out = [];
+    foreach ($stmt->fetchAll() as $row) $out[(int) $row['id']] = $row;
+    return $out;
+}
+
+/**
+ * Tell the devotee about one booking's new status. True when a notification
+ * was created now; false when none was needed (this news was already sent), the
+ * booking gives no way to reach anyone, or notifications are not installed.
+ * Never throws: a status change is saved whatever happens to the message.
+ */
+function sbNotifyStatusChange(array $b, string $status, string $actor): bool
+{
+    if (!isset(SB_EVENTS[$status]) || !devoteeNotifyReady()) return false;
+    try {
+        $id        = (int) $b['id'];
+        $devoteeId = $b['devotee_id'] !== null ? (int) $b['devotee_id'] : null;
+        $l         = devoteeCopyLang($devoteeId !== null ? devoteeNotifyLang($devoteeId) : 'ta');
+        $seva      = trim((string) ($l === 'ta' ? ($b['seva_name_ta'] ?? '') : ($b['seva_name_en'] ?? ''))) ?: (string) $b['seva_name'];
+        $vars      = [
+            'bookingNumber' => devoteeBookingNumber($id),
+            'sevaName'      => $seva,
+            'bookingDate'   => devoteeBookingDateLabel($b['preferred_date'], $l),
+        ];
+        if ($status === 'cancelled') {
+            // The office gives no reason when it cancels from this list, so the
+            // message says who cancelled it and the template offers the phone number.
+            $vars['reason'] = $l === 'ta' ? 'கோயில் அலுவலகம் இந்தப் பதிவை ரத்து செய்துள்ளது' : 'The temple office has cancelled this booking';
+        }
+        $ctx = ['entity_id' => $id, 'vars' => $vars, 'actor' => $actor];
+        if ($devoteeId !== null) {
+            $ctx['devotee_id'] = $devoteeId;
+        } else {
+            $phone = devoteeIntlPhone((string) $b['phone'], $b['phone_country'] ?? null);
+            if (strlen($phone) < 7) return false;
+            $ctx['to_phone'] = $phone;
+            $ctx['name']     = (string) $b['devotee_name'];
+            $ctx['lang']     = 'ta';
+        }
+        $r = devoteeNotifyEvent(SB_EVENTS[$status], $ctx);
+        return $r !== null && $r['id'] !== null && empty($r['deduped']);
+    } catch (Throwable $e) {
+        error_log('[notify] booking status notification for #' . (int) $b['id'] . ' failed: ' . $e->getMessage());
+        return false;
+    }
+}
+
+/** The sentence a flash ends with: how many devotees were just told. */
+function sbNotifiedNote(int $notified, int $eligible): string
+{
+    if ($eligible === 0 || !devoteeNotifyReady()) return '';
+    if ($notified === 0) {
+        return $eligible === 1
+            ? ' No devotee was notified: they had already been told, or the booking has no way to reach them.'
+            : ' No devotee was notified: each had already been told, or left no way to reach them.';
+    }
+    return ' Notified ' . $notified . ' devotee' . ($notified === 1 ? '' : 's') . '.';
+}
 
 /** Same-origin referer (this page only) so redirects land back on the filtered list. */
 function sbBackUrl(): string
@@ -53,11 +133,34 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $msg === '') {
         } elseif (!$ids) {
             sbFlash('error', 'Select at least one booking first.');
         } else {
-            $marks = implode(',', array_fill(0, count($ids), '?'));
-            $stmt  = $db->prepare("UPDATE seva_bookings SET status = ? WHERE id IN ($marks)");
-            $stmt->execute(array_merge([$newStatus], $ids));
-            $n = count($ids);
-            sbFlash('success', "Updated $n booking" . ($n === 1 ? '' : 's') . ' to ' . ucfirst($newStatus) . '.');
+            // Only bookings whose status really changes are written and notified.
+            $found    = sbLoadBookings($db, $ids);
+            $toChange = array_filter($found, static fn(array $b): bool => $b['status'] !== $newStatus);
+            if ($toChange) {
+                $changeIds = array_keys($toChange);
+                $marks     = implode(',', array_fill(0, count($changeIds), '?'));
+                $stmt      = $db->prepare("UPDATE seva_bookings SET status = ? WHERE id IN ($marks)");
+                $stmt->execute(array_merge([$newStatus], $changeIds));
+            }
+            $actor    = (string) (currentAdmin()['username'] ?? 'admin');
+            $notified = 0;
+            $eligible = 0;
+            if (isset(SB_EVENTS[$newStatus])) {
+                foreach ($toChange as $b) {
+                    $eligible++;
+                    if (sbNotifyStatusChange($b, $newStatus, $actor)) $notified++;
+                }
+            }
+            $n       = count($toChange);
+            $same    = count($found) - $n;
+            $missing = count($ids) - count($found);
+            $label   = ucfirst($newStatus);
+            $text    = $n > 0
+                ? "Updated $n booking" . ($n === 1 ? '' : 's') . " to $label."
+                : "No bookings changed: the selected booking" . (count($found) === 1 ? ' was' : 's were') . " already $label.";
+            if ($n > 0 && $same > 0) $text .= " $same already " . ($same === 1 ? 'was' : 'were') . " $label.";
+            if ($missing > 0) $text .= " $missing no longer exist" . ($missing === 1 ? 's' : '') . '.';
+            sbFlash($n > 0 || $same > 0 ? 'success' : 'error', $text . sbNotifiedNote($notified, $eligible));
         }
         header('Location: ' . sbBackUrl());
         exit;
@@ -68,16 +171,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $msg === '') {
         $newStatus = in_array($_POST['status'], $statuses, true) ? $_POST['status'] : 'pending';
         $id        = (int) $_POST['id'];
         // Existence check first, so a stale or forged id never reports a write that never happened.
-        $look = $db->prepare('SELECT devotee_name FROM seva_bookings WHERE id = :id');
-        $look->execute([':id' => $id]);
-        $found = $look->fetch();
+        $found = sbLoadBookings($db, [$id])[$id] ?? null;
         if (!$found) {
             sbFlash('error', "Booking #$id no longer exists.");
         } else {
-            $stmt = $db->prepare('UPDATE seva_bookings SET status = :s WHERE id = :id');
-            $stmt->execute([':s' => $newStatus, ':id' => $id]);
-            $who = trim((string) $found['devotee_name']);
-            sbFlash('success', 'Booking #' . $id . ($who !== '' ? " for $who" : '') . ' marked ' . ucfirst($newStatus) . '.');
+            $who  = trim((string) $found['devotee_name']);
+            $what = 'Booking #' . $id . ($who !== '' ? " for $who" : '');
+            if ($found['status'] === $newStatus) {
+                sbFlash('success', $what . ' was already ' . ucfirst($newStatus) . '; nothing changed.');
+            } else {
+                $stmt = $db->prepare('UPDATE seva_bookings SET status = :s WHERE id = :id');
+                $stmt->execute([':s' => $newStatus, ':id' => $id]);
+                $eligible = isset(SB_EVENTS[$newStatus]) ? 1 : 0;
+                $notified = $eligible && sbNotifyStatusChange($found, $newStatus, (string) (currentAdmin()['username'] ?? 'admin')) ? 1 : 0;
+                sbFlash('success', $what . ' marked ' . ucfirst($newStatus) . '.' . sbNotifiedNote($notified, $eligible));
+            }
         }
         header('Location: ' . sbBackUrl());
         exit;

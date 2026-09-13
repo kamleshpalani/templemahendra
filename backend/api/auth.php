@@ -15,6 +15,14 @@
  *
  * Register, forgot and reset answer identically whether or not the address is
  * known, so none of them can be used to find out who has an account.
+ *
+ * Notifications (docs/notifications/SPEC.md §5.5), once migration 007 is in:
+ *   register  account.registered — an in-app welcome waiting in the bell —
+ *             beside the confirmation email (account.email_verification)
+ *   verify    account.email_verified, which replaces the separate welcome
+ *             email, so confirming an address sends exactly one message
+ *   reset     security.password_changed, so the owner hears about it
+ * Without the tables every email goes straight through the mailer, as before.
  */
 
 require_once __DIR__ . '/../includes/db.php';
@@ -33,6 +41,12 @@ const AUTH_POST_ACTIONS = ['register', 'login', 'logout', 'verify', 'resend', 'f
 if (!in_array($action, AUTH_GET_ACTIONS, true) && !in_array($action, AUTH_POST_ACTIONS, true)) {
     sendError('Not found', 404);
 }
+
+/**
+ * A real bcrypt hash of a value nobody will submit, used so a sign-in attempt
+ * against an unknown address costs the same time as one against a known one.
+ */
+const DUMMY_BCRYPT_HASH = '$2y$10$usesomesillystringfore7hnbRJHxXVLeakoG8K30oukPsA.ztMG';
 
 /** Same wording whatever actually happened, so nothing is revealed. */
 const VAGUE_SENT = 'If that email address has an account, we have sent a message to it. Please check your inbox, and your spam folder.';
@@ -83,15 +97,24 @@ switch ($action) {
 
         $name  = sanitizeText($body['name'] ?? '', 200);
         $email = mb_strtolower(trim((string) ($body['email'] ?? '')));
-        $phone = preg_replace('/\D+/', '', (string) ($body['phone'] ?? ''));
-        $pass  = (string) ($body['password'] ?? '');
+        // The client sends the country code already joined to the national part,
+        // plus the ISO country it chose, so a devotee anywhere can register.
+        // Required now: the committee needs a way to reach a new devotee.
+        $ph    = normalizePhone($body['phone'] ?? '', $body['phoneCountry'] ?? null, true);
+        $phone = $ph['phone'];
+        $country = normalizeCountry($body['country'] ?? null);
+        $state   = sanitizeText($body['state'] ?? '', 120);
+        $city    = sanitizeText($body['city'] ?? '', 120);
+        $pass    = (string) ($body['password'] ?? '');
 
         $errors = [];
         if (mb_strlen($name) < 2)                                  $errors['name']  = 'Please enter your name.';
+        if ($country === null)                                     $errors['country'] = 'Please choose your country.';
+        if (mb_strlen($city) < 2)                                  $errors['city']  = 'Please enter your city or town.';
         if (!filter_var($email, FILTER_VALIDATE_EMAIL) || mb_strlen($email) > 190) {
             $errors['email'] = 'Please enter a valid email address.';
         }
-        if ($phone !== '' && !preg_match('/^\d{7,15}$/', $phone))   $errors['phone'] = 'Enter a phone number of 7 to 15 digits, or leave it blank.';
+        if ($ph['error'] !== '')                                   $errors['phone'] = $ph['error'];
         $pp = passwordProblem($pass, $email);
         if ($pp !== '')                                            $errors['password'] = $pp;
         if ($errors) sendJson(['error' => 'Please correct the highlighted fields.', 'fields' => $errors], 422);
@@ -109,17 +132,26 @@ switch ($action) {
             // Tell the real owner, answer the caller exactly as for a new account.
             $mail = devoteeSendAlreadyRegistered($existing);
         } else {
-            $db->prepare('INSERT INTO devotees (name, email, phone, pass_hash) VALUES (:n,:e,:p,:h)')
-               ->execute([
-                   ':n' => $name,
-                   ':e' => $email,
-                   ':p' => $phone !== '' ? $phone : null,
-                   ':h' => password_hash($pass, PASSWORD_BCRYPT),
-               ]);
+            $db->prepare(
+                'INSERT INTO devotees (name, email, phone, phone_country, country, state, city, pass_hash)
+                 VALUES (:n, :e, :p, :pc, :co, :st, :ci, :h)'
+            )->execute([
+                ':n'  => $name,
+                ':e'  => $email,
+                ':p'  => $phone !== '' ? $phone : null,
+                ':pc' => $phone !== '' ? $ph['country'] : null,
+                ':co' => $country,
+                ':st' => $state !== '' ? $state : null,
+                ':ci' => $city !== '' ? $city : null,
+                ':h'  => password_hash($pass, PASSWORD_BCRYPT),
+            ]);
             $id   = (int) $db->lastInsertId();
             $stmt = $db->prepare('SELECT * FROM devotees WHERE id = :id');
             $stmt->execute([':id' => $id]);
             $mail = devoteeSendVerification($stmt->fetch());
+            // The welcome is in-app only: it waits in the bell for their first
+            // sign-in, and the only email they need right now is the link above.
+            devoteeNotifyEvent('account.registered', ['devotee_id' => $id]);
         }
 
         sendJson([
@@ -137,7 +169,11 @@ switch ($action) {
         $pass  = (string) ($body['password'] ?? '');
 
         rateLimitOrFail('login-ip', 20, 900, 'Too many sign-in attempts. Please wait fifteen minutes and try again.');
-        if ($email !== '' && !rateLimitAllow('login-acct', 6, 900, $email)) {
+        // Per-account, but keyed on the address AND the caller's own IP. Keyed on
+        // the address alone, anyone who knew a devotee's email could lock them
+        // out of their own account simply by failing to sign in six times.
+        $acctKey = $email . '|' . clientIp();
+        if ($email !== '' && !rateLimitPeek('login-acct', 6, 900, $acctKey)) {
             sendJson(['error' => 'Too many attempts for that account. Please wait fifteen minutes, or reset your password.', 'code' => 'rate_limited'], 429);
         }
         if ($email === '' || $pass === '') {
@@ -148,7 +184,16 @@ switch ($action) {
         $stmt->execute([':e' => $email]);
         $row = $stmt->fetch();
 
-        if (!$row || !password_verify($pass, $row['pass_hash'])) {
+        // Always spend the same work, whether or not the address is known.
+        // Skipping the hash for a missing row made "no such account" measurably
+        // faster than "wrong password", which is a way to enumerate addresses.
+        $ok = $row
+            ? password_verify($pass, $row['pass_hash'])
+            : password_verify($pass, DUMMY_BCRYPT_HASH) && false;
+
+        if (!$ok) {
+            // Only failures count against the per-account budget.
+            rateLimitAllow('login-acct', 6, 900, $acctKey);
             sendJson(['error' => 'That email address and password do not match.'], 401);
         }
         if (!$row['is_active']) {
@@ -158,6 +203,7 @@ switch ($action) {
             $db->prepare('UPDATE devotees SET pass_hash = :h WHERE id = :id')
                ->execute([':h' => password_hash($pass, PASSWORD_BCRYPT), ':id' => $row['id']]);
         }
+        rateLimitClear('login-acct', $acctKey);
         devoteeLogIn($row);
         sendJson(['ok' => true, 'user' => devoteePublic($row), 'csrf' => devoteeCsrfToken()]);
     }
@@ -182,6 +228,8 @@ switch ($action) {
         $db->prepare('UPDATE devotees SET email_verified_at = NOW() WHERE id = :id')
            ->execute([':id' => (int) $row['id']]);
         $row['email_verified_at'] = date('Y-m-d H:i:s');
+        // One "your email is confirmed" message (in-app and email), deduped per
+        // devotee — never a welcome email on top of it.
         devoteeSendWelcome($row);
         devoteeLogIn($row);
         sendJson(['ok' => true, 'user' => devoteePublic($row), 'csrf' => devoteeCsrfToken(),
@@ -253,6 +301,10 @@ switch ($action) {
         $stmt = $db->prepare('SELECT * FROM devotees WHERE id = :id');
         $stmt->execute([':id' => (int) $row['id']]);
         $fresh = $stmt->fetch();
+        // Whoever really owns the address hears that the password changed, even
+        // though a reset link was used: that link can be opened by anyone who
+        // got into the inbox.
+        devoteeNotifyPasswordChanged($fresh);
         devoteeLogIn($fresh);
         sendJson(['ok' => true, 'user' => devoteePublic($fresh), 'csrf' => devoteeCsrfToken(),
                   'message' => 'Your password has been changed and you are signed in.']);

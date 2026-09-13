@@ -1,0 +1,318 @@
+/* ══════════════════════════════════════════════════════════════════
+   NotificationPreferences.css — the Notifications tab of /account.
+
+   Four cards (channels, topics, language and time, promotional consent)
+   in a grid that collapses to one column, then a save bar that stays in
+   view while there is something to save. Rows reuse the shared .switch,
+   .badge and .alert primitives; this file only lays them out. Tokens only.
+   ══════════════════════════════════════════════════════════════════ */
+
+.np {
+  display: grid;
+  gap: var(--space-5);
+}
+
+/* Holds roughly the form's height while it loads, so the page does not jump. */
+.np--loading {
+  min-height: 24rem;
+}
+
+.np__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 26rem), 1fr));
+  gap: var(--space-5);
+  align-items: start;
+}
+
+/* ── Sections ────────────────────────────────────────────────────── */
+.np-section {
+  padding: var(--space-6);
+}
+.np-section__title {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin: 0 0 var(--space-2);
+  font-size: var(--text-lg);
+  line-height: var(--leading-snug);
+  color: var(--maroon-600);
+}
+.np-section__title > svg {
+  width: 1.1rem;
+  height: 1.1rem;
+  flex-shrink: 0;
+  color: var(--accent-ink);
+}
+.np-section__lead {
+  margin: 0 0 var(--space-4);
+  font-size: var(--text-sm);
+  line-height: var(--leading-relaxed);
+  color: var(--text-2);
+}
+.np-alert {
+  margin-bottom: var(--space-4);
+}
+
+/* ── Rows ────────────────────────────────────────────────────────── */
+.np-list {
+  display: grid;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.np-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: var(--space-2) var(--space-3);
+  align-items: start;
+  padding: var(--space-3) 0;
+  border-top: 1px solid var(--border-soft);
+}
+.np-row:first-child {
+  padding-top: 0;
+  border-top: 0;
+}
+
+.np-row__icon {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border-radius: var(--radius-sm);
+  background: var(--glass-tint-gold);
+  color: var(--accent-ink);
+}
+.np-row__icon > svg {
+  width: 1.05rem;
+  height: 1.05rem;
+}
+
+.np-row__body {
+  display: grid;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+/* The whole label is the switch's hit area; give it a comfortable height and
+   keep the track level with the first line of a two-line label. */
+.np-row .switch {
+  align-items: flex-start;
+  min-height: 36px;
+  padding-top: var(--space-1);
+}
+.np-row .switch__label > span:first-child {
+  color: var(--text-1);
+  font-weight: var(--weight-semibold);
+}
+.np-row .switch__desc {
+  line-height: var(--leading-snug);
+}
+
+.np-row__label {
+  padding-top: var(--space-1);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-semibold);
+  color: var(--text-1);
+}
+.np-row__note {
+  margin: 0;
+  font-size: var(--text-xs);
+  line-height: var(--leading-snug);
+  color: var(--text-muted);
+}
+.np-row__note--warn {
+  color: var(--warning-fg);
+}
+.np-row__action {
+  align-self: center;
+  justify-self: end;
+}
+
+.np-row--locked .np-row__body {
+  gap: var(--space-1);
+}
+.np-lock {
+  align-self: center;
+  white-space: nowrap;
+}
+
+.np-inline {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-3);
+}
+
+/* ── Push on this device ─────────────────────────────────────────── */
+.np-device {
+  display: grid;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius);
+  background: var(--glass-tint-gold);
+}
+.np-device__title {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-1) var(--space-3);
+  margin: 0;
+  font-size: var(--text-sm);
+  font-weight: var(--weight-semibold);
+  color: var(--text-1);
+}
+.np-device__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2) var(--space-3);
+}
+.np-device__state {
+  display: inline-flex;
+}
+.np-device .alert {
+  margin: 0;
+}
+.np-device .alert__body {
+  display: grid;
+  gap: var(--space-2);
+  justify-items: start;
+}
+
+/* ── Language, time, consent ─────────────────────────────────────── */
+.np-locale-note {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+.np-locale-note > svg {
+  width: 0.95rem;
+  height: 0.95rem;
+  flex-shrink: 0;
+}
+
+.np-consent {
+  align-items: flex-start;
+  margin: 0;
+  padding: var(--space-4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--glass-1);
+  color: var(--text-1);
+  line-height: var(--leading-normal);
+}
+.np-consent input {
+  margin-top: 0.15rem;
+}
+
+/* ── Save bar ────────────────────────────────────────────────────── */
+/* At the end of the form, and floating above the bottom navigation while
+   there are unsaved changes on a phone or tablet. The floating copy is
+   positioned from JavaScript (NotificationPreferences.jsx explains why
+   `position: sticky` cannot work on this site); the slot keeps the bar's
+   height in the form so nothing jumps when it lifts off. */
+.np-savebar-slot {
+  min-height: var(--np-slot-h, 0px);
+}
+
+.np-savebar {
+  position: relative;
+  z-index: var(--z-raised);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2) var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--glass-border-strong);
+  border-radius: var(--radius-lg);
+  background: var(--glass-3);
+  backdrop-filter: blur(var(--blur-md)) saturate(var(--saturate));
+  -webkit-backdrop-filter: blur(var(--blur-md)) saturate(var(--saturate));
+  box-shadow: var(--shadow-md), var(--glass-edge);
+}
+.np-savebar--dirty {
+  border-color: var(--warning-border);
+}
+.np-savebar--floating {
+  position: fixed;
+  left: var(--np-bar-left, 16px);
+  right: var(--np-bar-right, 16px);
+  bottom: var(--np-bar-bottom, 16px);
+  z-index: var(--z-sticky);
+  box-shadow: var(--shadow-lg), var(--glass-edge);
+}
+.np-savebar__status:focus {
+  outline: none;
+}
+.np-savebar__status:focus-visible {
+  outline: 2px solid var(--accent-ink);
+  outline-offset: 2px;
+  border-radius: var(--radius-xs);
+}
+.np-savebar__status {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin: 0;
+  font-size: var(--text-sm);
+  font-weight: var(--weight-semibold);
+  color: var(--text-2);
+}
+.np-savebar__dot {
+  width: 8px;
+  height: 8px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  background: var(--success);
+}
+.np-savebar--dirty .np-savebar__dot {
+  background: var(--warning);
+}
+.np-savebar__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-left: auto;
+}
+
+/* ── Narrow ──────────────────────────────────────────────────────── */
+@media (max-width: 768px) {
+  .np-section {
+    padding: var(--space-5);
+  }
+  .np-savebar {
+    padding: var(--space-2) var(--space-3);
+    border-radius: var(--radius);
+  }
+  /* Phones and tablets have the floating bottom navigation, the WhatsApp
+     button on the left and the chat button on the right. The floating bar sits
+     just above the navigation and between the two round buttons, so neither
+     covers Save. */
+  .np-savebar--floating {
+    margin-inline: 2.75rem 3.25rem;
+  }
+  .np-savebar__status {
+    font-size: var(--text-xs);
+  }
+  /* Touch targets of at least 44px. */
+  .np .btn,
+  .np-row .switch {
+    min-height: 44px;
+  }
+}
+
+@media (max-width: 480px) {
+  .np-row {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+  .np-row__action,
+  .np-lock {
+    grid-column: 2;
+    justify-self: start;
+  }
+}
