@@ -23,6 +23,21 @@ if ($message === '') {
     sendError('Message is required');
 }
 
+// Whether the temple is taking online donations right now decides what the
+// assistant may promise (docs/payments/SPEC.md §7.8). Never let a payment
+// problem break the chatbot: anything unexpected means "not switched on".
+$payOnline = false;
+try {
+    require_once __DIR__ . '/../includes/payments.php';
+    $payOnline = payTablesExist() && payConfig()['enabled'] && payReady()['ok'];
+} catch (Throwable $e) {
+    $payOnline = false;
+}
+
+$donationFact = $payOnline
+    ? "online on the website at /donate (UPI, card, net banking or wallet through the CCAvenue payment gateway; an electronic receipt is shown at once and sent by email, SMS or WhatsApp), or by bank transfer or cheque in the Trust's name."
+    : "by bank transfer or cheque in the Trust's name. Paying online on the website is not switched on yet.";
+
 // ── Temple system prompt ───────────────────────────────────────────────
 // Facts are transcribed from the committee's printed donation-appeal booklet
 // (mirrored in frontend/src/data/temple.js). Daily timings and the seva list
@@ -37,11 +52,12 @@ Answer ONLY questions about this temple. Information you know:
 - Events: every month on Pournami (full moon) — special pooja and annadanam in which all clan members take part | every Maha Shivaratri — clan members gather for darshan and annadanam is offered. Other festival dates (Thai Poosam, Panguni Uthiram, Aadi Pooram, Karthigai Deepam) are NOT confirmed — if asked, say they are to be confirmed by the temple committee.
 - History: founded many centuries ago at Pudupatti by the elders of the Dhabbalaar clan; worship was offered before the naar-petti (the fibre box the clan deities brought, holding a silk saree and bangles). 1990 — idols of the three deities sculpted and consecrated. 2011 — community donations built the gopuram. Sunday 10-06-2012 (28 Vaikasi, Nandana year 1187) — Jeernoddharana Ashtabandhana Maha Kumbabhishekam performed; daily pooja has continued ever since. 22-06-2023 — Dharma Trust registered. Land was donated by the family of Thiru T.K. Subbaram (Sub-Inspector of Police, Retd., native of Pudupatti, now in Rajapalayam) — his wife Thirumathi Ramalakshmi and son Thiru Srinivasan registered the deed in the Trust's name; on that land an annadanam hall and toilets are under construction and rest rooms are planned. The next Maha Kumbabhishekam is due: say "12 years since 10-06-2012", NOT "this year". Donations are sought for the Kumbabhishekam and the buildings.
 - Dharma Trust: Arulmigu Sri Renukadevi Sri Lingammal Sri Chinnammal Temple Dharma Trust (அருள்மிகு ஸ்ரீ ரேணுகாதேவி ஸ்ரீ லிங்கம்மாள் ஸ்ரீ சின்னம்மாள் திருக்கோவில் தர்ம அறக்கட்டளை). Registration No. 9/2023 dated 22-06-2023 | PAN AAKTA2241H | Order No. AAKTA 2241, HF 20231-23-24 | Income Tax Exemption No. A12A IV SUB SECTION (5) OF 80'G — donors receive 80G income-tax exemption.
-- Donations: by bank transfer or cheque in the Trust's name ONLY. Bank: Tirunelveli Central Co-operative Bank, Thiruvengadam Branch | A/C 713055315 | IFSC TNSC0011500. Receipt policy: a receipt is sent only if the donor's full address is clearly given to the administration at the time of donating; donors giving in person must collect a receipt; the Trust is not responsible for money given without a receipt. There is NO UPI ID — never invent or suggest one.
+- Donations: $donationFact Bank: Tirunelveli Central Co-operative Bank, Thiruvengadam Branch | A/C 713055315 | IFSC TNSC0011500. Receipt policy for a donation given at the temple or by transfer: a receipt is sent only if the donor's full address is clearly given to the administration at the time of donating; donors giving in person must collect a receipt; the Trust is not responsible for money given without a receipt. There is NO UPI ID — never invent or suggest one; point devotees to /donate instead.
 - Address: Pudupatti, Thiruvengadam Taluk, Tenkasi District – 627719, Tamil Nadu (புதுப்பட்டி, திருவேங்கடம் தாலுகா, தென்காசி மாவட்டம் - 627719).
 - Temple committee (name, role, phone): S. Gengaiah (S. கெங்கையா), President, +91 94430 02296 | S. Ponraj (S. பொன்ராஜ்), Vice President, +91 94431 26612 | G. Kumar (G. குமார்), Secretary, +91 73730 16302 | A. Gurusamy (A. குருசாமி), Joint Secretary, +91 82205 52427 | K. Rajendran (K. இராஜேந்திரன்), Treasurer 1, +91 99650 40693 | L. Sivakumar (L. சிவக்குமார்), Treasurer 2, +91 94884 68206.
 - Email: No email address has been supplied — do not invent one; direct devotees to the Contact page form.
 - Family registration: families register once on the website's Family registration page (/register), in four short steps — the registrant's name and phone number (email and date of birth are optional) and the language to be written to in; family members, which are optional (each member's name, relationship and, if they wish, age); the home address (a PIN code is needed for an Indian address); and a final review. There is no account, password or sign-in. Ticking the box on the form agrees to festival, pooja and temple updates by WhatsApp, SMS or email, and every update has a link to stop them. To change registered details later, contact the temple office.
+- Live darshan: daily poojas and festivals are streamed live on the website's Live Darshan page (/live-darshan) when a broadcast is scheduled; the next stream's date and time are shown there with a countdown, and the full schedule (today, tomorrow, this week, festivals) is at /live-darshan/schedule. Tell devotees who cannot visit to watch there.
 Keep replies concise (2-4 lines). If the user writes in Tamil, reply in Tamil. If in English, reply in English.
 Do not answer anything unrelated to this temple. Never state a fact that is not listed above.
 PROMPT;
@@ -117,9 +133,17 @@ $msg = mb_strtolower($message, 'UTF-8');
 
 // Shared by the generic donation rule and the earlier "donate for the
 // Kumbabhishekam / buildings" rule, so both answer with the bank details.
+$donationOnlineTa = $payOnline
+    ? "💳 இணையவழியில்: இணையதளத்தில் /donate பக்கத்தில் UPI, கார்டு அல்லது நெட் பேங்கிங் மூலம் வழங்கலாம்; ரசீது உடனே கிடைக்கும்.\n"
+    : "";
+$donationOnlineEn = $payOnline
+    ? "💳 Online: give at /donate on this website by UPI, card or net banking — the receipt is ready at once.\n"
+    : "";
+
 $donationReply =
       "நன்கொடை வழிகள் 🙏\n"
-    . "நன்கொடை வழங்குபவர்கள் வங்கிக் கணக்கிலும் அல்லது காசோலையாகவும் அறக்கட்டளை பெயரில் வழங்கலாம். (வங்கிப் பரிமாற்றம் அல்லது காசோலை மட்டுமே.)\n"
+    . $donationOnlineTa
+    . "நன்கொடை வழங்குபவர்கள் வங்கிக் கணக்கிலும் அல்லது காசோலையாகவும் அறக்கட்டளை பெயரில் வழங்கலாம்.\n"
     . "🛕 அறக்கட்டளை: அருள்மிகு ஸ்ரீ ரேணுகாதேவி ஸ்ரீ லிங்கம்மாள் ஸ்ரீ சின்னம்மாள் திருக்கோவில் தர்ம அறக்கட்டளை\n"
     . "🏦 திருநெல்வேலி மத்திய கூட்டுறவு வங்கி, திருவேங்கடம் கிளை\n"
     . "🔢 வங்கி கணக்கு எண்: 713055315 | IFSC CODE: TNSC0011500\n"
@@ -127,7 +151,8 @@ $donationReply =
     . "🧾 இவை அனைத்தும் வழங்கும் போது நிர்வாகத்திற்கு தங்களது முகவரி தெளிவாக வழங்கினால் மட்டுமே ரசீது அனுப்பி வைக்கப்படும். நன்கொடை பெற நேரடியாக வருபவர்களிடம் ரசீது பெற்றுக் கொள்ளும்படி அன்புடன் கேட்டுக்கொள்கிறோம். ரசீது வாங்காமல் கொடுக்கும் பணத்திற்கு அறக்கட்டளை பொறுப்பல்ல.\n"
     . "\n"
     . "How to donate\n"
-    . "Donations may be made by bank transfer or by cheque in the Trust's name only — no other payment method is offered.\n"
+    . $donationOnlineEn
+    . "Donations may also be made by bank transfer or by cheque in the Trust's name.\n"
     . "🛕 Trust: Arulmigu Sri Renukadevi Sri Lingammal Sri Chinnammal Temple Dharma Trust\n"
     . "🏦 Tirunelveli Central Co-operative Bank, Thiruvengadam Branch\n"
     . "🔢 A/C No.: 713055315 | IFSC: TNSC0011500\n"
@@ -214,6 +239,18 @@ $rules = [
 
     '/நேரம்|திற(?!்)|மூடு|time|timing|hour|open|close/u'
         => "கோயில் நேரம்:\n🌅 காலை 6:00 – மதியம் 12:30\n🌇 மாலை 4:00 – இரவு 9:00\n\nTemple Hours:\n🌅 6:00 AM – 12:30 PM\n🌇 4:00 PM – 9:00 PM",
+
+    // Live darshan (docs/live/SPEC-PHASE1.md §4.6): after the timings rule, so
+    // "darshan timings" still gets the hours, and before the seva rule, so
+    // "abhishekam live" reaches the page link. Anchored: "live" as a word
+    // (not "delivery"), "stream" at a word start, "darshan" only next to
+    // "live" or "online" (a plain "darshan on Friday" is not about the page).
+    '/\blive\b|\bstream|youtube|live\s*darshan|darshan\s*(online|live)|online\s*darshan|நேரடி\s*தரிசனம்|ஒளிபரப்பு|நேரலை/iu'
+        => "நேரடி தரிசனம் 📺\n"
+         . "தினசரி பூஜைகள், அபிஷேகம், தீபாராதனை மற்றும் திருவிழாக்கள் ஒளிபரப்பு திட்டமிடப்பட்டிருக்கும்போது இணையதளத்தின் நேரடி தரிசனம் பக்கத்தில் (/live-darshan) நேரலையாகக் காணலாம். அடுத்த ஒளிபரப்பின் தேதியும் நேரமும் அங்கே காட்டப்படும்; இன்று, நாளை மற்றும் இந்த வாரத்தின் முழு அட்டவணை /live-darshan/schedule பக்கத்தில் உள்ளது.\n"
+         . "\n"
+         . "Live darshan\n"
+         . "Daily poojas, abhishekam, deeparadhana and festivals are streamed live on the website's Live Darshan page (/live-darshan) when a broadcast is scheduled. The next stream's date and time are shown there too, and the full schedule for today, tomorrow and this week is at /live-darshan/schedule.",
 
     '/சேவை|பூஜை|அபிஷேகம்|அர்ச்சனை|ஹோமம்|seva|pooja|puja|abhishekam|archana|homam/u'
         => "நாங்கள் வழங்கும் சேவைகள்:\n• அபிஷேகம் (Abhishekam)\n• அர்ச்சனை (Archana)\n• ஹோமம் (Homam)\n• நிவேதனம் (Neivedyam)\n• அலங்காரம் (Alangaram)\n\nSevas page-ல் விவரம் காணலாம் அல்லது நேரடியாக அழைக்கவும். 🙏",

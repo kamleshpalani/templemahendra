@@ -347,6 +347,10 @@
   --hero-a: var(--gold-300);
   --hero-b: var(--saffron-400);
 }
+.page-hero--live {
+  --hero-a: var(--maroon-300);
+  --hero-b: var(--saffron-400);
+}
 
 .page-hero__content {
   position: relative;

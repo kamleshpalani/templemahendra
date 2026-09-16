@@ -173,6 +173,24 @@ $PAGES = [
     // family registration form is what replaced both.
     ['url' => '/register',            'ta' => 'குடும்பப் பதிவு', 'en' => 'Family registration',
      'sub_ta' => 'பதிவு', 'sub_en' => 'Register', 'kw' => 'register registration family members member household enrol enroll sign up signup join temple updates whatsapp பதிவு குடும்பம் குடும்பப் பதிவு உறுப்பினர் உறுப்பினர்கள்'],
+    // Online giving and the four policy pages (docs/payments/SPEC.md §7.8).
+    // Titles are the pages' own SEO titles, as in site_pages.php.
+    ['url' => '/donate',              'ta' => 'இணையவழி நன்கொடை', 'en' => 'Donate online',
+     'sub_ta' => 'நன்கொடை', 'sub_en' => 'Donations', 'kw' => 'donate online donation pay payment upi card credit card debit card net banking netbanking wallet ccavenue payment gateway receipt e-receipt 80g give இணையவழி ஆன்லைன் நன்கொடை பணம் செலுத்த யுபிஐ கார்டு நெட் பேங்கிங் ரசீது'],
+    ['url' => '/privacy-policy',      'ta' => 'தனியுரிமைக் கொள்கை', 'en' => 'Privacy Policy',
+     'sub_ta' => 'கொள்கைகள்', 'sub_en' => 'Policies', 'kw' => 'privacy policy personal data information details cookies security data protection தனியுரிமை தனிப்பட்ட தகவல் விவரங்கள் குக்கீ பாதுகாப்பு'],
+    ['url' => '/terms-and-conditions', 'ta' => 'விதிமுறைகள் & நிபந்தனைகள்', 'en' => 'Terms & Conditions',
+     'sub_ta' => 'கொள்கைகள்', 'sub_en' => 'Policies', 'kw' => 'terms conditions terms of use rules governing law jurisdiction court tenkasi விதிமுறைகள் நிபந்தனைகள் சட்டம் நீதிமன்றம்'],
+    ['url' => '/refund-cancellation-policy', 'ta' => 'பணம் திருப்பி அளித்தல் & ரத்துக் கொள்கை', 'en' => 'Refund & Cancellation Policy',
+     'sub_ta' => 'கொள்கைகள்', 'sub_en' => 'Policies', 'kw' => 'refund refunds cancel cancellation money back return duplicate payment failed payment seva cancellation 48 hours பணம் திருப்பி ரத்து திரும்பப் பெறுதல்'],
+    ['url' => '/shipping-delivery-policy', 'ta' => 'அனுப்புதல் & விநியோகக் கொள்கை', 'en' => 'Shipping & Delivery Policy',
+     'sub_ta' => 'கொள்கைகள்', 'sub_en' => 'Policies', 'kw' => 'shipping delivery courier post dispatch prasadam receipt delivery அனுப்புதல் விநியோகம் கூரியர் அஞ்சல் பிரசாதம்'],
+    // Live darshan (docs/live/SPEC-PHASE1.md §4.6). Title = the page's SEO title.
+    ['url' => '/live-darshan',        'ta' => 'நேரடி தரிசனம்', 'en' => 'Live Darshan',
+     'sub_ta' => 'நேரடி தரிசனம்', 'sub_en' => 'Live Darshan', 'kw' => 'live darshan stream streaming watch online video youtube pooja நேரடி தரிசனம் நேரடி ஒளிபரப்பு யூடியூப் நேரலை'],
+    // The schedule page (docs/live/SPEC-PHASE2.md §1.3).
+    ['url' => '/live-darshan/schedule', 'ta' => 'நேரடி தரிசன அட்டவணை', 'en' => 'Live Darshan schedule',
+     'sub_ta' => 'நேரடி தரிசனம்', 'sub_en' => 'Live Darshan', 'kw' => 'schedule timetable programme today tomorrow this week festivals countdown அட்டவணை கால அட்டவணை live darshan நேரடி தரிசனம் இன்று நாளை இந்த வாரம் திருவிழா'],
 ];
 foreach ($PAGES as $p) {
     $score = scoreOf($q, $p['ta'], $p['en']);

@@ -135,6 +135,12 @@ function cleanup(prefixLike, adminPrefix, regPrefixLike) {
   }
   // A registration's own notifications cascade with it.
   sql("DELETE FROM devotees WHERE name LIKE ?", [regPrefixLike]);
+  // Online donations (migration 010) have attempts and audit rows with no foreign key back to the donation.
+  if (hasTable("payment_transactions")) {
+    sql("DELETE a FROM payment_audit_log a JOIN payment_transactions t ON a.transaction_id = t.id JOIN donations d ON t.payable_type = 'donation' AND t.payable_id = d.id WHERE d.name LIKE ?", [prefixLike]);
+    sql("DELETE a FROM payment_audit_log a JOIN donations d ON a.payable_type = 'donation' AND a.payable_id = d.id WHERE d.name LIKE ?", [prefixLike]);
+    sql("DELETE t FROM payment_transactions t JOIN donations d ON t.payable_type = 'donation' AND t.payable_id = d.id WHERE d.name LIKE ?", [prefixLike]);
+  }
   sql(`DELETE a FROM admin_activity a JOIN donations d ON a.subject = CONCAT('D-', LPAD(d.id, 6, '0')) WHERE a.action IN ${LIST_ACTIONS} AND d.name LIKE ?`, [prefixLike]);
   sql("DELETE FROM donations WHERE name LIKE ?", [prefixLike]);
   sql("DELETE FROM seva_bookings WHERE devotee_name LIKE ?", [prefixLike]);
@@ -292,6 +298,21 @@ try {
       invalid: () => registration(`${REG_MARK} flood bad`, { postcode: "" }),
     },
   ];
+  // Online donations (docs/payments/SPEC.md §5.5): buckets payment-attempt [20/h]
+  // and payment-created [8/h]. Only a server started with the payments overlay
+  // (PAYMENTS_ALLOW_SIMULATOR=1 and PAYMENTS_SETTINGS_OVERLAY enabling payments
+  // with credentials) can create one; against a normal server the row is skipped.
+  const payConfig = (await api("/api/payments/config", { xff: ip(45) })).json;
+  if (payConfig?.enabled === true && payConfig?.ready === true) {
+    forms.push({
+      path: "/api/payments/donations", bucket: "payment", savedBucket: "payment-created", saved: 8, attempts: 20, ips: [45, 46, 47], invalidStatus: 422,
+      countSql: "SELECT COUNT(*) c FROM donations WHERE name = ?", nameOf: (n) => guest(`flood ${n}`),
+      valid: (n) => ({ category: "general", amount: "1001", currency: "INR", name: guest(`flood ${n}`), phone: "919876543210", phoneCountry: "IN", country: "IN", acceptTerms: true, lang: "en" }),
+      invalid: () => ({ category: "general", amount: "-5", name: guest("flood bad"), phone: "919876543210", phoneCountry: "IN", country: "IN", acceptTerms: true, lang: "en" }),
+    });
+  } else {
+    console.log("- /api/payments/donations: online payments are not enabled on this server, so its flood-limit row is skipped (start the server with the payments overlay to include it)");
+  }
   const is429 = (res) => {
     const ra = Number(res.headers.get("retry-after"));
     return res.status === 429 && Number.isInteger(ra) && ra > 0
@@ -301,6 +322,8 @@ try {
   for (const f of forms) {
     section(`4. flood limits: ${f.path}`);
     const [a, b, c] = f.ips.map(ip);
+    const attemptBucket = `${f.bucket}-attempt`;
+    const savedBucket = f.savedBucket ?? `${f.bucket}-saved`;
     let codes = [];
     for (let i = 1; i <= f.saved; i++) codes.push((await post(f.path, f.valid(`${f.bucket} ${i}`), a)).status);
     check(codes.every((s) => s === 201), `${f.saved} valid submissions from one address are saved`, codes.join(","));
@@ -321,11 +344,11 @@ try {
 
     codes = [];
     for (let i = 0; i < 4; i++) codes.push((await post(f.path, f.invalid(), c)).status);
-    const att = rows("SELECT hits FROM rate_limits WHERE bucket = ?", [`${f.bucket}-attempt:${c}`])[0]?.hits;
-    const sav = rows("SELECT hits FROM rate_limits WHERE bucket = ?", [`${f.bucket}-saved:${c}`])[0]?.hits;
+    const att = rows("SELECT hits FROM rate_limits WHERE bucket = ?", [`${attemptBucket}:${c}`])[0]?.hits;
+    const sav = rows("SELECT hits FROM rate_limits WHERE bucket = ?", [`${savedBucket}:${c}`])[0]?.hits;
     check(codes.every((s) => s === f.invalidStatus) && Number(att) === 4 && sav === undefined, "invalid submissions count as attempts but not as saves", `codes ${codes} attempts ${att} saved ${sav}`);
     r = await post(f.path, f.valid(`${f.bucket} after invalid`), c);
-    const sav2 = rows("SELECT hits FROM rate_limits WHERE bucket = ?", [`${f.bucket}-saved:${c}`])[0]?.hits;
+    const sav2 = rows("SELECT hits FROM rate_limits WHERE bucket = ?", [`${savedBucket}:${c}`])[0]?.hits;
     check(r.status === 201 && Number(sav2) === 1, "the next valid submission from that address is saved and counts one save", `${r.status} saved ${sav2}`);
   }
 

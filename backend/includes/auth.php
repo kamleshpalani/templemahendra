@@ -54,6 +54,23 @@ const ADMIN_CAPABILITIES = [
     'notifications.compose'   => 'editor',  // write, submit, schedule, send what needs no approval, requeue
     'notifications.approve'   => 'owner',   // approve / send back, emergency send, cancel others' campaigns
     'notifications.templates' => 'owner',   // the wording of every automated message, categories
+    // Online payments (docs/payments/SPEC.md §10.1). Reading and exporting the
+    // money is a viewer's right; resending a receipt or asking CCAvenue about an
+    // order is an editor's day-to-day work. Sending money back, and holding the
+    // merchant account's keys, are an owner's alone — neither can be undone.
+    'payments.view'     => 'viewer',  // overview, transactions, refunds, reconciliation, CSV export
+    'payments.manage'   => 'editor',  // resend a receipt, check with CCAvenue, mark reviewed, reconcile
+    'payments.refund'   => 'owner',   // refund money to a donor
+    'payments.settings' => 'owner',   // gateway mode, credentials, currencies and limits
+    // Live darshan (docs/live/SPEC-PHASE1.md §4.5). Reading the schedule is a
+    // viewer's right; creating, editing and moving a stream through its
+    // statuses is an editor's day-to-day work. Provider credentials (Phase 3)
+    // are an owner's alone.
+    'live.view'      => 'viewer',  // list and open streams, the admin JSON API's GETs
+    'live.manage'    => 'editor',  // create, edit, delete, restore, thumbnails
+    'live.publish'   => 'editor',  // the status buttons: Publish, Go live, End, Cancel …
+    'live.provider'  => 'owner',   // YouTube credentials and provider settings (Phase 3)
+    'live.analytics' => 'viewer',  // viewer figures (Phase 11)
 ];
 
 /**
@@ -77,6 +94,10 @@ function adminPageCapability(string $file): string
         'notification_segments.php'  => 'notifications.view',
         'notification_templates.php' => 'notifications.view',
         'notification_analytics.php' => 'notifications.view',
+        'payments.php'               => 'payments.view',
+        'payment_settings.php'       => 'payments.settings',
+        'donation_categories.php'    => 'content.edit',
+        'live_streams.php'           => 'live.view',
     ][$file] ?? 'view';
 }
 
@@ -101,6 +122,12 @@ function adminPageWriteCapability(string $file): string
         'notification_segments.php'  => 'notifications.compose',
         'notification_templates.php' => 'notifications.templates',
         'notification_analytics.php' => 'notifications.compose', // requeue
+        // The refund actions on payments.php additionally require payments.refund.
+        'payments.php'               => 'payments.manage',
+        'payment_settings.php'       => 'payments.settings',
+        'donation_categories.php'    => 'content.edit',
+        // The status buttons on live_streams.php additionally require live.publish.
+        'live_streams.php'           => 'live.manage',
     ];
     if (isset($explicit[$file])) return $explicit[$file];
     $read = adminPageCapability($file);

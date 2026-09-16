@@ -221,11 +221,31 @@
     display: inline-flex;
   }
 }
+/* With Live Darshan the Tamil row carries eight labels (724 px at desktop
+   size). Between 1400 and 1439 px the CTA left the nav 661 px and clipped the
+   first and last labels, so in Tamil it waits until 1440, where the nav has
+   room for both; English labels are narrower and keep the CTA from 1400. */
+@media (min-width: 1400px) and (max-width: 1439px) {
+  :lang(ta) .navbar__cta {
+    display: none;
+  }
+}
 @media (min-width: 1560px) {
   /* The row stops growing at --header-max, so the spare width above that is
-     fixed. It goes to the temple's name rather than leaving it truncated. */
-  .navbar__brand {
+     fixed. In English it goes to the temple's name rather than leaving it
+     truncated; in Tamil the eight labels need it (a 300 px brand left the nav
+     648 px and clipped 38 px off each end), so the brand keeps 240 there. */
+  :lang(en) .navbar__brand {
     max-width: 300px;
+  }
+}
+@media (min-width: 1201px) {
+  /* Tamil labels are wider than the English ones: from 1201 px the pills take
+     0.45rem at the sides (the row already uses 0.5rem below 1200 and 0.42rem
+     below 1100), which is what keeps all eight inside the nav beside the CTA
+     at 1440–1559 and inside the capped row from 1560 up. */
+  :lang(ta) .navbar__link {
+    padding-inline: 0.45rem;
   }
 }
 
@@ -724,6 +744,17 @@
   }
   .navbar__brand {
     max-width: 200px;
+  }
+}
+/* With Live Darshan the row carries eight labels, and in Tamil they no longer
+   fit between the brand and the right cluster below 1060 px (the first and
+   last links were clipped at 1024). That entry is the one the row gives up:
+   it is hidden in this band and the footer quick link, the Home tile and site
+   search carry it (docs/live/SPEC-PHASE1.md Decision 3). From 1060 px up, and
+   in the drawer below 1024, it is present as before. */
+@media (max-width: 1059px) {
+  .navbar__link--optional {
+    display: none;
   }
 }
 /* Below 1024 the seven Tamil labels can no longer sit honestly in one row, so

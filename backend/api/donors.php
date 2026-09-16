@@ -21,14 +21,30 @@ $db = getDB();
 // column nobody has agreed to anything, so no donation is listed at all.
 $donations = [];
 if (publicGuardHasColumn('donations', 'show_name_publicly')) {
+    // Online donations (migration 010) appear only once paid, and leave the list
+    // when fully refunded or while a refund is in progress: pledges, plus online
+    // donations that are SUCCESS or PARTIALLY_REFUNDED (docs/payments/SPEC.md §5.5).
+    $paidOnly = publicGuardHasColumn('donations', 'source') && publicGuardHasColumn('donations', 'status')
+        ? " AND (source = 'pledge' OR status IN ('SUCCESS','PARTIALLY_REFUNDED'))"
+        : '';
     $donations = $db->query(
         "SELECT name, purpose, created_at
            FROM donations
           WHERE show_name_publicly = 1
-            AND created_at >= DATE_SUB(NOW(), INTERVAL 30 DAY)
+            AND created_at >= DATE_SUB(NOW(), INTERVAL 30 DAY){$paidOnly}
           ORDER BY created_at DESC
           LIMIT 50"
     )->fetchAll(PDO::FETCH_ASSOC);
+}
+
+// A purpose that is a donation category is shown by its English name.
+$categoryNames = [];
+if ($donations && publicGuardHasColumn('donations', 'category_id')) {
+    try {
+        $categoryNames = $db->query('SELECT slug, name_en FROM donation_categories')->fetchAll(PDO::FETCH_KEY_PAIR);
+    } catch (Throwable $e) {
+        error_log('[donors] donation categories unavailable: ' . $e->getMessage());
+    }
 }
 
 // ── Active sponsors linked to poojas ─────────────────────────────────────────
@@ -47,6 +63,7 @@ $items = [];
 
 foreach ($donations as $d) {
     $purpose = $d['purpose'] !== '' ? $d['purpose'] : null;
+    if ($purpose !== null && isset($categoryNames[$purpose])) $purpose = $categoryNames[$purpose];
     $items[] = [
         'name'  => $d['name'],
         'label' => $purpose,

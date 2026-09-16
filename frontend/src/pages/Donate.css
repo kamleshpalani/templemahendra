@@ -1,0 +1,428 @@
+/* ══════════════════════════════════════════════════════════════════
+   Donate — the three-step online donation (pages/Donate.jsx,
+   docs/payments/SPEC.md §7.3). Purpose → Your details → Review.
+   The visual language of /register, with money made prominent.
+   ══════════════════════════════════════════════════════════════════ */
+
+.don-section {
+  padding-top: var(--space-10);
+}
+.don {
+  display: grid;
+  gap: var(--space-6);
+}
+.don__stepper {
+  /* Scrolled to on every step change; clear of the sticky header. */
+  scroll-margin-top: calc(var(--header-h) + var(--space-4));
+}
+
+/* ── Step card ────────────────────────────────────────────────────── */
+.don-card {
+  padding: var(--space-8);
+  /* backwards, not both: a transform left behind would trap anything
+     fixed inside the card. */
+  animation: don-step-in var(--dur-slow) var(--ease-out) backwards;
+}
+.don-card[data-direction="back"] {
+  animation-name: don-step-back;
+}
+@keyframes don-step-in {
+  from {
+    opacity: 0;
+    transform: translateX(18px);
+  }
+}
+@keyframes don-step-back {
+  from {
+    opacity: 0;
+    transform: translateX(-18px);
+  }
+}
+.don-card__head {
+  display: grid;
+  gap: var(--space-2);
+  margin-bottom: var(--space-6);
+}
+.don-card__eyebrow {
+  color: var(--accent-ink);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-bold);
+  letter-spacing: var(--tracking-caps);
+  text-transform: uppercase;
+}
+.don-card__title {
+  margin: 0;
+  color: var(--maroon-800);
+  font-size: var(--text-xl);
+}
+/* Focus lands here on each step change; it is a heading, not a control. */
+.don-card__title:focus {
+  outline: none;
+}
+.don-card__desc {
+  margin: 0;
+  color: var(--text-3);
+}
+.don-card__body,
+.don-fields {
+  min-width: 0;
+}
+
+/* ── Amount ───────────────────────────────────────────────────────── */
+.don-amounts {
+  min-width: 0;
+  margin: 0 0 var(--space-4);
+  padding: 0;
+  border: 0;
+}
+.don-amounts__row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+}
+.don-amounts__chip {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  min-height: 44px;
+  margin-bottom: 0;
+  padding: var(--space-2) var(--space-4);
+  border: 1.5px solid var(--border-strong);
+  border-radius: var(--radius-pill);
+  background: var(--glass-2);
+  color: var(--text-2);
+  font-size: var(--text-base);
+  font-weight: var(--weight-semibold);
+  letter-spacing: normal;
+  text-transform: none;
+  cursor: pointer;
+  transition:
+    border-color var(--transition),
+    background var(--transition),
+    color var(--transition);
+}
+/* The radio itself is redundant once the chip shows its state, but it is
+   what makes the group a group for a screen reader, so it is hidden
+   rather than removed. */
+.don-amounts__chip > input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+}
+/* "Other amount" is a doorway to the field below, not a sum: a dashed
+   outline says so without adding a second visual weight. */
+.don-amounts__chip--other {
+  border-style: dashed;
+  color: var(--text-3);
+}
+.don-amounts__chip:hover {
+  border-color: var(--gold-500);
+}
+.don-amounts__chip:has(input:checked) {
+  border-color: var(--maroon-500);
+  background: linear-gradient(135deg, var(--gold-200), var(--gold-400));
+  color: var(--maroon-900);
+}
+.don-amounts__chip:has(input:focus-visible) {
+  outline: 3px solid var(--saffron-500);
+  outline-offset: 2px;
+}
+.don-amount {
+  max-width: 18rem;
+}
+/* The currency symbol is text, not an icon: give it the size and weight of a
+   figure. It also has to sit above the input — inputs are frosted glass
+   (backdrop-filter), and an affix painted beneath one is blurred into a smudge. */
+.don-amount .input-affix__icon {
+  z-index: 1;
+  color: var(--maroon-700);
+  font-size: var(--text-md);
+  font-weight: var(--weight-bold);
+  line-height: 1;
+}
+.don-currency {
+  max-width: 12rem;
+}
+.don-summary {
+  margin: var(--space-4) 0 0;
+  color: var(--maroon-700);
+  font-size: var(--text-md);
+  font-weight: var(--weight-semibold);
+  min-height: 1.5em;
+}
+
+/* ── Consent ──────────────────────────────────────────────────────── */
+.don-consent {
+  margin-top: var(--space-2);
+  padding: var(--space-4) var(--space-5);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--glass-1);
+}
+.don-consent .checkbox-label,
+.don-terms .checkbox-label {
+  align-items: flex-start;
+  min-height: 44px;
+  margin-bottom: 0;
+}
+.don-consent .checkbox-label > input,
+.don-terms .checkbox-label > input {
+  flex-shrink: 0;
+  width: 20px;
+  height: 20px;
+  margin-top: 0.1rem;
+  accent-color: var(--maroon-500);
+}
+.don-consent__hint {
+  display: block;
+  padding-left: calc(20px + 0.65rem);
+}
+
+/* ── Review ───────────────────────────────────────────────────────── */
+.don-review-list {
+  display: grid;
+  gap: var(--space-4);
+}
+.don-total {
+  display: grid;
+  justify-items: center;
+  gap: var(--space-1);
+  padding: var(--space-5);
+  border: 1px solid var(--gold-400);
+  border-radius: var(--radius-lg);
+  background: var(--glass-tint-gold);
+  text-align: center;
+}
+.don-total__value {
+  color: var(--maroon-800);
+  font-family: var(--font-display);
+  font-size: var(--text-3xl);
+  font-weight: var(--weight-bold);
+  line-height: 1.1;
+}
+.don-total__code {
+  color: var(--text-3);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-bold);
+  letter-spacing: var(--tracking-caps);
+}
+.don-total__purpose {
+  color: var(--text-2);
+  font-size: var(--text-md);
+  font-weight: var(--weight-semibold);
+}
+.don-review {
+  padding: var(--space-4) var(--space-5) var(--space-5);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--glass-1);
+}
+.don-review__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin-bottom: var(--space-3);
+}
+.don-review__title {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin: 0;
+  color: var(--maroon-800);
+  font-size: var(--text-md);
+}
+.don-review__icon {
+  display: grid;
+  flex-shrink: 0;
+  place-items: center;
+  width: 2rem;
+  height: 2rem;
+  border-radius: 50%;
+  background: var(--glass-tint-gold);
+  color: var(--gold-700);
+}
+.don-review__list {
+  display: grid;
+  gap: var(--space-2);
+  margin: 0;
+}
+.don-review__row {
+  display: grid;
+  grid-template-columns: minmax(7rem, 12rem) minmax(0, 1fr);
+  gap: var(--space-3);
+}
+.don-review__row dt {
+  color: var(--text-3);
+  font-size: var(--text-sm);
+}
+.don-review__row dd {
+  margin: 0;
+  color: var(--text-1);
+  font-weight: var(--weight-medium);
+  overflow-wrap: anywhere;
+}
+@media (max-width: 480px) {
+  .don-review__row {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0;
+  }
+}
+.don-review__muted {
+  color: var(--text-muted);
+  font-weight: var(--weight-regular);
+}
+.don-terms {
+  padding: var(--space-4) var(--space-5);
+  border: 1px solid var(--warning-border);
+  border-radius: var(--radius-lg);
+  background: var(--glass-tint-gold);
+}
+.don-terms .field__error {
+  padding-left: calc(20px + 0.65rem);
+}
+.don-secure {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  margin: 0;
+  color: var(--text-3);
+  font-size: var(--text-sm);
+}
+.don-secure > svg {
+  flex-shrink: 0;
+  margin-top: 0.15em;
+  color: var(--success);
+}
+.don-secure--80g > svg {
+  color: var(--gold-700);
+}
+
+/* ── Actions ──────────────────────────────────────────────────────── */
+.don-actions--inline {
+  margin-top: var(--space-8);
+  padding-top: var(--space-5);
+  border-top: 1px solid var(--border-soft);
+}
+.don-actions__row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+.don-actions__back {
+  flex-shrink: 0;
+}
+.don-actions__next {
+  margin-left: auto;
+}
+.don-actions .btn {
+  min-height: 48px;
+}
+.don-actions__summary {
+  margin: 0 0 var(--space-1);
+  color: var(--maroon-700);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-bold);
+  text-align: center;
+}
+.don-actions--dock {
+  display: none;
+}
+.don-offline {
+  margin: 0;
+  text-align: center;
+}
+.don-offline a {
+  color: var(--accent-ink);
+  font-weight: var(--weight-semibold);
+}
+
+/* Phones: the controls dock above the bottom navigation, inset between
+   the floating WhatsApp button and the chat button, exactly as the
+   registration form's bar does. */
+@media (max-width: 768px) {
+  .don-actions--inline {
+    display: none;
+  }
+  .don-actions--dock {
+    position: fixed;
+    z-index: var(--z-sticky);
+    right: calc(14px + 46px + var(--space-2));
+    bottom: calc(var(--bottom-nav-h) + 1.4rem + env(safe-area-inset-bottom, 0px));
+    left: calc(12px + 46px + var(--space-2));
+    display: block;
+    padding: var(--space-2);
+    border: 1px solid var(--glass-border-strong);
+    border-radius: var(--radius-lg);
+    background: var(--glass-3);
+    box-shadow: var(--shadow-lg);
+    -webkit-backdrop-filter: blur(var(--blur-sm)) saturate(var(--saturate));
+    backdrop-filter: blur(var(--blur-sm)) saturate(var(--saturate));
+  }
+  .don-actions--dock .btn {
+    flex: 1 1 auto;
+    min-height: 44px;
+    padding-inline: var(--space-3);
+    line-height: var(--leading-snug);
+    white-space: normal;
+  }
+  /* Room below the last field so the docked bar never hides it. */
+  .don-form {
+    padding-bottom: var(--space-20);
+  }
+  .don-card {
+    padding: var(--space-6) var(--space-5);
+  }
+}
+@media (max-width: 480px) {
+  .don-card {
+    padding: var(--space-5) var(--space-4);
+  }
+}
+
+/* ── Not open yet ─────────────────────────────────────────────────── */
+.don-closed {
+  display: grid;
+  justify-items: center;
+  gap: var(--space-3);
+  padding: var(--space-12) var(--space-6);
+  text-align: center;
+}
+.don-closed__icon {
+  display: grid;
+  place-items: center;
+  width: 4rem;
+  height: 4rem;
+  border-radius: 50%;
+  background: var(--glass-tint-gold);
+  color: var(--gold-700);
+  font-size: 1.9rem;
+}
+.don-closed__title {
+  margin: 0;
+  color: var(--maroon-800);
+  font-size: var(--text-xl);
+}
+.don-closed__text {
+  max-width: 48ch;
+  margin: 0;
+  color: var(--text-3);
+}
+.don-closed__actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: var(--space-3);
+  margin-top: var(--space-3);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .don-card {
+    animation: none;
+  }
+  .don-amounts__chip {
+    transition: none;
+  }
+}

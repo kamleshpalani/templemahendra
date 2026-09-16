@@ -1,12 +1,14 @@
 /* ══════════════════════════════════════════════════════════════════
    PageCommon.css — shared long-form primitives for inner pages.
 
-   • .page-prose    typography for editorial copy (About): section h2 with
-                    the gold underline accent, h3, paragraph rhythm, links.
+   • .page-prose    typography for editorial copy (About, the policy pages):
+                    section h2 with the gold underline accent, h3, paragraph
+                    rhythm, links, and plain (class-less) ul/ol lists.
    • .timings-table glass schedule table (About #timings).
 
-   The page hero lives in styles/layout.css (.page-hero) and each page owns
-   its own list/row patterns. Tokens only — no raw colours here.
+   The page hero lives in styles/layout.css (.page-hero). A list with a class
+   is a component's own pattern and styles itself. Tokens only — no raw
+   colours here.
 
    Specificity note: `.page-prose p` / `.page-prose h3` are (0,1,1).
    Components rendered inside the prose (HistoryTimeline, TrustDetails,
@@ -77,6 +79,42 @@
 .page-prose a:not(.btn):not(.chip):focus-visible {
   color: var(--accent-ink);
   text-decoration-color: var(--accent-ink);
+}
+
+/* ── Lists ───────────────────────────────────────────────────────── */
+/* Plain editorial lists only (the policy pages). A list that carries a
+   class belongs to a component — About's deity cards, the timeline, the
+   committee grid — and styles itself, so `:not([class])` keeps these
+   rules away from it. */
+.page-prose ul:not([class]),
+.page-prose ol:not([class]) {
+  margin: 0 0 var(--space-5);
+  padding-left: 1.5em;
+  max-width: 75ch;
+}
+.page-prose ul:not([class]) {
+  list-style: disc;
+}
+.page-prose ol:not([class]) {
+  list-style: decimal;
+}
+.page-prose ul:not([class]) > li,
+.page-prose ol:not([class]) > li {
+  padding-left: var(--space-1);
+  font-size: var(--text-md);
+  color: var(--text-2);
+  line-height: var(--leading-relaxed);
+}
+.page-prose ul:not([class]) > li + li,
+.page-prose ol:not([class]) > li + li {
+  margin-top: var(--space-2);
+}
+.page-prose ul:not([class]) > li::marker {
+  color: var(--accent-ink);
+}
+.page-prose ol:not([class]) > li::marker {
+  color: var(--maroon-600);
+  font-weight: var(--weight-bold);
 }
 
 /* ── Timings table (glass) ───────────────────────────────────────── */

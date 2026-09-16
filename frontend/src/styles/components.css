@@ -485,6 +485,9 @@ label.checkbox-label {
      the glyph read as a smudge rather than an icon. */
   color: var(--text-3);
   pointer-events: none;
+  /* Inputs are frosted glass (backdrop-filter); without a stacking order the
+     glyph paints underneath and blurs. */
+  z-index: 1;
 }
 .input-affix__icon > svg {
   width: 1.05rem;
@@ -2587,5 +2590,193 @@ kbd,
   .modal__close {
     width: 44px;
     height: 44px;
+  }
+}
+
+/* ── Multi-step form: stepper + error summary ─────────────────────
+   components/ui/FormStepper.jsx and FormErrorSummary.jsx, shared by
+   the donation flow (docs/payments/SPEC.md §7.2) and any later form.
+   The step count arrives as --steps on the list, so the rail and its
+   gold fill line up for three steps or for six. `.stepper`/`.step`
+   above are a different, CSS-only pill control; these are not that. */
+.form-stepper {
+  padding-block: var(--space-2);
+}
+.form-stepper__compact {
+  display: none;
+}
+.form-stepper__list {
+  --form-dot: 2.6rem;
+  position: relative;
+  display: grid;
+  grid-template-columns: repeat(var(--steps, 3), minmax(0, 1fr));
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+/* The rail runs from the centre of the first dot to the centre of the
+   last — half a column in from each end — and the fill grows over it. */
+.form-stepper__list::before,
+.form-stepper__list::after {
+  content: "";
+  position: absolute;
+  top: calc(var(--form-dot) / 2 - 2px);
+  left: calc(50% / var(--steps, 3));
+  height: 4px;
+  border-radius: var(--radius-pill);
+}
+.form-stepper__list::before {
+  right: calc(50% / var(--steps, 3));
+  background: var(--border-strong);
+}
+.form-stepper__list::after {
+  width: calc((100% - 100% / var(--steps, 3)) * var(--form-progress, 0));
+  background: linear-gradient(90deg, var(--gold-500), var(--saffron-500));
+  transition: width var(--dur-slow) var(--ease-out);
+}
+.form-stepper__item {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  justify-content: center;
+}
+.form-stepper__btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0 var(--space-1);
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--text-3);
+  font: inherit;
+  cursor: pointer;
+}
+.form-stepper__btn:disabled {
+  cursor: not-allowed;
+}
+.form-stepper__dot {
+  display: grid;
+  place-items: center;
+  width: var(--form-dot);
+  height: var(--form-dot);
+  border: 2px solid var(--border-strong);
+  border-radius: 50%;
+  background: var(--glass-3);
+  color: var(--text-3);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-bold);
+  box-shadow: var(--shadow-xs);
+  transition:
+    background var(--transition),
+    border-color var(--transition),
+    color var(--transition),
+    transform var(--transition),
+    box-shadow var(--transition);
+}
+.form-stepper__dot > svg {
+  width: 1.15rem;
+  height: 1.15rem;
+}
+.form-stepper__label {
+  font-size: var(--text-sm);
+  font-weight: var(--weight-semibold);
+  line-height: var(--leading-snug);
+  text-align: center;
+}
+.form-stepper__item--done .form-stepper__dot {
+  border-color: var(--maroon-500);
+  background: var(--maroon-500);
+  color: var(--white);
+}
+.form-stepper__item--done .form-stepper__label {
+  color: var(--text-2);
+}
+.form-stepper__item--current .form-stepper__dot {
+  border-color: var(--gold-500);
+  background: linear-gradient(135deg, var(--gold-200), var(--gold-400));
+  color: var(--maroon-900);
+  box-shadow: var(--glow-gold);
+  transform: scale(1.08);
+}
+.form-stepper__item--current .form-stepper__label {
+  color: var(--maroon-700);
+}
+.form-stepper__item--open .form-stepper__label {
+  color: var(--text-2);
+}
+.form-stepper__item--locked .form-stepper__dot {
+  border-style: dashed;
+  background: var(--bg-alt);
+  color: var(--text-muted);
+  box-shadow: none;
+}
+.form-stepper__item--locked .form-stepper__label {
+  color: var(--text-muted);
+}
+.form-stepper__item--open .form-stepper__btn:hover .form-stepper__dot,
+.form-stepper__item--done .form-stepper__btn:hover .form-stepper__dot {
+  border-color: var(--gold-500);
+  transform: translateY(-2px);
+}
+@media (max-width: 640px) {
+  .form-stepper__compact {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: var(--space-3);
+    margin: 0 0 var(--space-3);
+  }
+  .form-stepper__count {
+    color: var(--text-3);
+    font-size: var(--text-sm);
+    font-weight: var(--weight-semibold);
+  }
+  .form-stepper__compact-label {
+    color: var(--maroon-700);
+    font-family: var(--font-display);
+    font-size: var(--text-md);
+    font-weight: var(--weight-bold);
+  }
+  .form-stepper__list {
+    --form-dot: 2rem;
+  }
+  .form-stepper__label {
+    display: none;
+  }
+}
+
+.form-summary {
+  margin-bottom: var(--space-6);
+}
+.form-summary:focus {
+  outline: 3px solid var(--danger);
+  outline-offset: 2px;
+}
+.form-summary__title {
+  margin: 0 0 var(--space-2);
+  color: var(--danger-fg);
+  font-family: var(--font-body);
+  font-size: var(--text-base);
+}
+.form-summary__list {
+  display: grid;
+  gap: var(--space-1);
+  margin: 0;
+  padding-left: var(--space-5);
+}
+.form-summary__list a {
+  color: var(--danger-fg);
+  font-weight: var(--weight-medium);
+  text-decoration: underline;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .form-stepper__list::after,
+  .form-stepper__dot {
+    transition: none;
   }
 }

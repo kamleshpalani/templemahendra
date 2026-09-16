@@ -4,9 +4,21 @@ require_once __DIR__ . '/../includes/auth.php';
 requireAdminAuth();
 require_once __DIR__ . '/../includes/db.php';
 require_once __DIR__ . '/../includes/registration.php';
+require_once __DIR__ . '/../includes/payments.php';
 require_once __DIR__ . '/includes/admin_layout.php';
 
 $db = getDB();
+
+// Online giving (migration 010, docs/payments/SPEC.md §10.6): a donation row is
+// a pledge or money paid through CCAvenue. Only pledges and online donations
+// that really succeeded count as money here, and always net of refunds — a
+// failed or abandoned payment is not a donation. Each column is checked so a
+// site that has not applied the migration shows the dashboard as before.
+$hasPayCols = publicGuardHasColumn('donations', 'source')
+    && publicGuardHasColumn('donations', 'status')
+    && publicGuardHasColumn('donations', 'amount_refunded');
+$countableSql = $hasPayCols ? "(source = 'pledge' OR status IN ('SUCCESS','PARTIALLY_REFUNDED'))" : '1';
+$netAmountSql = $hasPayCols ? '(amount - amount_refunded)' : 'amount';
 
 // Family registrations (migration 009). Guarded on its own: a site that has not
 // applied the migration yet, or whose registration tables cannot be read, shows
@@ -33,9 +45,33 @@ foreach (['sevas', 'events', 'announcements', 'donations', 'gallery', 'seva_book
     $counts[$tbl] = (int) $db->query("SELECT COUNT(*) FROM `$tbl`")->fetchColumn();
 }
 
-$donations_total  = (float) $db->query("SELECT COALESCE(SUM(amount),0) FROM donations")->fetchColumn();
-$donations_month  = (float) $db->query("SELECT COALESCE(SUM(amount),0) FROM donations WHERE created_at >= DATE_FORMAT(CURDATE(), '%Y-%m-01')")->fetchColumn();
-$donations_prev   = (float) $db->query("SELECT COALESCE(SUM(amount),0) FROM donations WHERE created_at >= DATE_FORMAT(DATE_SUB(CURDATE(), INTERVAL 1 MONTH), '%Y-%m-01') AND created_at < DATE_FORMAT(CURDATE(), '%Y-%m-01')")->fetchColumn();
+$counts['donations'] = (int) $db->query("SELECT COUNT(*) FROM donations WHERE {$countableSql}")->fetchColumn();
+$donations_total  = (float) $db->query("SELECT COALESCE(SUM({$netAmountSql}),0) FROM donations WHERE {$countableSql}")->fetchColumn();
+$donations_month  = (float) $db->query("SELECT COALESCE(SUM({$netAmountSql}),0) FROM donations WHERE {$countableSql} AND created_at >= DATE_FORMAT(CURDATE(), '%Y-%m-01')")->fetchColumn();
+$donations_prev   = (float) $db->query("SELECT COALESCE(SUM({$netAmountSql}),0) FROM donations WHERE {$countableSql} AND created_at >= DATE_FORMAT(DATE_SUB(CURDATE(), INTERVAL 1 MONTH), '%Y-%m-01') AND created_at < DATE_FORMAT(CURDATE(), '%Y-%m-01')")->fetchColumn();
+
+// Money received through CCAvenue this IST month (donations and sevas, INR,
+// net of refunds). Guarded on its own: without migration 010 the KPI is not shown.
+$onlineMonth = null;
+try {
+    if (payTablesExist() && adminCan('payments.view')) {
+        $period = payIstPeriodUtc('month');
+        $stmt = $db->prepare(
+            "SELECT COUNT(*) c, COALESCE(SUM(net),0) total FROM (
+                SELECT amount - amount_refunded AS net FROM donations
+                 WHERE source = 'online' AND status IN ('SUCCESS','PARTIALLY_REFUNDED') AND currency = 'INR' AND paid_at >= :f1 AND paid_at < :t1
+                UNION ALL
+                SELECT amount - amount_refunded FROM seva_bookings
+                 WHERE payment_mode = 'online' AND payment_status IN ('SUCCESS','PARTIALLY_REFUNDED') AND COALESCE(currency, 'INR') = 'INR' AND paid_at >= :f2 AND paid_at < :t2
+             ) x"
+        );
+        $stmt->execute([':f1' => $period['from'], ':t1' => $period['to'], ':f2' => $period['from'], ':t2' => $period['to']]);
+        $onlineMonth = $stmt->fetch() ?: null;
+    }
+} catch (Throwable $e) {
+    error_log('[dashboard] online payment figures: ' . $e->getMessage());
+    $onlineMonth = null;
+}
 $pending_bookings = (int) $db->query("SELECT COUNT(*) FROM seva_bookings WHERE status = 'pending'")->fetchColumn();
 $upcoming_events  = (int) $db->query("SELECT COUNT(*) FROM events WHERE is_active = 1 AND event_date >= CURDATE()")->fetchColumn();
 $messages_week    = (int) $db->query("SELECT COUNT(*) FROM contact_messages WHERE created_at >= DATE_SUB(NOW(), INTERVAL 7 DAY)")->fetchColumn();
@@ -53,9 +89,9 @@ if ($donations_prev > 0) {
 
 // ── Donations by month (last 12 months, zero-filled) ─────────────────────────
 $byMonth = [];
-$stmt = $db->query("SELECT DATE_FORMAT(created_at, '%Y-%m') AS ym, SUM(amount) AS total
+$stmt = $db->query("SELECT DATE_FORMAT(created_at, '%Y-%m') AS ym, SUM({$netAmountSql}) AS total
                       FROM donations
-                     WHERE created_at >= DATE_SUB(DATE_FORMAT(CURDATE(), '%Y-%m-01'), INTERVAL 11 MONTH)
+                     WHERE {$countableSql} AND created_at >= DATE_SUB(DATE_FORMAT(CURDATE(), '%Y-%m-01'), INTERVAL 11 MONTH)
                   GROUP BY ym");
 foreach ($stmt->fetchAll() as $r) $byMonth[$r['ym']] = (float) $r['total'];
 $series = [];
@@ -75,8 +111,16 @@ $statusTones = ['pending' => 'warning', 'confirmed' => 'info', 'completed' => 's
 $shares = [];
 foreach ($statusCounts as $s => $c) $shares[] = ['label' => ucfirst($s), 'value' => $c, 'tone' => $statusTones[$s]];
 
-$purposes = $db->query("SELECT COALESCE(NULLIF(purpose,''),'other') p, SUM(amount) total FROM donations GROUP BY p ORDER BY total DESC LIMIT 6")->fetchAll();
+$purposes = $db->query("SELECT COALESCE(NULLIF(purpose,''),'other') p, SUM({$netAmountSql}) total FROM donations WHERE {$countableSql} GROUP BY p ORDER BY total DESC LIMIT 6")->fetchAll();
 $purposeLabels = ['kumbabhishekam' => 'Kumbabhishekam', 'annadanam_hall' => 'Annadanam hall', 'annadanam' => 'Annadanam', 'abhishekam' => 'Abhishekam', 'festival' => 'Festival fund', 'maintenance' => 'Maintenance', 'other' => 'Other'];
+// Donation categories (migration 010) name the purposes now; the map above still labels the old keys.
+try {
+    if (payTablesExist()) {
+        foreach (payCategoryNames($db) as $slug => $names) $purposeLabels[$slug] = (string) $names['en'];
+    }
+} catch (Throwable $e) {
+    error_log('[dashboard] donation categories unavailable: ' . $e->getMessage());
+}
 $purposeShares = [];
 $purposeTones  = ['gold', 'maroon', 'moon', 'sage', 'info', 'warning'];
 foreach ($purposes as $i => $p) {
@@ -93,7 +137,7 @@ $next_events     = $db->query("SELECT title_en, title_ta, event_date FROM events
 $feed = $db->query("
     SELECT 'booking'  AS kind, id, devotee_name AS who, seva_name AS what, status AS extra, NULL AS amount, created_at FROM seva_bookings
     UNION ALL
-    SELECT 'donation' AS kind, id, name AS who, COALESCE(purpose, '') AS what, '' AS extra, amount, created_at FROM donations
+    SELECT 'donation' AS kind, id, name AS who, COALESCE(purpose, '') AS what, " . ($hasPayCols ? "COALESCE(source, 'pledge')" : "'pledge'") . " AS extra, {$netAmountSql} AS amount, created_at FROM donations WHERE {$countableSql}
     UNION ALL
     SELECT 'message'  AS kind, id, name AS who, LEFT(message, 90) AS what, '' AS extra, NULL AS amount, created_at FROM contact_messages
     ORDER BY created_at DESC LIMIT 12
@@ -119,12 +163,19 @@ echo adminPageIntro(
 );
 
 $kpis = [
-    ['label' => 'Total donations',  'value' => adminFmtMoney($donations_total), 'icon' => 'banknote', 'href' => '/admin/donations.php', 'variant' => 'accent', 'sub' => $counts['donations'] . ' pledges recorded'],
+    ['label' => 'Total donations',  'value' => adminFmtMoney($donations_total), 'icon' => 'banknote', 'href' => '/admin/donations.php', 'variant' => 'accent', 'sub' => $counts['donations'] . ($hasPayCols ? ' donation' : ' pledge') . ($counts['donations'] === 1 ? '' : 's') . ' recorded'],
     ['label' => 'This month',       'value' => adminFmtMoney($donations_month), 'icon' => 'trending', 'href' => '/admin/donations.php', 'delta' => $delta, 'deltaDown' => $deltaDown],
+];
+if ($onlineMonth !== null) {
+    $onlineCount = (int) $onlineMonth['c'];
+    $kpis[] = ['label' => 'Online payments this month', 'value' => adminFmtMoney((float) $onlineMonth['total']), 'icon' => 'landmark', 'href' => '/admin/payments.php',
+               'sub' => $onlineCount . ' payment' . ($onlineCount === 1 ? '' : 's') . ' through CCAvenue'];
+}
+array_push($kpis,
     ['label' => 'Pending bookings', 'value' => $pending_bookings,               'icon' => 'clipboard', 'href' => '/admin/seva_bookings.php?status=pending', 'sub' => $counts['seva_bookings'] . ' total'],
     ['label' => 'Upcoming events',  'value' => $upcoming_events,                'icon' => 'calendar',  'href' => '/admin/events.php', 'sub' => $counts['events'] . ' in total'],
     ['label' => 'Messages (7 days)','value' => $messages_week,                  'icon' => 'mail',      'href' => '/admin/contact_messages.php', 'sub' => $counts['contact_messages'] . ' all time'],
-];
+);
 if ($registrations !== null) {
     $familyMembers = (int) $registrations['members'];
     $kpis[] = ['label' => 'Registered families', 'value' => (int) $registrations['families'], 'icon' => 'users', 'href' => '/admin/devotees.php',
@@ -183,7 +234,7 @@ echo adminKpi($kpis);
           <?php
             [$ico, $tone, $text, $href] = match ($f['kind']) {
                 'booking'  => ['clipboard', 'info',    '<strong>' . h($f['who']) . '</strong> requested <strong>' . h($f['what']) . '</strong> ' . adminBadge(ucfirst($f['extra']), adminStatusTone($f['extra'])), '/admin/seva_bookings.php'],
-                'donation' => ['banknote',  'gold',    '<strong>' . h($f['who']) . '</strong> pledged <strong>' . adminFmtMoney((float) $f['amount']) . '</strong>' . ($f['what'] ? ' for ' . h($purposeLabels[$f['what']] ?? $f['what']) : ''), '/admin/donations.php'],
+                'donation' => ['banknote',  'gold',    '<strong>' . h($f['who']) . '</strong> ' . ($f['extra'] === 'online' ? 'gave' : 'pledged') . ' <strong>' . adminFmtMoney((float) $f['amount']) . '</strong>' . ($f['what'] ? ' for ' . h($purposeLabels[$f['what']] ?? $f['what']) : '') . ($f['extra'] === 'online' ? ' ' . adminBadge('Online', 'gold') : ''), $f['extra'] === 'online' ? '/admin/payments.php' : '/admin/donations.php'],
                 default    => ['mail',      'success', '<strong>' . h($f['who']) . '</strong> wrote: “' . h($f['what']) . (mb_strlen($f['what']) >= 90 ? '…' : '') . '”', '/admin/contact_messages.php'],
             };
           ?>

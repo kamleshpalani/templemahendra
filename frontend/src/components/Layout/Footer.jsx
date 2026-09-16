@@ -8,11 +8,25 @@ import {
   TRUST,
   PRIMARY_CONTACT,
   SECONDARY_CONTACT,
+  TEMPLE_EMAIL,
   MAPS_URL,
   formatPhone,
   telHref,
 } from "../../data/temple";
 import "./Footer.css";
+
+/*
+ * The four policy pages a payment gateway requires to be reachable from every
+ * page (docs/payments/SPEC.md §7.8). Paths and titles match data/policies.js;
+ * they are repeated here rather than imported so the footer, which is on every
+ * page, does not pull the full policy texts into the main bundle.
+ */
+const LEGAL_LINKS = [
+  { to: "/privacy-policy", ta: "தனியுரிமைக் கொள்கை", en: "Privacy Policy" },
+  { to: "/terms-and-conditions", ta: "விதிமுறைகள் & நிபந்தனைகள்", en: "Terms & Conditions" },
+  { to: "/refund-cancellation-policy", ta: "பணம் திருப்பி அளித்தல் & ரத்து", en: "Refund & Cancellation" },
+  { to: "/shipping-delivery-policy", ta: "அனுப்புதல் & விநியோகம்", en: "Shipping & Delivery" },
+];
 
 export default function Footer() {
   // No language switch here: the status strip at the top of every page (and the
@@ -25,6 +39,7 @@ export default function Footer() {
     { to: "/about#committee", ta: "திருக்கோவில் கமிட்டி", en: "Committee" },
     { to: "/sevas", ta: "சேவைகள் & பூஜைகள்", en: "Sevas & Poojas" },
     { to: "/events", ta: "நிகழ்வுகள் & திருவிழா", en: "Events & Festivals" },
+    { to: "/live-darshan", ta: "நேரடி தரிசனம்", en: "Live Darshan" },
     { to: "/panchangam", ta: "பஞ்சாங்கம்", en: "Panchangam" },
     { to: "/donations", ta: "நன்கொடை", en: "Donate" },
     { to: "/register", ta: "குடும்பப் பதிவு", en: "Family registration" },
@@ -120,7 +135,7 @@ export default function Footer() {
             </li>
             <li>
               <LuMail aria-hidden="true" />
-              <a href="mailto:info@dhabbalavaartemple.in">info@dhabbalavaartemple.in</a>
+              <a href={`mailto:${TEMPLE_EMAIL}`}>{TEMPLE_EMAIL}</a>
             </li>
           </ul>
         </div>
@@ -128,6 +143,15 @@ export default function Footer() {
 
       <div className="footer__bottom">
         <div className="container footer__bottom-inner">
+          <nav className="footer__legal" aria-label={t("கொள்கைகள்", "Policies")}>
+            <ul className="footer__legal-list" role="list">
+              {LEGAL_LINKS.map(({ to, ta, en }) => (
+                <li key={to}>
+                  <NavLink to={to}>{t(ta, en)}</NavLink>
+                </li>
+              ))}
+            </ul>
+          </nav>
           <p>
             © {new Date().getFullYear()}{" "}
             {t(

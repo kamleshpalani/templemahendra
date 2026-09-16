@@ -96,6 +96,17 @@ r = await editor.get("/admin/settings.php");
 ok(r.status === 403, "editor is refused system settings", `status ${r.status}`);
 r = await editor.get("/admin/sevas.php");
 ok(r.status === 200, "editor CAN open content pages", `status ${r.status}`);
+// Online payments (docs/payments/SPEC.md §10.1): an editor manages payments and
+// categories but never holds the gateway keys.
+r = await editor.get("/admin/payments.php");
+ok(r.status === 200, "editor CAN open Online Payments", `status ${r.status}`);
+r = await editor.get("/admin/donation_categories.php");
+ok(r.status === 200, "editor CAN open Donation Categories", `status ${r.status}`);
+r = await editor.get("/admin/payment_settings.php");
+ok(r.status === 403, "editor is refused the Payment Gateway settings", `status ${r.status}`);
+// Live Darshan (docs/live/SPEC-PHASE1.md §4.5): an editor manages streams and publishes them.
+r = await editor.get("/admin/live_streams.php");
+ok(r.status === 200, "editor CAN open Live Streaming", `status ${r.status}`);
 
 // ── 5. viewer role is read-only ─────────────────────────────────────────────
 usersHtml = await (await owner.get("/admin/users.php")).text();
@@ -113,6 +124,23 @@ r = await viewer.get("/admin/donations.php");
 ok(r.status === 200, "viewer CAN read donations", `status ${r.status}`);
 r = await viewer.get("/admin/bulk_upload.php");
 ok(r.status === 403, "viewer is refused bulk upload", `status ${r.status}`);
+// A viewer reads and exports payments but changes nothing, and sees neither the
+// gateway settings nor the categories.
+r = await viewer.get("/admin/payments.php");
+ok(r.status === 200, "viewer CAN read Online Payments", `status ${r.status}`);
+r = await viewer.get("/admin/payments.php?export=csv");
+ok(r.status === 200 && /text\/csv/.test(r.headers.get("content-type") || ""), "viewer CAN export the payments CSV", `status ${r.status}`);
+r = await viewer.post("/admin/payments.php", { action: "run_checks" });
+ok(r.status === 403, "viewer is refused every payments POST", `status ${r.status}`);
+r = await viewer.get("/admin/payment_settings.php");
+ok(r.status === 403, "viewer is refused the Payment Gateway settings", `status ${r.status}`);
+r = await viewer.get("/admin/donation_categories.php");
+ok(r.status === 403, "viewer is refused Donation Categories", `status ${r.status}`);
+// A viewer reads the Live Streaming page (live.view) but every write is refused (live.manage).
+r = await viewer.get("/admin/live_streams.php");
+ok(r.status === 200, "viewer CAN read Live Streaming", `status ${r.status}`);
+r = await viewer.post("/admin/live_streams.php", { action: "save", id: "0", title_ta: "x", title_en: "y" });
+ok(r.status === 403, "viewer is refused every Live Streaming POST", `status ${r.status}`);
 
 // ── 6. last-owner protection ────────────────────────────────────────────────
 usersHtml = await (await owner.get("/admin/users.php")).text();

@@ -1,0 +1,95 @@
+/* ══════════════════════════════════════════════════════════════════
+   LiveSchedule.css · Sacred Light v3
+   Page-scoped styles for /live-darshan/schedule (pages/LiveSchedule.jsx,
+   docs/live/SPEC-PHASE2.md §2.3). The filters, cards and countdown live in
+   components/Live/Live.css; this file only places them. Tokens only.
+   Breakpoints: 480 · 640 · 820 · 1024
+   ══════════════════════════════════════════════════════════════════ */
+
+/* The hero's second button (Live darshan) is a full touch target like the share button. */
+.page-hero--live .page-hero__actions .btn {
+  min-height: 44px;
+}
+
+.live-schedule {
+  padding-top: clamp(2rem, 4vw, 3rem);
+}
+
+/* ── Filters and the window they cover ───────────────────────────── */
+.live-schedule__bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3) var(--space-5);
+  margin-bottom: clamp(1.5rem, 3vw, 2.25rem);
+}
+.live-schedule__bar .live-filters {
+  max-width: 100%;
+}
+.live-schedule__window {
+  margin: 0;
+  color: var(--text-3);
+  font-size: var(--text-sm);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── One day of the schedule ─────────────────────────────────────── */
+.live-schedule__day + .live-schedule__day {
+  margin-top: clamp(1.75rem, 3.5vw, 2.75rem);
+}
+.live-schedule__day-title {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  margin: 0 0 var(--space-4);
+  color: var(--maroon-700);
+  font-family: var(--font-display);
+  font-size: var(--text-lg);
+  line-height: 1.25;
+}
+:lang(ta) .live-schedule__day-title {
+  font-family: var(--font-tamil);
+  line-height: 1.4;
+}
+/* A hairline runs from the heading to the edge, like a diary's ruled page. */
+.live-schedule__day-title::after {
+  content: "";
+  flex: 1 1 24px;
+  height: 1px;
+  background: var(--border-soft);
+}
+.live-schedule__day-title--live {
+  color: var(--danger);
+}
+.live-schedule__day-title--live::before {
+  content: "";
+  flex-shrink: 0;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--danger);
+  animation: pulse-dot 1.6s ease-in-out infinite;
+}
+.live-schedule__day-count {
+  color: var(--text-3);
+  font-family: var(--font-body);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-regular);
+}
+
+/* ── Loading and empty ───────────────────────────────────────────── */
+.live-schedule__skeleton .skeleton--card {
+  aspect-ratio: 4 / 3;
+  height: auto;
+}
+.live-schedule__empty .btn {
+  min-height: 44px;
+}
+
+@media (max-width: 640px) {
+  .live-schedule__bar {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}

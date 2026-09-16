@@ -180,6 +180,7 @@ Upload via Hostinger File Manager or FTP:
 | `backend/config/*`            | `public_html/config/`       |
 | `backend/includes/*`          | `public_html/includes/`     |
 | `backend/uploads/`            | `public_html/uploads/`      |
+| `backend/bin/*`               | `public_html/bin/` (the cron scripts; they refuse to run over HTTP) |
 | `deploy/htaccess_public_html` | `public_html/.htaccess`         |
 | `deploy/htaccess_api`         | `public_html/api/.htaccess`     |
 | `deploy/htaccess_uploads`     | `public_html/uploads/.htaccess` |
@@ -208,6 +209,11 @@ Upload via Hostinger File Manager or FTP:
 | `004_international_phone.sql` | Phone numbers stored in E.164 form with the country they belong to, on `devotees`, `seva_bookings`, `donations` and `contact_messages`. Devotees live in many countries; the forms no longer assume ten digits. Existing rows are untouched — a number with no country is read as Indian, which is what they always were. |
 | `005_devotee_location.sql` | `country`, `state` and `city` on `devotees`. Registration asks for them so the committee can post a receipt; the profile page fills them in for older accounts. |
 | `006_devotee_address.sql` | `address1`, `address2` and `postcode` on `devotees` — the postal address an 80G receipt is sent to. The street lines and the PIN are optional and registration does not ask for them; devotees fill them in on their account page and the committee can correct them in the admin. State, city and country are required on both forms, so an account created today always has somewhere a receipt can go. |
+| `007_notifications.sql` | The notification service (`docs/notifications/SPEC.md`): `notifications` queue, categories, per-devotee preferences, templates, delivery attempts, tracked links and the unsubscribe keys. Every email, SMS and WhatsApp message the site sends goes through it. |
+| `008_donation_public_name.sql` | `donations.show_name_publicly` — the public thank-you list shows a donor's name only when they ticked the box. |
+| `009_family_registration.sql` | Family registration replaces devotee sign-in (`docs/registration/SPEC.md`): optional non-unique email, address, language, consent and `family_members`; `duplicate_of` marks a repeated phone number for the committee to merge. |
+| `010_payments.sql` | Online payments through CCAvenue (`docs/payments/SPEC.md`): `donation_categories`, `payment_transactions`, `payment_refunds`, `payment_audit_log`, `payment_settings` and `payment_counters`, plus the online-payment columns on `donations` and `seva_bookings`. Pledges and request-only bookings are untouched (`source='pledge'`, `payment_mode='offline'`). |
+| `011_live_streams.sql` | Live Darshan, phase 1 (`docs/live/SPEC-PHASE1.md`): seeded `temples` and `deities` tables and `live_streams`, the YouTube Live broadcasts the committee schedules in Admin → Live Streaming and the public sees at `/live-darshan`. |
 
 ```bash
 for f in database/migrations/*.sql; do mysql -u <user> -p <db> < "$f"; done
@@ -318,6 +324,265 @@ chmod 755 public_html/uploads
 
 ---
 
+## Online payments (CCAvenue)
+
+Donors can give online at `/donate`, and a devotee can pay for a seva while
+booking it, through CCAvenue's hosted checkout (UPI, cards, net banking,
+wallets). The pledge form on `/donations` and the "request a booking" path on
+`/sevas` keep working exactly as before; online payment sits beside them. Card
+and bank details are typed on CCAvenue's page and never reach this server. The
+server sends an encrypted order whose amount and currency come from the
+database, never from the browser; CCAvenue posts an encrypted result back; the
+server decrypts it, checks it against the stored order, confirms it with
+CCAvenue's status API when that is configured, and only then marks the payment
+SUCCESS and assigns a gap-free receipt number (`TMR-2026-000042`; a payment made
+in TEST or SIMULATOR mode is numbered `TEST-…` / `SIM-…` from a sequence of its
+own, so the real one never moves and the paper says no money changed hands). The receipt
+is a printable page with a QR verification link (`/payment/receipt`), and the
+notification worker sends it by email, SMS or WhatsApp. Every rule is in
+`docs/payments/SPEC.md`.
+
+Needs migrations `007_notifications.sql` and `010_payments.sql`. Payments stay
+**off** until an owner turns them on.
+
+### Turning on TEST mode
+
+1. Ask CCAvenue for TEST credentials (Merchant ID, Access Code, Working Key).
+   Set `PAYMENTS_SETTINGS_KEY` in the hosting panel so the admin can store them
+   encrypted, or put them straight in the environment (`CCAVENUE_TEST_*`) — an
+   environment value always wins and the admin shows it as "Set in the server
+   environment".
+2. Admin → **Payment Gateway** (owner only): paste the TEST credentials, tick
+   *Enable online payments*, choose **TEST**, Save. *Test connection* checks the
+   keys and the server's IP against CCAvenue's API without taking money.
+3. Register the three URLs below in the CCAvenue dashboard for the TEST account.
+4. Walk the whole lifecycle with CCAvenue's test instruments (the checklist in
+   `docs/payments/SPEC.md` §14). Only then add the production credentials
+   (`CCAVENUE_MERCHANT_ID` … or the PRODUCTION block of the same page), set
+   `PAYMENTS_SECRET`, and switch the mode to **PRODUCTION**. The page refuses
+   the switch until the credentials and the secret are present, the return URLs
+   are `https`, and the "lifecycle passed testing" box is ticked.
+
+### Environment variables
+
+Annotated copies of all of these are in `backend/.env.example`.
+
+| Variable | Description |
+| --- | --- |
+| `CCAVENUE_MERCHANT_ID` `CCAVENUE_ACCESS_CODE` `CCAVENUE_WORKING_KEY` | PRODUCTION checkout credentials. Optional here: an owner can store them from the admin instead (needs `PAYMENTS_SETTINGS_KEY`). |
+| `CCAVENUE_TEST_MERCHANT_ID` `CCAVENUE_TEST_ACCESS_CODE` `CCAVENUE_TEST_WORKING_KEY` | TEST credentials, same rule. |
+| `CCAVENUE_API_ACCESS_CODE` `CCAVENUE_API_WORKING_KEY` (and `CCAVENUE_TEST_API_ACCESS_CODE` `CCAVENUE_TEST_API_WORKING_KEY`) | Only if CCAvenue issued a separate pair for the server-to-server API (status checks and refunds). Blank = the checkout pair. |
+| `CCAVENUE_REDIRECT_URL` `CCAVENUE_CANCEL_URL` `CCAVENUE_NOTIFY_URL` | Overrides of the three return URLs. Leave blank: they are built from `SITE_URL`. |
+| `PAYMENTS_SECRET` | At least 32 random characters; signs the links in result pages, receipts and QR codes. Required for PRODUCTION. `php -r "echo bin2hex(random_bytes(24));"` |
+| `PAYMENTS_SETTINGS_KEY` | base64 of 32 random bytes; encrypts credentials stored from the admin. Without it the admin cannot store keys. `php -r "echo base64_encode(random_bytes(32));"` |
+| `PAYMENTS_CRON_KEY` | At least 24 characters; switches on `/api/payments-cron` for hosts without CLI cron. |
+| `NOTIFY_CRON_KEY` | The same for `/api/notify-cron`, the notification worker over HTTP. |
+| `PAYMENTS_ALLOW_SIMULATOR` | `1` allows SIMULATOR mode (below). **Never** in production. |
+| `CCAVENUE_TRANSACTION_URL` `CCAVENUE_API_URL` `PAYMENTS_SIMULATOR_KEY` `PAYMENTS_SETTINGS_OVERLAY` | Hooks for the test suites: a mock gateway for TEST mode, the simulator's key, and per-process settings. Ignored in PRODUCTION. |
+
+### URLs to register in the CCAvenue dashboard
+
+Admin → Payment Gateway → *CCAvenue dashboard values* shows them ready to copy.
+
+| CCAvenue setting | Address |
+| --- | --- |
+| Redirect URL | `https://<your-domain>/api/payments/ccavenue/response` |
+| Cancel URL | `https://<your-domain>/api/payments/ccavenue/cancel` |
+| Dynamic Event Notification (DEN) URL | `https://<your-domain>/api/payments/ccavenue/notify` |
+
+All three are built from `SITE_URL`, must be `https` in PRODUCTION and at most
+100 characters. The first two are where the donor's browser lands; the third is
+the server-to-server copy CCAvenue sends whether or not the browser comes back.
+
+### API IP whitelisting
+
+Status checks (`orderStatusTracker`) and refunds (`refundOrder`) go from this
+server to CCAvenue's API, which only answers whitelisted IP addresses — for TEST
+and PRODUCTION separately. Ask CCAvenue to whitelist the site's outbound public
+IP. Until then a payment is still recorded on the gateway's callback alone
+(`verification = callback`, re-checked by the cron until the API answers),
+*Test connection* reports "CCAvenue refused the access code, or this server's
+public IP is not whitelisted for API access" (their error 51407), and a refund
+sent through the API fails with "ask CCAvenue to whitelist this server's public
+IP" — record it as a manual refund after making it in the CCAvenue dashboard.
+
+### Cron jobs (Hostinger: hPanel → Advanced → Cron Jobs, "Custom")
+
+```
+*/10 * * * *  /usr/bin/php /home/<account>/domains/<site>/public_html/bin/payments_cron.php
+*    * * * *  /usr/bin/php /home/<account>/domains/<site>/public_html/bin/notify_worker.php
+```
+
+The first re-checks open and unverified payments with CCAvenue, closes attempts
+that never reached the gateway and expires unpaid seva holds. The second sends
+the receipts and payment messages — without it nothing is emailed. A host
+without CLI cron can call `GET /api/payments-cron` every 10 minutes and
+`GET /api/notify-cron` every minute with the key in an `X-Cron-Key` header;
+each endpoint answers 404 until its `*_CRON_KEY` is set.
+
+### Local development: the simulator
+
+Start the dev PHP server with `PAYMENTS_ALLOW_SIMULATOR=1` and choose the mode
+**SIMULATOR** in Admin → Payment Gateway (or, for one process only,
+`PAYMENTS_SETTINGS_OVERLAY='{"enabled":"1","mode":"simulator"}'`). Checkout then
+lands on a local page with Pay (UPI) / Pay (Credit Card) / Decline / Cancel /
+Awaited / Tamper amount / Wrong currency buttons that answer exactly as
+CCAvenue would, the status API is answered locally, and a red "SIMULATOR — no
+real money" banner sits on the public result and receipt pages and in the
+admin. Without the variable the mode is refused and its routes answer 404, so
+it can never be switched on by mistake in production.
+
+### In the admin
+
+- **Online Payments** (`/admin/payments.php`; viewers read and export): Overview
+  KPIs (today / this month / this year in IST, domestic and international), the
+  Transactions list with filters and a CSV export, a detail view per payment
+  (attempts, gateway references, the audit trail, *Resend receipt*, *Check with
+  CCAvenue now*, *Mark reviewed*), the Refunds tab and the Reconciliation tab.
+- **Refunds** (owners): full or partial, with a reason and a confirmation
+  sentence; sent through CCAvenue's `refundOrder` when the API is configured,
+  otherwise recorded as a refund already made in the CCAvenue dashboard. The
+  payment row is never altered, and the donor gets a refund message.
+- **Reconciliation**: paid at CCAvenue but not here, paid here without
+  confirmation, needs review, duplicate callbacks, double payments, refund
+  mismatches and stale attempts, plus *Run checks now* and an upload of the
+  dashboard's CSV order report compared line by line with our records.
+- **Donation Categories** (editors): the purposes a donor chooses from, each
+  with an optional suggested amount.
+- **Payment Gateway** (owners): mode, credentials, currencies, limits, receipt
+  prefix, message channels, seva payments and the hold time.
+
+Public endpoints (all under `/api/payments/`): `config`, `donations`,
+`seva-bookings`, `retry`, `status`, `receipt`, `receipt-email`, `verify`, the
+three `ccavenue/*` return URLs and, in SIMULATOR mode, `simulator` and
+`simulator/api`. `GET /api/donors` now lists only pledges and paid online
+donations. Before going live, work through `docs/payments/SPEC.md` §14.
+
+---
+
+## Live Darshan (YouTube Live)
+
+Devotees who cannot come to the temple watch its poojas and festivals live at
+`/live-darshan`, without signing in. Phase 1 is deliberately small: the
+committee schedules a broadcast that it streams from the temple's own YouTube
+account (YouTube Studio, a phone, or OBS), pastes the video's link into the
+admin, and presses **Go live** when the pooja starts. The website embeds that
+video (the privacy-enhanced `youtube-nocookie.com` player), shows the next
+scheduled darshan as a poster with its date and time in the temple's own zone,
+and lists the upcoming ones. There are no YouTube API calls in this phase — no
+keys to configure, and nothing that can expire. Every rule is in
+`docs/live/SPEC-PHASE1.md`.
+
+Needs migration `011_live_streams.sql` (it seeds the temple and its three
+deities). Until it is applied the admin page says so and the public page
+shows that nothing is scheduled.
+
+### In the admin
+
+Admin → **Live Streaming** (group *Content*; the sidebar's "New live stream"
+quick action goes straight to the form). Viewers can read the page, editors
+can create, edit, delete, restore and publish.
+
+- **Video** — paste anything YouTube gives you into *Provider video ID*: the
+  11-character id itself, a `youtube.com/watch?v=…`, `youtu.be/…`,
+  `youtube.com/live/…`, `/embed/…` or `/shorts/…` link. The id is parsed and
+  shown back with a "Preview on YouTube" link. The player, the "Watch on
+  YouTube" button and the default thumbnail are all built from that id; a
+  thumbnail or banner of your own can be uploaded or linked.
+- **Schedule** — date, start time and an optional end time (with an end date
+  for an overnight stream), in the zone you choose (Asia/Kolkata by default).
+  Times are stored in UTC and shown back as the wall clock you typed.
+- **Statuses** — `DRAFT` (private; may be saved without a video or a time) →
+  `SCHEDULED` (public: the poster and the "upcoming" list) → `STARTING` /
+  `LIVE` (the player is mounted) → `COMPLETED` (final). `OFFLINE` and `ERROR`
+  mark a broadcast that is on air with trouble; `CANCELLED` is announced as
+  such. The row menu offers exactly the changes allowed from the current
+  status: **Publish**, **Starting soon**, **Go live**, **Mark offline**,
+  **Back live**, **End stream**, **Cancel**, **Reschedule** and **Restore to
+  draft**, each with a confirmation. Publish, Starting soon and Go live are
+  only offered — and only accepted — once the stream has a video id and a
+  start time, so a bare draft cannot reach the public page by accident.
+  Going live stamps the actual start, ending stamps the actual end, and every
+  change is in the audit log.
+- **Address** — the page address (`/live-darshan/<slug>`) is made from the
+  English title and can be edited while the stream is a draft; once published
+  it is locked, so a link the committee has already shared keeps working.
+- **Options** — featured, show on homepage, donations, notifications, sharing
+  and archive are stored now for the later phases; in phase 1 only *sharing*
+  (the share button on the stream page) changes anything.
+
+A scheduled darshan whose start time has passed stays on the public page for
+three hours (or until its end time) with "Starting shortly", so a committee
+member who is late pressing Go live does not leave devotees looking at an
+empty page.
+
+### The public page and API
+
+`/live-darshan` shows the live broadcast if there is one, else the one that is
+starting, else the next scheduled one as a poster, else a quiet "nothing
+scheduled" card that points at the temple's YouTube channel.
+`/live-darshan/<slug>` is one broadcast in any public status (drafts and
+deleted streams are a 404). The page asks the server again every 30 seconds
+while a broadcast is live (60 while it is scheduled), so it notices the stream
+begin without a reload; it is in Tamil by default and English after the toggle,
+like the rest of the site.
+
+| Method | Path | Answers |
+| ------ | ---- | ------- |
+| GET | `/api/live-streams` | `{ live: [...], upcoming: [...], server_time }` — what the page needs in one call (`no-store`) |
+| GET | `/api/live-streams/live` | The LIVE and STARTING broadcasts, most recently started first |
+| GET | `/api/live-streams/upcoming?limit=` | SCHEDULED broadcasts that have not ended, soonest first (default 10, max 50; cached for a minute) |
+| GET | `/api/live-streams/<id>` or `/<slug>` | One broadcast; digits are an id, so a slug is never digits only |
+
+Each item carries both titles and descriptions, the temple and deity names in
+both languages, the schedule as UTC instants and as the wall clock in its zone,
+the thumbnail, and a `playback` descriptor (`kind`, `embedUrl`, `watchUrl`) the
+page uses as it is — nothing on the frontend parses YouTube links.
+
+### The admin JSON API
+
+The same operations are available as JSON for scripts and a future mobile
+admin, on the admin's own session: sign in through `/admin/login.php`, then
+`GET /api/admin/live-streams` — its answer includes a `csrf` token — and send
+that token as the `X-CSRF-Token` header (or a `_csrf` field of the body) on
+every write.
+
+```
+GET    /api/admin/live-streams?f=&q=&sort=&dir=&page=   { streams, total, pages, page, csrf }
+GET    /api/admin/live-streams/<id>                      { stream }
+POST   /api/admin/live-streams                           201 { stream } | 422 { error, fields }
+PUT    /api/admin/live-streams/<id>                      200 { stream } | 422 | 409 (illegal status change) | 404
+DELETE /api/admin/live-streams/<id>                      { success: true }  (soft delete)
+```
+
+The body uses the form's field names (`title_ta`, `title_en`, `temple_id`,
+`provider_reference`, `scheduled_date`, `start_time`, `end_time`, `timezone`,
+`status`, the six flags …). A missing field on `PUT` means "unchanged". Refusals
+are JSON — `401` without a session, `403` with `code` `csrf`, `forbidden` or
+`password_change` — never a redirect, and the same permissions apply as on the
+page (`live.view` to read, `live.manage` to write, `live.publish` to change a
+status). Uploads go through the page only; the API takes URL fields.
+
+### Before the first broadcast
+
+`frontend/src/data/temple.js` carries the temple's YouTube channel link
+(`TEMPLE.youtube.channelUrl`), used by the "YouTube channel" buttons on the
+empty page and the homepage tile. The handle in it (`@TempleMahendra`) is a
+**placeholder that must be confirmed** with the committee — it is one line to
+change.
+
+### What the later phases add
+
+Phase 2 puts the live stream on the homepage and lists past broadcasts;
+phase 3 talks to the YouTube Data API (the keys already listed in
+`backend/.env.example`) so a stream's status follows YouTube automatically
+through a cron job; later phases add reminders through the notification
+service, an archive of recordings, per-stream share previews and other
+providers (the `provider` field, Vimeo and AWS IVS placeholders and the
+`StreamingProvider` interface are already in place for that).
+
+---
+
 ## API Endpoints
 
 | Method | Path                 | Description            |
@@ -330,6 +595,7 @@ chmod 755 public_html/uploads
 | POST   | `/api/contact`       | Submit contact message |
 | GET    | `/api/search`        | Search sevas, events, poojas, announcements, gallery captions and the static pages. `?q=` and an optional `?limit=`. Answers in both languages. |
 | GET    | `/api/og.php`        | The share preview for a path: `?path=/sevas&seva=3`. Returns HTML, not JSON — it is what link unfurlers read. See *Shared links and rich previews*. |
+| GET    | `/api/live-streams`  | Live and upcoming YouTube Live broadcasts (`/live`, `/upcoming`, `/<id>`, `/<slug>`). See *Live Darshan (YouTube Live)*. |
 
 ### Devotee accounts
 
@@ -367,8 +633,9 @@ neighbour's number and read their donation history.
 Access: `https://yourdomain.in/admin/`
 
 Pages: Dashboard · Homepage Widgets · Announcements · Gallery · Poojas · Sevas ·
-Events · Sponsors · Seva Bookings · Donations · Messages · Bulk Upload ·
-Settings · Committee Accounts · My Profile
+Events · Sponsors · Seva Bookings · Donations · Online Payments · Donation
+Categories · Messages · Bulk Upload · Settings · Payment Gateway · Committee
+Accounts · My Profile
 
 Press <kbd>Ctrl</kbd>+<kbd>K</kbd> anywhere in the admin to jump to a page or run
 a quick action.

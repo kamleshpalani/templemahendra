@@ -1,0 +1,135 @@
+/* ══════════════════════════════════════════════════════════════════
+   Receipt page — screen chrome around the document, and the print
+   rules that take that chrome away (pages/PaymentReceipt.jsx,
+   docs/payments/SPEC.md §7.6).
+   ══════════════════════════════════════════════════════════════════ */
+
+.pay-receipt-page {
+  padding-top: var(--space-10);
+}
+.pay-receipt-page__banner {
+  margin-bottom: var(--space-4);
+}
+.pay-receipt-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+  margin-bottom: var(--space-5);
+}
+.pay-receipt-toolbar .btn {
+  min-height: 46px;
+}
+.pay-receipt-toolbar__hint {
+  flex: 1 1 16rem;
+  margin: 0;
+  color: var(--text-3);
+  font-size: var(--text-sm);
+}
+.pay-receipt-page__email {
+  max-width: 32rem;
+  margin-top: var(--space-6);
+}
+
+.pay-receipt-missing {
+  display: grid;
+  justify-items: center;
+  gap: var(--space-3);
+  padding: var(--space-12) var(--space-6);
+  text-align: center;
+}
+.pay-receipt-missing__icon {
+  display: grid;
+  place-items: center;
+  width: 4rem;
+  height: 4rem;
+  border-radius: 50%;
+  background: var(--warning-bg);
+  color: var(--warning);
+  font-size: 1.9rem;
+}
+.pay-receipt-missing__title {
+  margin: 0;
+  color: var(--maroon-800);
+  font-size: var(--text-xl);
+}
+.pay-receipt-missing__title:focus {
+  outline: none;
+}
+.pay-receipt-missing__text {
+  max-width: 52ch;
+  margin: 0;
+  color: var(--text-3);
+}
+.pay-receipt-missing__text a {
+  color: var(--accent-ink);
+  font-weight: var(--weight-semibold);
+}
+
+/* ── Print: the receipt alone, on one A4 page ─────────────────────── */
+@media print {
+  @page {
+    size: A4;
+    margin: 14mm;
+  }
+
+  /* Everything the site wraps around a page. The chatbot's launcher and
+     window are named here because its root element has no class of its
+     own; base.css already removes shadows and blur from .card. */
+  .skip-link,
+  .pulse-strip,
+  .navbar,
+  .drawer,
+  .drawer-backdrop,
+  .footer,
+  .bottom-nav,
+  .fab-group,
+  .toast-region,
+  .page-hero,
+  .chatbot__window,
+  .chatbot__trigger,
+  .pay-receipt-toolbar,
+  .pay-receipt-page__email,
+  .pay-banner .alert__close {
+    display: none !important;
+  }
+
+  .section,
+  .pay-receipt-page {
+    padding: 0 !important;
+  }
+  .container,
+  .container--narrow {
+    max-width: none !important;
+    padding: 0 !important;
+  }
+
+  .pay-receipt {
+    padding: 0 !important;
+    border: 0 !important;
+    background: var(--white) !important;
+    color: var(--text-1);
+    -webkit-backdrop-filter: none !important;
+    backdrop-filter: none !important;
+  }
+  /* A page break in the middle of a labelled fact reads as a mistake. */
+  .pay-receipt__row,
+  .pay-receipt__amount,
+  .pay-receipt__foot {
+    break-inside: avoid;
+  }
+  .pay-receipt__amount {
+    background: none !important;
+  }
+  .pay-receipt__title {
+    font-size: var(--text-lg);
+  }
+  .pay-receipt__amount-value {
+    font-size: var(--text-2xl);
+  }
+  .badge {
+    border: 1px solid var(--border-strong) !important;
+    background: none !important;
+    color: var(--text-1) !important;
+  }
+}

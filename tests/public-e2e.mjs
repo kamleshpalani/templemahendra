@@ -52,7 +52,7 @@ function sql(query, params = []) {
 }
 
 const browser = await chromium.launch();
-const IGNORE = /fonts\.gstatic|googleapis|google\.com\/maps|wa\.me|favicon|ERR_ABORTED|reviews|Download the React DevTools|workbox|sw\.js/;
+const IGNORE = /fonts\.gstatic|googleapis|google\.com\/maps|wa\.me|favicon|ERR_ABORTED|reviews|Download the React DevTools|workbox|sw\.js|youtube|ytimg|googlevideo/;
 
 async function newPage(width = 1440, height = 900) {
   const ctx = await browser.newContext({ viewport: { width, height }, locale: "en-IN" });
@@ -63,6 +63,16 @@ async function newPage(width = 1440, height = 900) {
   page.on("requestfailed", (r) => { if (!IGNORE.test(r.url())) errors.push(`[requestfailed] ${r.url()} ${r.failure()?.errorText}`); });
   page.errors = () => errors.filter((e) => !IGNORE.test(e));
   return page;
+}
+/**
+ * With seva payments switched on the booking dialog defaults to "Pay online
+ * now" (a different endpoint plus a terms tick). These scenarios test the
+ * request path, so pick that radio when the choice is offered; with payments
+ * off there is no radio and the dialog is the request form already.
+ */
+async function chooseBookingRequest(dialog) {
+  const request = dialog.locator('input[name="payChoice"][value="request"]');
+  if (await request.count()) await request.check();
 }
 async function scrollThrough(page) {
   await page.addStyleTag({ content: "html{scroll-behavior:auto !important}" });
@@ -88,7 +98,15 @@ async function axe(page) {
   return r;
 }
 
-const ROUTES = ["/", "/about", "/sevas", "/events", "/panchangam", "/donations", "/contact", "/definitely-not-a-page"];
+const ROUTES = [
+  "/", "/about", "/sevas", "/events", "/panchangam", "/donations", "/contact",
+  // Online payments (docs/payments/SPEC.md §7.1): the donate page and the four policies.
+  "/donate", "/privacy-policy", "/terms-and-conditions", "/refund-cancellation-policy", "/shipping-delivery-policy",
+  // Live Darshan (docs/live/SPEC-PHASE1.md §5.3) and its schedule (SPEC-PHASE2.md §2.3).
+  "/live-darshan",
+  "/live-darshan/schedule",
+  "/definitely-not-a-page",
+];
 const WIDTHS = [390, 768, 1024, 1440];
 
 for (const route of ROUTES) {
@@ -167,6 +185,7 @@ try {
   const alerts = await dialog.locator('[role="alert"]').count();
   check(alerts >= 1, "empty submit shows field errors", `${alerts} alerts`);
   const stamp = "E2E-" + Date.now().toString().slice(-6);
+  await chooseBookingRequest(dialog);
   await dialog.locator('input[name="devotee_name"]').fill(stamp);
   await dialog.locator('input[name="phone"]').fill("9876501234");
   await dialog.locator('button[type="submit"]').click();
@@ -847,6 +866,7 @@ try {
   await page.locator(".seva-card__book").first().click();
   const dialog = page.locator('[role="dialog"]');
   await dialog.waitFor({ state: "visible" });
+  await chooseBookingRequest(dialog);
   await dialog.locator('input[name="devotee_name"]').fill("E2E-LIMIT");
   await dialog.locator('input[name="phone"]').fill("9876501234");
   await dialog.locator('button[type="submit"]').click();

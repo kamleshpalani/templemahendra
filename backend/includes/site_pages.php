@@ -85,6 +85,48 @@ function sitePages(): array
             'கோயில் உங்கள் குடும்பத்தை அறிந்து கொள்ள, ஒரு முறை மட்டும் இந்தப் படிவத்தை நிரப்புங்கள். கணக்கோ கடவுச்சொல்லோ தேவையில்லை.',
             'Fill this in once so the temple knows your family. No account or password is needed.',
         ],
+        // Online giving through CCAvenue (docs/payments/SPEC.md §7.3). /donations
+        // keeps the bank details and the pledge form; this is the payment flow.
+        '/donate' => [
+            'இணையவழி நன்கொடை', 'Donate online',
+            'UPI, கார்டு அல்லது நெட் பேங்கிங் மூலம் CCAvenue பாதுகாப்பான பக்கத்தில் திருக்கோவில் தர்ம அறக்கட்டளைக்கு நன்கொடை வழங்கி, மின்னணு ரசீது பெறுங்கள்.',
+            "Give to the Temple Dharma Trust by UPI, card or net banking on CCAvenue's secure page, and receive an electronic receipt.",
+        ],
+        // The four policy pages (SPEC §7.8). Title and lead are the ones in
+        // frontend/src/data/policies.js.
+        '/privacy-policy' => [
+            'தனியுரிமைக் கொள்கை', 'Privacy Policy',
+            'நன்கொடை, சேவை பதிவு, இணையவழிப் பணம் செலுத்துதலின்போது நீங்கள் தரும் விவரங்களை அறக்கட்டளை எவ்வாறு பயன்படுத்திப் பாதுகாக்கிறது என்பதை இப்பக்கம் விளக்குகிறது.',
+            'How the Temple Dharma Trust collects, uses and protects the details you give when you donate, book a seva or pay online.',
+        ],
+        '/terms-and-conditions' => [
+            'விதிமுறைகள் & நிபந்தனைகள்', 'Terms & Conditions',
+            'இந்த இணையதளத்தின் மூலம் அறக்கட்டளைக்கு நன்கொடை வழங்கும்போதும், சேவை பதிவு செய்து பணம் செலுத்தும்போதும் பொருந்தும் விதிமுறைகள்.',
+            'The terms that apply when you donate to the Temple Dharma Trust, or book and pay for a seva, through this website.',
+        ],
+        '/refund-cancellation-policy' => [
+            'பணம் திருப்பி அளித்தல் & ரத்துக் கொள்கை', 'Refund & Cancellation Policy',
+            'நன்கொடை எப்போது திருப்பி அளிக்கப்படும், சேவை பதிவை எப்படி ரத்து செய்வது, திருப்பி அளிக்கும் பணம் எத்தனை நாட்களில் உங்களை வந்தடையும் என்பதை இங்கே அறியலாம்.',
+            'When a donation can be refunded, how to cancel a seva booking, and how long a refund takes to reach you.',
+        ],
+        '/shipping-delivery-policy' => [
+            'அனுப்புதல் & விநியோகக் கொள்கை', 'Shipping & Delivery Policy',
+            'அறக்கட்டளை எந்தப் பொருளையும் விற்பதோ அனுப்புவதோ இல்லை. நன்கொடை ரசீதுகள் மின்னணு முறையில் வழங்கப்படுகின்றன; சேவைகள் திருக்கோவிலில் நடைபெறுகின்றன.',
+            'The Trust sells and ships no goods. Donation receipts are delivered electronically, and sevas are performed at the temple.',
+        ],
+        // Live darshan (docs/live/SPEC-PHASE1.md §4.6). The React page passes
+        // exactly these strings to <Seo>; tests/og.mjs checks they agree.
+        '/live-darshan' => [
+            'நேரடி தரிசனம்', 'Live Darshan',
+            'கோயிலின் தினசரி பூஜைகள், அபிஷேகம், தீபாராதனை மற்றும் திருவிழாக்களை உலகின் எந்த இடத்திலிருந்தும் நேரடியாகக் காணுங்கள்.',
+            'Watch the temple\'s daily poojas, abhishekam, deeparadhana and festivals live from anywhere in the world.',
+        ],
+        // The schedule (docs/live/SPEC-PHASE2.md §1.3), same rule: pages/LiveSchedule.jsx carries these exact strings.
+        '/live-darshan/schedule' => [
+            'நேரடி தரிசன அட்டவணை', 'Live Darshan schedule',
+            'இன்று, நாளை மற்றும் இந்த வாரத்தின் நேரடி பூஜைகள், அபிஷேகங்கள் மற்றும் திருவிழா ஒளிபரப்புகளின் அட்டவணை.',
+            'The schedule of live poojas, abhishekams and festival broadcasts for today, tomorrow and this week.',
+        ],
     ];
 }
 

@@ -79,6 +79,15 @@ export const TEMPLE = {
    * Consumers must handle a missing file gracefully (onError → hide).
    */
   photoSrc: "/images/deities-alankaram.jpg",
+
+  /**
+   * The temple's YouTube channel (docs/live/SPEC-PHASE1.md Decision 5), used by
+   * the homepage NRI tile and the Live Darshan page's "no broadcast" state.
+   * The handle is UNCONFIRMED — https://youtube.com/@TempleMahendra answered
+   * HTTP 404 on 2026-09-14. Correct it here, and only here, once the committee
+   * supplies the real handle or channel id.
+   */
+  youtube: { channelUrl: "https://youtube.com/@TempleMahendra" },
 };
 
 // ── Postal address ──────────────────────────────────────────────────────────
@@ -193,6 +202,12 @@ export const COMMITTEE = {
 export const PRIMARY_CONTACT = COMMITTEE.members[0];
 /** Secretary — customary point of contact for correspondence and bookings. */
 export const SECONDARY_CONTACT = COMMITTEE.members[2];
+
+/**
+ * The temple's contact email. One copy for the footer, the policy pages and
+ * the payment receipt (docs/payments/SPEC.md §7.6), so they can never disagree.
+ */
+export const TEMPLE_EMAIL = "info@dhabbalavaartemple.in";
 
 // ── History (appeal letter, §5a–5h) ─────────────────────────────────────────
 

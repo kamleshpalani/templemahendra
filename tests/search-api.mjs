@@ -91,6 +91,52 @@ try {
     r = await search(retired.slice(1));
     check(!urlsOf(r).includes(retired), `nothing points at the retired ${retired} page`, urlsOf(r).join(","));
   }
+
+  section("online donation and the policy pages (docs/payments/SPEC.md §7.8)");
+  for (const [term, url] of [
+    ["donate online", "/donate"],
+    ["UPI", "/donate"],
+    ["net banking", "/donate"],
+    ["ccavenue", "/donate"],
+    ["இணையவழி", "/donate"],
+    ["privacy", "/privacy-policy"],
+    ["தனியுரிமை", "/privacy-policy"],
+    ["terms", "/terms-and-conditions"],
+    ["refund", "/refund-cancellation-policy"],
+    ["ரத்து", "/refund-cancellation-policy"],
+    ["shipping", "/shipping-delivery-policy"],
+    ["delivery", "/shipping-delivery-policy"],
+  ]) {
+    r = await search(term);
+    check(r.status === 200 && urlsOf(r).includes(url), `"${term}" finds ${url}`, urlsOf(r).join(","));
+  }
+  r = await search("Donate online");
+  const donate = pageItem(r, "/donate");
+  check(donate?.title_en === "Donate online" && donate?.title_ta === "இணையவழி நன்கொடை", "/donate is titled in both languages, as the page's own SEO title", JSON.stringify(donate));
+  r = await search("donate");
+  check(urlsOf(r).includes("/donations") && urlsOf(r).includes("/donate"), "\"donate\" offers both the bank-details page and the online page", urlsOf(r).join(","));
+
+  section("the live darshan page (docs/live/SPEC-PHASE1.md §4.6)");
+  for (const term of ["live darshan", "live", "stream", "youtube", "watch online", "நேரடி தரிசனம்", "நேரலை", "ஒளிபரப்பு"]) {
+    r = await search(term);
+    check(r.status === 200 && urlsOf(r).includes("/live-darshan"), `"${term}" finds /live-darshan`, urlsOf(r).join(","));
+  }
+  r = await search("Live Darshan");
+  const liveDarshan = pageItem(r, "/live-darshan");
+  check(liveDarshan?.title_en === "Live Darshan" && liveDarshan?.title_ta === "நேரடி தரிசனம்", "/live-darshan is titled in both languages, as the page's own SEO title", JSON.stringify(liveDarshan));
+  check(liveDarshan?.score === 100, "an exact English title match scores 100", JSON.stringify(liveDarshan));
+  r = await search("நேரடி தரிசனம்");
+  check(pageItem(r, "/live-darshan")?.score === 100, "the exact Tamil title scores 100 too", JSON.stringify(pageItem(r, "/live-darshan")));
+
+  section("the live darshan schedule page (docs/live/SPEC-PHASE2.md §1.3)");
+  for (const term of ["schedule", "timetable", "அட்டவணை", "live darshan schedule"]) {
+    r = await search(term);
+    check(r.status === 200 && urlsOf(r).includes("/live-darshan/schedule"), `"${term}" finds /live-darshan/schedule`, urlsOf(r).join(","));
+  }
+  r = await search("Live Darshan schedule");
+  const schedule = pageItem(r, "/live-darshan/schedule");
+  check(schedule?.title_en === "Live Darshan schedule" && schedule?.title_ta === "நேரடி தரிசன அட்டவணை", "/live-darshan/schedule is titled in both languages, as the page's own SEO title", JSON.stringify(schedule));
+  check(schedule?.score === 100, "the exact English title scores 100", JSON.stringify(schedule));
 } catch (e) {
   check(false, "the suite ran to the end", e.stack || String(e));
 }

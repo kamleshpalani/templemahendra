@@ -33,13 +33,18 @@ function bulkEntities(): array
     $isBool = fn(string $v) => in_array(strtolower($v), ['', '0', '1', 'yes', 'no', 'true', 'false'], true);
     $toBool = fn(string $v) => in_array(strtolower($v), ['1', 'yes', 'true'], true) ? 1 : (($v === '') ? 1 : 0);
     $isNum  = fn(string $v) => $v === '' || is_numeric($v);
+    // DECIMAL(10,2): 0 … 99,999,999.99. Blank is left to the "required" check.
+    $isMoney = fn(string $v) => $v === '' || (is_numeric($v) && (float) $v >= 0 && (float) $v <= 99999999.99);
 
     return [
         'sevas' => [
             'icon' => 'sparkles', 'label' => 'Sevas', 'table' => 'sevas',
             'columns' => ['name_ta', 'name_en', 'description', 'amount', 'sort_order', 'is_featured', 'is_active'],
             'required' => ['name_ta', 'name_en', 'amount'],
-            'rules' => ['amount' => [$isNum, 'must be a number'], 'sort_order' => [$isNum, 'must be a number'],
+            // A seva price is money the public site charges, so the import holds it
+            // to the column's own range (DECIMAL(10,2), never negative) — a "-251"
+            // in a spreadsheet must not become a seva that pays the devotee.
+            'rules' => ['amount' => [$isMoney, 'must be between 0 and 99,999,999.99'], 'sort_order' => [$isNum, 'must be a number'],
                         'is_featured' => [$isBool, 'must be yes/no'], 'is_active' => [$isBool, 'must be yes/no']],
             'dupKey' => ['name_en'],
             'dupSql' => 'SELECT name_en FROM sevas',

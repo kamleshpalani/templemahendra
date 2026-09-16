@@ -34,6 +34,7 @@ import {
 } from "react-icons/lu";
 import api from "../services/api";
 import { useLang } from "../context/LangContext";
+import { paymentsUsable, usePaymentsConfig } from "../lib/payments";
 import {
   TEMPLE,
   ADDRESS,
@@ -63,7 +64,22 @@ import SegmentedControl from "../components/ui/Tabs";
 import { SkeletonCards } from "../components/ui/Feedback";
 import Reviews from "../components/Reviews/Reviews";
 import HomepageWidgets from "../components/HomepageWidgets/HomepageWidgets";
+import LiveHomeSection from "../components/Live/LiveHomeSection";
+import { dayBucket, dayLabel, formatStreamTime, streamTitle, useLiveOverview } from "../lib/live";
 import "./Home.css";
+
+/**
+ * The hero panel's one line about the next broadcast: "Next at 6:30 pm IST"
+ * today, else "Next · Tomorrow 6:30 pm IST" (docs/live/SPEC-PHASE2.md §2.3).
+ */
+function nextDarshanLine(stream, lang, t, serverOffset) {
+  const tz = stream.timezone || "Asia/Kolkata";
+  const time = stream.scheduled_start_at ? formatStreamTime(stream.scheduled_start_at, lang, tz) : "";
+  if (!time) return t("அடுத்தது · நேரம் விரைவில் அறிவிக்கப்படும்", "Next · time to be announced");
+  if (dayBucket(stream, serverOffset) === "today") return t(`அடுத்தது · ${time}`, `Next at ${time}`);
+  const day = dayLabel(stream, lang, serverOffset);
+  return t(`அடுத்தது · ${day} ${time}`, `Next · ${day} ${time}`);
+}
 
 /* ─── Derived temple facts (never invented — see data/temple.js, lib/templeTime.js) ─── */
 /** "6:00 AM – 12:30 PM", "4:00 PM – 9:00 PM" from the shared TEMPLE_HOURS table. */
@@ -284,7 +300,7 @@ function FirstVisitContent({ t }) {
   );
 }
 
-function NriContent({ t }) {
+function NriContent({ t, payOnline = false }) {
   return (
     <div className="home-visit__block">
       <div className="home-visit__grid">
@@ -293,25 +309,33 @@ function NriContent({ t }) {
           <p className="home-tile__text">
             {t("தினசரி பூஜைகளை நேரடியாக கண்டுகளிக்கவும்.", "Watch daily poojas live from anywhere in the world.")}
           </p>
+          <Button to="/live-darshan" variant="primary" size="sm" icon={<LuTv aria-hidden="true" />}>
+            {t("நேரடி தரிசனம் பார்க்க", "Watch live darshan")}
+          </Button>
           <Button
-            href="https://youtube.com/@TempleMahendra"
+            href={TEMPLE.youtube.channelUrl}
             target="_blank"
             rel="noopener noreferrer"
-            variant="primary"
+            variant="ghost"
             size="sm"
           >
-            {t("YouTube-ல் பார்க்க", "Watch on YouTube")}
+            {t("YouTube சேனல்", "YouTube channel")}
           </Button>
         </Tile>
         <Tile index={1} className="home-tile--stack" icon={<LuCreditCard />}>
           <h3 className="home-tile__title">{t("ஆன்லைன் நன்கொடை", "Online Donation")}</h3>
           <p className="home-tile__text">
-            {t(
-              `அறக்கட்டளை வங்கிக் கணக்கிற்கு நேரடி பரிமாற்றம் · ${TRUST.taxExemption.short.ta} · ரசீதுக்கு முழு முகவரி தேவை`,
-              `Direct transfer to the Trust's bank account · ${TRUST.taxExemption.short.en} · full address required for a receipt`,
-            )}
+            {payOnline
+              ? t(
+                  `UPI, கார்டு அல்லது நெட் பேங்கிங் · CCAvenue பாதுகாப்பான பக்கம் · உடனடி ரசீது · ${TRUST.taxExemption.short.ta}`,
+                  `UPI, card or net banking · CCAvenue's secure page · instant receipt · ${TRUST.taxExemption.short.en}`,
+                )
+              : t(
+                  `அறக்கட்டளை வங்கிக் கணக்கிற்கு நேரடி பரிமாற்றம் · ${TRUST.taxExemption.short.ta} · ரசீதுக்கு முழு முகவரி தேவை`,
+                  `Direct transfer to the Trust's bank account · ${TRUST.taxExemption.short.en} · full address required for a receipt`,
+                )}
           </p>
-          <Button to="/donations#bank-details" variant="primary" size="sm">
+          <Button to={payOnline ? "/donate" : "/donations#bank-details"} variant="primary" size="sm">
             {t("நன்கொடை →", "Donate Online →")}
           </Button>
         </Tile>
@@ -492,6 +516,15 @@ export default function Home() {
   });
   const { lang, t } = useLang();
   const [mode, setMode] = useState(() => detectInitialMode(lang));
+  // The "Online Donation" tile only says "online" once online giving really
+  // works; until then it points at the bank details (docs/payments/SPEC.md §7.8).
+  const { config: paymentsConfig } = usePaymentsConfig();
+  const payOnline = paymentsUsable(paymentsConfig);
+  // Live darshan (docs/live/SPEC-PHASE2.md §2.3): one request (and one
+  // poller) for the hero row and the block below the live band.
+  const liveOverview = useLiveOverview();
+  const liveStream = liveOverview.now ?? liveOverview.next ?? null;
+  const liveIsOn = Boolean(liveOverview.now);
 
   // Live IST clock — ticks every second
   useEffect(() => {
@@ -690,6 +723,18 @@ export default function Home() {
                 <dt>{t("கோயில் நேரம்", "Temple Hours")}</dt>
                 <dd>{HOURS.join(" · ")}</dd>
               </div>
+              {liveStream && (
+                <div className={`home-hero__row--live${liveIsOn ? " home-hero__row--live-on" : ""}`}>
+                  <dt>{t("நேரடி தரிசனம்", "Live darshan")}</dt>
+                  <dd>
+                    <Link to={liveIsOn ? `/live-darshan/${liveStream.slug}` : "/live-darshan/schedule"} className="home-hero__live-link">
+                      {liveIsOn && <span className="home-hero__live-dot" aria-hidden="true" />}
+                      <span>{liveIsOn ? t("இப்போது நேரலை", "LIVE now") : nextDarshanLine(liveStream, lang, t, liveOverview.serverOffset)}</span>
+                      <small>{streamTitle(liveStream, lang)}</small>
+                    </Link>
+                  </dd>
+                </div>
+              )}
               {pournami && (
                 <div className="home-hero__row--moon">
                   <dt>{t("அடுத்த பௌர்ணமி", "Next Pournami")}</dt>
@@ -810,6 +855,9 @@ export default function Home() {
         </div>
       )}
 
+      {/* ── Live darshan: LIVE NOW, the next darshan with its countdown, or nothing at all ── */}
+      <LiveHomeSection now={liveOverview.now} next={liveOverview.next} serverOffset={liveOverview.serverOffset} />
+
       {/* ── Upcoming Events & Pournami (merged) ── */}
       {(widgetsLoading ||
         widgets.length > 0 ||
@@ -876,7 +924,7 @@ export default function Home() {
               />
             )}
             {mode === "first-visit" && <FirstVisitContent t={t} />}
-            {mode === "nri" && <NriContent t={t} />}
+            {mode === "nri" && <NriContent t={t} payOnline={payOnline} />}
             {mode === "elder" && <ElderContent t={t} pulseData={pulseData} />}
             {mode === "volunteer" && <VolunteerContent t={t} />}
             {mode === "sponsor" && <SponsorContent t={t} />}
