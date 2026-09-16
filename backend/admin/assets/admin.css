@@ -1884,3 +1884,149 @@ code.cols {
     justify-content: flex-start;
   }
 }
+
+/* ══════════════════════════════════════════════════════════════════
+   PAYMENTS — Online Payments, Payment Gateway, Donation Categories
+   (docs/payments/SPEC.md §10). Tokens only; the shared card, table,
+   toolbar and switch classes do the heavy lifting, so this section is
+   only what those did not already provide.
+   ══════════════════════════════════════════════════════════════════ */
+
+/* A radio or checkbox with its own explanation underneath: the gateway
+   mode, the refund kind, the currency list. */
+.choice {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+  padding: var(--space-2) 0;
+}
+.choice input {
+  flex: none;
+  margin-top: 0.2rem;
+}
+.choice > span {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  min-width: 0;
+}
+.choice .field__hint {
+  margin: 0;
+}
+
+/* An input with a button welded to its right — "show this key". */
+.field-with-button {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+.field-with-button input {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+/* A checkbox filter inside the toolbar row ("Needs review"). */
+.toolbar__check {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  white-space: nowrap;
+}
+
+/* Rows the office still has to look at (needs_review = 1). */
+.table tr.is-flagged > td {
+  background: var(--warning-bg);
+}
+
+/* KPI money ("₹12,34,567") must never be clipped by its card: the figure shrinks
+   with the card's own width and, as a last resort, wraps between digit groups. */
+.stats-grid .stat__val {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+@supports (font-size: 1cqi) {
+  .stats-grid .stat {
+    container-type: inline-size;
+  }
+  .stats-grid .stat__val {
+    font-size: clamp(1.05rem, 9cqi, 1.55rem);
+  }
+}
+
+/* ── One payment (payments.php?number=…) ─────────────────────────── */
+/* Order ids, CCAvenue references and receipt numbers are long and have no
+   spaces: they wrap inside the card instead of widening it on a phone. */
+.pay-detail .tabular,
+.pay-detail .cell-title {
+  overflow-wrap: anywhere;
+}
+.pay-detail__back {
+  margin: 0 0 var(--space-4);
+}
+.pay-url {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  overflow-wrap: anywhere;
+}
+
+/* The "note and button" forms that live inside a table cell — marking an
+   attempt reviewed, marking a refund failed. They must not stretch the
+   column, and on a phone they take the full width of the card row. */
+.pay-review {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+}
+.pay-review input[type="text"] {
+  min-width: 9rem;
+  max-width: 16rem;
+}
+.pay-refund-form {
+  border-top: 1px solid var(--border-soft);
+}
+
+/* ── Payment Gateway (payment_settings.php) ──────────────────────── */
+.pay-settings fieldset {
+  margin: 0 0 var(--space-4);
+  padding: var(--space-4);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-sm);
+}
+.pay-cred {
+  margin-bottom: var(--space-5);
+}
+.pay-cred__row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: var(--space-3);
+  align-items: start;
+}
+.pay-cred__remove {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding-top: 1.9rem;
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+.pay-currencies {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(13rem, 1fr));
+  gap: 0 var(--space-4);
+}
+
+@media (max-width: 640px) {
+  .pay-cred__row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .pay-cred__remove {
+    padding-top: 0;
+  }
+  .pay-review input[type="text"] {
+    width: 100%;
+    max-width: none;
+  }
+}

@@ -10,10 +10,20 @@
 // hears back. Only a booking whose status really changes is notified, and every
 // event is deduped per booking, so re-applying a status — or flipping it back
 // and forth — never sends the same news twice.
+//
+// Online seva payments (migration 010, docs/payments/SPEC.md §10.6): a booking
+// paid on the website carries payment_mode = 'online' and a payment_status. One
+// that was started but never paid is not the office's work yet, so it is left
+// out of the default list, the status chips and the KPIs and shown only under
+// the "Unpaid online" chip; a paid one wears its amount and receipt number and
+// links to the payment. The office's own Confirm / Complete / Cancel flow is
+// untouched. Every new column is checked, so a half-applied migration cannot
+// break the page.
 require_once __DIR__ . '/../includes/auth.php';
 requireAdminAuth();
 require_once __DIR__ . '/../includes/db.php';
 require_once __DIR__ . '/../includes/devotee_notify.php';
+require_once __DIR__ . '/../includes/public_guard.php';
 require_once __DIR__ . '/includes/admin_layout.php';
 
 $db = getDB();
@@ -22,7 +32,21 @@ const SB_BASE     = '/admin/seva_bookings.php';
 const SB_PER_PAGE = 25;
 /** Status → the event that tells the devotee. Moving back to pending tells nobody anything. */
 const SB_EVENTS   = ['confirmed' => 'booking.confirmed', 'cancelled' => 'booking.cancelled', 'completed' => 'booking.completed'];
+/** Payment statuses under which an online booking counts as paid (docs/payments/SPEC.md §2.1). */
+const SB_PAID_STATUSES = ['SUCCESS', 'REFUND_INITIATED', 'PARTIALLY_REFUNDED', 'REFUNDED'];
+/** SQL for "started online, never paid" — the rows the default list leaves out. */
+const SB_UNPAID_ONLINE_SQL = "(payment_mode = 'online' AND COALESCE(payment_status, '') NOT IN ('SUCCESS','REFUND_INITIATED','PARTIALLY_REFUNDED','REFUNDED'))";
 $statuses = ['pending', 'confirmed', 'completed', 'cancelled'];
+
+$hasPayCols = publicGuardHasColumn('seva_bookings', 'payment_mode')
+    && publicGuardHasColumn('seva_bookings', 'payment_status')
+    && publicGuardHasColumn('seva_bookings', 'order_number')
+    && publicGuardHasColumn('seva_bookings', 'amount')
+    && publicGuardHasColumn('seva_bookings', 'receipt_number')
+    && publicGuardHasColumn('seva_bookings', 'paid_at');
+$canPayments = $hasPayCols && adminCan('payments.view');
+/** The default list's exclusion, or '' before migration 010. */
+$sbExcludeUnpaid = $hasPayCols ? 'NOT ' . SB_UNPAID_ONLINE_SQL : '';
 
 /** Bookings by id, with the seva's own Tamil and English names for the message. */
 function sbLoadBookings(PDO $db, array $ids): array
@@ -196,7 +220,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $msg === '') {
 
 // ── Filters (GET) ───────────────────────────────────────────────────────────
 $q      = trim(mb_substr((string) ($_GET['q'] ?? ''), 0, 120));
-$status = in_array($_GET['status'] ?? '', $statuses, true) ? (string) $_GET['status'] : '';
+// "unpaid_online" is a chip of its own: the online bookings the default list hides.
+$status = in_array($_GET['status'] ?? '', $statuses, true) || ($hasPayCols && ($_GET['status'] ?? '') === 'unpaid_online') ? (string) $_GET['status'] : '';
 $isDate = static function (string $d): bool {
     if (!preg_match('/^(\d{4})-(\d{2})-(\d{2})$/', $d, $m)) return false;
     return checkdate((int) $m[2], (int) $m[3], (int) $m[1]);
@@ -223,8 +248,9 @@ $where  = [];
 $params = [];
 if ($q !== '') {
     $like = '%' . addcslashes($q, '%_\\') . '%';
-    $where[] = '(devotee_name LIKE :q1 OR phone LIKE :q2 OR seva_name LIKE :q3)';
-    $params += [':q1' => $like, ':q2' => $like, ':q3' => $like];
+    // The order number too, so Online Payments can link straight to one booking.
+    $where[] = '(devotee_name LIKE :q1 OR phone LIKE :q2 OR seva_name LIKE :q3' . ($hasPayCols ? ' OR order_number LIKE :q4' : '') . ')';
+    $params += [':q1' => $like, ':q2' => $like, ':q3' => $like] + ($hasPayCols ? [':q4' => $like] : []);
 }
 if ($from !== '') {
     $where[] = 'created_at >= :from';
@@ -234,9 +260,14 @@ if ($to !== '') {
     $where[] = 'created_at < :to';
     $params[':to'] = (new DateTime($to))->modify('+1 day')->format('Y-m-d') . ' 00:00:00';
 }
+$searchWhere  = $where;   // search and dates only → the "Unpaid online" chip count
+$searchParams = $params;
+if ($sbExcludeUnpaid !== '' && $status !== 'unpaid_online') $where[] = $sbExcludeUnpaid;
 $baseWhere  = $where;   // without status → chip counts
 $baseParams = $params;
-if ($status !== '') {
+if ($status === 'unpaid_online') {
+    $where[] = SB_UNPAID_ONLINE_SQL;
+} elseif ($status !== '') {
     $where[] = 'status = :status';
     $params[':status'] = $status;
 }
@@ -258,9 +289,18 @@ if (($_GET['export'] ?? '') === 'csv') {
     header('Cache-Control: no-store');
     $out = fopen('php://output', 'w');
     fwrite($out, "\xEF\xBB\xBF");
-    fputcsv($out, ['id', 'devotee_name', 'phone', 'seva_id', 'seva_name', 'preferred_date', 'message', 'status', 'created_at']);
+    // The payment columns are appended after the existing ones, so a spreadsheet
+    // or script that reads this export by position keeps working.
+    $head = ['id', 'devotee_name', 'phone', 'seva_id', 'seva_name', 'preferred_date', 'message', 'status', 'created_at'];
+    if ($hasPayCols) array_push($head, 'payment_mode', 'amount', 'payment_status', 'order_number', 'receipt_number', 'paid_at');
+    fputcsv($out, $head);
     while ($r = $stmt->fetch()) {
-        fputcsv($out, [$r['id'], $r['devotee_name'], $r['phone'], $r['seva_id'], $r['seva_name'], $r['preferred_date'], $r['message'], $r['status'], $r['created_at']]);
+        $line = [$r['id'], $r['devotee_name'], $r['phone'], $r['seva_id'], $r['seva_name'], $r['preferred_date'], $r['message'], $r['status'], $r['created_at']];
+        if ($hasPayCols) {
+            array_push($line, (string) ($r['payment_mode'] ?? 'offline'), (string) ($r['amount'] ?? ''), (string) ($r['payment_status'] ?? ''),
+                (string) ($r['order_number'] ?? ''), (string) ($r['receipt_number'] ?? ''), (string) ($r['paid_at'] ?? ''));
+        }
+        fputcsv($out, $line);
     }
     fclose($out);
     exit;
@@ -284,16 +324,24 @@ if ($filterNotes) {
 }
 
 // ── Data ────────────────────────────────────────────────────────────────────
+// The KPIs and chips count the office's queue: every booking except those
+// started online and never paid, which have their own chip.
 $counts = array_fill_keys($statuses, 0);
-foreach ($db->query('SELECT status, COUNT(*) c FROM seva_bookings GROUP BY status')->fetchAll() as $r) {
+foreach ($db->query('SELECT status, COUNT(*) c FROM seva_bookings' . ($sbExcludeUnpaid !== '' ? ' WHERE ' . $sbExcludeUnpaid : '') . ' GROUP BY status')->fetchAll() as $r) {
     $counts[$r['status']] = (int) $r['c'];
 }
 
 $chipCounts = array_fill_keys($statuses, 0);
-$stmt = $db->prepare('SELECT status, COUNT(*) c FROM seva_bookings' . ($baseWhere ? ' WHERE ' . implode(' AND ', $baseWhere) : '') . ' GROUP BY status');
-$stmt->execute($baseParams);
+$chipBase   = $status === 'unpaid_online' ? array_merge($searchWhere, $sbExcludeUnpaid !== '' ? [$sbExcludeUnpaid] : []) : $baseWhere;
+$stmt = $db->prepare('SELECT status, COUNT(*) c FROM seva_bookings' . ($chipBase ? ' WHERE ' . implode(' AND ', $chipBase) : '') . ' GROUP BY status');
+$stmt->execute($status === 'unpaid_online' ? $searchParams : $baseParams);
 foreach ($stmt->fetchAll() as $r) $chipCounts[$r['status']] = (int) $r['c'];
 $chipCounts[''] = array_sum($chipCounts);
+if ($hasPayCols) {
+    $stmt = $db->prepare('SELECT COUNT(*) FROM seva_bookings WHERE ' . implode(' AND ', array_merge($searchWhere, [SB_UNPAID_ONLINE_SQL])));
+    $stmt->execute($searchParams);
+    $chipCounts['unpaid_online'] = (int) $stmt->fetchColumn();
+}
 
 $list  = adminPaginate($db, $sql, $params, $page, SB_PER_PAGE);
 $rows  = $list['rows'];
@@ -312,7 +360,9 @@ if ($counts['pending'] > 0 && $status !== 'pending') {
 }
 $introActions .= '<a href="' . h(adminQuery($linkQuery, ['export' => 'csv', 'page' => null])) . '" class="btn btn--sm">' . adminIcon('download') . 'Export CSV</a>';
 echo adminPageIntro(
-    'Online seva requests from devotees — confirm, complete or cancel them singly or in bulk, reach the devotee by phone or WhatsApp, and export the filtered list as CSV.',
+    $hasPayCols
+        ? 'Seva requests from devotees, and sevas paid for on the website — confirm, complete or cancel them singly or in bulk, reach the devotee by phone or WhatsApp, and export the filtered list as CSV. A paid booking still waits here for the office to confirm the date.'
+        : 'Online seva requests from devotees — confirm, complete or cancel them singly or in bulk, reach the devotee by phone or WhatsApp, and export the filtered list as CSV.',
     $introActions
 );
 
@@ -325,12 +375,15 @@ echo adminKpi([
 ?>
 
 <nav class="filter-chips" aria-label="Filter by status">
-  <?php foreach (array_merge([''], $statuses) as $s): $active = $status === $s; ?>
+  <?php foreach (array_merge([''], $statuses, $hasPayCols ? ['unpaid_online'] : []) as $s): $active = $status === $s; ?>
     <a href="<?= h(adminQuery($linkQuery, ['status' => $s, 'page' => null])) ?>" class="chip"<?= $active ? ' aria-current="page"' : '' ?>>
-      <?= $s === '' ? 'All' : ucfirst($s) ?><span class="chip__count"><?= $chipCounts[$s] ?></span>
+      <?= $s === '' ? 'All' : ($s === 'unpaid_online' ? 'Unpaid online' : ucfirst($s)) ?><span class="chip__count"><?= $chipCounts[$s] ?></span>
     </a>
   <?php endforeach; ?>
 </nav>
+<?php if ($status === 'unpaid_online'): ?>
+  <p class="field__hint mb-4">Bookings started on the website whose payment never completed. They are not in the office's queue: an unpaid hold is cancelled automatically, and a late payment brings the booking back as pending.</p>
+<?php endif; ?>
 
 <form method="GET" action="<?= SB_BASE ?>" class="toolbar mt-4" role="search" aria-label="Search and filter bookings">
   <?php if ($status !== ''): ?><input type="hidden" name="status" value="<?= h($status) ?>" /><?php endif; ?>
@@ -388,8 +441,13 @@ echo adminKpi([
         $menu   = [
             ['label' => 'Call devotee', 'href' => $tel, 'icon' => 'phone'],
             ['label' => 'WhatsApp',     'href' => $wa,  'icon' => 'external'],
-            'divider',
         ];
+        // An online booking's payment, receipt and refunds live in Online Payments.
+        $isOnline   = $hasPayCols && (string) ($row['payment_mode'] ?? 'offline') === 'online' && (string) ($row['order_number'] ?? '') !== '';
+        $paidOnline = $isOnline && in_array((string) ($row['payment_status'] ?? ''), SB_PAID_STATUSES, true);
+        $payHref    = $isOnline && $canPayments ? '/admin/payments.php?number=' . rawurlencode((string) $row['order_number']) : '';
+        if ($payHref !== '') $menu[] = ['label' => 'Open payment', 'href' => $payHref, 'icon' => 'landmark'];
+        $menu[] = 'divider';
         foreach ($statuses as $s) {
             if ($s === $row['status']) continue;
             $item = ['label' => 'Mark ' . $s, 'form' => ['action' => 'set_status', 'id' => $id, 'status' => $s], 'icon' => ['pending' => 'clock', 'confirmed' => 'check', 'completed' => 'check-circle', 'cancelled' => 'x'][$s]];
@@ -417,7 +475,19 @@ echo adminKpi([
           <?php endif; ?>
         </td>
         <td class="cell-date"><time datetime="<?= h(str_replace(' ', 'T', (string) $row['created_at'])) ?>"><?= adminFmtDate($row['created_at'], true) ?></time></td>
-        <td><?= adminBadge(ucfirst($row['status']), adminStatusTone($row['status'])) ?></td>
+        <td>
+          <?= adminBadge(ucfirst($row['status']), adminStatusTone($row['status'])) ?>
+          <?php if ($paidOnline):
+              $paidLabel = 'Paid online ' . adminFmtMoney((float) $row['amount'], 2) . ((string) ($row['receipt_number'] ?? '') !== '' ? ' · ' . $row['receipt_number'] : '');
+              if ($payHref !== ''): ?>
+                <a class="badge badge--success" href="<?= h($payHref) ?>"><?= h($paidLabel) ?></a>
+              <?php else: ?>
+                <?= adminBadge($paidLabel, 'success') ?>
+              <?php endif; ?>
+          <?php elseif ($isOnline): ?>
+            <?= adminBadge('Online · ' . ucfirst(strtolower((string) ($row['payment_status'] ?? 'unpaid'))), 'muted') ?>
+          <?php endif; ?>
+        </td>
         <td>
           <form method="POST" action="<?= SB_BASE ?>" class="cluster">
             <?= csrfField() ?>

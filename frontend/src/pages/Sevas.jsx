@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useSearchParams } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import {
   LuBookOpen,
   LuCircleCheck,
@@ -7,6 +7,7 @@ import {
   LuDroplets,
   LuFlame,
   LuFlower2,
+  LuLock,
   LuPhone,
   LuSend,
   LuSun,
@@ -31,7 +32,17 @@ import Modal from "../components/ui/Modal";
 import { SkeletonCards } from "../components/ui/Feedback";
 import { SECONDARY_CONTACT, formatPhone, telHref } from "../data/temple";
 import { todayIST } from "../lib/templeTime";
+import PaymentRedirect from "../components/Payments/PaymentRedirect";
+import { formatMoney } from "../lib/money";
+import { paymentsUsable, postJson, usePaymentsConfig, writeLastPayment } from "../lib/payments";
+import "../components/Payments/Payments.css";
 import "./Sevas.css";
+
+/* The two policy pages a payment needs. Repeated rather than imported from
+   data/policies.js, which carries the full text of all four (see Donate.jsx). */
+const TERMS_PATH = "/terms-and-conditions";
+const REFUNDS_PATH = "/refund-cancellation-policy";
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
 
 /* ── Icons ───────────────────────────────────────────────────────────
    Known sevas get a matching glyph (matched on the English or Tamil
@@ -116,14 +127,16 @@ const FALLBACK_SEVAS = [
 ];
 
 /* ── Seva Booking Modal ─────────────────────────────────────────── */
-function BookingModal({ seva, onClose, t, lang }) {
+function BookingModal({ seva, onClose, t, lang, live = false }) {
   const toast = useToast();
   const [form, setForm] = useState({
     devotee_name: "",
     phone: "",
     phoneCountry: DEFAULT_COUNTRY,
+    email: "",
     preferred_date: "",
     message: "",
+    acceptTerms: false,
     hp_token: "",
   });
   const [errors, setErrors] = useState({});
@@ -132,6 +145,20 @@ function BookingModal({ seva, onClose, t, lang }) {
   // Kept as seconds, not as a sentence, so the notice follows a language switch.
   const [retryAfter, setRetryAfter] = useState(null);
   const closeRef = useRef(null);
+
+  /*
+   * Paying now is offered only when the committee has switched seva payments
+   * on, the offering came from the live list (the standard fallback list has
+   * ids of its own, and a payment must belong to a real seva) and it has a
+   * price. Otherwise this dialog is exactly what it was: a booking request the
+   * office confirms by phone (docs/payments/SPEC.md §7.5).
+   */
+  const { config } = usePaymentsConfig();
+  const [choice, setChoice] = useState(null);
+  const [gateway, setGateway] = useState(null);
+  const canPayOnline = live && paymentsUsable(config) && config.sevaOnline && Number(seva.amount) > 0;
+  const payNow = canPayOnline && (choice ?? "online") === "online";
+  const priceLabel = formatMoney(seva.amount, "INR", lang);
 
   // The form unmounts on success; move focus to the Close button so the
   // focus trap does not fall back to the document behind the dialog.
@@ -151,15 +178,76 @@ function BookingModal({ seva, onClose, t, lang }) {
       next.devotee_name = t("பெயரை உள்ளிடவும்", "Please enter your name");
     const pe = phoneProblem(form.phone, form.phoneCountry, { required: true, t });
     if (pe) next.phone = pe;
+    const email = form.email.trim();
+    if (payNow && email && !EMAIL_RE.test(email))
+      next.email = t("சரியான மின்னஞ்சல் முகவரியை உள்ளிடவும், அல்லது காலியாக விடவும்.", "Enter a valid email address, or leave it blank.");
+    if (payNow && !form.acceptTerms)
+      next.acceptTerms = t("விதிமுறைகளையும் பணத்திரும்பக் கொள்கையையும் ஏற்கவும்.", "Please accept the terms and the refund policy.");
     setErrors(next);
     return Object.keys(next).length === 0;
   }
 
+  /** Pay now: the price comes from the server, never from this page. */
+  async function payOnline() {
+    const res = await postJson("/api/payments/seva-bookings", {
+      seva_id: seva.id,
+      devotee_name: form.devotee_name,
+      phone: toE164(form.phone, form.phoneCountry),
+      phoneCountry: form.phoneCountry,
+      email: form.email.trim(),
+      preferred_date: form.preferred_date || null,
+      message: form.message,
+      lang,
+      acceptTerms: form.acceptTerms,
+      hp_token: form.hp_token,
+    });
+
+    if (res.ok && res.body?.success && res.body.gateway) {
+      writeLastPayment({ number: res.body.number, token: res.body.token, kind: "seva_booking" });
+      setGateway(res.body.gateway);
+      return;
+    }
+    const limited = rateLimitInfo(res.status, res.body, res.retryAfterHeader);
+    if (limited) {
+      setRetryAfter(limited.retryAfter);
+      setStatus("limited");
+      return;
+    }
+    if (res.status === 422 && res.body?.fields) {
+      const fields = res.body.fields;
+      const mapped = {};
+      for (const key of ["devotee_name", "phone", "email", "preferred_date", "message"]) {
+        if (fields[key]) mapped[key] = String(fields[key]);
+      }
+      setErrors(mapped);
+      setStatus("idle");
+      if (!Object.keys(mapped).length) {
+        setErrMsg(String(fields.seva_id || fields.acceptTerms || t("விவரங்களைச் சரிபார்க்கவும்.", "Please check the details.")));
+        setStatus("error");
+      }
+      return;
+    }
+    setErrMsg(
+      res.status === 503
+        ? t(
+            "இணையவழிக் கட்டணம் இப்போது கிடைக்கவில்லை. கோரிக்கையாக அனுப்பி, கோயிலில் செலுத்தலாம்.",
+            "Online payment is unavailable right now. You can send a request and pay at the temple.",
+          )
+        : t("கட்டணத்தைத் தொடங்க இயலவில்லை. மீண்டும் முயற்சிக்கவும்.", "We could not start the payment. Please try again."),
+    );
+    setStatus("error");
+  }
+
   async function handleSubmit(e) {
     e.preventDefault();
+    if (busy) return;
     if (!validate()) return;
     setStatus("loading");
     setErrMsg("");
+    if (payNow) {
+      await payOnline();
+      return;
+    }
     try {
       await api.post("/seva-bookings", {
         seva_id: seva.id,
@@ -169,6 +257,7 @@ function BookingModal({ seva, onClose, t, lang }) {
         phoneCountry: form.phoneCountry,
         preferred_date: form.preferred_date || null,
         message: form.message,
+        lang,
         hp_token: form.hp_token,
       });
       setStatus("success");
@@ -202,6 +291,16 @@ function BookingModal({ seva, onClose, t, lang }) {
   // it was opened from.
   const name = sevaName(seva, lang);
   const busy = status === "loading";
+
+  // The hand-off to CCAvenue happens inside the dialog, so the devotee never
+  // loses sight of which seva they are paying for.
+  if (gateway) {
+    return (
+      <Modal open onClose={onClose} size="md" title={name} eyebrow={t("கட்டணம்", "Payment")}>
+        <PaymentRedirect gateway={gateway} amountLabel={priceLabel} purposeLabel={name} />
+      </Modal>
+    );
+  }
 
   if (status === "success") {
     return (
@@ -250,6 +349,47 @@ function BookingModal({ seva, onClose, t, lang }) {
       </p>
 
       <form className="booking-form" onSubmit={handleSubmit} noValidate>
+        {canPayOnline && (
+          <fieldset className="pay-choice">
+            <legend className="field__label">{t("எப்படிச் செலுத்த விரும்புகிறீர்கள்?", "How would you like to pay?")}</legend>
+            <div className="pay-choice__options">
+              <label className="pay-choice__option">
+                <input
+                  type="radio"
+                  name="payChoice"
+                  value="online"
+                  checked={payNow}
+                  onChange={() => setChoice("online")}
+                />
+                <span className="pay-choice__text">
+                  <span className="pay-choice__name">{t(`${priceLabel} இப்போதே செலுத்த`, `Pay ${priceLabel} online now`)}</span>
+                  <span className="pay-choice__desc">
+                    {t(
+                      "UPI, கார்டு அல்லது நெட் பேங்கிங் · உடனே ரசீது",
+                      "UPI, card or net banking · receipt straight away",
+                    )}
+                  </span>
+                </span>
+              </label>
+              <label className="pay-choice__option">
+                <input
+                  type="radio"
+                  name="payChoice"
+                  value="request"
+                  checked={!payNow}
+                  onChange={() => setChoice("request")}
+                />
+                <span className="pay-choice__text">
+                  <span className="pay-choice__name">{t("கோரிக்கை அனுப்பி கோயிலில் செலுத்த", "Send a booking request — pay at the temple")}</span>
+                  <span className="pay-choice__desc">
+                    {t("அலுவலகம் தொலைபேசியில் உறுதி செய்யும்", "The office will confirm by phone")}
+                  </span>
+                </span>
+              </label>
+            </div>
+          </fieldset>
+        )}
+
         <Field label={t("உங்கள் பெயர்", "Your Name")} required error={errors.devotee_name}>
           {(a11y) => (
             <input
@@ -324,6 +464,28 @@ function BookingModal({ seva, onClose, t, lang }) {
           </Field>
         </div>
 
+        {payNow && (
+          <Field
+            id="booking-email"
+            label={t("மின்னஞ்சல்", "Email")}
+            optional
+            error={errors.email}
+            hint={t("ரசீதை அனுப்ப", "For your receipt")}
+          >
+            {(a11y) => (
+              <input
+                {...a11y}
+                type="email"
+                name="email"
+                value={form.email}
+                onChange={handleChange}
+                autoComplete="email"
+                maxLength={190}
+              />
+            )}
+          </Field>
+        )}
+
         <Field label={t("குறிப்பு", "Note (optional)")}>
           {(a11y) => (
             <textarea
@@ -338,15 +500,57 @@ function BookingModal({ seva, onClose, t, lang }) {
           )}
         </Field>
 
+        {payNow && (
+          <div className="pay-terms">
+            <label className="checkbox-label" htmlFor="booking-accept-terms">
+              <input
+                id="booking-accept-terms"
+                type="checkbox"
+                name="acceptTerms"
+                checked={form.acceptTerms}
+                onChange={(e) => {
+                  setForm((f) => ({ ...f, acceptTerms: e.target.checked }));
+                  if (errors.acceptTerms) setErrors((er) => ({ ...er, acceptTerms: undefined }));
+                }}
+                aria-invalid={errors.acceptTerms ? true : undefined}
+                aria-describedby={errors.acceptTerms ? "booking-accept-terms-err" : undefined}
+              />
+              <span>
+                {t("நான் ", "I have read the ")}
+                <Link to={TERMS_PATH} target="_blank" rel="noopener">
+                  {t("விதிமுறைகளையும்", "Terms & Conditions")}
+                </Link>
+                {t(" ", " and the ")}
+                <Link to={REFUNDS_PATH} target="_blank" rel="noopener">
+                  {t("பணத்திரும்பக் கொள்கையையும்", "Refund & Cancellation Policy")}
+                </Link>
+                {t(" படித்து ஏற்கிறேன்.", ".")}
+              </span>
+            </label>
+            {errors.acceptTerms && (
+              <span id="booking-accept-terms-err" className="field__error" role="alert">
+                {errors.acceptTerms}
+              </span>
+            )}
+          </div>
+        )}
+
         {status === "limited" && <Alert tone="warning">{rateLimitMessage(t, retryAfter)}</Alert>}
         {status === "error" && errMsg && <Alert tone="error">{errMsg}</Alert>}
 
+        {/* One submit button, whichever way the devotee is paying: two would
+            make the dialog ask the same question twice. */}
         <div className="modal__actions booking-form__actions">
           <Button type="button" variant="ghost" onClick={onClose}>
             {t("ரத்து", "Cancel")}
           </Button>
-          <Button type="submit" variant="primary" loading={busy} icon={<LuSend aria-hidden="true" />}>
-            {t("பதிவு செய்யுங்கள்", "Submit Booking")}
+          <Button
+            type="submit"
+            variant="primary"
+            loading={busy}
+            icon={payNow ? <LuLock aria-hidden="true" /> : <LuSend aria-hidden="true" />}
+          >
+            {payNow ? t(`${priceLabel} பாதுகாப்பாகச் செலுத்த`, `Pay ${priceLabel} securely`) : t("பதிவு செய்யுங்கள்", "Submit Booking")}
           </Button>
         </div>
       </form>
@@ -407,6 +611,9 @@ export default function Sevas() {
   const [selectedSeva, setSelectedSeva] = useState(null);
   const { lang, t } = useLang();
   const [params, setParams] = useSearchParams();
+  // Fetched here, once, so the booking dialog knows at once whether it can
+  // offer "pay online" instead of the choice appearing a beat after it opens.
+  usePaymentsConfig();
 
   const load = useCallback(() => {
     setLoading(true);
@@ -639,6 +846,9 @@ export default function Sevas() {
           onClose={closeBooking}
           t={t}
           lang={lang}
+          /* Only an offering from the live list can be paid for: the standard
+             fallback list has ids of its own and no row behind them. */
+          live={sevas.length > 0}
         />
       )}
     </>

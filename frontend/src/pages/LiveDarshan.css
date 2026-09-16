@@ -1,0 +1,137 @@
+/* ══════════════════════════════════════════════════════════════════
+   LiveDarshan.css · Sacred Light v3
+   Page-scoped styles for /live-darshan (pages/LiveDarshan.jsx). The
+   player, badge, details list and cards live in components/Live/Live.css;
+   this file only places them. Tokens only.
+   Breakpoints: 480 · 640 · 820 · 1024
+   ══════════════════════════════════════════════════════════════════ */
+
+/* ── Hero accent ─────────────────────────────────────────────────── */
+/* The `.page-hero--live` colour pair lives in styles/layout.css with the
+   other .page-hero--* accents (SPEC §5.3). */
+/* The temple's full name is the eyebrow (SPEC §5.3). It is long in both
+   languages, so the pill is allowed to wrap instead of overflowing. */
+.page-hero--live .page-hero__eyebrow {
+  max-width: 100%;
+  white-space: normal;
+  line-height: 1.5;
+  text-align: left;
+}
+.page-hero--live .page-hero__eyebrow::before {
+  flex-shrink: 0;
+}
+
+/* ── Hero aside · broadcast status ───────────────────────────────── */
+.live-hero__status {
+  display: grid;
+  justify-items: start;
+  gap: var(--space-2);
+  min-width: 220px;
+  max-width: 340px;
+  padding: var(--space-4) var(--space-5);
+  border: 1px solid var(--glass-ink-border);
+  border-radius: var(--radius-lg);
+  background: var(--glass-ink-2);
+  box-shadow: var(--shadow-ink), var(--glass-ink-edge);
+  color: var(--text-on-dark);
+}
+.live-hero__status-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  color: var(--gold-200);
+  font-size: var(--text-2xs);
+  font-weight: var(--weight-bold);
+  letter-spacing: var(--tracking-caps);
+  text-transform: uppercase;
+}
+.live-hero__status-label > svg {
+  width: 0.95rem;
+  height: 0.95rem;
+}
+.live-hero__status-line {
+  color: var(--text-on-dark-2);
+  font-size: var(--text-sm);
+  font-variant-numeric: tabular-nums;
+}
+@media (max-width: 820px) {
+  .live-hero__status {
+    width: 100%;
+    max-width: none;
+  }
+}
+
+/* ── Body ────────────────────────────────────────────────────────── */
+.live-page {
+  padding-top: clamp(2rem, 4vw, 3rem);
+}
+/* The one skeleton is the shape of the player it stands in for. */
+.live-skeleton .skeleton--card {
+  width: 100%;
+  max-width: 100%;
+  height: auto;
+  aspect-ratio: 16 / 9;
+  border-radius: var(--radius-xl);
+}
+
+/* The player is the point of the page, so it takes the wider column; the
+   generic .split gives the aside the larger share. */
+.live-stage.split {
+  grid-template-columns: minmax(0, 1.7fr) minmax(0, 1fr);
+  gap: clamp(1.5rem, 3.5vw, 2.5rem);
+}
+.live-stage__main,
+.live-stage__aside {
+  min-width: 0;
+}
+.live-stream__head {
+  display: grid;
+  gap: var(--space-2);
+  margin-top: var(--space-5);
+}
+/* The next-darshan card takes the head's place under the poster (Phase 2). */
+.live-stage__next {
+  margin-top: var(--space-5);
+}
+.live-stream__title {
+  margin: 0;
+  color: var(--maroon-700);
+  font-family: var(--font-display);
+  font-size: var(--text-xl);
+  line-height: 1.25;
+}
+:lang(ta) .live-stream__title {
+  font-family: var(--font-tamil);
+  line-height: 1.4;
+}
+.live-stream__desc {
+  max-width: 68ch;
+  margin: 0;
+  color: var(--text-2);
+  line-height: var(--leading-relaxed);
+  white-space: pre-line;
+}
+.live-upcoming {
+  margin-top: clamp(2.5rem, 6vw, 4rem);
+}
+/* Every control this page places is a full touch target, including the
+   small hero and section-header buttons the primitives size at 36px. */
+.page-hero--live .share-btn,
+.live-upcoming .section-head__actions .btn,
+.live-empty .btn {
+  min-height: 44px;
+}
+
+@media (max-width: 1024px) {
+  .live-stage.split {
+    grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr);
+  }
+}
+@media (max-width: 820px) {
+  .live-stage.split {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .live-stage__aside {
+    position: static;
+  }
+}

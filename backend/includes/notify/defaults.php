@@ -11,9 +11,11 @@
  *
  *   sms       One segment wherever it can be. English stays within 160 GSM-7
  *             characters with realistic values (tests/notify-templates-unit.php
- *             checks it), so no curly quotes, dashes or ₹ — each would switch
- *             the whole message to UCS-2 and halve its room. Tamil is always
- *             UCS-2 (70 per segment), so it says only what cannot wait.
+ *             checks it; tests/notify-unit.php checks the payment templates,
+ *             whose donation SMS carries its receipt link), so no curly
+ *             quotes, dashes or ₹ — each would switch the whole message to
+ *             UCS-2 and halve its room. Tamil is always UCS-2 (70 per
+ *             segment), so it says only what cannot wait.
  *   whatsapp  The same message with *bold* labels, which WhatsApp renders.
  *
  * Voice: warm, respectful and plain. Tamil uses the site's own words (சேவை
@@ -22,7 +24,9 @@
  * Titles carry no personal names: they appear on lock screens.
  *
  * Devotees do not sign in, so no message points at a sign-in or settings page:
- * links go to public pages (/, /contact, /sevas, /events), and "to change
+ * links go to public pages (/, /contact, /sevas, /events, and for an online
+ * payment its own receipt or result page, whose link carries an access token
+ * the payments module adds), and "to change
  * your details, call the temple office" is how a family updates anything. The
  * "stop updates" line an update carries on WhatsApp and SMS, and the email's
  * unsubscribe link, are added when the message is sent (queue.php), so the
@@ -501,40 +505,87 @@ function notifyTemplateBuiltIn(): array
         ],
     ];
 
-    $t['payment_success'] = [
-        'category'    => 'payment',
-        'description' => 'Sent when an online payment succeeds. No payment gateway exists yet; this is ready for when one is added.',
-        'variables'   => ['devoteeName', 'paymentReference', 'paymentAmount', 'paymentFor', 'ctaUrl'],
-        'cta_path'    => '/contact',
+    /* Online payments (docs/payments/SPEC.md §6). The payments module sends these
+     * to a guest recipient once the payment is recorded. Its cta_url is the
+     * devotee's own receipt link (/payment/receipt?ref=…&t=…) or result page, so
+     * cta_path below is only what an admin preview shows; and the email gets the
+     * full breakdown as its details table, so the email wording names only what a
+     * devotee needs to read. Never "account" here: a refund goes back to "the
+     * card, UPI app or bank you paid with". */
+
+    $t['donation_paid'] = [
+        'category'    => 'donation',
+        'description' => 'Sent when an online donation is paid. paymentReference is the Donation ID (DON-…); paymentAmount is formatted with its currency ("Rs. 1,001", "USD 25.00"); paymentFor is the donation purpose; paymentDate is the payment date (IST); paymentMode is how it was paid ("UPI", "Credit Card"); ctaUrl is the donor\'s receipt link. trustName and taxNote are filled in from the Trust registration automatically.',
+        'variables'   => ['devoteeName', 'receiptNumber', 'paymentReference', 'paymentAmount', 'paymentFor', 'paymentDate', 'paymentMode', 'trustName', 'taxNote', 'ctaUrl'],
+        'cta_path'    => '/payment/receipt',
         'langs' => [
             'ta' => [
                 'any' => [
-                    'title'     => 'கட்டணம் பெறப்பட்டது: {{paymentAmount}}',
-                    'body'      => "வணக்கம் {{devoteeName}},\n\n{{paymentFor}}-க்கான உங்கள் {{paymentAmount}} கட்டணம் பெறப்பட்டது. நன்றி.\n\nகட்டணக் குறிப்பு எண்: {{paymentReference}}\n\nஇந்தக் கட்டணம் பற்றி கோயில் அலுவலகத்தைத் தொடர்பு கொள்ளும்போது இந்தக் குறிப்பு எண்ணைத் தெரிவிக்கவும்.",
-                    'cta_label' => 'கோயிலைத் தொடர்பு கொள்ள',
+                    'title'     => 'உங்கள் நன்கொடைக்கு நன்றி',
+                    'body'      => "வணக்கம் {{devoteeName}},\n\nஉங்கள் நன்கொடைக்கு மனமார்ந்த நன்றி. {{paymentFor}} நோக்கத்திற்கான உங்கள் {{paymentAmount}} நன்கொடை {{paymentDate}} அன்று பெறப்பட்டது.\n\nரசீது எண்: {{receiptNumber}}. நன்கொடை எண்: {{paymentReference}}. {{trustName}} வழங்கும் உங்கள் ரசீதைக் கீழே உள்ள இணைப்பில் பார்க்கலாம், பதிவிறக்கலாம் அல்லது அச்சிடலாம். உங்கள் பதிவுகளுக்காக அதைப் பாதுகாத்து வையுங்கள்.\n\n{{taxNote}}\n\nஅருள்மிகு ஸ்ரீ லிங்கம்மாள், ஸ்ரீ ரேணுகாதேவி, ஸ்ரீ சின்னம்மாள் அருள் உங்களுக்கும் உங்கள் குடும்பத்திற்கும் என்றும் துணை நிற்கட்டும்.\n\n$signTa",
+                    'cta_label' => 'ரசீதைப் பார்க்க',
                 ],
                 'sms' => [
                     'title' => '',
-                    'body'  => '{{templeShortName}}: {{paymentFor}}-க்கான {{paymentAmount}} கட்டணம் பெறப்பட்டது. குறிப்பு எண் {{paymentReference}}. நன்றி.',
+                    'body'  => '{{paymentAmount}} நன்கொடைக்கு நன்றி. நன்கொடை எண் {{paymentReference}}. ரசீது: {{ctaUrl}}',
                 ],
                 'whatsapp' => [
                     'title' => '',
-                    'body'  => "வணக்கம் {{devoteeName}},\n\nஉங்கள் கட்டணம் *பெறப்பட்டது*. நன்றி.\n\n*தொகை:* {{paymentAmount}}\n*எதற்கு:* {{paymentFor}}\n*குறிப்பு எண்:* {{paymentReference}}",
+                    'body'  => "வணக்கம் {{devoteeName}},\n\nஉங்கள் நன்கொடைக்கு மனமார்ந்த நன்றி 🙏\n\n*ரசீது எண்:* {{receiptNumber}}\n*நன்கொடை எண்:* {{paymentReference}}\n*தொகை:* {{paymentAmount}}\n*நோக்கம்:* {{paymentFor}}\n*தேதி:* {{paymentDate}}\n*கட்டண முறை:* {{paymentMode}}\n\n{{trustName}}\n{{taxNote}}\n\nஉங்கள் ரசீதைப் பாதுகாத்து வையுங்கள். குலதெய்வங்களின் அருள் உங்களுக்கும் உங்கள் குடும்பத்திற்கும் துணை நிற்கட்டும்.",
                 ],
             ],
             'en' => [
                 'any' => [
-                    'title'     => 'Payment received: {{paymentAmount}}',
-                    'body'      => "Vanakkam {{devoteeName}},\n\nWe have received your payment of {{paymentAmount}} for {{paymentFor}}. Thank you.\n\nPayment reference: {{paymentReference}}\n\nPlease quote this reference if you contact the temple office about this payment.",
-                    'cta_label' => 'Contact the temple',
+                    'title'     => 'Thank you for your donation',
+                    'body'      => "Vanakkam {{devoteeName}},\n\nThank you for your donation. Your offering of {{paymentAmount}} towards {{paymentFor}} was received on {{paymentDate}}.\n\nYour receipt number is {{receiptNumber}} and your Donation ID is {{paymentReference}}. You can view, download or print your receipt from the {{trustName}} using the link below. Please keep it for your records.\n\n{{taxNote}}\n\nMay the blessings of Arulmigu Sri Lingammal, Sri Renukadevi and Sri Chinnammal be with you and your family always.\n\n$signEn",
+                    'cta_label' => 'View receipt',
                 ],
                 'sms' => [
                     'title' => '',
-                    'body'  => '{{templeShortName}}: payment of {{paymentAmount}} for {{paymentFor}} received. Ref {{paymentReference}}. Thank you.',
+                    'body'  => 'Thank you for your contribution of {{paymentAmount}}. Your Donation ID is {{paymentReference}}. Receipt: {{ctaUrl}}',
                 ],
                 'whatsapp' => [
                     'title' => '',
-                    'body'  => "Vanakkam {{devoteeName}},\n\nYour payment has been *received*. Thank you.\n\n*Amount:* {{paymentAmount}}\n*For:* {{paymentFor}}\n*Reference:* {{paymentReference}}",
+                    'body'  => "Vanakkam {{devoteeName}},\n\nThank you for your donation 🙏\n\n*Receipt no.:* {{receiptNumber}}\n*Donation ID:* {{paymentReference}}\n*Amount:* {{paymentAmount}}\n*Purpose:* {{paymentFor}}\n*Date:* {{paymentDate}}\n*Payment mode:* {{paymentMode}}\n\n{{trustName}}\n{{taxNote}}\n\nPlease keep your receipt for your records. May the blessings of our kula deivams be with you and your family.",
+                ],
+            ],
+        ],
+    ];
+
+    $t['payment_success'] = [
+        'category'    => 'payment',
+        'description' => 'Sent when an online payment for a seva booking succeeds. paymentFor is the seva name; paymentReference is the Booking ID (SEV-…); bookingDate is the preferred date, or "date to be confirmed"; paymentDate is the payment date (IST); ctaUrl is the receipt link. The booking stays pending until the temple office calls to confirm the date.',
+        'variables'   => ['devoteeName', 'receiptNumber', 'paymentReference', 'paymentAmount', 'paymentFor', 'bookingDate', 'paymentDate', 'paymentMode', 'ctaUrl'],
+        'cta_path'    => '/payment/receipt',
+        'langs' => [
+            'ta' => [
+                'any' => [
+                    'title'     => 'சேவைக் கட்டணம் பெறப்பட்டது: {{paymentFor}}',
+                    'body'      => "வணக்கம் {{devoteeName}},\n\nநன்றி. {{paymentFor}} சேவைக்கான உங்கள் {{paymentAmount}} கட்டணம் {{paymentDate}} அன்று பெறப்பட்டது.\n\nபதிவு எண்: {{paymentReference}}. ரசீது எண்: {{receiptNumber}}.\n\nநீங்கள் விரும்பிய தேதி: {{bookingDate}}\n\nசேவை தேதியை உறுதி செய்ய கோயில் அலுவலகம் விரைவில் உங்களைத் தொலைபேசியில் அழைக்கும்; அதன் பிறகே உங்கள் சேவை பதிவு உறுதியாகும். கீழே உள்ள இணைப்பில் உங்கள் ரசீதைப் பார்க்கலாம், பதிவிறக்கலாம் அல்லது அச்சிடலாம்.\n\nசந்தேகங்களுக்கு கோயில் அலுவலகத்தை {{supportPhone}} என்ற எண்ணில் அழைக்கவும்.",
+                    'cta_label' => 'ரசீதைப் பார்க்க',
+                ],
+                'sms' => [
+                    'title' => '',
+                    'body'  => '{{templeShortName}}: {{paymentFor}} சேவைக்கான {{paymentAmount}} கட்டணம் பெறப்பட்டது. தேதியை உறுதி செய்ய கோயில் அலுவலகம் அழைக்கும்.',
+                ],
+                'whatsapp' => [
+                    'title' => '',
+                    'body'  => "வணக்கம் {{devoteeName}},\n\nஉங்கள் சேவைக் கட்டணம் *பெறப்பட்டது*. நன்றி 🙏\n\n*சேவை:* {{paymentFor}}\n*தொகை:* {{paymentAmount}}\n*பதிவு எண்:* {{paymentReference}}\n*ரசீது எண்:* {{receiptNumber}}\n*விரும்பிய தேதி:* {{bookingDate}}\n*செலுத்திய தேதி:* {{paymentDate}}\n*கட்டண முறை:* {{paymentMode}}\n\nசேவை தேதியை உறுதி செய்ய கோயில் அலுவலகம் விரைவில் உங்களை அழைக்கும். சந்தேகங்களுக்கு {{supportPhone}} என்ற எண்ணில் அழைக்கவும்.",
+                ],
+            ],
+            'en' => [
+                'any' => [
+                    'title'     => 'Seva payment received: {{paymentFor}}',
+                    'body'      => "Vanakkam {{devoteeName}},\n\nThank you. Your payment of {{paymentAmount}} for {{paymentFor}} seva was received on {{paymentDate}}.\n\nYour Booking ID is {{paymentReference}} and your receipt number is {{receiptNumber}}.\n\nPreferred date: {{bookingDate}}\n\nThe temple office will call you shortly to confirm the date of your seva; your booking is confirmed once they have spoken with you. You can view, download or print your receipt from the link below.\n\nQuestions? Call the temple office on {{supportPhone}}.",
+                    'cta_label' => 'View receipt',
+                ],
+                'sms' => [
+                    'title' => '',
+                    'body'  => '{{templeShortName}}: payment of {{paymentAmount}} for {{paymentFor}} seva received. Booking {{paymentReference}}. The office will call you to confirm the date.',
+                ],
+                'whatsapp' => [
+                    'title' => '',
+                    'body'  => "Vanakkam {{devoteeName}},\n\nYour seva payment has been *received*. Thank you 🙏\n\n*Seva:* {{paymentFor}}\n*Amount:* {{paymentAmount}}\n*Booking ID:* {{paymentReference}}\n*Receipt no.:* {{receiptNumber}}\n*Preferred date:* {{bookingDate}}\n*Paid on:* {{paymentDate}}\n*Payment mode:* {{paymentMode}}\n\nThe temple office will call you shortly to confirm the date. Questions? Call {{supportPhone}}.",
                 ],
             ],
         ],
@@ -542,38 +593,77 @@ function notifyTemplateBuiltIn(): array
 
     $t['payment_failed'] = [
         'category'    => 'payment',
-        'description' => 'Sent when an online payment fails. No payment gateway exists yet; this is ready for when one is added.',
+        'description' => 'Sent by email when an online payment attempt fails. paymentReference is that attempt\'s order ID; reason is the gateway\'s message in plain words; ctaUrl is the payment result page, which offers Try again.',
         'variables'   => ['devoteeName', 'paymentReference', 'paymentAmount', 'paymentFor', 'reason', 'ctaUrl'],
-        'cta_path'    => '/contact',
+        'cta_path'    => '/payment/result',
         'langs' => [
             'ta' => [
                 'any' => [
                     'title'     => 'கட்டணம் நிறைவடையவில்லை: {{paymentAmount}}',
-                    'body'      => "வணக்கம் {{devoteeName}},\n\n{{paymentFor}}-க்கான உங்கள் {{paymentAmount}} கட்டணம் நிறைவடையவில்லை.\n\nகாரணம்: {{reason}}\nகட்டணக் குறிப்பு எண்: {{paymentReference}}\n\nஉங்கள் வங்கியிலிருந்து பணம் எடுக்கப்பட்டிருந்தால், பொதுவாக உங்கள் வங்கி அதைத் தானாகத் திருப்பி அளிக்கும். ஒரு வாரத்திற்குள் திரும்ப வரவில்லை என்றால், மேலே உள்ள குறிப்பு எண்ணுடன் கோயில் அலுவலகத்தை {{supportPhone}} என்ற எண்ணில் அழைக்கவும்.",
-                    'cta_label' => 'கோயிலைத் தொடர்பு கொள்ள',
+                    'body'      => "வணக்கம் {{devoteeName}},\n\n{{paymentFor}} நோக்கத்திற்கான உங்கள் {{paymentAmount}} கட்டணம் நிறைவடையவில்லை. இதற்காக உங்களிடமிருந்து பணம் எதுவும் எடுக்கப்படவில்லை.\n\nகாரணம்: {{reason}}\nகட்டணக் குறிப்பு எண்: {{paymentReference}}\n\nகீழே உள்ள இணைப்பில் மீண்டும் முயற்சிக்கலாம். பாதுகாப்பான கட்டணப் பக்கத்தில் UPI, கார்டு அல்லது நெட் பேங்கிங் மூலம் செலுத்தலாம்.\n\nஇந்தத் தொகை எடுக்கப்பட்டதாக உங்கள் வங்கி காட்டினால் கவலை வேண்டாம்; அது பொதுவாக 5 முதல் 7 வேலை நாட்களுக்குள் தானாகவே உங்களுக்குத் திரும்ப வரும். அதற்குள் வரவில்லை என்றால், மேலே உள்ள குறிப்பு எண்ணுடன் கோயில் அலுவலகத்தை {{supportPhone}} என்ற எண்ணில் அழைக்கவும்.",
+                    'cta_label' => 'மீண்டும் முயற்சிக்க',
                 ],
                 'sms' => [
                     'title' => '',
-                    'body'  => '{{templeShortName}}: {{paymentAmount}} கட்டணம் நிறைவடையவில்லை. குறிப்பு எண் {{paymentReference}}. உதவிக்கு {{supportPhone}}',
+                    'body'  => '{{templeShortName}}: உங்கள் {{paymentAmount}} கட்டணம் நிறைவடையவில்லை. பணம் எடுக்கப்பட்டிருந்தால் வங்கி தானாகத் திருப்பி அளிக்கும்.',
                 ],
                 'whatsapp' => [
                     'title' => '',
-                    'body'  => "வணக்கம் {{devoteeName}},\n\nஉங்கள் கட்டணம் *நிறைவடையவில்லை*.\n\n*தொகை:* {{paymentAmount}}\n*எதற்கு:* {{paymentFor}}\n*காரணம்:* {{reason}}\n*குறிப்பு எண்:* {{paymentReference}}\n\nபணம் எடுக்கப்பட்டு ஒரு வாரத்தில் திரும்ப வரவில்லை என்றால் {{supportPhone}} என்ற எண்ணில் அழைக்கவும்.",
+                    'body'  => "வணக்கம் {{devoteeName}},\n\nஉங்கள் கட்டணம் *நிறைவடையவில்லை*. பணம் எதுவும் எடுக்கப்படவில்லை.\n\n*தொகை:* {{paymentAmount}}\n*எதற்கு:* {{paymentFor}}\n*காரணம்:* {{reason}}\n*குறிப்பு எண்:* {{paymentReference}}\n\nநீங்கள் விரும்பும்போது மீண்டும் முயற்சிக்கலாம். இந்தத் தொகை எடுக்கப்பட்டதாக உங்கள் வங்கி காட்டினால், அது பொதுவாக 5 முதல் 7 வேலை நாட்களுக்குள் தானாகத் திரும்ப வரும். உதவிக்கு {{supportPhone}} என்ற எண்ணில் அழைக்கவும்.",
                 ],
             ],
             'en' => [
                 'any' => [
                     'title'     => 'Payment not completed: {{paymentAmount}}',
-                    'body'      => "Vanakkam {{devoteeName}},\n\nYour payment of {{paymentAmount}} for {{paymentFor}} did not go through.\n\nReason: {{reason}}\nPayment reference: {{paymentReference}}\n\nIf the amount has already left your bank, your bank normally returns it automatically. If it has not come back within a week, call the temple office on {{supportPhone}} with the reference above.",
-                    'cta_label' => 'Contact the temple',
+                    'body'      => "Vanakkam {{devoteeName}},\n\nYour payment of {{paymentAmount}} for {{paymentFor}} did not go through. No money was taken for it.\n\nReason: {{reason}}\nPayment reference: {{paymentReference}}\n\nYou can try again from the link below. On the secure payment page you can pay by UPI, card or net banking.\n\nIf your bank shows a debit for this payment, please do not worry: it will be returned to you automatically, usually within 5 to 7 working days. If it has not come back by then, call the temple office on {{supportPhone}} with the reference above.",
+                    'cta_label' => 'Try again',
                 ],
                 'sms' => [
                     'title' => '',
-                    'body'  => '{{templeShortName}}: your payment of {{paymentAmount}} for {{paymentFor}} did not go through (ref {{paymentReference}}). Help: {{supportPhone}}',
+                    'body'  => '{{templeShortName}}: your payment of {{paymentAmount}} for {{paymentFor}} did not go through. Any debit will be returned by your bank. Help: {{supportPhone}}',
                 ],
                 'whatsapp' => [
                     'title' => '',
-                    'body'  => "Vanakkam {{devoteeName}},\n\nYour payment *did not go through*.\n\n*Amount:* {{paymentAmount}}\n*For:* {{paymentFor}}\n*Reason:* {{reason}}\n*Reference:* {{paymentReference}}\n\nIf money was taken and has not come back within a week, call {{supportPhone}}.",
+                    'body'  => "Vanakkam {{devoteeName}},\n\nYour payment *did not go through*. No money was taken.\n\n*Amount:* {{paymentAmount}}\n*For:* {{paymentFor}}\n*Reason:* {{reason}}\n*Reference:* {{paymentReference}}\n\nYou can try again whenever you are ready. If your bank shows a debit, it will be returned automatically, usually within 5 to 7 working days. Help: {{supportPhone}}",
+                ],
+            ],
+        ],
+    ];
+
+    $t['payment_refund'] = [
+        'category'    => 'payment',
+        'description' => 'Sent when a refund of an online payment succeeds. refundAmount is formatted with its currency; paymentReference is the Donation or Booking ID; refundReference is the temple\'s refund reference (RF…); ctaUrl is the receipt link, which shows the refund.',
+        'variables'   => ['devoteeName', 'refundAmount', 'paymentReference', 'receiptNumber', 'refundReference', 'paymentFor', 'ctaUrl'],
+        'cta_path'    => '/payment/receipt',
+        'langs' => [
+            'ta' => [
+                'any' => [
+                    'title'     => 'தொகை திருப்பி அனுப்பப்பட்டது: {{refundAmount}}',
+                    'body'      => "வணக்கம் {{devoteeName}},\n\n{{paymentFor}} நோக்கத்திற்காக நீங்கள் செலுத்திய கட்டணத்திலிருந்து {{refundAmount}} உங்களுக்குத் திருப்பி அனுப்பப்பட்டுள்ளது. இந்தத் தொகை கோயிலின் கட்டண நுழைவாயிலான CCAvenue மூலம் அனுப்பப்பட்டுள்ளது.\n\nதிருப்பி அனுப்பிய குறிப்பு எண்: {{refundReference}}\nகட்டணக் குறிப்பு எண்: {{paymentReference}}\nரசீது எண்: {{receiptNumber}}\n\nநீங்கள் பணம் செலுத்திய அதே முறைக்கு (கார்டு, UPI அல்லது வங்கி) இந்தத் தொகை பொதுவாக 5 முதல் 7 வேலை நாட்களுக்குள் வந்து சேரும்; இது உங்கள் வங்கியைப் பொறுத்தது. திருப்பி அனுப்பிய விவரத்துடன் புதுப்பிக்கப்பட்ட ரசீதைக் கீழே உள்ள இணைப்பில் பார்க்கலாம்.\n\n7 வேலை நாட்களுக்குப் பிறகும் வந்து சேரவில்லை என்றால், திருப்பி அனுப்பிய குறிப்பு எண்ணுடன் கோயில் அலுவலகத்தை {{supportPhone}} என்ற எண்ணில் அழைக்கவும்.",
+                    'cta_label' => 'ரசீதைப் பார்க்க',
+                ],
+                'sms' => [
+                    'title' => '',
+                    'body'  => '{{templeShortName}}: உங்கள் {{refundAmount}} திருப்பி அனுப்பப்பட்டது ({{paymentReference}}). 5-7 வேலை நாட்களில் வந்து சேரும்.',
+                ],
+                'whatsapp' => [
+                    'title' => '',
+                    'body'  => "வணக்கம் {{devoteeName}},\n\nஉங்கள் தொகை *திருப்பி அனுப்பப்பட்டது*.\n\n*திருப்பிய தொகை:* {{refundAmount}}\n*எதற்கு:* {{paymentFor}}\n*கட்டணக் குறிப்பு எண்:* {{paymentReference}}\n*ரசீது எண்:* {{receiptNumber}}\n*திருப்பி அனுப்பிய குறிப்பு எண்:* {{refundReference}}\n\nநீங்கள் பணம் செலுத்திய அதே முறைக்கு இது பொதுவாக 5 முதல் 7 வேலை நாட்களுக்குள் வந்து சேரும். அதற்குள் வரவில்லை என்றால் {{supportPhone}} என்ற எண்ணில் அழைக்கவும்.",
+                ],
+            ],
+            'en' => [
+                'any' => [
+                    'title'     => 'Refund processed: {{refundAmount}}',
+                    'body'      => "Vanakkam {{devoteeName}},\n\nWe have processed a refund of {{refundAmount}} for your payment towards {{paymentFor}}. The refund has been sent to CCAvenue, the temple's payment gateway.\n\nRefund reference: {{refundReference}}\nPayment reference: {{paymentReference}}\nReceipt number: {{receiptNumber}}\n\nThe money usually reaches your original payment method (the card, UPI app or bank you paid with) within 5 to 7 working days, depending on your bank. Your receipt, which now shows the refund, is at the link below.\n\nIf the refund has not arrived after 7 working days, call the temple office on {{supportPhone}} with the refund reference.",
+                    'cta_label' => 'View receipt',
+                ],
+                'sms' => [
+                    'title' => '',
+                    'body'  => '{{templeShortName}}: refund of {{refundAmount}} for {{paymentReference}} processed. It usually reaches your original payment method in 5-7 working days.',
+                ],
+                'whatsapp' => [
+                    'title' => '',
+                    'body'  => "Vanakkam {{devoteeName}},\n\nYour refund has been *processed*.\n\n*Refund amount:* {{refundAmount}}\n*For:* {{paymentFor}}\n*Payment reference:* {{paymentReference}}\n*Receipt no.:* {{receiptNumber}}\n*Refund reference:* {{refundReference}}\n\nIt usually reaches your original payment method within 5 to 7 working days. If it has not arrived by then, call {{supportPhone}}.",
                 ],
             ],
         ],

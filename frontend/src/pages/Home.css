@@ -254,6 +254,52 @@
 .home-hero__row--moon dt {
   color: var(--moon-300);
 }
+/* Live darshan row — present only while a broadcast is live or scheduled
+   (docs/live/SPEC-PHASE2.md §2.3); red is for a broadcast on air. */
+.home-hero__list > .home-hero__row--live {
+  border-color: color-mix(in srgb, var(--gold-300) 34%, transparent);
+  background: color-mix(in srgb, var(--gold-500) 12%, transparent);
+}
+.home-hero__list > .home-hero__row--live-on {
+  border-color: color-mix(in srgb, var(--danger) 45%, transparent);
+  background: color-mix(in srgb, var(--danger) 16%, transparent);
+}
+.home-hero__row--live-on dt {
+  color: var(--danger-on-dark);
+}
+.home-hero__live-link {
+  position: relative;
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.35rem 0.6rem;
+  color: inherit;
+  text-decoration: none;
+  transition: color var(--transition);
+}
+/* The words are small; the tap target is the whole row. */
+.home-hero__live-link::after {
+  content: "";
+  position: absolute;
+  inset: -0.75rem -0.85rem;
+}
+.home-hero__live-link:hover {
+  color: var(--gold-200);
+}
+.home-hero__live-link small {
+  font-size: var(--text-2xs);
+  font-weight: var(--weight-medium);
+  color: var(--text-on-dark-3);
+}
+.home-hero__live-dot {
+  align-self: center;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--danger-on-dark);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--danger) 35%, transparent);
+  animation: pulse-dot 1.6s ease-in-out infinite;
+}
 .home-hero__call {
   display: flex;
   align-items: center;
@@ -494,6 +540,11 @@
 .home-section .section-subtitle {
   font-size: var(--text-base);
   line-height: var(--leading-normal);
+}
+/* The live darshan block (components/Live/LiveHomeSection.jsx) is the first
+   section after the band and is only rendered when there is something on. */
+.home-live {
+  scroll-margin-top: var(--header-h);
 }
 
 /* ── Visit planner (darshan modes) ───────────────────────────────── */

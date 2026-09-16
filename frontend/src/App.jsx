@@ -16,6 +16,13 @@ const Contact = lazy(() => import("./pages/Contact"));
 const PanchangCalendar = lazy(() => import("./pages/PanchangCalendar"));
 const Search = lazy(() => import("./pages/Search"));
 const Register = lazy(() => import("./pages/Register"));
+const Policy = lazy(() => import("./pages/Policy"));
+const Donate = lazy(() => import("./pages/Donate"));
+const PaymentResult = lazy(() => import("./pages/PaymentResult"));
+const PaymentReceipt = lazy(() => import("./pages/PaymentReceipt"));
+const ReceiptVerify = lazy(() => import("./pages/ReceiptVerify"));
+const LiveDarshan = lazy(() => import("./pages/LiveDarshan"));
+const LiveSchedule = lazy(() => import("./pages/LiveSchedule"));
 const NotFound = lazy(() => import("./pages/NotFound"));
 
 /*
@@ -85,6 +92,27 @@ function App() {
             <Route path="panchangam" element={<PanchangCalendar />} />
             <Route path="search" element={<Search />} />
             <Route path="register" element={<Register />} />
+
+            {/* The legal pages the payment gateway requires (docs/payments/SPEC.md §7.1). */}
+            <Route path="privacy-policy" element={<Policy slug="privacy" />} />
+            <Route path="terms-and-conditions" element={<Policy slug="terms" />} />
+            <Route path="refund-cancellation-policy" element={<Policy slug="refunds" />} />
+            <Route path="shipping-delivery-policy" element={<Policy slug="shipping" />} />
+
+            {/* Online payments (docs/payments/SPEC.md §7.1). /donate is a public
+                page; the three /payment/* addresses belong to one donor's own
+                payment, carry a signed token, and are noindex. */}
+            <Route path="donate" element={<Donate />} />
+            <Route path="payment/result" element={<PaymentResult />} />
+            <Route path="payment/receipt" element={<PaymentReceipt />} />
+            <Route path="payment/verify" element={<ReceiptVerify />} />
+
+            {/* Live darshan (docs/live/SPEC-PHASE1.md §5.3): the broadcast that
+                matters right now, or one broadcast by its slug. */}
+            <Route path="live-darshan" element={<LiveDarshan />} />
+            {/* The schedule (docs/live/SPEC-PHASE2.md §2.3); `schedule` is a reserved slug, so it never collides. */}
+            <Route path="live-darshan/schedule" element={<LiveSchedule />} />
+            <Route path="live-darshan/:slug" element={<LiveDarshan />} />
 
             {RETIRED_ACCOUNT_PATHS.map((path) => (
               <Route key={path} path={path} element={<Navigate to="/register" replace />} />

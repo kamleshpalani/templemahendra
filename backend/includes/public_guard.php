@@ -41,6 +41,14 @@ const PUBLIC_GUARD_LIMITS = [
     'registration-saved'   => [10, 3600],
     'chat-window'          => [30, 600],
     'chat-day'             => [150, 86400],
+    // Online payments (docs/payments/SPEC.md §5.5). Attempts count every post to
+    // the create and retry endpoints; created counts payables actually made.
+    'payment-attempt'       => [20, 3600],
+    'payment-created'       => [8, 3600],
+    'payment-retry'         => [10, 3600],
+    'payment-receipt-email' => [5, 3600],
+    // Status, receipt and verify lookups: the result page polls while it waits.
+    'payment-lookup'        => [120, 3600],
 ];
 
 /**

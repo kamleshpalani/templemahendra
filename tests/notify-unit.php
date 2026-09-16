@@ -16,6 +16,9 @@
  *     keeps an update's estimate honest;
  *   • the event catalogue and the registration_received template, and that no
  *     message points at an account;
+ *   • the online-payment events and templates (docs/payments/SPEC.md §6):
+ *     catalogue rows and dedupe keys, variables, titles, SMS lengths (also with
+ *     a real tracked link), wording rules, and a guest donor's messages;
  *   • end to end with the test drivers: informational messages stop on every
  *     channel when a family unsubscribes (also after queueing) while a booking
  *     confirmation still goes, guests and families without consent get no
@@ -510,7 +513,7 @@ try {
     /* ── Catalogue and templates ────────────────────────────────────────── */
     section('Event catalogue and templates');
     $catalogue = notifyEventCatalogue();
-    eq(count($catalogue), 15, 'the catalogue has 15 events');
+    eq(count($catalogue), 17, 'the catalogue has 17 events (15 plus donation.paid and payment.refunded)');
     foreach (['account.registered', 'account.email_verification', 'account.email_verified', 'account.profile_updated', 'security.password_reset',
               'security.password_changed', 'phone.otp', 'phone.verified', 'account.already_registered'] as $gone) {
         ok(!isset($catalogue[$gone]), "{$gone} is not in the catalogue");
@@ -555,6 +558,124 @@ try {
     $sms = notifyRender('registration_received', 'en', 'sms', notifyTemplateSample('registration_received', 'en'));
     ok(notifySmsInfo($sms['body'])['encoding'] === 'GSM-7' && notifySmsInfo($sms['body'])['segments'] === 1, 'the English registration SMS is one GSM-7 segment', json_encode(notifySmsInfo($sms['body'])));
     eq(notifyTemplateSample('registration_received', 'en')['ctaUrl'], 'https://temple.example.test/', 'the template preview links to the home page');
+
+    /* ── Online payments (docs/payments/SPEC.md §6) ─────────────────────── */
+    section('Payment events and templates (payments SPEC §6)');
+    $payEvents = [
+        'donation.paid'     => ['donation_paid', 'important', ['email', 'whatsapp', 'sms'], 'donation:{vars.paymentReference}:paid', 'donation'],
+        'payment.succeeded' => ['payment_success', 'important', ['email', 'whatsapp', 'sms'], 'payment:{vars.paymentReference}:success', 'payment'],
+        'payment.failed'    => ['payment_failed', 'important', ['email'], 'payment:{vars.paymentReference}:failed', 'payment'],
+        'payment.refunded'  => ['payment_refund', 'important', ['email', 'whatsapp', 'sms'], 'refund:{entity_id}:processed', 'payment_refund'],
+    ];
+    foreach ($payEvents as $payEvent => $want) {
+        $got = $catalogue[$payEvent] ?? [];
+        eq([$got['template'] ?? null, $got['priority'] ?? null, $got['channels'] ?? null, $got['dedupe'] ?? null, $got['entity_type'] ?? null, $got['fallbacks'] ?? null, $got['sync'] ?? null],
+            [...$want, [], false], "{$payEvent} is catalogued per payments SPEC §6.1 (template, priority, channels, dedupe, entity, no fallback, queued)");
+    }
+    eq(notifyEventDedupeKey($payEvents['donation.paid'][3], ['vars' => ['paymentReference' => 'DON-20260914-00001234']]), 'donation:DON-20260914-00001234:paid', 'donation.paid dedupes on the Donation ID');
+    eq(notifyEventDedupeKey($payEvents['payment.succeeded'][3], ['vars' => ['paymentReference' => 'SEV-20260914-00000042']]), 'payment:SEV-20260914-00000042:success', 'payment.succeeded dedupes on the Booking ID');
+    eq(notifyEventDedupeKey($payEvents['payment.refunded'][3], ['entity_id' => 7]), 'refund:7:processed', 'payment.refunded dedupes on the refund id');
+    eq(notifyEvent('donation.paid', ['to_phone' => '919800000088', 'vars' => ['paymentAmount' => 'Rs. 1,001']])['skipped'], 'missing dedupe context', 'donation.paid without its Donation ID is not sent');
+
+    // key => [category, the SPEC §6.2 variables in order, the variables every email and WhatsApp body must show]
+    $payTemplates = [
+        'donation_paid'   => ['donation', ['devoteeName', 'receiptNumber', 'paymentReference', 'paymentAmount', 'paymentFor', 'paymentDate', 'paymentMode', 'trustName', 'taxNote', 'ctaUrl'],
+                              ['receiptNumber', 'paymentReference', 'paymentAmount']],
+        'payment_success' => ['payment', ['devoteeName', 'receiptNumber', 'paymentReference', 'paymentAmount', 'paymentFor', 'bookingDate', 'paymentDate', 'paymentMode', 'ctaUrl'],
+                              ['receiptNumber', 'paymentReference', 'paymentAmount', 'paymentFor', 'bookingDate']],
+        'payment_failed'  => ['payment', ['devoteeName', 'paymentReference', 'paymentAmount', 'paymentFor', 'reason', 'ctaUrl'],
+                              ['paymentReference', 'paymentAmount', 'reason']],
+        'payment_refund'  => ['payment', ['devoteeName', 'refundAmount', 'paymentReference', 'receiptNumber', 'refundReference', 'paymentFor', 'ctaUrl'],
+                              ['refundAmount', 'refundReference', 'paymentReference', 'receiptNumber']],
+    ];
+    $payDefaults = notifyTemplateDefaults();
+    // What {{ctaUrl}} really is in a sent SMS: the tracked redirect, here for a seven-digit delivery id.
+    $payLink = (string) notifyTrackedUrl(1234567, '/payment/receipt?ref=DON-20260914-00001234&t=abcdefghijklmnopqrstuv');
+    foreach ($payTemplates as $key => [$category, $variables, $keyVars]) {
+        $def = $payDefaults[$key] ?? null;
+        if (!is_array($def)) {
+            ok(false, "{$key} is a built-in template");
+            continue;
+        }
+        eq([$def['category'] ?? null, $def['variables'] ?? null], [$category, $variables], "{$key}: category {$category} and exactly the SPEC §6.2 variables");
+        ok(!str_contains((string) ($def['description'] ?? ''), 'No payment gateway'), "{$key}: the description no longer says there is no payment gateway");
+        foreach (['ta', 'en'] as $lang) {
+            $sample = notifyTemplateSample($key, $lang);
+            $placeholders = array_keys(array_filter($sample, static fn($v) => is_string($v) && str_starts_with($v, '[')));
+            ok(!$placeholders, "{$key} {$lang}: every variable has a realistic sample value", implode(',', $placeholders));
+            $raw = '';
+            foreach (['any', 'sms', 'whatsapp'] as $channel) {
+                $v = $def['langs'][$lang][$channel] ?? [];
+                $raw .= "\n" . ($v['title'] ?? '') . "\n" . ($v['body'] ?? '') . "\n" . ($v['cta_label'] ?? '');
+                $r = notifyRender($key, $lang, $channel, $sample);
+                ok($r['lang'] === $lang && $r['channel'] === $channel && $r['missing'] === [] && trim($r['body']) !== '' && !str_contains($r['title'] . $r['body'] . $r['cta_label'], '{{'),
+                    "{$key} {$lang}/{$channel}: its own wording renders completely with sample values", json_encode(['lang' => $r['lang'], 'channel' => $r['channel'], 'missing' => $r['missing']]));
+                if ($channel === 'any') {
+                    ok($r['title'] !== '' && mb_strlen($r['title']) <= 60 && $r['cta_label'] !== '', "{$key} {$lang}: the title fits 60 characters and the button has a label", mb_strlen($r['title']) . ': ' . $r['title']);
+                }
+                if ($channel !== 'sms') {
+                    $absent = array_values(array_filter($keyVars, static fn($name) => !str_contains($r['body'], (string) $sample[$name])));
+                    ok(!$absent, "{$key} {$lang}/{$channel}: the body shows " . implode(', ', $keyVars), implode(',', $absent));
+                    continue;
+                }
+                $links = ['the sample link' => (string) $sample['ctaUrl']];
+                if (str_contains((string) ($v['body'] ?? ''), '{{ctaUrl}}')) $links['a real tracked link'] = $payLink;
+                foreach ($links as $what => $link) {
+                    $smsBody = notifyRender($key, $lang, 'sms', ['ctaUrl' => $link] + $sample)['body'];
+                    $info = notifySmsInfo($smsBody);
+                    if ($lang === 'en') {
+                        ok($info['encoding'] === 'GSM-7' && $info['chars'] <= 160, "{$key} en SMS is one GSM-7 segment with {$what}", "{$info['encoding']} {$info['chars']}: {$smsBody}");
+                    } else {
+                        ok($info['segments'] <= 2, "{$key} ta SMS fits two UCS-2 segments with {$what}", "{$info['segments']} segments, {$info['chars']} units: {$smsBody}");
+                    }
+                }
+            }
+            $unused = array_values(array_filter($variables, static fn($name) => $name !== 'ctaUrl' && !str_contains($raw, '{{' . $name . '}}')));
+            ok(!$unused, "{$key} {$lang}: every declared variable is used in its wording", implode(',', $unused));
+            ok(stripos($raw, 'account') === false && !str_contains($raw, 'கணக்கு'), "{$key} {$lang}: no \"account\" or \"கணக்கு\" wording");
+        }
+    }
+    eq($payDefaults['donation_paid']['langs']['en']['sms']['body'] ?? null, 'Thank you for your contribution of {{paymentAmount}}. Your Donation ID is {{paymentReference}}. Receipt: {{ctaUrl}}',
+        'the English donation SMS is the wording in payments SPEC §6.2');
+    eq([$payDefaults['donation_paid']['langs']['en']['any']['title'] ?? null, $payDefaults['donation_paid']['langs']['en']['any']['cta_label'] ?? null], ['Thank you for your donation', 'View receipt'],
+        'the English donation title and button follow payments SPEC §6.2');
+    ok(str_contains((string) ($payDefaults['payment_success']['langs']['en']['any']['body'] ?? ''), 'temple office will call you'), 'payment_success says the temple office will call to confirm the date');
+    $failedBody = (string) ($payDefaults['payment_failed']['langs']['en']['any']['body'] ?? '');
+    ok(str_contains($failedBody, 'No money was taken') && str_contains($failedBody, 'bank shows a debit'), 'payment_failed reassures: no money was taken, and a debit the bank shows comes back');
+    $refundBody = (string) ($payDefaults['payment_refund']['langs']['en']['any']['body'] ?? '');
+    ok(str_contains($refundBody, 'CCAvenue') && str_contains($refundBody, '5 to 7 working days'), 'payment_refund says the refund went to CCAvenue and usually arrives in 5 to 7 working days');
+    $paySample = notifyTemplateSample('payment_refund', 'en') + notifyTemplateSample('donation_paid', 'en');
+    eq([$paySample['receiptNumber'], $paySample['paymentReference'], $paySample['paymentMode'], $paySample['refundReference']], ['TMR-2026-000042', 'DON-20260914-00001234', 'UPI', 'RF12T1789300000'],
+        'payment previews use the SPEC §6.2 sample values');
+    eq(notifyTemplateSample('donation_paid', 'en')['ctaUrl'], 'https://temple.example.test/payment/receipt', 'a payment template preview links to the receipt page');
+
+    // A guest donor gets the messages: payment and donation are transactional, so no consent is needed.
+    $payGuest = ['to_phone' => '919800000088', 'to_email' => $prefix . 'donor@example.test', 'name' => $names . 'donor', 'lang' => 'en'];
+    $receiptPath = '/payment/receipt?ref=DON-20260914-00001234&t=abcdefghijklmnopqrstuv';
+    $paid = notifyEvent('donation.paid', $payGuest + ['entity_id' => 1, 'dedupe_key' => $dedupe . 'donation-paid', 'cta_url' => $receiptPath,
+        'vars' => ['receiptNumber' => 'TMR-2026-000042', 'paymentReference' => 'DON-20260914-00001234', 'paymentAmount' => 'Rs. 1,001',
+                   'paymentFor' => 'Annadanam', 'paymentDate' => '14 Sep 2026', 'paymentMode' => 'UPI']]);
+    eq(array_map(static fn($d) => $d['status'], $paid['deliveries'] ?? []), ['email' => 'queued', 'whatsapp' => 'queued', 'sms' => 'queued'], 'donation.paid to a guest donor queues email, WhatsApp and SMS');
+    $payRow = $db->prepare('SELECT category, priority, template_key, entity_type, cta_url FROM notifications WHERE id = :id');
+    $payRow->execute([':id' => (int) ($paid['id'] ?? 0)]);
+    eq($payRow->fetch(PDO::FETCH_ASSOC), ['category' => 'donation', 'priority' => 'important', 'template_key' => 'donation_paid', 'entity_type' => 'donation', 'cta_url' => $receiptPath],
+        'the stored donation.paid is an important donation message linking to the receipt');
+    $paidSmsId = (int) ($paid['deliveries']['sms']['id'] ?? 0);
+    $paidSms = $paidSmsId > 0 ? notifyDispatchDelivery($paidSmsId) : ['status' => null];
+    $paidSmsBody = (string) (testLog([$paidSmsId])[$paidSmsId]['body'] ?? '');
+    eq([$paidSms['status'], $paidSmsBody], ['sent', 'Thank you for your contribution of Rs. 1,001. Your Donation ID is DON-20260914-00001234. Receipt: ' . notifyTrackedUrl($paidSmsId, $receiptPath)],
+        'the donation SMS as sent carries the tracked receipt link once, in its own sentence');
+    $paidInfo = notifySmsInfo($paidSmsBody);
+    ok($paidInfo['encoding'] === 'GSM-7' && $paidInfo['segments'] === 1, 'the donation SMS as sent is one GSM-7 segment', json_encode($paidInfo));
+    $failedPay = notifyEvent('payment.failed', $payGuest + ['entity_id' => 1, 'dedupe_key' => $dedupe . 'payment-failed',
+        'vars' => ['paymentReference' => 'DON-20260914-00001234-R2', 'paymentAmount' => 'Rs. 1,001', 'paymentFor' => 'Annadanam', 'reason' => 'The bank declined the payment']]);
+    eq(array_map(static fn($d) => $d['status'], $failedPay['deliveries'] ?? []), ['email' => 'queued'], 'payment.failed goes by email only');
+    $refundedPay = notifyEvent('payment.refunded', $payGuest + ['entity_id' => 7, 'dedupe_key' => $dedupe . 'payment-refunded',
+        'vars' => ['refundAmount' => 'Rs. 1,001', 'paymentReference' => 'DON-20260914-00001234', 'receiptNumber' => 'TMR-2026-000042', 'refundReference' => 'RF12T1789300000', 'paymentFor' => 'Annadanam']]);
+    $payRow->execute([':id' => (int) ($refundedPay['id'] ?? 0)]);
+    $refundRow = $payRow->fetch(PDO::FETCH_ASSOC) ?: [];
+    eq([$refundRow['category'] ?? null, $refundRow['template_key'] ?? null, $refundRow['entity_type'] ?? null, array_keys($refundedPay['deliveries'] ?? [])],
+        ['payment', 'payment_refund', 'payment_refund', ['email', 'whatsapp', 'sms']], 'payment.refunded is stored as a payment message about the refund, on email, WhatsApp and SMS');
 
     section('Events, approval rules, formatting');
     eq(notifyEventDedupeKey('booking:{entity_id}:confirmed', ['entity_id' => 91]), 'booking:91:confirmed', 'dedupe pattern with entity_id');

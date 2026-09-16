@@ -2,6 +2,12 @@ import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import { VitePWA } from "vite-plugin-pwa";
 
+// Which PHP server the dev proxy talks to. The site's own development server is
+// on :8000; a test suite that needs its own PHP (the payment suites start one
+// with the simulator switched on) points a throwaway Vite at it with
+// VITE_PROXY_TARGET rather than reconfiguring the one already running.
+const proxyTarget = process.env.VITE_PROXY_TARGET || "http://localhost:8000";
+
 export default defineConfig({
   plugins: [
     react(),
@@ -46,6 +52,22 @@ export default defineConfig({
         // and with deploy/htaccess_public_html.
         navigateFallbackDenylist: [/^\/api(\/|$)/, /^\/admin(\/|$)/, /^\/uploads(\/|$)/],
         runtimeCaching: [
+          {
+            // Payments are never cached, and this rule sits before the general
+            // /api one so it wins (docs/payments/SPEC.md §7.8). A payment
+            // status must always be the truth of this moment, and a receipt
+            // carries a donor's name, address and PAN — neither belongs in
+            // Cache Storage on a shared phone.
+            urlPattern: ({ url }) => url.pathname.startsWith("/api/payments"),
+            handler: "NetworkOnly",
+          },
+          {
+            // Live darshan status is asked every 30-60 s and must be the truth
+            // of this moment: a cached "LIVE" served while the network is slow
+            // is worse than no answer (docs/live/SPEC-PHASE1.md §5.4).
+            urlPattern: ({ url }) => url.pathname.startsWith("/api/live-streams"),
+            handler: "NetworkOnly",
+          },
           {
             // API calls — network-first with 5s timeout, then cache.
             // Same-origin /api on Hostinger, and via the Vite proxy in dev.
@@ -97,15 +119,15 @@ export default defineConfig({
     // Keep this list and deploy/htaccess_public_html in step.
     proxy: {
       "/api": {
-        target: "http://localhost:8000",
+        target: proxyTarget,
         changeOrigin: true,
       },
       "/admin": {
-        target: "http://localhost:8000",
+        target: proxyTarget,
         changeOrigin: true,
       },
       "/uploads": {
-        target: "http://localhost:8000",
+        target: proxyTarget,
         changeOrigin: true,
       },
     },

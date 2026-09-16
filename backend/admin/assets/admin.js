@@ -144,7 +144,8 @@
     btn.addEventListener("click", async (e) => {
       if (btn.dataset.confirmed === "1") return; // second pass after confirmation
       e.preventDefault();
-      const ok = await confirmDialog(message, label || btn.textContent.trim().replace(/^Del$/, "Delete") || "Confirm", {
+      // Read data-confirm at press time: a form may rewrite it as its fields change (the refund amount).
+      const ok = await confirmDialog(btn.dataset.confirm ?? message, label || btn.textContent.trim().replace(/^Del$/, "Delete") || "Confirm", {
         danger: !/^(approve|confirm|mark|save|import|activate)/i.test(label || ""),
       });
       if (!ok) return;

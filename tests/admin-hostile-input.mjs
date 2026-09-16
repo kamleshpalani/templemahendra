@@ -130,6 +130,41 @@ const CASES = [
   [EDIT,                   { action: "tag_remove", id: String(regId), tag: XSS }],
   [EDIT,                   { action: XSS, id: String(regId) }],
   [EDIT,                   { action: "delete", id: BIGINT }],
+  // Online payments (docs/payments/SPEC.md §10): every write action on the three
+  // pages, aimed at numbers, ids and amounts that cannot exist. The settings
+  // "save" is probed further down, because it needs the rows snapshotted. The
+  // CSRF token is read from the Reconciliation tab, the one view that always
+  // carries a form for an owner (the Overview has none).
+  ["payments.php?view=reconcile", { action: "resend_receipt", number: XSS }],
+  ["payments.php?view=reconcile", { action: "check_now", number: LONG }],
+  ["payments.php?view=reconcile", { action: "mark_reviewed", transaction_id: BIGINT, note: LONG }],
+  ["payments.php?view=reconcile", { action: "show_pan", number: "DON-99999999-99999999" }],
+  ["payments.php?view=reconcile", { action: "refund", number: "DON-20260101-00000001", transaction_id: BIGINT, kind: XSS, amount: HUGE, reason: LONG, method: XSS, gateway_reference: LONG, confirm_manual: XSS }],
+  ["payments.php?view=reconcile", { action: "refund_check", refund_id: "abc" }],
+  ["payments.php?view=reconcile", { action: "refund_fail", refund_id: BIGINT, reason: XSS }],
+  ["payments.php?view=reconcile", { action: "reconcile_csv" }],
+  ["payments.php?view=reconcile", { action: XSS, number: LONG }],
+  ["payment_settings.php", { action: "test_connection", environment: XSS }],
+  ["payment_settings.php", { action: XSS }],
+  ["donation_categories.php", { action: "save", id: "0", slug: XSS, name_ta: LONG, name_en: LONG, description_ta: LONG, description_en: LONG, suggested_amount: HUGE, sort_order: BIGINT, is_active: "1" }],
+  ["donation_categories.php", { action: "save", id: BIGINT, name_ta: "x", name_en: "y", suggested_amount: "-5", sort_order: "abc" }],
+  ["donation_categories.php", { action: "delete", id: BIGINT }],
+  ["donation_categories.php", { action: "hide", id: "abc" }],
+  ["donation_categories.php", { action: XSS, id: XSS }],
+  // Live Darshan (docs/live/SPEC-PHASE1.md §4.2, §4.5): the save form with every field hostile,
+  // a delete of an id that cannot exist, an action that is script, and the status buttons.
+  ["live_streams.php",     { action: "save", id: "0", title_ta: LONG, title_en: LONG, description_ta: LONG, description_en: LONG, slug: XSS,
+                             temple_id: BIGINT, deity_id: BIGINT, event_type: XSS, provider: XSS, provider_reference: XSS,
+                             playback_url: "javascript:alert(1)", thumbnail_url: XSS, banner_url: "javascript:alert(1)",
+                             scheduled_date: "9999-99-99", start_time: LONG, end_time: "25:61", end_date: "bad", timezone: XSS, status: XSS,
+                             is_featured: XSS, show_on_homepage: "1", donations_enabled: LONG, notifications_enabled: "1", sharing_enabled: "1", archive_enabled: "1" }],
+  ["live_streams.php",     { action: "save", id: BIGINT, title_ta: "x", title_en: "y", temple_id: "1", status: "LIVE" }],
+  ["live_streams.php",     { action: "save", id: "-1", "title_ta[]": "x", "title_en[]": "y", "temple_id[]": "1", "status[]": "LIVE" }],
+  ["live_streams.php",     { action: "status", id: BIGINT, status: XSS }],
+  ["live_streams.php",     { action: "status", id: "abc", status: "LIVE" }],
+  ["live_streams.php",     { action: "delete", id: BIGINT }],
+  ["live_streams.php",     { action: "restore", id: BIGINT }],
+  ["live_streams.php",     { action: XSS, id: "0" }],
 ];
 
 for (const [page, body] of CASES) {
@@ -147,8 +182,50 @@ for (const [page, body] of CASES) {
   }
 }
 
+// The gateway settings "save" writes the shared payment_settings rows, so it is
+// probed only when PHP_BIN lets the rows be snapshotted first and put back after.
+if (process.env.PHP_BIN) {
+  const PHP_BIN = process.env.PHP_BIN;
+  const viaBash = PHP_BIN.endsWith(".sh");
+  const fx = (cmd, obj) => {
+    const args = ["tests/support/payments_fixtures.php", cmd, JSON.stringify(obj)];
+    const res = spawnSync(viaBash ? "bash" : PHP_BIN, viaBash ? [PHP_BIN, ...args] : args, { cwd: fileURLToPath(new URL("..", import.meta.url)), encoding: "utf8" });
+    try { return JSON.parse(res.stdout.trim().split("\n").pop()); } catch { return { error: res.stderr || res.stdout }; }
+  };
+  const snap = fx("sql", { query: "SELECT k, v, is_secret, updated_by, updated_at FROM payment_settings", params: [] });
+  if (!snap.error && (snap.rows ?? []).length > 0) {
+    const html = await (await get("/admin/payment_settings.php")).text();
+    const csrf = csrfOf(html);
+    if (csrf) {
+      const r = await post("/admin/payment_settings.php", {
+        _csrf: csrf, action: "save", mode: XSS, enabled: XSS, "currencies[]": XSS, default_currency: XSS, international_enabled: XSS,
+        donation_min: HUGE, donation_max: "-1", donation_max_foreign: LONG, preset_amounts: LONG, receipt_prefix: XSS, hold_minutes: BIGINT,
+        notify_email: XSS, seva_online_enabled: XSS, tested_in_test: XSS,
+        "cred[test][merchant_id]": LONG, "cred[production][working_key]": XSS, "cred[production][access_code]": LONG, "remove[production][access_code]": XSS,
+      });
+      const out = r.status === 303 || r.status === 302 ? "" : await r.text();
+      const landing = await (await get("/admin/payment_settings.php")).text();
+      const bad = r.status >= 500 || FATAL.test(out) || FATAL.test(landing) || out.includes("<script>alert(1)</script>") || landing.includes("<script>alert(1)</script>");
+      ok(!bad, "payment_settings.php [save] survives hostile input", `status ${r.status}${bad ? " " + (out.match(FATAL)?.[0] ?? landing.match(FATAL)?.[0] ?? "reflected script") : ""}`);
+    } else {
+      console.log("- payment_settings.php [save]: no form for this account — skipped");
+    }
+    const wipe = fx("sql", { query: "DELETE FROM payment_settings", params: [] });
+    let restored = !wipe.error;
+    for (const row of snap.rows) {
+      const ins = fx("sql", { query: "INSERT INTO payment_settings (k, v, is_secret, updated_by, updated_at) VALUES (?, ?, ?, ?, ?)", params: [row.k, row.v, row.is_secret, row.updated_by, row.updated_at] });
+      if (ins.error) restored = false;
+    }
+    ok(restored, "the payment settings are put back as they were", wipe.error || "");
+  } else {
+    console.log("- payment_settings.php [save]: skipped (migration 010 not applied, or the fixture could not read the rows)");
+  }
+} else {
+  console.log("- payment_settings.php [save]: skipped (set PHP_BIN so the shared settings can be snapshotted and restored)");
+}
+
 // XSS reflection check on search params
-for (const page of ["sevas.php", "events.php", "donations.php", "contact_messages.php", "seva_bookings.php", "sponsors.php", "poojas.php", "devotees.php"]) {
+for (const page of ["sevas.php", "events.php", "donations.php", "contact_messages.php", "seva_bookings.php", "sponsors.php", "poojas.php", "devotees.php", "payments.php", "donation_categories.php", "live_streams.php"]) {
   const r = await get(`/admin/${page}?q=${encodeURIComponent(XSS)}`);
   const html = await r.text();
   ok(!html.includes("<script>alert(1)</script>"), `${page}: search term is escaped`);
@@ -158,6 +235,24 @@ for (const query of [`status[]=${encodeURIComponent(XSS)}&sort=${encodeURICompon
   const r = await get(`/admin/devotees.php?${query}`);
   const html = await r.text();
   ok(r.status === 200 && !FATAL.test(html) && !html.includes("<script>alert(1)</script>"), `devotees.php?${query.slice(0, 40)}… survives hostile filters`, `status ${r.status}`);
+}
+for (const query of [`view=transactions&q=${encodeURIComponent(XSS)}&status[]=x&sort=${encodeURIComponent(XSS)}&dir=${encodeURIComponent(XSS)}&country=${encodeURIComponent(XSS)}&purpose=${encodeURIComponent(XSS)}&currency=${encodeURIComponent(XSS)}&kind=${encodeURIComponent(XSS)}&from=9999-99-99&to=${encodeURIComponent(XSS)}&page=${BIGINT}&review[]=1`,
+                     `view=${encodeURIComponent(XSS)}`, `number=${encodeURIComponent(XSS)}`, `number[]=1&pan=${encodeURIComponent(XSS)}`, `view=refunds&rstatus=${encodeURIComponent(XSS)}&page=-1`,
+                     `view=reconcile&from=${encodeURIComponent(XSS)}&to=${BIGINT}&kind=${encodeURIComponent(XSS)}`, `export=csv&q=${encodeURIComponent(XSS)}&status=${encodeURIComponent(XSS)}`]) {
+  const r = await get(`/admin/payments.php?${query}`);
+  const html = await r.text();
+  ok(r.status === 200 && !FATAL.test(html) && !html.includes("<script>alert(1)</script>"), `payments.php?${query.slice(0, 40)}… survives hostile filters`, `status ${r.status}`);
+}
+for (const query of [`f=${encodeURIComponent(XSS)}&q=${encodeURIComponent(XSS)}`, `edit=${encodeURIComponent(XSS)}`, `edit=${BIGINT}`, `edit[]=1`]) {
+  const r = await get(`/admin/donation_categories.php?${query}`);
+  const html = await r.text();
+  ok(r.status === 200 && !FATAL.test(html) && !html.includes("<script>alert(1)</script>"), `donation_categories.php?${query.slice(0, 40)}… survives hostile filters`, `status ${r.status}`);
+}
+for (const query of [`f=${encodeURIComponent(XSS)}&q=${encodeURIComponent(XSS)}&sort=${encodeURIComponent(XSS)}&dir=${encodeURIComponent(XSS)}&page=${BIGINT}`,
+                     `edit=${encodeURIComponent(XSS)}`, `edit=${BIGINT}`, `edit[]=1`, `f[]=live&q[]=1&page=-1`]) {
+  const r = await get(`/admin/live_streams.php?${query}`);
+  const html = await r.text();
+  ok(r.status === 200 && !FATAL.test(html) && !html.includes("<script>alert(1)</script>"), `live_streams.php?${query.slice(0, 40)}… survives hostile filters`, `status ${r.status}`);
 }
 
 /* ── Cleanup ────────────────────────────────────────────────────────────── */

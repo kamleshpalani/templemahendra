@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import {
   LuArrowRight,
   LuBadgeCheck,
+  LuCreditCard,
   LuHeartHandshake,
   LuIndianRupee,
   LuLandmark,
@@ -14,6 +15,7 @@ import { useLang, rateLimitInfo, rateLimitMessage } from "../context/LangContext
 import { useToast } from "../context/ToastContext";
 import PhoneInput from "../components/ui/PhoneInput";
 import { phoneProblem, toE164 } from "../lib/phone";
+import { paymentsUsable, usePaymentsConfig } from "../lib/payments";
 import { DEFAULT_COUNTRY } from "../data/countries";
 import { TRUST, KUMBABHISHEKAM_APPEAL, DONATION_NOTE } from "../data/temple";
 import TrustDetails from "../components/TrustDetails/TrustDetails";
@@ -44,6 +46,10 @@ const EMPTY_PLEDGE = {
 export default function Donations() {
   const { lang, t } = useLang();
   const toast = useToast();
+  // Online giving is offered next to the pledge, never instead of it: the
+  // committee still takes bank transfers and cheques (docs/payments/SPEC.md §0).
+  const { config } = usePaymentsConfig();
+  const online = paymentsUsable(config);
   const [form, setForm] = useState({ ...EMPTY_PLEDGE, phoneCountry: DEFAULT_COUNTRY });
   const [errors, setErrors] = useState({});
   const [status, setStatus] = useState(null); // null | sending | success | error | limited
@@ -62,7 +68,7 @@ export default function Donations() {
   const validate = () => {
     const next = {};
     if (form.name.trim().length < 2) next.name = t("பெயரை உள்ளிடவும்", "Please enter your name");
-    const pe = phoneProblem(form.phone, form.phoneCountry, { required: true });
+    const pe = phoneProblem(form.phone, form.phoneCountry, { required: true, t });
     if (pe) next.phone = pe;
     if (!(Number(form.amount) >= 1))
       next.amount = t("தொகையை உள்ளிடவும்", "Enter a donation amount");
@@ -78,7 +84,8 @@ export default function Donations() {
       const res = await fetch("/api/donations", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...form, phone: toE164(form.phone, form.phoneCountry) }),
+        // `lang` decides which language the temple's reply is written in.
+        body: JSON.stringify({ ...form, phone: toE164(form.phone, form.phoneCountry), lang }),
       });
       if (!res.ok) {
         const body = await res.json().catch(() => null);
@@ -152,10 +159,15 @@ export default function Donations() {
         crumbs={[{ label: t("நன்கொடை", "Donations") }]}
         actions={
           <>
+            {online && (
+              <Button to="/donate" variant="gold" icon={<LuCreditCard aria-hidden="true" />}>
+                {t("இணையவழி நன்கொடை", "Donate online")}
+              </Button>
+            )}
             <Button href="#bank-details" variant="outline-light" icon={<LuLandmark aria-hidden="true" />}>
               {t("வங்கி விவரங்கள்", "Bank details")}
             </Button>
-            <Button href="#pledge" variant="gold" icon={<LuHeartHandshake aria-hidden="true" />}>
+            <Button href="#pledge" variant={online ? "outline-light" : "gold"} icon={<LuHeartHandshake aria-hidden="true" />}>
               {t("நன்கொடை பதிவு", "Pledge")}
             </Button>
             <ShareButton
@@ -171,6 +183,29 @@ export default function Donations() {
         <div className="container split donations__split">
           {/* ── Left: intro · appeal · bank details ─────────────────── */}
           <div className="donations__info rise" style={{ "--i": 0 }}>
+            {/* Online giving, when the committee has switched it on. It sits
+                above everything else because it is the fastest way to give;
+                the bank details and the pledge form below are unchanged. */}
+            {online && (
+              <div className="card card--gold card--static" id="donate-online">
+                <div className="card__body">
+                  <span className="card__icon" aria-hidden="true">
+                    <LuCreditCard />
+                  </span>
+                  <h3 className="card__title">{t("இணையவழி நன்கொடை", "Donate online")}</h3>
+                  <p>
+                    {t(
+                      `UPI, கார்டு அல்லது நெட் பேங்கிங் மூலம் இப்போதே நன்கொடை வழங்கலாம். கட்டணம் CCAvenue பாதுகாப்பான பக்கத்தில் நடைபெறும்; ரசீது உடனே கிடைக்கும். ${TRUST.taxExemption.short.ta}.`,
+                      `Give now by UPI, card or net banking. The payment happens on CCAvenue's secure page and your receipt is ready at once. ${TRUST.taxExemption.short.en}.`,
+                    )}
+                  </p>
+                  <Button to="/donate" variant="primary" trailingIcon={<LuArrowRight aria-hidden="true" />}>
+                    {t("இணையவழியில் வழங்க", "Donate online")}
+                  </Button>
+                </div>
+              </div>
+            )}
+
             <SectionHeader
               align="left"
               eyebrow={t("ஆதரவு", "Support")}

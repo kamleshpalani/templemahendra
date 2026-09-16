@@ -110,6 +110,8 @@ function adminIcon(string $name, string $class = ''): string
         'user-check'     => '<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><polyline points="16 11 18 13 22 9"/>',
         'undo'           => '<path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 5.5 5.5a5.5 5.5 0 0 1-5.5 5.5H11"/>',
         'flask'          => '<path d="M14 2v6a2 2 0 0 0 .245.96l5.51 10.08A2 2 0 0 1 18 22H6a2 2 0 0 1-1.755-2.96l5.51-10.08A2 2 0 0 0 10 8V2"/><path d="M6.453 15h11.094"/><path d="M8.5 2h7"/>',
+        // Live streaming (Lucide "tv-minimal": a monitor with a stand)
+        'tv'             => '<rect width="20" height="15" x="2" y="3" rx="2"/><path d="M8 21h8"/><path d="M12 18v3"/>',
     ];
     $d = $paths[$name] ?? $paths['dot'];
     $cls = trim('ico ' . $class);

@@ -15,17 +15,20 @@ function adminNavGroups(): array
             'homepage_widgets.php' => ['layers',      'Homepage Widgets', 'Cards shown on the public homepage'],
             'announcements.php'    => ['megaphone',   'Announcements',    'Notices in the homepage ticker'],
             'gallery.php'          => ['image',       'Gallery',          'Photos for the public gallery'],
+            'live_streams.php'     => ['tv',          'Live Streaming',   'Live darshan broadcasts and schedule'],
         ],
         'Worship' => [
             'poojas.php'           => ['flame',       'Poojas',           'Pournami, Amavasai and special poojas'],
             'sevas.php'            => ['sparkles',    'Sevas',            'Bookable sevas and prices'],
             'events.php'           => ['calendar',    'Events',           'Festivals and temple events'],
             'sponsors.php'         => ['heart-hands', 'Sponsors',         'Devotees sponsoring poojas'],
+            'donation_categories.php' => ['heart-hands', 'Donation Categories', 'Purposes donors can give to'],
         ],
         'Devotees' => [
             'devotees.php'         => ['users',       'Family Registrations', 'Registered families and their members'],
             'seva_bookings.php'    => ['clipboard',   'Seva Bookings',    'Online seva requests'],
             'donations.php'        => ['banknote',    'Donations',        'Pledges, totals and CSV reports'],
+            'payments.php'         => ['landmark',    'Online Payments',  'Donation and seva payments, refunds, reconciliation'],
             'contact_messages.php' => ['mail',        'Messages',         'Enquiries from the contact form'],
         ],
         'Communication' => [
@@ -36,6 +39,7 @@ function adminNavGroups(): array
         ],
         'Data & System' => [
             'bulk_upload.php'      => ['upload',      'Bulk Upload',      'Import CSV / Excel data'],
+            'payment_settings.php' => ['shield',      'Payment Gateway',  'CCAvenue mode, keys, currencies and limits'],
             'settings.php'         => ['settings',    'Settings',         'Homepage sections and account'],
         ],
         'People' => [
@@ -57,12 +61,14 @@ function adminQuickActions(): array
         ['label' => 'New seva',               'href' => '/admin/sevas.php#new',          'icon' => 'plus',        'can' => 'content.edit'],
         ['label' => 'Add pooja',              'href' => '/admin/poojas.php#new',         'icon' => 'plus',        'can' => 'content.edit'],
         ['label' => 'Upload photo',           'href' => '/admin/gallery.php#new',        'icon' => 'upload',      'can' => 'content.edit'],
+        ['label' => 'New live stream',        'href' => '/admin/live_streams.php#new',   'icon' => 'tv',          'can' => 'live.manage'],
         ['label' => 'Bulk upload CSV / Excel','href' => '/admin/bulk_upload.php',        'icon' => 'spreadsheet', 'can' => 'import'],
         ['label' => 'New notification',       'href' => '/admin/notifications.php?new=1', 'icon' => 'plus',      'can' => 'notifications.compose'],
         ['label' => 'Delivery analytics',     'href' => '/admin/notification_analytics.php', 'icon' => 'activity', 'can' => 'notifications.view'],
         ['label' => 'Possible duplicate registrations', 'href' => '/admin/devotees.php?status=duplicates', 'icon' => 'alert', 'can' => 'view'],
         ['label' => 'Export families CSV',    'href' => '/admin/devotees.php?export=csv','icon' => 'download',   'can' => 'export'],
         ['label' => 'Export donations CSV',   'href' => '/admin/donations.php?export=csv','icon' => 'download',   'can' => 'export'],
+        ['label' => 'Export payments CSV',    'href' => '/admin/payments.php?export=csv','icon' => 'download',    'can' => 'export'],
         ['label' => 'Export bookings CSV',    'href' => '/admin/seva_bookings.php?export=csv','icon' => 'download','can' => 'export'],
         ['label' => 'Committee accounts',     'href' => '/admin/users.php',              'icon' => 'users',       'can' => 'users.manage'],
         ['label' => 'My profile',             'href' => '/admin/profile.php',            'icon' => 'user',        'can' => 'view'],
@@ -111,6 +117,21 @@ function adminHeader(string $pageTitle, string $crumb = 'Temple Admin', array $o
     $actions  = (string) ($opts['actions'] ?? '');
     $wide     = !empty($opts['wide']);
     $roleTone = ['owner' => 'gold', 'editor' => 'info', 'viewer' => 'muted'][$role] ?? 'muted';
+    // On the payment pages only, say out loud when money is not real yet
+    // (docs/payments/SPEC.md §10.2): TEST goes to CCAvenue's sandbox, SIMULATOR
+    // never leaves this server.
+    if (in_array($current, ['payments.php', 'payment_settings.php'], true) && function_exists('payConfig')) {
+        try {
+            if (payTablesExist()) {
+                $payMode = payConfig()['mode'];
+                if ($payMode === 'simulator' || $payMode === 'test') {
+                    $actions = adminBadge('Payments: ' . strtoupper($payMode), $payMode === 'simulator' ? 'danger' : 'warning') . $actions;
+                }
+            }
+        } catch (Throwable $e) {
+            error_log('[payments] mode badge unavailable: ' . $e->getMessage());
+        }
+    }
     ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -258,6 +279,10 @@ function adminFooter(): void
     'check-circle' => adminIcon('check-circle'), 'alert-circle' => adminIcon('alert-circle'), 'info' => adminIcon('info'), 'x' => adminIcon('x'),
     // The Communication pages in the command palette.
     'bell' => adminIcon('bell'), 'users' => adminIcon('users'), 'activity' => adminIcon('activity'),
+    // Online payments.
+    'landmark' => adminIcon('landmark'), 'shield' => adminIcon('shield'),
+    // Live streaming.
+    'tv' => adminIcon('tv'),
 ], JSON_UNESCAPED_SLASHES | JSON_HEX_TAG) ?></script>
 <script src="/admin/assets/admin.js" defer></script>
 </body>

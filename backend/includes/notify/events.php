@@ -17,10 +17,19 @@
  * registration.received is filed under "general", so it reaches only a family
  * that ticked the consent box, and its caller sends it only then.
  *
- * payment.*, event.registered, event.cancelled, volunteer.registered and
- * membership.renewal_due have no caller yet — the site has no payment gateway,
- * event registration, volunteer or membership module. They are complete, so the
- * day such a module lands it calls one function.
+ * donation.paid, payment.succeeded, payment.failed and payment.refunded belong
+ * to online payments (docs/payments/SPEC.md §6): the payments module raises
+ * them after its database transaction commits, always for a guest recipient and
+ * always with the channels chosen in Admin → Payment Gateway. paymentReference
+ * is the Donation or Booking ID for the success events, so a replayed gateway
+ * callback or a double payment never sends twice; for payment.failed it is the
+ * failed attempt's order id. A receipt resend re-raises donation.paid or
+ * payment.succeeded with its own dedupe_key.
+ *
+ * event.registered, event.cancelled, volunteer.registered and
+ * membership.renewal_due have no caller yet — the site has no event
+ * registration, volunteer or membership module. They are complete, so the day
+ * such a module lands it calls one function.
  */
 
 require_once __DIR__ . '/service.php';
@@ -50,8 +59,12 @@ function notifyEventCatalogue(): array
         'booking.reminder'       => $e('booking_reminder', 'important', ['whatsapp', 'email'], 'booking:{entity_id}:reminder:{vars.bookingDate}', 'seva_booking', 'The evening before a confirmed seva', ['whatsapp' => 'sms']),
         'donation.received'      => $e('donation_received', 'normal', ['email', 'whatsapp'], 'donation:{entity_id}:received', 'donation', 'The temple records a donation'),
         'donation.receipt'       => $e('donation_receipt', 'important', ['email', 'whatsapp'], 'donation:{entity_id}:receipt:{ctx.sequence}', 'donation', 'The committee sends a donation receipt'),
-        'payment.succeeded'      => $e('payment_success', 'important', ['email', 'whatsapp', 'sms'], 'payment:{vars.paymentReference}:success', 'payment', 'An online payment succeeds'),
-        'payment.failed'         => $e('payment_failed', 'urgent', ['email', 'whatsapp', 'sms'], 'payment:{vars.paymentReference}:failed', 'payment', 'An online payment fails'),
+        'donation.paid'          => $e('donation_paid', 'important', ['email', 'whatsapp', 'sms'], 'donation:{vars.paymentReference}:paid', 'donation', 'An online donation is paid (its first successful payment)'),
+        'payment.succeeded'      => $e('payment_success', 'important', ['email', 'whatsapp', 'sms'], 'payment:{vars.paymentReference}:success', 'payment', 'An online seva booking is paid (its first successful payment)'),
+        // Email only, and important rather than urgent: a declined card is not an
+        // emergency, and the red urgent banner would alarm a devotee who can simply try again.
+        'payment.failed'         => $e('payment_failed', 'important', ['email'], 'payment:{vars.paymentReference}:failed', 'payment', 'An online payment attempt fails'),
+        'payment.refunded'       => $e('payment_refund', 'important', ['email', 'whatsapp', 'sms'], 'refund:{entity_id}:processed', 'payment_refund', 'A refund of an online payment succeeds'),
         'event.registered'       => $e('event_registered', 'normal', ['email', 'whatsapp'], 'event:{entity_id}:registered:{recipient}', 'event', 'A devotee registers for an event'),
         'event.cancelled'        => $e('event_cancelled', 'important', ['email', 'whatsapp', 'sms'], 'event:{entity_id}:cancelled:{recipient}', 'event', 'An event a devotee registered for is cancelled'),
         'volunteer.registered'   => $e('volunteer_registered', 'normal', ['email'], 'volunteer:{entity_id}:{recipient}', 'volunteer', 'A devotee signs up to volunteer'),

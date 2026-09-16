@@ -12,6 +12,7 @@ import {
   LuPhone,
   LuSearch,
   LuSparkles,
+  LuTv,
   LuUserPlus,
   LuX,
 } from "react-icons/lu";
@@ -33,6 +34,10 @@ export const NAV_LINKS = [
   { to: "/about", ta: "பற்றி", en: "About", Icon: LuLandmark },
   { to: "/sevas", ta: "சேவைகள்", en: "Sevas", Icon: LuFlame },
   { to: "/events", ta: "நிகழ்வுகள்", en: "Events", Icon: LuCalendarDays },
+  // `optional`: the header gives this entry up first when the row is short of
+  // width (Layout.css hides it between 1024 and 1059 px, where the eight Tamil
+  // labels clip); the drawer, the footer and the Home tile always carry it.
+  { to: "/live-darshan", ta: "நேரடி தரிசனம்", en: "Live Darshan", Icon: LuTv, optional: true },
   { to: "/panchangam", ta: "பஞ்சாங்கம்", en: "Panchangam", Icon: LuMoon },
   { to: "/donations", ta: "நன்கொடை", en: "Donate", Icon: LuHeartHandshake },
   { to: "/contact", ta: "தொடர்பு", en: "Contact", Icon: LuMapPin },
@@ -140,7 +145,9 @@ export default function Layout() {
                   key={link.to}
                   to={link.to}
                   end={link.to === "/"}
-                  className={({ isActive }) => "navbar__link" + (isActive ? " navbar__link--active" : "")}
+                  className={({ isActive }) =>
+                    "navbar__link" + (link.optional ? " navbar__link--optional" : "") + (isActive ? " navbar__link--active" : "")
+                  }
                 >
                   {t(link.ta, link.en)}
                 </NavLink>

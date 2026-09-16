@@ -1,0 +1,702 @@
+/* ══════════════════════════════════════════════════════════════════
+   Live Darshan · Sacred Light v3
+   The player, its status badge, the details list and the upcoming card
+   (components/Live/*, docs/live/SPEC-PHASE1.md §5.2). Composes .card /
+   .badge / .btn; every colour is a token; prefix `live-`.
+   A LIVE red is the --danger family — there is no "live" token, and
+   moon / sage stay reserved for lunar and auspicious content.
+   Breakpoints: 480 · 640 · 820 · 1024
+   ══════════════════════════════════════════════════════════════════ */
+
+/* ── Status badge ────────────────────────────────────────────────── */
+.live-badge {
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+/* On ink (hero aside, poster, card thumbnail) the light tints of the
+   on-ivory tones vanish, so the badge takes a deeper fill of the same
+   status colour with light text — the home hero's open/closed pill. */
+.live-badge--on-dark.live-badge--danger {
+  background: color-mix(in srgb, var(--danger) 58%, transparent);
+  border-color: color-mix(in srgb, var(--danger) 45%, var(--text-on-dark));
+  color: var(--text-on-dark);
+}
+.live-badge--on-dark.live-badge--warning {
+  background: color-mix(in srgb, var(--warning) 58%, transparent);
+  border-color: color-mix(in srgb, var(--warning) 45%, var(--text-on-dark));
+  color: var(--text-on-dark);
+}
+.live-badge--on-dark.live-badge--info {
+  background: color-mix(in srgb, var(--info) 55%, transparent);
+  border-color: color-mix(in srgb, var(--info) 45%, var(--text-on-dark));
+  color: var(--text-on-dark);
+}
+.live-badge--on-dark.live-badge--muted {
+  background: rgba(0, 0, 0, 0.38);
+  border-color: rgba(255, 255, 255, 0.28);
+  color: var(--text-on-dark-2);
+}
+
+/* ── Player ──────────────────────────────────────────────────────── */
+.live-player {
+  padding: 0;
+  border-radius: var(--radius-xl);
+  /* Opaque ink ground: .card--ink is glass, and the card sits on the ivory
+     page, not on a photograph — the Pournami panel does the same. */
+  background:
+    radial-gradient(ellipse 55% 85% at 100% 0%, color-mix(in srgb, var(--saffron-500) 18%, transparent), transparent 64%),
+    linear-gradient(150deg, var(--bg-ink) 0%, var(--maroon-800) 58%, var(--bg-ink-2) 100%);
+  border-color: color-mix(in srgb, var(--gold-300) 24%, transparent);
+}
+/* The one aspect-ratio box on the site: the frame decides the height, and
+   whatever is inside (the provider's iframe or the poster) fills it. */
+.live-player__frame {
+  position: relative;
+  width: 100%;
+  max-width: 100%;
+  aspect-ratio: 16 / 9;
+  overflow: hidden;
+  background: var(--ink-1);
+}
+.live-player__iframe {
+  position: absolute;
+  inset: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+  border: 0;
+}
+.live-player__poster {
+  display: grid;
+  place-items: center;
+  background:
+    radial-gradient(ellipse 60% 70% at 82% 8%, color-mix(in srgb, var(--saffron-500) 30%, transparent), transparent 66%),
+    radial-gradient(ellipse 50% 60% at 8% 92%, color-mix(in srgb, var(--gold-500) 22%, transparent), transparent 66%),
+    linear-gradient(160deg, var(--maroon-800) 0%, var(--ink-2) 72%);
+}
+.live-player__poster-img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+/* Darkens the photograph so the badge and the sentence stay readable. */
+.live-player__poster-veil {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg, rgba(26, 6, 6, 0.22), rgba(26, 6, 6, 0.78));
+  pointer-events: none;
+}
+.live-player__emblem {
+  position: absolute;
+  inset: 0;
+  margin: auto;
+  width: clamp(88px, 26%, 200px);
+  height: auto;
+  opacity: 0.16;
+  filter: saturate(0);
+  pointer-events: none;
+}
+.live-player__state {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  justify-items: center;
+  gap: var(--space-3);
+  padding: var(--space-5) var(--space-6);
+  text-align: center;
+}
+.live-player__state-text {
+  max-width: 34ch;
+  margin: 0;
+  color: var(--text-on-dark);
+  font-size: var(--text-md);
+  font-weight: var(--weight-semibold);
+  line-height: var(--leading-snug);
+  text-shadow: 0 1px 14px rgba(0, 0, 0, 0.5);
+}
+:lang(ta) .live-player__state-text {
+  line-height: var(--leading-normal);
+}
+.live-player__state-sub {
+  margin: 0;
+  color: var(--text-on-dark-2);
+  font-size: var(--text-sm);
+  text-shadow: 0 1px 10px rgba(0, 0, 0, 0.5);
+}
+.live-player__foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border-top: 1px solid var(--glass-ink-border);
+  background: rgba(0, 0, 0, 0.22);
+}
+.live-player__foot-text {
+  flex: 1 1 240px;
+  min-width: 0;
+  margin: 0;
+  color: var(--text-on-dark-2);
+  font-size: var(--text-sm);
+}
+.live-player__foot .btn {
+  min-height: 44px;
+}
+@media (max-width: 480px) {
+  .live-player {
+    border-radius: var(--radius-lg);
+  }
+  .live-player__state {
+    gap: var(--space-2);
+    padding: var(--space-4);
+  }
+  .live-player__state-text {
+    font-size: var(--text-base);
+  }
+  .live-player__state-sub {
+    font-size: var(--text-xs);
+  }
+  .live-player__foot .btn {
+    flex: 1 1 auto;
+  }
+}
+
+/* ── Details list ────────────────────────────────────────────────── */
+.live-meta-card {
+  padding: var(--space-5) var(--space-6);
+}
+.live-meta-card__eyebrow {
+  display: block;
+  margin-bottom: var(--space-4);
+  color: var(--accent-ink);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-bold);
+  letter-spacing: var(--tracking-caps);
+  text-transform: uppercase;
+}
+.live-meta {
+  display: grid;
+  gap: var(--space-3);
+  margin: 0;
+}
+.live-meta__row {
+  display: grid;
+  grid-template-columns: minmax(6.5rem, 8.5rem) minmax(0, 1fr);
+  gap: var(--space-3);
+  align-items: start;
+  padding-bottom: var(--space-3);
+  border-bottom: 1px solid var(--border-soft);
+}
+.live-meta__row:last-child {
+  padding-bottom: 0;
+  border-bottom: 0;
+}
+.live-meta__row dt {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  color: var(--text-3);
+  font-size: var(--text-sm);
+  line-height: 1.5;
+}
+.live-meta__row dt > svg {
+  flex-shrink: 0;
+  width: 1rem;
+  height: 1rem;
+  color: var(--accent-ink);
+}
+.live-meta__row dd {
+  margin: 0;
+  color: var(--text-1);
+  font-weight: var(--weight-medium);
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+.live-meta__sub {
+  display: block;
+  margin-top: 0.15rem;
+  color: var(--text-3);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-regular);
+}
+.live-meta-card__foot {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-top: var(--space-5);
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--border-soft);
+}
+.live-meta-card__foot .btn {
+  min-height: 44px;
+}
+@media (max-width: 480px) {
+  .live-meta-card {
+    padding: var(--space-4);
+  }
+  .live-meta__row {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0.15rem;
+  }
+}
+
+/* ── Upcoming card ───────────────────────────────────────────────── */
+.live-card {
+  display: flex;
+  flex-direction: column;
+  color: inherit;
+  text-decoration: none;
+}
+.live-card:focus-visible {
+  outline: 3px solid var(--saffron-500);
+  outline-offset: 3px;
+}
+.live-card__thumb {
+  position: relative;
+  width: 100%;
+  max-width: 100%;
+  aspect-ratio: 16 / 9;
+  overflow: hidden;
+  background: linear-gradient(160deg, var(--maroon-800) 0%, var(--ink-2) 72%);
+}
+/* A shade behind the badge so it reads on any photograph. */
+.live-card__thumb::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg, rgba(26, 6, 6, 0.55), transparent 55%);
+  pointer-events: none;
+}
+.live-card__thumb-img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transition: transform var(--transition-slow);
+}
+.live-card:hover .live-card__thumb-img {
+  transform: scale(1.04);
+}
+.live-card__emblem {
+  position: absolute;
+  inset: 0;
+  width: 26%;
+  max-width: 120px;
+  height: auto;
+  margin: auto;
+  opacity: 0.18;
+  filter: saturate(0);
+}
+.live-card__badge {
+  position: absolute;
+  top: var(--space-3);
+  left: var(--space-3);
+  z-index: 1;
+}
+.live-card__body {
+  display: grid;
+  gap: var(--space-2);
+  padding: var(--space-4) var(--space-5) var(--space-5);
+}
+.live-card__kind {
+  color: var(--accent-ink);
+  font-size: var(--text-2xs);
+  font-weight: var(--weight-bold);
+  letter-spacing: var(--tracking-caps);
+  text-transform: uppercase;
+}
+.live-card__title {
+  margin: 0;
+  color: var(--maroon-600);
+  font-family: var(--font-display);
+  font-size: var(--text-md);
+  line-height: 1.3;
+}
+:lang(ta) .live-card__title {
+  font-family: var(--font-tamil);
+  line-height: 1.45;
+}
+.live-card__line {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.4rem;
+  margin: 0;
+  color: var(--text-3);
+  font-size: var(--text-sm);
+  line-height: 1.5;
+}
+.live-card__line > svg {
+  flex-shrink: 0;
+  width: 0.95rem;
+  height: 0.95rem;
+  margin-top: 0.2em;
+  color: var(--accent-ink);
+}
+
+/* The day line and the short countdown a scheduled card carries (Phase 2). */
+.live-card__when {
+  font-variant-numeric: tabular-nums;
+}
+.live-card__soon {
+  justify-self: start;
+  margin-top: var(--space-1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .live-card__thumb-img {
+    transition: none;
+  }
+  .live-card:hover .live-card__thumb-img {
+    transform: none;
+  }
+}
+
+/* ══════════════════════════════════════════════════════════════════
+   Phase 2 (docs/live/SPEC-PHASE2.md §2.2): the countdown, the next-darshan
+   card, the LIVE NOW card and the schedule filters.
+   ══════════════════════════════════════════════════════════════════ */
+
+/* ── Countdown ───────────────────────────────────────────────────── */
+/* A small ink panel: the digits are the one bright thing in it. Nothing
+   pulses — the last five minutes only warm the border and the caption. */
+.live-countdown {
+  display: grid;
+  justify-items: center;
+  gap: var(--space-2);
+  padding: var(--space-4) var(--space-5);
+  border: 1px solid color-mix(in srgb, var(--gold-500) 38%, transparent);
+  border-radius: var(--radius-lg);
+  background:
+    radial-gradient(ellipse 70% 80% at 50% 0%, color-mix(in srgb, var(--gold-300) 24%, transparent), transparent 70%),
+    linear-gradient(160deg, var(--maroon-800) 0%, var(--ink-2) 100%);
+  color: var(--text-on-dark);
+  text-align: center;
+  box-shadow: var(--shadow-ink), var(--glass-ink-edge);
+}
+.live-countdown__caption,
+.live-countdown__started {
+  margin: 0;
+}
+.live-countdown__caption {
+  color: var(--gold-200);
+  font-size: var(--text-2xs);
+  font-weight: var(--weight-bold);
+  letter-spacing: var(--tracking-caps);
+  text-transform: uppercase;
+}
+.live-countdown__clock {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.35rem;
+  font-variant-numeric: tabular-nums;
+}
+.live-countdown__unit {
+  display: grid;
+  justify-items: center;
+  gap: 0.2rem;
+  min-width: 3.1ch;
+}
+.live-countdown__digits {
+  color: var(--text-on-dark);
+  font-family: var(--font-display);
+  font-size: var(--text-3xl);
+  font-weight: var(--weight-bold);
+  line-height: 1;
+}
+.live-countdown__label {
+  color: var(--text-on-dark-3);
+  font-size: var(--text-2xs);
+  font-weight: var(--weight-semibold);
+  letter-spacing: var(--tracking-caps);
+  text-transform: uppercase;
+}
+.live-countdown__sep {
+  padding-top: 0.05em;
+  color: var(--gold-300);
+  font-family: var(--font-display);
+  font-size: var(--text-2xl);
+  font-weight: var(--weight-bold);
+  line-height: 1;
+}
+.live-countdown__started {
+  color: var(--gold-200);
+  font-size: var(--text-lg);
+  font-weight: var(--weight-semibold);
+  line-height: var(--leading-snug);
+}
+.live-countdown--soon {
+  border-color: color-mix(in srgb, var(--danger) 55%, var(--gold-500));
+}
+.live-countdown--soon .live-countdown__caption {
+  color: var(--danger-on-dark);
+}
+/* The card-sized form: one pill, minutes only. */
+.live-countdown--compact {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.2rem 0.7rem;
+  border: 1px solid var(--danger-border);
+  border-radius: var(--radius-pill);
+  background: var(--danger-bg);
+  color: var(--danger);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-bold);
+  letter-spacing: 0.02em;
+  text-align: left;
+  box-shadow: none;
+}
+.live-countdown--compact::before {
+  content: "";
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+/* ── Next darshan card ───────────────────────────────────────────── */
+.live-next {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-areas:
+    "body clock"
+    "actions actions";
+  gap: var(--space-4) var(--space-6);
+  align-items: center;
+  padding: var(--space-5) var(--space-6);
+}
+.live-next__body {
+  grid-area: body;
+  display: grid;
+  gap: var(--space-2);
+  min-width: 0;
+}
+.live-next__countdown {
+  grid-area: clock;
+  min-width: 250px;
+}
+.live-next__actions {
+  grid-area: actions;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--border-soft);
+}
+.live-next__actions .btn {
+  min-height: 44px;
+}
+.live-next__eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  color: var(--accent-ink);
+  font-size: var(--text-2xs);
+  font-weight: var(--weight-bold);
+  letter-spacing: var(--tracking-caps);
+  text-transform: uppercase;
+}
+.live-next__eyebrow > svg {
+  width: 1rem;
+  height: 1rem;
+}
+.live-next__title {
+  margin: 0;
+  color: var(--maroon-700);
+  font-family: var(--font-display);
+  font-size: var(--text-xl);
+  line-height: 1.25;
+}
+:lang(ta) .live-next__title {
+  font-family: var(--font-tamil);
+  line-height: 1.4;
+}
+.live-next__when {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  margin: 0;
+  color: var(--text-1);
+  font-size: var(--text-md);
+  font-weight: var(--weight-semibold);
+  font-variant-numeric: tabular-nums;
+}
+.live-next__when > svg {
+  flex-shrink: 0;
+  width: 1.05rem;
+  height: 1.05rem;
+  color: var(--accent-ink);
+}
+.live-next__line {
+  margin: 0;
+  color: var(--text-3);
+  font-size: var(--text-sm);
+}
+.live-next__desc {
+  max-width: 60ch;
+  margin: var(--space-1) 0 0;
+  color: var(--text-2);
+  line-height: var(--leading-relaxed);
+  white-space: pre-line;
+}
+.live-next--compact {
+  padding: var(--space-4) var(--space-5);
+}
+.live-next--compact .live-next__title {
+  font-size: var(--text-lg);
+}
+
+/* ── LIVE NOW card ───────────────────────────────────────────────── */
+.live-now {
+  display: grid;
+  grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr);
+  padding: 0;
+  overflow: hidden;
+  border-radius: var(--radius-xl);
+  border-color: color-mix(in srgb, var(--danger) 40%, transparent);
+  background:
+    radial-gradient(ellipse 55% 85% at 100% 0%, color-mix(in srgb, var(--danger) 22%, transparent), transparent 64%),
+    linear-gradient(150deg, var(--bg-ink) 0%, var(--maroon-800) 58%, var(--bg-ink-2) 100%);
+}
+.live-now__thumb {
+  position: relative;
+  min-height: 100%;
+  aspect-ratio: 16 / 9;
+  overflow: hidden;
+  background: linear-gradient(160deg, var(--maroon-800) 0%, var(--ink-2) 72%);
+}
+.live-now__thumb-img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.live-now__emblem {
+  position: absolute;
+  inset: 0;
+  width: 26%;
+  max-width: 140px;
+  height: auto;
+  margin: auto;
+  opacity: 0.18;
+  filter: saturate(0);
+}
+.live-now__veil {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg, rgba(26, 6, 6, 0.45), transparent 55%);
+  pointer-events: none;
+}
+/* The one red pill on the site: solid, so it reads on any photograph. */
+.live-now__badge {
+  position: absolute;
+  top: var(--space-3);
+  left: var(--space-3);
+  z-index: 1;
+  border-color: color-mix(in srgb, var(--danger) 60%, var(--text-on-dark));
+  background: var(--danger);
+  color: var(--text-on-dark);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  box-shadow: 0 6px 18px color-mix(in srgb, var(--danger) 45%, transparent);
+}
+.live-now__body {
+  display: grid;
+  gap: var(--space-2);
+  align-content: center;
+  min-width: 0;
+  padding: var(--space-5) var(--space-6);
+}
+.live-now__eyebrow {
+  color: var(--gold-200);
+  font-size: var(--text-2xs);
+  font-weight: var(--weight-bold);
+  letter-spacing: var(--tracking-caps);
+  text-transform: uppercase;
+}
+.live-now__title {
+  margin: 0;
+  color: var(--text-on-dark);
+  font-family: var(--font-display);
+  font-size: var(--text-xl);
+  line-height: 1.25;
+}
+:lang(ta) .live-now__title {
+  font-family: var(--font-tamil);
+  line-height: 1.4;
+}
+.live-now__line {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.4rem;
+  margin: 0;
+  color: var(--text-on-dark-2);
+  font-size: var(--text-sm);
+  line-height: 1.5;
+}
+.live-now__line > svg {
+  flex-shrink: 0;
+  width: 0.95rem;
+  height: 0.95rem;
+  margin-top: 0.2em;
+  color: var(--gold-300);
+}
+.live-now__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  margin-top: var(--space-2);
+}
+.live-now__actions .btn {
+  min-height: 44px;
+}
+
+/* ── Schedule filters ────────────────────────────────────────────── */
+.live-filters .tab {
+  min-height: 44px;
+  padding-inline: 1.05rem;
+}
+
+@media (max-width: 820px) {
+  .live-next {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas:
+      "body"
+      "clock"
+      "actions";
+  }
+  .live-next__countdown {
+    width: 100%;
+    min-width: 0;
+  }
+  .live-now {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .live-now__thumb {
+    min-height: 0;
+  }
+}
+@media (max-width: 480px) {
+  .live-next,
+  .live-next--compact {
+    padding: var(--space-4);
+  }
+  .live-next__actions .btn,
+  .live-now__actions .btn {
+    flex: 1 1 auto;
+  }
+  .live-countdown__digits {
+    font-size: var(--text-2xl);
+  }
+  .live-countdown__sep {
+    font-size: var(--text-xl);
+  }
+  .live-now__body {
+    padding: var(--space-4);
+  }
+}

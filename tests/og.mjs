@@ -53,7 +53,15 @@ async function preview(path, { ua = UNFURLER, lang } = {}) {
 /* ── 1. The renderer ──────────────────────────────────────────────────────── */
 section("api/og.php");
 
-const ROUTES = ["/", "/about", "/sevas", "/events", "/gallery", "/donations", "/contact", "/panchangam"];
+const ROUTES = [
+  "/", "/about", "/sevas", "/events", "/gallery", "/donations", "/contact", "/panchangam",
+  // Online payments (docs/payments/SPEC.md §7.1): the donate page and the four policies.
+  "/donate", "/privacy-policy", "/terms-and-conditions", "/refund-cancellation-policy", "/shipping-delivery-policy",
+  // Live Darshan (docs/live/SPEC-PHASE1.md §4.6): the page's preview comes from site_pages.php.
+  "/live-darshan",
+  // The schedule (docs/live/SPEC-PHASE2.md §1.3): static strings, so no fixture can change them.
+  "/live-darshan/schedule",
+];
 const seen = new Map();
 
 for (const path of ROUTES) {

@@ -94,6 +94,29 @@ if ($path === '/registrations') {
     exit;
 }
 
+// Online payments (docs/payments/SPEC.md §5.5). Matched for every method:
+// payments.php answers 405s itself, and the CCAvenue return routes answer a
+// redirect or plain text rather than JSON, catching their own errors.
+if (preg_match('#^/payments/(config|donations|seva-bookings|retry|status|receipt|receipt-email|verify|ccavenue/response|ccavenue/cancel|ccavenue/notify|simulator|simulator/api)$#', $path, $payMatch)) {
+    $payRoute = $payMatch[1];
+    require __DIR__ . '/payments.php';
+    exit;
+}
+if (str_starts_with($path, '/payments/')) sendError('Not found', 404);
+if ($path === '/payments-cron') { require __DIR__ . '/payments_cron.php'; exit; }
+
+// Live darshan (docs/live/SPEC-PHASE1.md §4.3, SPEC-PHASE2.md §1.1). Public
+// reads go to live_streams.php with $liveRoute ('index', 'live', 'upcoming',
+// 'schedule', an id or a slug — the named routes are listed before the slug
+// branch and are reserved slugs, so a stream can never shadow one); it answers
+// 405 for anything but GET/HEAD. The committee's JSON API under /admin/ uses
+// the admin session and answers 401/403 as JSON, never a redirect. Anything
+// else under either prefix is not a route.
+if (preg_match('#^/live-streams(?:/(live|upcoming|schedule|[0-9]{1,10}|[a-z0-9][a-z0-9-]{1,118}))?$#', $path, $liveMatch)) { $liveRoute = $liveMatch[1] ?? 'index'; require __DIR__ . '/live_streams.php'; exit; }
+if (str_starts_with($path, '/live-streams/')) sendError('Not found', 404);
+if (preg_match('#^/admin/live-streams(?:/([0-9]{1,10}))?$#', $path, $liveAdminMatch)) { $liveAdminId = isset($liveAdminMatch[1]) ? (int) $liveAdminMatch[1] : null; require __DIR__ . '/admin_live_streams.php'; exit; }
+if (str_starts_with($path, '/admin/')) sendError('Not found', 404);
+
 $routes = [
     'GET'  => [
         '/announcements'   => 'announcements.php',

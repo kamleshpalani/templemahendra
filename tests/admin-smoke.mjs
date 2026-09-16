@@ -12,6 +12,11 @@ const PAGES = only.length
      "devotees.php", "devotees.php?status=duplicates&sort=name&dir=asc", "devotees.php?edit=999999999",
      "seva_bookings.php", "donations.php", "contact_messages.php",
      "notifications.php", "notification_templates.php", "notification_segments.php", "notification_analytics.php",
+     // Online payments (docs/payments/SPEC.md §10): every tab, the gateway settings and the categories.
+     "payments.php", "payments.php?view=transactions", "payments.php?view=refunds", "payments.php?view=reconcile",
+     "payments.php?number=DON-20990101-00000001", "payment_settings.php", "donation_categories.php",
+     // Live Darshan (docs/live/SPEC-PHASE1.md §4.5): the list, the live chip and an unknown stream id.
+     "live_streams.php", "live_streams.php?f=live", "live_streams.php?edit=999999999",
      "bulk_upload.php", "settings.php", "users.php", "profile.php"];
 const BAD = /(<b>Warning<\/b>|<b>Fatal error<\/b>|<b>Deprecated<\/b>|<b>Notice<\/b>|Parse error|Uncaught|Stack trace)/;
 const XFF = process.env.SMOKE_XFF ? { "X-Forwarded-For": process.env.SMOKE_XFF } : {};

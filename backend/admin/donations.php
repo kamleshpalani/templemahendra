@@ -16,11 +16,21 @@
 // rows; every change is written to the activity log so it can be accounted for
 // if a donor asks why their name was published. Before migration 008 the
 // column, the filter and the actions are simply not offered.
+//
+// Online giving (migration 010): a donation is either a pledge (`source =
+// 'pledge'`, the promise made on the website or imported from a book) or money
+// actually paid through CCAvenue (`source = 'online'`). Both are listed here,
+// but only pledges and online donations that really succeeded are counted in
+// the KPIs and the purpose shares, and always net of anything refunded — an
+// abandoned or failed payment is not money. An online row is opened in Online
+// Payments, which owns its receipt, its attempts and its refunds. Before
+// migration 010 the columns, the filter and the column are simply not offered.
 require_once __DIR__ . '/../includes/auth.php';
 requireAdminAuth();
 require_once __DIR__ . '/../includes/db.php';
 require_once __DIR__ . '/../includes/devotee_notify.php';
 require_once __DIR__ . '/../includes/public_guard.php';
+require_once __DIR__ . '/../includes/payments.php';
 require_once __DIR__ . '/includes/admin_layout.php';
 
 $db      = getDB();
@@ -30,6 +40,20 @@ $perPage = 25;
 // Viewers see the flag but can only read and export.
 $hasListFlag = publicGuardHasColumn('donations', 'show_name_publicly');
 $canList     = $hasListFlag && adminCan('content.edit');
+
+// Whether online payments are installed (every new column checked, so a
+// half-applied migration cannot break the page).
+$hasPayCols = publicGuardHasColumn('donations', 'source')
+    && publicGuardHasColumn('donations', 'status')
+    && publicGuardHasColumn('donations', 'donation_number')
+    && publicGuardHasColumn('donations', 'amount_refunded')
+    && publicGuardHasColumn('donations', 'currency');
+$canPayments = $hasPayCols && adminCan('payments.view');
+
+// Money that really arrived: every pledge, plus online donations that succeeded,
+// counted net of refunds. Used by the KPIs, the filtered total and the shares.
+$countableSql = $hasPayCols ? "(source = 'pledge' OR status IN ('SUCCESS','PARTIALLY_REFUNDED'))" : '1';
+$netAmountSql = $hasPayCols ? '(amount - amount_refunded)' : 'amount';
 
 /** Purpose values used by the public Donations form → admin labels. */
 $purposeLabels = [
@@ -41,6 +65,19 @@ $purposeLabels = [
     'maintenance'    => 'Temple Maintenance',
     'other'          => 'Other',
 ];
+// Donation categories (migration 010) name the purposes now; the map above
+// still labels pledges given to a purpose that no category covers.
+if ($hasPayCols) {
+    try {
+        $categoryLabels = [];
+        foreach ($db->query('SELECT slug, name_en FROM donation_categories ORDER BY sort_order, id')->fetchAll() as $c) {
+            $categoryLabels[(string) $c['slug']] = (string) $c['name_en'];
+        }
+        if ($categoryLabels) $purposeLabels = $categoryLabels + $purposeLabels;
+    } catch (Throwable $e) {
+        error_log('[donations] donation categories unavailable: ' . $e->getMessage());
+    }
+}
 $purposeTones = ['gold', 'maroon', 'moon', 'sage', 'info', 'warning', 'danger'];
 $sortCols     = ['created_at' => 'created_at', 'amount' => 'amount', 'name' => 'name'];
 
@@ -108,6 +145,12 @@ function donationsSendReceipt(PDO $db, int $id, string $actor): array
     $stmt->execute([':id' => $id]);
     $d = $stmt->fetch();
     if (!$d) return ['error', "Donation #$id no longer exists."];
+    // An online donation has its own receipt number, its own tokenised receipt
+    // page and its own resend button in Online Payments; the pledge receipt
+    // would give the donor a second, different number for the same money.
+    if (($d['source'] ?? 'pledge') === 'online') {
+        return ['error', 'This donation was paid online. Open it in Online Payments to send its receipt again.'];
+    }
 
     $receipt  = devoteeReceiptNumber($id);
     $sequence = (donationsReceiptCounts($db, [$id])[$id] ?? 0) + 1;
@@ -251,11 +294,13 @@ $validDate = static function (string $s): string {
 };
 
 $listedLabels = ['shown' => 'Shown', 'hidden' => 'Not shown'];
+$sourceLabels = ['pledge' => 'Pledges', 'online' => 'Paid online'];
 
 $q       = $str('q');
 $purpose = $str('purpose');
 if (!isset($purposeLabels[$purpose])) $purpose = '';
 $listed  = $hasListFlag && isset($listedLabels[$str('listed')]) ? $str('listed') : '';
+$source  = $hasPayCols && isset($sourceLabels[$str('source')]) ? $str('source') : '';
 $fromRaw = $str('from');
 $toRaw   = $str('to');
 $from    = $validDate($fromRaw);
@@ -267,8 +312,8 @@ $sort    = isset($sortCols[$str('sort')]) ? $str('sort') : 'created_at';
 $dir     = $str('dir') === 'asc' ? 'asc' : 'desc';
 $page    = max(1, (int) $str('page'));
 
-$query      = ['q' => $q, 'purpose' => $purpose, 'listed' => $listed, 'from' => $from, 'to' => $to, 'sort' => $sort, 'dir' => $dir];
-$hasFilters = $q !== '' || $purpose !== '' || $listed !== '' || $from !== '' || $to !== '';
+$query      = ['q' => $q, 'purpose' => $purpose, 'listed' => $listed, 'source' => $source, 'from' => $from, 'to' => $to, 'sort' => $sort, 'dir' => $dir];
+$hasFilters = $q !== '' || $purpose !== '' || $listed !== '' || $source !== '' || $from !== '' || $to !== '';
 
 $where  = [];
 $params = [];
@@ -289,6 +334,10 @@ if ($purpose === 'other') {
 if ($listed !== '') {
     $where[] = 'show_name_publicly = ' . ($listed === 'shown' ? '1' : '0');
 }
+if ($source !== '') {
+    $where[] = 'source = :source';
+    $params[':source'] = $source;
+}
 if ($from !== '') {
     $where[] = 'created_at >= :from_at';
     $params[':from_at'] = $from . ' 00:00:00';
@@ -300,10 +349,11 @@ if ($to !== '') {
 $whereSql = $where ? ' WHERE ' . implode(' AND ', $where) : '';
 $orderSql = ' ORDER BY ' . $sortCols[$sort] . ' ' . strtoupper($dir) . ', id ' . strtoupper($dir);
 $listCol  = $hasListFlag ? ', show_name_publicly' : '';
+$payCols  = $hasPayCols ? ', source, status, donation_number, currency, category_id, amount_refunded' : '';
 
 // ── CSV export (report) — respects the active filters and sort ──────────────
 if ($str('export') === 'csv') {
-    $stmt = $db->prepare('SELECT id, name, phone, amount, purpose, message' . $listCol . ', created_at FROM donations' . $whereSql . $orderSql);
+    $stmt = $db->prepare('SELECT id, name, phone, amount, purpose, message' . $listCol . ', created_at' . $payCols . ' FROM donations' . $whereSql . $orderSql);
     $stmt->execute($params);
     header('Content-Type: text/csv; charset=utf-8');
     header('Content-Disposition: attachment; filename="donations-' . date('Y-m-d') . '.csv"');
@@ -311,30 +361,48 @@ if ($str('export') === 'csv') {
     fwrite($out, "\xEF\xBB\xBF"); // BOM so Excel reads Tamil correctly
     // Empty escape string = strict RFC 4180 (quotes doubled, no backslash special
     // case) so a message containing \" is not mis-parsed by Excel / pandas.
+    // The online columns are appended after the existing ones, so a spreadsheet
+    // or script that reads this export by position keeps working.
     $head = ['id', 'name', 'phone', 'amount', 'purpose', 'message'];
     if ($hasListFlag) $head[] = 'show_name_publicly';
     $head[] = 'created_at';
+    if ($hasPayCols) array_push($head, 'source', 'status', 'donation_number', 'currency', 'category');
     fputcsv($out, $head, ',', '"', '');
     while ($r = $stmt->fetch()) {
         $line = [$r['id'], $r['name'], $r['phone'], $r['amount'], $r['purpose'], $r['message']];
         if ($hasListFlag) $line[] = (int) $r['show_name_publicly'];
         $line[] = $r['created_at'];
-        fputcsv($out, $line, ',', '"', '');
+        if ($hasPayCols) {
+            array_push(
+                $line,
+                (string) $r['source'],
+                (string) ($r['status'] ?? ''),
+                (string) ($r['donation_number'] ?? ''),
+                (string) ($r['currency'] ?? ''),
+                (string) ($purposeLabels[(string) ($r['purpose'] ?? '')] ?? '')
+            );
+        }
+        fputcsv($out, array_map('payCsvCell', $line), ',', '"', '');
     }
     fclose($out);
     exit;
 }
 
-// ── KPIs (all time) ──────────────────────────────────────────────────────────
-$agg = $db->query('SELECT COUNT(*) c, COALESCE(SUM(amount),0) total, COALESCE(AVG(amount),0) avg_amt, COALESCE(MAX(amount),0) max_amt, MIN(created_at) first_at FROM donations')->fetch();
+// ── KPIs (all time; only money that really arrived) ──────────────────────────
+$agg = $db->query("SELECT COUNT(*) c, COALESCE(SUM({$netAmountSql}),0) total, COALESCE(AVG({$netAmountSql}),0) avg_amt,
+                          COALESCE(MAX({$netAmountSql}),0) max_amt, MIN(created_at) first_at
+                     FROM donations WHERE {$countableSql}")->fetch();
 $countAll = (int) $agg['c'];
 $totalAll = (float) $agg['total'];
 $avgAll   = (float) $agg['avg_amt'];
 $maxAll   = (float) $agg['max_amt'];
-$monthRow = $db->query("SELECT COUNT(*) c, COALESCE(SUM(amount),0) total FROM donations WHERE created_at >= DATE_FORMAT(CURDATE(), '%Y-%m-01')")->fetch();
+$monthRow = $db->query("SELECT COUNT(*) c, COALESCE(SUM({$netAmountSql}),0) total FROM donations
+                         WHERE {$countableSql} AND created_at >= DATE_FORMAT(CURDATE(), '%Y-%m-01')")->fetch();
 $monthSum = (float) $monthRow['total'];
 $monthCnt = (int) $monthRow['c'];
-$prevSum  = (float) $db->query("SELECT COALESCE(SUM(amount),0) FROM donations WHERE created_at >= DATE_FORMAT(DATE_SUB(CURDATE(), INTERVAL 1 MONTH), '%Y-%m-01') AND created_at < DATE_FORMAT(CURDATE(), '%Y-%m-01')")->fetchColumn();
+$prevSum  = (float) $db->query("SELECT COALESCE(SUM({$netAmountSql}),0) FROM donations
+                                 WHERE {$countableSql} AND created_at >= DATE_FORMAT(DATE_SUB(CURDATE(), INTERVAL 1 MONTH), '%Y-%m-01')
+                                   AND created_at < DATE_FORMAT(CURDATE(), '%Y-%m-01')")->fetchColumn();
 
 $delta = null;
 $deltaDown = false;
@@ -347,28 +415,30 @@ if ($prevSum > 0) {
 }
 
 // ── Filtered list + totals ───────────────────────────────────────────────────
-$fstmt = $db->prepare('SELECT COUNT(*) c, COALESCE(SUM(amount),0) total FROM donations' . $whereSql);
+// The count is every row the filters match; the money is only what arrived.
+$fstmt = $db->prepare("SELECT COUNT(*) c, COALESCE(SUM(CASE WHEN {$countableSql} THEN {$netAmountSql} ELSE 0 END),0) total FROM donations" . $whereSql);
 $fstmt->execute($params);
 $filtered      = $fstmt->fetch();
 $filteredCount = (int) $filtered['c'];
 $filteredSum   = (float) $filtered['total'];
 
-$result = adminPaginate($db, 'SELECT id, name, phone, amount, purpose, message' . $listCol . ', created_at FROM donations' . $whereSql . $orderSql, $params, $page, $perPage);
+$result = adminPaginate($db, 'SELECT id, name, phone, amount, purpose, message' . $listCol . ', created_at' . $payCols . ' FROM donations' . $whereSql . $orderSql, $params, $page, $perPage);
 $rows   = $result['rows'];
 
 // Receipts already sent for the rows on this page, so the action can say so.
 $canReceipt   = adminCan('devotees.edit') && devoteeNotifyReady();
 $receiptsSent = $canReceipt ? donationsReceiptCounts($db, array_map(static fn(array $r): int => (int) $r['id'], $rows)) : [];
 
-// Donations by purpose over the same filtered set
-$pstmt = $db->prepare("SELECT COALESCE(NULLIF(purpose,''),'other') p, SUM(amount) total, COUNT(*) c FROM donations" . $whereSql . ' GROUP BY p ORDER BY total DESC');
+// Donations by purpose over the same filtered set (money that arrived only)
+$pstmt = $db->prepare("SELECT COALESCE(NULLIF(purpose,''),'other') p, SUM({$netAmountSql}) total, COUNT(*) c FROM donations"
+    . ($whereSql !== '' ? $whereSql . " AND {$countableSql}" : " WHERE {$countableSql}") . ' GROUP BY p ORDER BY total DESC');
 $pstmt->execute($params);
 $purposeShares = [];
 foreach ($pstmt->fetchAll() as $i => $p) {
     $purposeShares[] = [
         'label' => $purposeLabels[$p['p']] ?? ucfirst((string) $p['p']),
         'value' => (float) $p['total'],
-        'hint'  => adminFmtMoney((float) $p['total']) . ' · ' . (int) $p['c'] . ' pledge' . ((int) $p['c'] === 1 ? '' : 's'),
+        'hint'  => adminFmtMoney((float) $p['total']) . ' · ' . (int) $p['c'] . ' donation' . ((int) $p['c'] === 1 ? '' : 's'),
         'tone'  => $purposeTones[$i % count($purposeTones)],
     ];
 }
@@ -402,15 +472,19 @@ adminHeader('Donations', 'Devotees', [
 ]);
 echo $msg;
 echo adminPageIntro(
-    'Pledges submitted through the public Donations page and bulk imports. Search, filter by purpose or date, sort the columns, and export exactly what you see as CSV.',
+    $hasPayCols
+        ? 'Pledges from the public Donations page and bulk imports, together with donations paid online through CCAvenue. The figures count pledges and successful online payments only, net of refunds — a failed or abandoned payment is not money.'
+        : 'Pledges submitted through the public Donations page and bulk imports. Search, filter by purpose or date, sort the columns, and export exactly what you see as CSV.',
     '<a href="' . h($exportHref) . '" class="btn btn-primary btn--sm">' . adminIcon('download') . ($hasFilters ? 'Export filtered CSV' : 'Export CSV') . '</a>'
+    . ($canPayments ? '<a href="/admin/payments.php" class="btn btn--sm">' . adminIcon('landmark') . 'Online Payments</a>' : '')
 );
 
+$noun = $hasPayCols ? 'donation' : 'pledge';
 echo adminKpi([
-    ['label' => 'Total recorded', 'value' => adminFmtMoney($totalAll), 'icon' => 'banknote', 'variant' => 'accent', 'sub' => $countAll . ' pledge' . ($countAll === 1 ? '' : 's') . ' all time'],
-    ['label' => 'This month',     'value' => adminFmtMoney($monthSum), 'icon' => 'trending', 'delta' => $delta, 'deltaDown' => $deltaDown, 'sub' => $monthCnt . ' pledge' . ($monthCnt === 1 ? '' : 's') . ' this month'],
-    ['label' => 'Pledges',        'value' => $countAll,                 'icon' => 'clipboard', 'sub' => $agg['first_at'] ? 'Since ' . adminFmtDate($agg['first_at']) : 'None recorded yet'],
-    ['label' => 'Average pledge', 'value' => adminFmtMoney($avgAll),   'icon' => 'activity', 'sub' => $maxAll > 0 ? 'Largest ' . adminFmtMoney($maxAll) : 'No pledges yet'],
+    ['label' => 'Total recorded', 'value' => adminFmtMoney($totalAll), 'icon' => 'banknote', 'variant' => 'accent', 'sub' => $countAll . ' ' . $noun . ($countAll === 1 ? '' : 's') . ' all time'],
+    ['label' => 'This month',     'value' => adminFmtMoney($monthSum), 'icon' => 'trending', 'delta' => $delta, 'deltaDown' => $deltaDown, 'sub' => $monthCnt . ' ' . $noun . ($monthCnt === 1 ? '' : 's') . ' this month'],
+    ['label' => ucfirst($noun) . 's', 'value' => $countAll,             'icon' => 'clipboard', 'sub' => $agg['first_at'] ? 'Since ' . adminFmtDate($agg['first_at']) : 'None recorded yet'],
+    ['label' => 'Average ' . $noun, 'value' => adminFmtMoney($avgAll),  'icon' => 'activity', 'sub' => $maxAll > 0 ? 'Largest ' . adminFmtMoney($maxAll) : 'None recorded yet'],
 ]);
 ?>
 
@@ -431,6 +505,16 @@ echo adminKpi([
         <?php endforeach; ?>
       </select>
     </label>
+    <?php if ($hasPayCols): ?>
+    <label for="f-source">Source
+      <select id="f-source" name="source">
+        <option value="">Pledges and online</option>
+        <?php foreach ($sourceLabels as $val => $label): ?>
+          <option value="<?= h($val) ?>"<?= $source === $val ? ' selected' : '' ?>><?= h($label) ?></option>
+        <?php endforeach; ?>
+      </select>
+    </label>
+    <?php endif; ?>
     <?php if ($hasListFlag): ?>
     <label for="f-listed">Thank-you list
       <select id="f-listed" name="listed">
@@ -452,7 +536,7 @@ echo adminKpi([
       <a href="donations.php" class="btn btn-ghost btn--sm"><?= adminIcon('x') ?> Reset</a>
     <?php endif; ?>
   </div>
-  <span class="toolbar__count"><?= $filteredCount ?> record<?= $filteredCount === 1 ? '' : 's' ?> · <?= adminFmtMoney($filteredSum) ?></span>
+  <span class="toolbar__count"><?= $filteredCount ?> record<?= $filteredCount === 1 ? '' : 's' ?> · <?= adminFmtMoney($filteredSum) ?><?= $hasPayCols ? ' received' : '' ?></span>
 </form>
 
 <nav class="filter-chips mb-4" aria-label="Quick date ranges">
@@ -475,6 +559,7 @@ echo adminKpi([
         <?= adminSortLink('name', 'Devotee', $query) ?>
         <?= adminSortLink('amount', 'Amount', $query) ?>
         <th scope="col">Purpose</th>
+        <?php if ($hasPayCols): ?><th scope="col">Payment</th><?php endif; ?>
         <th scope="col">Message</th>
         <?php if ($hasListFlag): ?><th scope="col">Thank-you list</th><?php endif; ?>
         <?= adminSortLink('created_at', 'Date', $query) ?>
@@ -491,12 +576,20 @@ echo adminKpi([
         $pLabel  = $pKey !== '' ? ($purposeLabels[$pKey] ?? $pKey) : '';
         $message = (string) ($row['message'] ?? '');
         $shown   = $hasListFlag && (int) $row['show_name_publicly'] === 1;
+        $isOnline = $hasPayCols && (string) ($row['source'] ?? 'pledge') === 'online';
+        $payNumber = $isOnline ? (string) ($row['donation_number'] ?? '') : '';
         $greet   = 'வணக்கம் ' . $row['name'] . ', நன்றி! Thank you for your donation pledge of ' . adminFmtMoney((float) $row['amount'], 2)
                  . ($pLabel !== '' ? ' towards ' . $pLabel : '') . ' to Dhabbalavaar Renuka Devi Temple.';
         $menu    = [];
         if ($tel !== '') $menu[] = ['label' => 'Call', 'href' => 'tel:' . $tel, 'icon' => 'phone'];
         if ($wa !== '')  $menu[] = ['label' => 'WhatsApp', 'href' => 'https://wa.me/' . $wa . '?text=' . rawurlencode($greet), 'icon' => 'external'];
-        if ($canReceipt) {
+        // An online donation's receipt, attempts and refunds live in Online
+        // Payments; this page never sends a second receipt number for it.
+        if ($isOnline && $canPayments && $payNumber !== '') {
+            if ($menu) $menu[] = 'divider';
+            $menu[] = ['label' => 'Open payment', 'icon' => 'landmark', 'href' => '/admin/payments.php?number=' . rawurlencode($payNumber)];
+        }
+        if ($canReceipt && !$isOnline) {
             $sentCount = $receiptsSent[$id] ?? 0;
             if ($menu) $menu[] = 'divider';
             $menu[] = [
@@ -530,6 +623,25 @@ echo adminKpi([
         </td>
         <td class="cell-money"><?= adminFmtMoney((float) $row['amount'], 2) ?></td>
         <td><?= $pLabel !== '' ? adminBadge($pLabel, 'gold') : '<span class="text-muted">—</span>' ?></td>
+        <?php if ($hasPayCols): ?>
+        <td>
+          <?php if ($isOnline): ?>
+            <?= adminBadge('Online', 'gold') ?> <?= adminBadge(payStatusLabel((string) $row['status']), payStatusTone((string) $row['status'])) ?>
+            <?php if ($payNumber !== ''): ?>
+              <?php if ($canPayments): ?>
+                <a class="cell-sub tabular" href="/admin/payments.php?number=<?= rawurlencode($payNumber) ?>"><?= h($payNumber) ?></a>
+              <?php else: ?>
+                <span class="cell-sub tabular"><?= h($payNumber) ?></span>
+              <?php endif; ?>
+            <?php endif; ?>
+            <?php if ((float) ($row['amount_refunded'] ?? 0) > 0): ?>
+              <span class="cell-sub">−<?= adminFmtMoney((float) $row['amount_refunded'], 2) ?> refunded</span>
+            <?php endif; ?>
+          <?php else: ?>
+            <?= adminBadge('Pledge', 'muted') ?>
+          <?php endif; ?>
+        </td>
+        <?php endif; ?>
         <td><?= $message !== '' ? '<span class="cell-clip">' . h($message) . '</span>' : '<span class="text-muted">—</span>' ?></td>
         <?php if ($hasListFlag): ?><td><?= $shown ? adminBadge('Shown', 'success') : adminBadge('Not shown', 'muted') ?></td><?php endif; ?>
         <td class="cell-date"><time datetime="<?= h($row['created_at']) ?>"><?= adminFmtDate($row['created_at'], true) ?></time></td>
