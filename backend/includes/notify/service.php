@@ -245,6 +245,15 @@ function notifyCreate(array $n): array
         $recipient = notifyGuestRecipient($toEmail, $toPhone);
         if (!empty($n['_test'])) $recipient['test'] = true;
     }
+    if (($n['entity_type'] ?? null) === 'live_subscription') {
+        if ($category !== 'live_reminders' || ($n['event'] ?? null) !== 'live.reminder') {
+            return notifyEmptyResult('invalid live reminder');
+        }
+        $recipient = liveSubscriptionRecipient(
+            (int) ($n['entity_id'] ?? 0), (string) $toEmail, (string) ($n['vars']['scheduledStart'] ?? '')
+        );
+        if ($recipient === null) return notifyEmptyResult('live subscription unavailable');
+    }
     if (is_string($n['name'] ?? null) && trim($n['name']) !== '') {
         $recipient['name'] = sanitizeText($n['name'], 200);
     }

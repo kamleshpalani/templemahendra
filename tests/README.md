@@ -163,6 +163,15 @@ change its status, run SQL, `sync` — one `liveCronRun()` with the given ids,
 creating any live fixture: its `/live-darshan` comparison holds only while no
 broadcast is live or upcoming (the schedule page's strings are static).
 
+## Live email reminders
+
+After migration 013, run `node tests/live-subscriptions.mjs` with the MySQL
+environment. It starts PHP on 8086 (`LIVE_SUBS_PORT` overrides it), uses the
+notification test driver, and removes only its uniquely named fixtures.
+It covers public validation, duplicate/privacy behavior, consent, unsubscribe,
+queue/delivery eligibility, rescheduling and flood buckets. Test-driver
+acceptance does not prove real email delivery.
+
 ## Design-system check
 
 Not in this folder because it needs no running server:
