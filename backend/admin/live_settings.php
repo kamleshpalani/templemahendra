@@ -260,6 +260,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         try {
             $changed = liveSettingsSaveMany($db, $changes, $actor);
+            // Re-check against what is actually stored now: a save that raced
+            // another one may have left Live on without a usable credential.
+            if ($mode === 'live' && liveAutomationTier() < 1) {
+                liveSettingsSaveMany($db, ['mode' => 'off'], $actor);
+                $changed = array_values(array_diff($changed, ['mode']));
+                $errors[] = 'Live needs a YouTube API key, or a working OAuth client ID, client secret and refresh token, before it can be chosen.';
+            }
             $saved = $changed ? count($changed) . ' setting' . (count($changed) === 1 ? '' : 's') . ' saved (' . implode(', ', $changed) . ').' : 'Nothing changed.';
             if ($errors) {
                 liveSetFlash('warning', $saved . ' Not everything could be applied: ' . implode(' ', array_unique($errors)));
