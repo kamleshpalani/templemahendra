@@ -77,6 +77,7 @@ $liveAdminTarget = isset($liveAdminId) && $liveAdminId !== null ? (int) $liveAdm
 $liveAdminMethod = strtoupper((string) ($_SERVER['REQUEST_METHOD'] ?? 'GET'));
 
 // ── Who is asking ───────────────────────────────────────────────────────────
+adminRevalidateSession();
 if (empty($_SESSION['admin_logged_in'])) liveAdminJson(['error' => 'Sign in to the admin first', 'code' => 'unauthenticated'], 401);
 if (!empty($_SESSION['admin_must_change'])) liveAdminJson(['error' => 'Choose a new password on your profile page first.', 'code' => 'password_change'], 403);
 

@@ -268,6 +268,7 @@ export default function Layout() {
               end={to === "/"}
               tabIndex={menuOpen ? 0 : -1}
               style={{ "--i": i }}
+              onClick={closeMenu}
               className={({ isActive }) => "drawer__link" + (isActive ? " drawer__link--active" : "")}
             >
               <span className="drawer__icon" aria-hidden="true">
@@ -329,7 +330,7 @@ export default function Layout() {
           >
             <LuPhone aria-hidden="true" /> {t("கோயிலை அழைக்க", "Call Temple")}
           </a>
-          <NavLink to="/sevas" className="btn btn-primary btn--block" tabIndex={menuOpen ? 0 : -1}>
+          <NavLink to="/sevas" className="btn btn-primary btn--block" tabIndex={menuOpen ? 0 : -1} onClick={closeMenu}>
             <LuSparkles aria-hidden="true" /> {t("சேவை பதிவு", "Book a Seva")}
           </NavLink>
         </div>

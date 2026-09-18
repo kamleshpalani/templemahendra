@@ -36,6 +36,7 @@ $ncIsJson = ($ncMethod === 'POST' && in_array($ncAction, ['estimate', 'preview']
 
 // The same policy requireAdminAuth() applies, answered in JSON.
 if ($ncIsJson) {
+    adminRevalidateSession();
     if (empty($_SESSION['admin_logged_in'])) ncJson(['error' => 'Your session has ended. Sign in again, then try once more.', 'code' => 'unauthenticated'], 401);
     if (!empty($_SESSION['admin_must_change'])) ncJson(['error' => 'Choose a new password on your profile page first.', 'code' => 'password_change'], 403);
     if (!adminCan('notifications.compose')) ncJson(['error' => 'Your role can read notifications but not compose them.', 'code' => 'forbidden'], 403);

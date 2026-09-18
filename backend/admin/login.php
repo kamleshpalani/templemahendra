@@ -29,6 +29,7 @@ $username = '';
 $reason = $_GET['reason'] ?? '';
 if ($reason === 'signed_out') $notice = 'You have been signed out. Nandri.';
 if ($reason === 'expired')    $notice = 'Your session expired. Please sign in again.';
+if ($reason === 'revoked')    $notice = 'Your account was disabled or changed. Please sign in again.';
 
 // Simple per-session throttle: 5 failures -> 60s cool-down
 $fails   = (int) ($_SESSION['login_fails'] ?? 0);

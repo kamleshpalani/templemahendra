@@ -27,6 +27,7 @@ $nsAction = $nsMethod === 'POST' && is_string($_POST['action'] ?? null) ? $_POST
 $nsIsJson = ($nsMethod === 'POST' && $nsAction === 'estimate') || ($nsMethod === 'GET' && isset($_GET['devotee_search']));
 
 if ($nsIsJson) {
+    adminRevalidateSession();
     if (empty($_SESSION['admin_logged_in'])) nsJson(['error' => 'Your session has ended. Sign in again, then try once more.', 'code' => 'unauthenticated'], 401);
     if (!empty($_SESSION['admin_must_change'])) nsJson(['error' => 'Choose a new password on your profile page first.', 'code' => 'password_change'], 403);
     if (!adminCan('notifications.compose')) nsJson(['error' => 'Your role can read audiences but not change them.', 'code' => 'forbidden'], 403);
