@@ -871,6 +871,10 @@ function liveShapePublic(array $row): array
         'thumbnail_url'    => $provider->thumbnailUrl($row),
         'banner_url'       => liveSafeUrl($row['banner_url'] ?? null),
         'playback'         => $provider->playback($row),
+        // The only 012 column the public sees (SPEC-PHASE4 Decision 2): YouTube's
+        // figure as returned, while LIVE and while the last good check is recent.
+        'viewers'          => $status === 'LIVE' && isset($row['viewer_count']) && liveFresh($row['last_sync_ok_at'] ?? null, LIVE_VIEWERS_FRESH_SECONDS)
+            ? (int) $row['viewer_count'] : null,
         'flags'            => [
             'featured'       => !empty($row['is_featured']),
             'showOnHomepage' => !empty($row['show_on_homepage']),

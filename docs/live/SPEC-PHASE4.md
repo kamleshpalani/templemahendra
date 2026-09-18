@@ -26,11 +26,14 @@ Decisions (settled):
    that says reminders are coming and offers the schedule link. No endpoint,
    no email field, nothing stored.
 4. **Donate is a link**, not a payment flow: `/donate?stream=<slug>` when
-   `flags.donations` is set and payments are usable. Phase 7 makes the donate
+   `flags.donations` is set and payments are usable — `usePaymentsConfig()`
+   (module-cached, one `/api/payments/config` fetch per page load) says
+   `enabled` and is neither loading nor failed. Phase 7 makes the donate
    page read `?stream=`; Phase 4 only sends it. Until then the parameter is
    ignored by `Donate.jsx` (it already ignores unknown params).
-5. **No new fetches.** The page keeps the two hooks it has (`useLiveOverview`,
-   `useStream`); the viewer count arrives with the same poll the badge uses.
+5. **No new live fetches.** The page keeps the two live hooks it has
+   (`useLiveOverview`, `useStream`) plus `usePaymentsConfig()` for Donate; the
+   viewer count arrives with the same poll the badge uses.
 
 ## 1. Backend — one key
 
@@ -50,8 +53,15 @@ Tests: `PUBLIC_KEYS` in `tests/live-api.mjs` and the two pinned key lists in
 `tests/live-unit.php` gain `viewers`; `PRIVATE_KEYS` is unchanged
 (`viewer_count` — the column name — stays out of every response). New checks:
 `viewers` is an int on a LIVE row with a fresh `last_sync_ok_at`, `null` on
-the same row 6 minutes stale, `null` on STARTING/COMPLETED, and absent from
-the schedule item (`SCHEDULE_KEYS` is not widened).
+the same row 6 minutes stale, `null` on STARTING/COMPLETED. Because
+`liveShapeSchedule()` extends the public shape, the schedule item (and the
+index route's `now` / `next`) carries `viewers` too; `SCHEDULE_KEYS` follows
+`PUBLIC_KEYS`. `liveFresh()` rejects an instant in the future as well as one
+older than `$seconds`.
+
+Known limit (Phase 3 §5.5): `viewer_count` is frozen when YouTube omits
+`concurrentViewers` while `last_sync_ok_at` still advances, so a figure the
+provider stopped reporting can stay visible until the stream leaves LIVE.
 
 ## 2. Frontend
 
@@ -70,9 +80,10 @@ is **not** announced (only status changes speak, as today).
 The component already renders SCHEDULED / STARTING / LIVE / COMPLETED /
 OFFLINE / ERROR / CANCELLED. Phase 4 adds:
 
-- **COMPLETED with `playback`**: the poster gets a "Watch the recording"
-  button that mounts the iframe (same attributes as live). Without a playable
-  reference the existing "This darshan has ended" poster stays.
+- **COMPLETED with `flags.archive` and a playable `playback`**: the poster
+  gets a "Watch the recording" button that mounts the iframe (same attributes
+  as live). Without both, the existing "This darshan has ended" poster stays
+  (`recording_url` remains private; Phase 8 owns archive pages).
 - **OFFLINE / ERROR**: a "Try again" button that calls the hook's `refresh`.
 - Every state keeps the 16:9 box, one `<figure>`, one `figcaption` with the
   state sentence, no layout shift when the iframe mounts.

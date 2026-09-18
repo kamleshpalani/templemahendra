@@ -49,3 +49,4 @@ require_once __DIR__ . '/notify/queue.php';
 require_once __DIR__ . '/notify/audience.php';
 require_once __DIR__ . '/notify/campaigns.php';
 require_once __DIR__ . '/notify/reminders.php';
+require_once __DIR__ . '/live.php';

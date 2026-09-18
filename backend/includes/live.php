@@ -20,7 +20,7 @@ require_once __DIR__ . '/helpers.php';
 require_once __DIR__ . '/notify/contracts.php';   // notifyEnv(), notifyHttp(), notifyRedact()
 require_once __DIR__ . '/notify/time.php';        // notifyNow(), notifyIso(), notifyIsTimezone(), notifyToUtc(), notifyFromUtc()
 
-foreach (['config', 'time', 'settings', 'validate', 'media', 'providers', 'youtube', 'store', 'poll', 'admin'] as $liveModule) {
+foreach (['config', 'time', 'settings', 'validate', 'media', 'providers', 'youtube', 'store', 'poll', 'subscriptions', 'admin'] as $liveModule) {
     require_once __DIR__ . '/live/' . $liveModule . '.php';
 }
 unset($liveModule);

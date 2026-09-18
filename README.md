@@ -485,6 +485,13 @@ homepage block. There are no YouTube API calls in either phase — no keys to
 configure, and nothing that can expire. Every rule is in
 `docs/live/SPEC-PHASE1.md` and `docs/live/SPEC-PHASE2.md`.
 
+Email reminders additionally require `013_live_subscriptions.sql`, configured
+notification email, and `bin/notify_worker.php` running every minute (the
+existing notification cron). “Notify me” records consent for one broadcast
+without an account. It queues a reminder near the scheduled start, with a
+signed unsubscribe link. Unsubscribing is final for that broadcast; reposting
+an email cannot undo it. See `docs/live/SPEC-PHASE6.md`.
+
 Needs migration `011_live_streams.sql` (it seeds the temple and its three
 deities). Until it is applied the admin page says so and the public page
 shows that nothing is scheduled.
