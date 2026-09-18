@@ -411,14 +411,17 @@ IP" — record it as a manual refund after making it in the CCAvenue dashboard.
 ```
 */10 * * * *  /usr/bin/php /home/<account>/domains/<site>/public_html/bin/payments_cron.php
 *    * * * *  /usr/bin/php /home/<account>/domains/<site>/public_html/bin/notify_worker.php
+*    * * * *  /usr/bin/php /home/<account>/domains/<site>/public_html/bin/live_cron.php
 ```
 
 The first re-checks open and unverified payments with CCAvenue, closes attempts
 that never reached the gateway and expires unpaid seva holds. The second sends
-the receipts and payment messages — without it nothing is emailed. A host
-without CLI cron can call `GET /api/payments-cron` every 10 minutes and
-`GET /api/notify-cron` every minute with the key in an `X-Cron-Key` header;
-each endpoint answers 404 until its `*_CRON_KEY` is set.
+the receipts and payment messages — without it nothing is emailed. The third
+follows the temple's YouTube broadcasts (see *Live Darshan → The scheduled
+job*). A host without CLI cron can call `GET /api/payments-cron` every 10
+minutes, and `GET /api/notify-cron` and `GET /api/live-cron` every minute,
+with the key in an `X-Cron-Key` header; each endpoint answers 404 until its
+`*_CRON_KEY` is set.
 
 ### Local development: the simulator
 
@@ -626,13 +629,47 @@ empty page and the homepage tile. The handle in it (`@TempleMahendra`) is a
 **placeholder that must be confirmed** with the committee — it is one line to
 change.
 
-### What the later phases add
+### The scheduled job (phase 3: YouTube automation)
 
-Phase 3 talks to the YouTube Data API (the keys already listed in
-`backend/.env.example`) so a stream's status follows YouTube automatically
-through a cron job; later phases add reminders through the notification
-service, an archive of past broadcasts, per-stream share previews and other
-providers (the `provider` field, the Vimeo and AWS IVS placeholders and the
+With migration `012_live_automation.sql` applied, a YouTube Data API key (or
+OAuth client) saved on **Admin → YouTube Automation** and its mode set to
+*Live*, the site follows YouTube by itself: a stream whose video is about to
+start becomes **Starting soon**, one that is broadcasting becomes **Live**
+(with `actual_start_at`), and one whose broadcast has ended becomes
+**Completed** (with `actual_end_at` and, when the row keeps its archive, the
+watch link in `recording_url`). Each of the three moves has its own switch on
+that page; a status set by hand is never undone (a backwards move pauses the
+row's automation instead), and a video that does not match the row's date is
+left alone with a warning. The rules are in `docs/live/SPEC-PHASE3.md` §5–6.
+
+```
+*  * * * *  /usr/bin/php /home/<account>/domains/<site>/public_html/bin/live_cron.php
+```
+
+Run it **every minute**: the job itself decides which rows are due (a live
+broadcast is checked about every minute, an upcoming one every few minutes,
+nothing at all when no stream is scheduled), so an idle run costs no API
+quota. Runs never overlap — the job takes the MySQL advisory lock
+`temple_live_cron` and a second copy exits at once with `locked: true`. It
+reads `--limit=N` (rows per run, 1–200, default 50), `--max-seconds=N`
+(1–300, default 50), `--stream-ids=1,2`, `--dry-run` (calls YouTube, changes
+nothing) and `--json`; it exits 0 when there is nothing to do, automation is
+off or another run holds the lock, and 1 only for a real error (migration
+011 missing, the database down, the run itself failing).
+
+A host without CLI cron calls `GET /api/live-cron` every minute with the key in
+an `X-Cron-Key` header (`?key=` also works, but headers stay out of access
+logs). Set `LIVE_CRON_KEY` to at least 24 random characters — until then the
+route answers 404; a wrong key answers 403 and thirty wrong keys an hour lock
+the route for that address. The HTTP answer carries only the counts
+(`checked`, `changed`, `started`, `ended`, `errors`, `skipped`, `locked`); the
+per-stream detail is on the CLI and on the admin pages (**Run a check now** on
+YouTube Automation, **Check now** on a stream). Neither the CLI, the endpoint
+nor the error log ever prints a key, a token or a provider URL with one in it.
+
+Later phases add reminders through the notification service, an archive of
+past broadcasts, per-stream share previews and other providers (the
+`provider` field, the Vimeo and AWS IVS placeholders and the
 `StreamingProvider` interface are already in place for that).
 
 ---
