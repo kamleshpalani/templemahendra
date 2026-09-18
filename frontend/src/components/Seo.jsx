@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import { Helmet } from "react-helmet-async";
 import { useLocation } from "react-router-dom";
 import { useLang } from "../context/LangContext";
@@ -36,6 +37,28 @@ import { absoluteUrl, siteOrigin } from "../lib/share";
 export const SHARE_IMAGE_FALLBACK = TEMPLE.photoSrc;
 export const SHARE_IMAGE_LAST_RESORT = "/icons/icon-512x512.png";
 
+function usePreviewImage(image) {
+  const preferred = image || SHARE_IMAGE_FALLBACK || SHARE_IMAGE_LAST_RESORT;
+  const remote = /^https:\/\//i.test(preferred);
+  const [resolved, setResolved] = useState(null);
+  useEffect(() => {
+    if (remote) return;
+    let active = true;
+    const candidates = [...new Set([preferred, SHARE_IMAGE_FALLBACK, SHARE_IMAGE_LAST_RESORT].filter(Boolean))];
+    const probe = new Image();
+    const next = () => {
+      const candidate = candidates.shift();
+      if (!active || !candidate) return;
+      probe.onload = () => { if (active) setResolved({ preferred, url: candidate }); };
+      probe.onerror = next;
+      probe.src = absoluteUrl(candidate);
+    };
+    next();
+    return () => { active = false; probe.onload = null; probe.onerror = null; };
+  }, [preferred, remote]);
+  return absoluteUrl(remote ? preferred : resolved?.preferred === preferred ? resolved.url : SHARE_IMAGE_LAST_RESORT);
+}
+
 export default function Seo({
   title,
   description,
@@ -62,7 +85,7 @@ export default function Seo({
   // The query string stays in: on /search it is what is on screen, and it is
   // what the visitor expects the link they share to reopen.
   const url = siteOrigin() + (canonicalPath ?? pathname + (search || ""));
-  const preview = absoluteUrl(image || SHARE_IMAGE_FALLBACK || SHARE_IMAGE_LAST_RESORT);
+  const preview = usePreviewImage(image);
 
   return (
     <Helmet>
