@@ -826,7 +826,7 @@ try {
     /* ── 8. Shapes ───────────────────────────────────────────────────────── */
     section('8. liveShapePublic and liveShapeAdmin (§4.3, §4.4)');
     $publicKeys = ['id', 'slug', 'title_ta', 'title_en', 'description_ta', 'description_en', 'event_type', 'event_type_label', 'provider', 'status', 'is_live',
-                   'temple', 'deity', 'scheduled_start_at', 'scheduled_end_at', 'actual_start_at', 'actual_end_at', 'timezone', 'local', 'thumbnail_url', 'banner_url', 'playback', 'flags'];
+                   'temple', 'deity', 'scheduled_start_at', 'scheduled_end_at', 'actual_start_at', 'actual_end_at', 'timezone', 'local', 'thumbnail_url', 'banner_url', 'playback', 'viewers', 'flags'];
     sort($publicKeys);
     $pubLive = liveShapePublic($row($idLive));
     eq(keysOf($pubLive), $publicKeys, 'the public shape has exactly the §4.3 keys');
@@ -859,6 +859,22 @@ try {
     eq($pubLive['flags'], ['featured' => true, 'showOnHomepage' => true, 'donations' => true, 'notifications' => true, 'sharing' => true, 'archive' => true], 'flags are booleans keyed as the contract says');
     eq($pubLive['provider'], 'youtube', 'provider');
     eq($pubLive['status'], 'LIVE', 'status');
+
+    // SPEC-PHASE4 §1: the viewer count is public only while LIVE and fresh.
+    $fresh = liveUtcNow();
+    $stale = date('Y-m-d H:i:s', strtotime($fresh . ' UTC') - 360);
+    $withViewers = static fn(array $r, ?int $n, ?string $okAt): array => array_replace($r, ['viewer_count' => $n, 'last_sync_ok_at' => $okAt]);
+    eq(liveShapePublic($withViewers($row($idLive), 42, $fresh))['viewers'], 42, 'viewers is the figure as returned on a LIVE row with a fresh last_sync_ok_at');
+    eq(liveShapePublic($withViewers($row($idLive), 0, $fresh))['viewers'], 0, 'a returned zero is shown as zero');
+    eq(liveShapePublic($withViewers($row($idLive), 42, $stale))['viewers'], null, '…null when the last good check is 6 minutes old');
+    eq(liveShapePublic($withViewers($row($idLive), 42, null))['viewers'], null, '…null when there was never a good check');
+    eq(liveShapePublic($withViewers($row($idLive), null, $fresh))['viewers'], null, '…null when YouTube gave no figure (never zero-filled)');
+    eq(liveShapePublic($withViewers($row($idStarting), 42, $fresh))['viewers'], null, '…null on STARTING');
+    eq(liveShapePublic($withViewers($row($idA), 42, $fresh))['viewers'], null, '…null on SCHEDULED');
+    $rowNo012 = $row($idLive);
+    unset($rowNo012['viewer_count'], $rowNo012['last_sync_ok_at']);
+    eq(liveShapePublic($rowNo012)['viewers'], null, '…null on a database without migration 012');
+    ok(!array_key_exists('viewer_count', $pubLive) && !array_key_exists('last_sync_ok_at', $pubLive), 'the 012 column names themselves stay private');
     ok(is_string($pubLive['title_ta']) && is_string($pubLive['title_en']) && is_string($pubLive['slug']), 'titles and slug are strings');
     $adminShape = liveShapeAdmin($row($idLive));
     $adminKeys = array_merge($publicKeys, ['created_by', 'updated_by', 'created_at', 'updated_at', 'deleted_at', 'provider_broadcast_id', 'playback_url_raw', 'temple_id', 'deity_id']);

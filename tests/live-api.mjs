@@ -71,10 +71,10 @@ const EMBED = (id) => `https://www.youtube-nocookie.com/embed/${id}?rel=0&playsi
 const WATCH = (id) => `https://www.youtube.com/watch?v=${id}`;
 const THUMB = (id) => `https://i.ytimg.com/vi/${id}/hqdefault.jpg`;
 const PUBLIC_KEYS = ["id", "slug", "title_ta", "title_en", "description_ta", "description_en", "event_type", "event_type_label", "provider", "status", "is_live",
-  "temple", "deity", "scheduled_start_at", "scheduled_end_at", "actual_start_at", "actual_end_at", "timezone", "local", "thumbnail_url", "banner_url", "playback", "flags"].sort();
+  "temple", "deity", "scheduled_start_at", "scheduled_end_at", "actual_start_at", "actual_end_at", "timezone", "local", "thumbnail_url", "banner_url", "playback", "viewers", "flags"].sort();
 const ADMIN_KEYS = [...PUBLIC_KEYS, "created_by", "updated_by", "created_at", "updated_at", "deleted_at", "provider_broadcast_id", "playback_url_raw", "temple_id", "deity_id"].sort();
 const ADMIN_TOLERATED_EXTRAS = ["thumbnail_url_raw"];
-const PRIVATE_KEYS = ["provider_stream_id", "created_by", "updated_by", "deleted_at", "temple_id", "deity_id", "provider_broadcast_id", "playback_url", "created_at", "updated_at", "recording_url"];
+const PRIVATE_KEYS = ["provider_stream_id", "viewer_count", "last_sync_ok_at", "sync_error", "next_sync_at", "created_by", "updated_by", "deleted_at", "temple_id", "deity_id", "provider_broadcast_id", "playback_url", "created_at", "updated_at", "recording_url"];
 const ISO_Z = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/;
 const XSS = '"><script>alert(1)</script>';
 
@@ -336,6 +336,17 @@ try {
   check(liveItem?.scheduled_start_at === utcIso(F.live.scheduled_start_at) && liveItem?.actual_start_at === utcIso(F.live.actual_start_at) && liveItem?.actual_end_at === null && ISO_Z.test(liveItem?.scheduled_end_at ?? ""), "instants are the stored UTC times as ISO-8601 Z, null when unset", show([liveItem?.scheduled_start_at, liveItem?.actual_start_at, liveItem?.actual_end_at]));
   check(liveItem?.timezone === "Asia/Kolkata" && liveItem?.local?.date === istLocal(-60).slice(0, 10) && liveItem?.local?.start_time === istLocal(-60).slice(11, 16) && liveItem?.local?.end_time === istLocal(60).slice(11, 16), "local is the IST wall clock {date, start_time, end_time}", show(liveItem?.local));
   check(JSON.stringify(liveItem?.flags) === JSON.stringify({ featured: true, showOnHomepage: true, donations: true, notifications: true, sharing: true, archive: true }), "flags are booleans keyed featured, showOnHomepage, donations, notifications, sharing, archive", show(liveItem?.flags));
+  check(liveItem?.viewers === null, "viewers is null when YouTube has not reported a figure (SPEC-PHASE4 §1)", show(liveItem?.viewers));
+
+  section("1a′. viewers (SPEC-PHASE4 §1): public only while LIVE and fresh");
+  const viewersOf = async (id) => (await pub(`/api/live-streams/${id}`)).data?.stream?.viewers;
+  sql("UPDATE live_streams SET viewer_count = 42, last_sync_ok_at = UTC_TIMESTAMP() WHERE id IN (?, ?)", [F.live.id, F.starting.id]);
+  check((await viewersOf(F.live.id)) === 42, "a LIVE row with viewer_count 42 and a fresh last_sync_ok_at answers viewers 42", show(await viewersOf(F.live.id)));
+  check((await viewersOf(F.starting.id)) === null, "…the STARTING row with the same columns answers null");
+  sql("UPDATE live_streams SET last_sync_ok_at = UTC_TIMESTAMP() - INTERVAL 6 MINUTE WHERE id = ?", [F.live.id]);
+  check((await viewersOf(F.live.id)) === null, "…and null once the last good check is 6 minutes old");
+  sql("UPDATE live_streams SET viewer_count = NULL, last_sync_ok_at = NULL WHERE id IN (?, ?)", [F.live.id, F.starting.id]);
+  check((await viewersOf(F.live.id)) === null, "…and null again with no figure (never zero-filled)");
 
   section("1b. GET /api/live-streams/live");
   r = await pub("/api/live-streams/live");

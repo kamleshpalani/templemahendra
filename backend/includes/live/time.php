@@ -71,6 +71,14 @@ function liveIso(?string $utc): ?string
     return notifyIso($utc);
 }
 
+/** True when a stored UTC time parses and is no more than $seconds before now. */
+function liveFresh(?string $utc, int $seconds): bool
+{
+    if ($utc === null || trim($utc) === '') return false;
+    $ts = strtotime($utc . ' UTC');
+    return $ts !== false && strtotime(liveUtcNow() . ' UTC') - $ts <= $seconds;
+}
+
 /**
  * The wall-clock date and time of a UTC instant in a zone, as the admin form
  * shows them: ['date' => 'Y-m-d', 'time' => 'H:i'], both null for a null instant.
