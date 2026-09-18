@@ -19,6 +19,7 @@
  *   mock.tokensIssued    access tokens /token has issued
  *   mock.setVideo(id, { … })          field-by-field overrides (below); a later call merges into an earlier one
  *   mock.failNext(id, times, scenario) the id's next `times` videos.list requests answer as `scenario`, then normally
+ *   mock.beforeAnswer = async (record) => {}  awaited with each request's record before the mock answers it (null: none)
  *   await mock.close()
  *
  * Scenarios are chosen by the LAST FOUR characters of the video id (SPEC-PHASE3
@@ -147,6 +148,7 @@ export async function startYoutubeMock({ port, host = "127.0.0.1", apiKey = null
     /** id → { times, scenario } armed by failNext(). */
     failures: new Map(),
     tokensIssued: 0,
+    beforeAnswer: null,
   };
   /** Access tokens this mock issued → the instant (ms) each stops being accepted. */
   const tokens = new Map();
@@ -430,6 +432,7 @@ export async function startYoutubeMock({ port, host = "127.0.0.1", apiKey = null
     };
     mock.requests.push(record);
     try {
+      if (typeof mock.beforeAnswer === "function") await mock.beforeAnswer(record);
       if (req.method === "GET" && url.pathname === "/__health") return text(res, 200, "ok");
       if (url.pathname === "/oembed") return req.method === "GET" ? handleOembed(req, res, query) : text(res, 405, "Method not allowed", { Allow: "GET" });
       if (url.pathname === "/youtube/v3/videos" || url.pathname === "/youtube/v3/liveBroadcasts") {

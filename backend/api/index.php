@@ -104,6 +104,7 @@ if (preg_match('#^/payments/(config|donations|seva-bookings|retry|status|receipt
 }
 if (str_starts_with($path, '/payments/')) sendError('Not found', 404);
 if ($path === '/payments-cron') { require __DIR__ . '/payments_cron.php'; exit; }
+if ($path === '/live-cron') { require __DIR__ . '/live_cron.php'; exit; }
 
 // Live darshan (docs/live/SPEC-PHASE1.md §4.3, SPEC-PHASE2.md §1.1). Public
 // reads go to live_streams.php with $liveRoute ('index', 'live', 'upcoming',
