@@ -199,7 +199,9 @@ function notifyAudienceNormalize(array|string $rules): array
 /** One rule's value, checked and canonicalised for its field. */
 function notifyAudienceValue(string $field, mixed $value, int $n, string $label): mixed
 {
-    $fail = static fn(string $why): never => throw new InvalidArgumentException("Rule {$n} ({$label}): {$why}");
+    $fail = static function (string $why) use ($n, $label): never {
+        throw new InvalidArgumentException("Rule {$n} ({$label}): {$why}");
+    };
     $list = static function (mixed $v) use ($fail): array {
         if (is_string($v)) $v = array_map('trim', explode(',', $v));
         if (!is_array($v)) $fail('choose at least one value.');
