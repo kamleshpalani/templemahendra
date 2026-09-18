@@ -77,6 +77,12 @@ function payTransitionAllowed(string $from, string $to, string $verification = '
 function payCreateDonation(PDO $db, array $values, array $cfg, string $ip): array
 {
     return payTransaction($db, function (PDO $db) use ($values, $cfg, $ip): array {
+        $streamId = null;
+        if (($values['stream'] ?? '') !== '') {
+            if (!liveDonationsExist($db)) throw new LiveDonationsNotReady('Apply live donations migration 014.');
+            $streamId = liveDonationStreamId($db, $values['stream'], true);
+            if ($streamId === null) throw new LiveDonationUnavailable();
+        }
         $db->prepare(
             "INSERT INTO donations
                 (source, name, phone, phone_country, email, country, address_line, city, state, postcode, pan,
@@ -107,6 +113,10 @@ function payCreateDonation(PDO $db, array $values, array $cfg, string $ip): arra
             ':show'     => $values['show_name_publicly'] ? 1 : 0,
         ]);
         $id = (int) $db->lastInsertId();
+        if ($streamId !== null) {
+            $db->prepare('UPDATE donations SET live_stream_id = :stream WHERE id = :id')
+               ->execute([':stream' => $streamId, ':id' => $id]);
+        }
         $number = payNumberFor('donation', $id, payIstDate());
         $db->prepare('UPDATE donations SET donation_number = :n WHERE id = :id')->execute([':n' => $number, ':id' => $id]);
 
@@ -318,6 +328,7 @@ function payLoadPayableById(PDO $db, string $type, int $id, bool $lock = false):
         $attempts = payAttemptsFor($db, 'donation', (int) $r['id']);
         return [
             'type'               => 'donation',
+            'live_stream_id'      => isset($r['live_stream_id']) ? (int) $r['live_stream_id'] : null,
             'id'                 => (int) $r['id'],
             'number'             => (string) $r['donation_number'],
             'status'             => $r['status'],

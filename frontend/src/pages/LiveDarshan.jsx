@@ -12,6 +12,7 @@ import LivePlayer from "../components/Live/LivePlayer";
 import LiveStatusBadge from "../components/Live/LiveStatusBadge";
 import NextDarshanCard from "../components/Live/NextDarshanCard";
 import StreamActions from "../components/Live/StreamActions";
+import StreamDonations from "../components/Live/StreamDonations";
 import StreamCard from "../components/Live/StreamCard";
 import StreamMeta from "../components/Live/StreamMeta";
 import { useLang } from "../context/LangContext";
@@ -273,6 +274,7 @@ export default function LiveDarshan() {
                   </p>
                 </section>
                 <StreamMeta stream={stream} lang={lang} t={t} />
+                <StreamDonations key={stream.id} stream={stream} lang={lang} t={t} />
               </aside>
             </div>
           )}

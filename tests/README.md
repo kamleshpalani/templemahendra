@@ -172,6 +172,15 @@ It covers public validation, duplicate/privacy behavior, consent, unsubscribe,
 queue/delivery eligibility, rescheduling and flood buckets. Test-driver
 acceptance does not prove real email delivery.
 
+## Stream-linked donations
+
+After migration 014, run `node tests/live-donations.mjs` with the MySQL
+environment. It starts PHP on 8088 (`LIVE_DONATIONS_PORT` overrides it).
+Owned fixtures cover stream validation, checkout attribution, retry and
+validation/write races, separate-currency totals, production/test separation,
+callback replay, partial/full refunds and public privacy. The fixture state
+transitions are local only; no real money moves.
+
 ## Design-system check
 
 Not in this folder because it needs no running server:

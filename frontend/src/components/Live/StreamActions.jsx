@@ -28,7 +28,7 @@ export default function StreamActions({ stream, lang, t }) {
   const slug = stream?.slug ?? "";
   const title = streamTitle(stream, lang);
 
-  const donate = Boolean(flags.donations) && Boolean(slug) && !payments.loading && !payments.error && paymentsUsable(payments.config);
+  const donate = Boolean(flags.donations) && Boolean(slug) && stream.status !== "CANCELLED" && !payments.loading && !payments.error && paymentsUsable(payments.config);
   const remind = Boolean(flags.notifications) && (stream?.status === "SCHEDULED" || stream?.status === "STARTING");
   const share = Boolean(flags.sharing) && Boolean(slug);
 

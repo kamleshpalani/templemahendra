@@ -765,6 +765,15 @@ sign-in. If nobody can sign in, update `ADMIN_PASS_HASH` in the hosting panel.
 
 ---
 
+## Stream-linked donations
+
+Apply `database/migrations/014_live_donations.sql` after the preceding
+migrations. The Live Darshan Donate button carries the stream into checkout.
+Admin payment details link back to that stream. Public totals include only
+successful production payments, once per donation, less completed refunds;
+test/simulator payments are excluded and currencies are shown separately.
+See `docs/live/SPEC-PHASE7.md`.
+
 ## Security Notes
 
 - Admin is protected by PHP session auth with `password_verify()` (bcrypt)

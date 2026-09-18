@@ -26,6 +26,7 @@
  */
 
 require_once __DIR__ . '/../includes/live.php';
+require_once __DIR__ . '/../includes/payments.php';
 
 ini_set('display_errors', '0');
 ini_set('log_errors', '1');
@@ -136,5 +137,11 @@ $liveRow = preg_match('/^[0-9]{1,10}$/', $liveRouteName)
     : liveLoadBySlug($liveDb, $liveRouteName);
 if ($liveRow === null || !in_array((string) $liveRow['status'], LIVE_PUBLIC_STATUSES, true) || $liveRow['deleted_at'] !== null) {
     liveApiNotFound();
+}
+if (!empty($liveDonations)) {
+    header('Cache-Control: no-store');
+    if (liveDonationStreamId($liveDb, $liveRow['slug']) === null) liveApiNotFound();
+    if (!liveDonationsExist($liveDb)) sendError('Donations are unavailable.', 503);
+    sendJson(['totals' => liveDonationTotals($liveDb, (int) $liveRow['id']), 'server_time' => $liveServerTime]);
 }
 sendJson(['stream' => liveShapePublic($liveRow), 'server_time' => $liveServerTime]);
