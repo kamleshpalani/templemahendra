@@ -26,6 +26,7 @@
  */
 
 require_once __DIR__ . '/../includes/live.php';
+require_once __DIR__ . '/../includes/payments.php';
 
 ini_set('display_errors', '0');
 ini_set('log_errors', '1');
@@ -56,6 +57,36 @@ $liveIsVolatile = $liveRouteName === 'index' || $liveRouteName === 'live';
 header('Cache-Control: ' . ($liveIsVolatile ? 'no-store, private' : ($liveRouteName === 'schedule' ? 'public, max-age=30' : 'public, max-age=60')));
 
 $liveServerTime = liveIso(liveUtcNow());
+if ($liveRouteName === 'archive') {
+    $type = $_GET['event_type'] ?? '';
+    $month = $_GET['month'] ?? '';
+    $page = $_GET['page'] ?? '1';
+    if (!is_string($type) || ($type !== '' && !isset(LIVE_EVENT_TYPES[$type]))
+        || !is_string($month) || ($month !== '' && !preg_match('/^(?:19|[2-9][0-9])[0-9]{2}-(?:0[1-9]|1[0-2])$/D', $month))
+        || substr($month, 0, 4) === '9999'
+        || !is_string($page) || !preg_match('/^[1-9][0-9]{0,4}$/D', $page) || (int) $page > 10000) {
+        header('Cache-Control: no-store');
+        sendError('Choose a valid event type, month and page (1–10000).', 422);
+    }
+    try {
+        $db = getDB();
+        $tz = liveTempleTz();
+        $from = $to = null;
+        if ($month !== '') {
+            $start = new DateTimeImmutable($month . '-01 00:00:00', new DateTimeZone($tz));
+            $from = $start->setTimezone(new DateTimeZone('UTC'))->format('Y-m-d H:i:s');
+            $to = $start->modify('+1 month')->setTimezone(new DateTimeZone('UTC'))->format('Y-m-d H:i:s');
+        }
+        $archive = liveTablesExist()
+            ? liveListArchive($db, $type, $from, $to, (int) $page)
+            : ['streams' => [], 'has_more' => false];
+        sendJson($archive + ['page' => (int) $page, 'event_types' => LIVE_EVENT_TYPES, 'timezone' => $tz, 'server_time' => $liveServerTime]);
+    } catch (Throwable $e) {
+        error_log('[live archive] ' . liveRedact($e->getMessage(), 300));
+        header('Cache-Control: no-store');
+        sendError('Recordings are temporarily unavailable.', 503);
+    }
+}
 $liveDb = liveTablesExist() ? getDB() : null;
 $liveTz = liveTempleTz();
 
@@ -136,5 +167,11 @@ $liveRow = preg_match('/^[0-9]{1,10}$/', $liveRouteName)
     : liveLoadBySlug($liveDb, $liveRouteName);
 if ($liveRow === null || !in_array((string) $liveRow['status'], LIVE_PUBLIC_STATUSES, true) || $liveRow['deleted_at'] !== null) {
     liveApiNotFound();
+}
+if (!empty($liveDonations)) {
+    header('Cache-Control: no-store');
+    if (liveDonationStreamId($liveDb, $liveRow['slug']) === null) liveApiNotFound();
+    if (!liveDonationsExist($liveDb)) sendError('Donations are unavailable.', 503);
+    sendJson(['totals' => liveDonationTotals($liveDb, (int) $liveRow['id']), 'server_time' => $liveServerTime]);
 }
 sendJson(['stream' => liveShapePublic($liveRow), 'server_time' => $liveServerTime]);

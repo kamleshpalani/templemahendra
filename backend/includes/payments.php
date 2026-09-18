@@ -20,6 +20,7 @@ require_once __DIR__ . '/public_guard.php';
 require_once __DIR__ . '/rate_limit.php';
 require_once __DIR__ . '/notify/contracts.php';   // notifyHttp(), notifyRedact(), notifyB64u()
 require_once __DIR__ . '/devotee_notify.php';     // devoteeNotifyEvent(), devoteeIntlPhone(), devoteeLangFromInput()
+require_once __DIR__ . '/live.php';
 
 foreach ([
     'money',

@@ -661,6 +661,13 @@ echo adminPageIntro(
           <?= $fieldError('playback_url') ?>
           <span class="field__hint">Filled automatically for YouTube; override only if needed.</span>
         </label>
+        <label for="recording_url">
+          <span class="field__label">Recording URL <span class="field__optional">optional</span></span>
+          <input id="recording_url" name="recording_url" type="text" maxlength="500" autocomplete="off" spellcheck="false"
+                 placeholder="YouTube recording link or video ID" value="<?= h($val('recording_url')) ?>"<?= $invalid('recording_url') ?> />
+          <?= $fieldError('recording_url') ?>
+          <span class="field__hint">Shown after completion when archive is enabled. The poller fills this when a recording is available. Clear it to remove the recording.</span>
+        </label>
         <div class="form-grid">
           <div class="field<?= isset($errors['thumbnail']) || isset($errors['thumbnail_url']) ? ' field--error' : '' ?>">
             <label for="thumbnail_url">
@@ -795,7 +802,7 @@ echo adminPageIntro(
             'donations_enabled'     => ['Enable donations', 'Show the donate button beside the player.'],
             'notifications_enabled' => ['Enable notifications', 'Allow reminders for this stream (later phase).'],
             'sharing_enabled'       => ['Enable sharing', 'Show the share button on the stream page.'],
-            'archive_enabled'       => ['Enable archive', 'Keep the recording in the archive after it ends (later phase).'],
+            'archive_enabled'       => ['Enable archive', 'Show the saved recording in the public archive after completion.'],
         ];
         foreach ($switches as $flag => [$label, $desc]):
             $on = $editing === null ? (bool) LIVE_FLAG_DEFAULTS[$flag] : $val($flag) === '1'; ?>

@@ -8,6 +8,7 @@ import {
   dayLabel,
   deityName,
   eventTypeLabel,
+  formatStreamDate,
   formatStreamTime,
   startsInSeconds,
   streamInstant,
@@ -26,13 +27,13 @@ const COUNTDOWN_WINDOW_SECONDS = 24 * 3600;
  * ("Today", "Tomorrow", or the weekday and date) with the time, and — for a
  * scheduled broadcast within the next day — a short countdown in minutes.
  */
-export default function StreamCard({ stream, lang, index = 0, serverOffset = 0 }) {
+export default function StreamCard({ stream, lang, index = 0, serverOffset = 0, recording = false }) {
   const { t } = useLang();
   const thumb = stream.thumbnail_url || stream.banner_url || null;
   const [broken, setBroken] = useState(false);
   const tz = stream.timezone || "Asia/Kolkata";
-  const when = streamInstant(stream);
-  const day = when ? dayLabel(stream, lang, serverOffset) : "";
+  const when = recording ? stream.actual_end_at || stream.scheduled_start_at : streamInstant(stream);
+  const day = when ? (recording ? formatStreamDate(when, lang, tz) : dayLabel(stream, lang, serverOffset)) : "";
   const time = formatStreamTime(when, lang, tz);
   const deity = deityName(stream, lang);
   const kind = eventTypeLabel(stream, lang);
@@ -71,7 +72,9 @@ export default function StreamCard({ stream, lang, index = 0, serverOffset = 0 }
         {soon && (
           <StreamCountdown compact startsAt={stream.scheduled_start_at} serverOffset={serverOffset} t={t} lang={lang} className="live-card__soon" />
         )}
-        <span className="sr-only">{t("விவரங்களைப் பார்க்க", "View details")}</span>
+        {recording
+          ? <span className="live-card__kind">{t("பதிவைப் பார்க்க", "Watch the recording")}</span>
+          : <span className="sr-only">{t("விவரங்களைப் பார்க்க", "View details")}</span>}
       </div>
     </Link>
   );

@@ -249,6 +249,10 @@ try {
         default:
             sendError('Not found', 404);
     }
+} catch (LiveDonationUnavailable $e) {
+    sendJson(['error' => 'This broadcast is not accepting donations.', 'fields' => ['stream' => 'Unavailable']], 422);
+} catch (LiveDonationsNotReady $e) {
+    sendJson(['error' => 'Stream donations are unavailable.', 'code' => 'unavailable'], 503);
 } catch (Throwable $e) {
     $ref = strtoupper(bin2hex(random_bytes(4)));
     error_log(sprintf('[payments %s] %s %s: %s: %s in %s:%d', $ref, $payMethod, $payRouteName, get_class($e), $e->getMessage(), $e->getFile(), $e->getLine()));

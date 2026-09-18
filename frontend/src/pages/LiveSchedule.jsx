@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import { LuCalendarDays, LuCalendarX, LuTv, LuYoutube } from "react-icons/lu";
+import { LuCalendarDays, LuCalendarX, LuTv, LuYoutube, LuVideo } from "react-icons/lu";
 import Seo from "../components/Seo";
 import PageHero from "../components/ui/PageHero";
 import Button from "../components/ui/Button";
@@ -184,6 +184,9 @@ export default function LiveSchedule() {
           <>
             <Button to="/live-darshan" variant="outline-light" size="sm" icon={<LuTv aria-hidden="true" />}>
               {t("நேரடி தரிசனம்", "Live darshan")}
+            </Button>
+            <Button to="/live-darshan/archive" variant="outline-light" size="sm" icon={<LuVideo aria-hidden="true" />}>
+              {t("தரிசனப் பதிவுகள்", "Recordings")}
             </Button>
             {/* What is shared is what is on screen: the chosen filter travels with the link (review fix O13). */}
             <ShareButton

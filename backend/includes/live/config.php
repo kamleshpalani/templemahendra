@@ -19,6 +19,9 @@ const LIVE_PUBLIC_STATUSES = ['SCHEDULED', 'STARTING', 'LIVE', 'COMPLETED', 'CAN
 /** "Live" for the player and the /live route. */
 const LIVE_LIVE_STATUSES = ['LIVE', 'STARTING'];
 
+/** How recent the last good provider check must be for the viewer count to be shown (SPEC-PHASE4 §1). */
+const LIVE_VIEWERS_FRESH_SECONDS = 300;
+
 /** key => [Tamil label, English label]. */
 const LIVE_EVENT_TYPES = [
     'live_darshan'  => ['நேரடி தரிசனம்',   'Live darshan'],

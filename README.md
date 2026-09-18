@@ -219,6 +219,16 @@ Upload via Hostinger File Manager or FTP:
 for f in database/migrations/*.sql; do mysql -u <user> -p <db> < "$f"; done
 ```
 
+### Live recordings archive (Phase 8)
+
+`/live-darshan/archive` lists completed recordings, with event-type and
+temple-local completion-month filters. In the stream editor, enable archive and
+save a YouTube recording URL (or let the scheduled poller fill it on completion).
+An ended stream without a recording stays off the archive. Clear the recording
+or disable archive to remove it and its detail-page playback. The existing
+recording column is in migration 011; automatic completion uses migration 012.
+No additional worker or migration is needed. See `docs/live/SPEC-PHASE8.md`.
+
 ### Step 4 — Environment variables
 
 Set via Hostinger hPanel → Advanced → PHP Config → Environment Variables,
@@ -484,6 +494,13 @@ and lists the upcoming ones. Phase 2 adds the schedule page
 homepage block. There are no YouTube API calls in either phase — no keys to
 configure, and nothing that can expire. Every rule is in
 `docs/live/SPEC-PHASE1.md` and `docs/live/SPEC-PHASE2.md`.
+
+Email reminders additionally require `013_live_subscriptions.sql`, configured
+notification email, and `bin/notify_worker.php` running every minute (the
+existing notification cron). “Notify me” records consent for one broadcast
+without an account. It queues a reminder near the scheduled start, with a
+signed unsubscribe link. Unsubscribing is final for that broadcast; reposting
+an email cannot undo it. See `docs/live/SPEC-PHASE6.md`.
 
 Needs migration `011_live_streams.sql` (it seeds the temple and its three
 deities). Until it is applied the admin page says so and the public page
@@ -764,6 +781,15 @@ link could not be delivered. Instead an owner issues a new password from
 sign-in. If nobody can sign in, update `ADMIN_PASS_HASH` in the hosting panel.
 
 ---
+
+## Stream-linked donations
+
+Apply `database/migrations/014_live_donations.sql` after the preceding
+migrations. The Live Darshan Donate button carries the stream into checkout.
+Admin payment details link back to that stream. Public totals include only
+successful production payments, once per donation, less completed refunds;
+test/simulator payments are excluded and currencies are shown separately.
+See `docs/live/SPEC-PHASE7.md`.
 
 ## Security Notes
 

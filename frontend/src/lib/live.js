@@ -647,6 +647,27 @@ export function useStream(slug) {
 const SCHEDULE_WATCH_MS = 15 * 60_000;
 const SCHEDULE_SLEEP_MAX_MS = 30 * 60_000;
 
+export function useArchive(eventType, month, page) {
+  const query = new URLSearchParams({ event_type: eventType, month, page: String(page) }).toString();
+  const [state, setState] = useState({ streams: [], hasMore: false, timezone: "Asia/Kolkata", loading: true, error: false });
+  const [attempt, setAttempt] = useState(0);
+  const refresh = useCallback(() => setAttempt((n) => n + 1), []);
+  useEffect(() => {
+    let cancelled = false;
+    setState((prev) => ({ ...prev, loading: true, error: false }));
+    getJson(`${INDEX_URL}/archive?${query}`).then((res) => {
+      if (cancelled) return;
+      if (res.ok && Array.isArray(res.body?.streams)) {
+        setState({ streams: res.body.streams.filter(isObject), hasMore: res.body.has_more === true, timezone: res.body.timezone, loading: false, error: false });
+      } else {
+        setState((prev) => ({ ...prev, streams: [], hasMore: false, loading: false, error: true }));
+      }
+    });
+    return () => { cancelled = true; };
+  }, [query, attempt]);
+  return { ...state, refresh };
+}
+
 /**
  * `{ streams, counts, window, filter, serverOffset, loading, error, refresh }`
  * for one schedule filter from `/api/live-streams/schedule?filter=`

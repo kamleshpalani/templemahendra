@@ -138,6 +138,12 @@ final class YouTubeProvider implements StreamingProvider
 
     public function playback(array $stream): array
     {
+        if (($stream['status'] ?? '') === 'COMPLETED') {
+            $id = !empty($stream['archive_enabled']) ? liveYoutubeId($stream['recording_url'] ?? null) : null;
+            return $id === null
+                ? ['kind' => 'none', 'embedUrl' => null, 'watchUrl' => null]
+                : ['kind' => 'iframe', 'embedUrl' => liveYoutubeEmbedUrl($id), 'watchUrl' => liveYoutubeWatchUrl($id)];
+        }
         $id = (string) ($stream['provider_broadcast_id'] ?? '');
         if (!preg_match(LIVE_YT_ID_RE, $id) || $id === 'live_stream') {
             return ['kind' => 'none', 'embedUrl' => null, 'watchUrl' => null];
