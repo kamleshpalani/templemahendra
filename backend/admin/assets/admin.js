@@ -149,7 +149,7 @@
         danger: !/^(approve|confirm|mark|save|import|activate)/i.test(label || ""),
       });
       if (!ok) return;
-      const form = btn.closest("form");
+      const form = btn.form || btn.closest("form");
       if (form) {
         btn.classList.add("btn--loading");
         btn.dataset.confirmed = "1";

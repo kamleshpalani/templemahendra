@@ -226,11 +226,11 @@ function liveYoutubeRunStart(?string $actor = null): void
  *                      token refusal is reported, not recorded (G18)
  * @return array{answers: array<int, array>, calls: int, units: int, class: ?string, error: ?string, outcome: ?string, retry_after: ?int, notice: string}
  */
-function liveYoutubeFetchMany(array $streams, bool $dryRun = false): array
+function liveYoutubeFetchMany(array $streams, bool $dryRun = false, bool $probe = false): array
 {
     $out = ['answers' => [], 'calls' => 0, 'units' => 0, 'class' => null, 'error' => null, 'outcome' => null, 'retry_after' => null, 'notice' => ''];
     try {
-        return liveYoutubeFetchChunk($streams, $dryRun, $out);
+        return liveYoutubeFetchChunk($streams, $dryRun, $out, $probe);
     } catch (Throwable $e) {
         error_log('[live] YouTube check failed: ' . liveRedact(get_class($e) . ': ' . $e->getMessage()));
         return array_replace($out, [
@@ -240,8 +240,22 @@ function liveYoutubeFetchMany(array $streams, bool $dryRun = false): array
     }
 }
 
+/**
+ * Readiness for the admin connection test (§8.3): the same gates as
+ * liveAutomationReady() except the mode, so a credential can be proven before
+ * automation is switched on. mode = simulator still needs the fence.
+ */
+function liveYoutubeProbeReady(): bool
+{
+    if (!liveAutomationInstalled()) return false;
+    $mode = trim(liveSetting('mode'));
+    if ($mode === 'simulator' && !liveSimulatorAllowed()) return false;
+    if ($mode !== 'simulator' && liveAutomationTier() < 1) return false;
+    return function_exists('curl_init') && liveQuotaBlockedUntil() === null;
+}
+
 /** Internal: the body of liveYoutubeFetchMany(); $out carries calls/units even when this throws. */
-function liveYoutubeFetchChunk(array $streams, bool $dryRun, array &$out): array
+function liveYoutubeFetchChunk(array $streams, bool $dryRun, array &$out, bool $probe = false): array
 {
     $run = &liveYoutubeRunState();
 
@@ -257,7 +271,7 @@ function liveYoutubeFetchChunk(array $streams, bool $dryRun, array &$out): array
         if (count($asked) < LIVE_YT_BATCH_MAX && !in_array($id, $asked, true)) $asked[] = $id;
     }
 
-    if (!liveAutomationReady()['ok']) {
+    if (!($probe ? liveYoutubeProbeReady() : liveAutomationReady()['ok'])) {
         $out['outcome'] = liveQuotaBlockedUntil() !== null ? 'skipped' : 'not_configured';
         return $out;
     }

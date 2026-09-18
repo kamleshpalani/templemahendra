@@ -90,15 +90,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             liveSetFlash('warning', LIVE_PROVIDER_MESSAGES['quota']);
         } elseif (!rateLimitAllow('live-check-now', 30, 3600, $actor)) {
             liveSetFlash('warning', 'You have run a lot of checks in the last hour. The scheduled job is still running normally — try again shortly.');
+        } elseif (!function_exists('curl_init')) {
+            liveSetFlash('error', 'The PHP curl extension is not available on this server.');
         } else {
             // One videos.list on a well-formed id nothing is published under: an
-            // empty items[] proves the credential works without printing it.
+            // empty items[] proves the credential works without printing it. The
+            // probe ignores the mode so a key can be checked before automation is on.
             liveConfigReset();
             liveYoutubeRunStart($actor);
-            $answer = liveYoutubeFetchMany([0 => ['id' => 0, 'provider_broadcast_id' => 'AAAAAAAAAA0']], true);
+            $answer = liveYoutubeFetchMany([0 => ['id' => 0, 'provider_broadcast_id' => 'AAAAAAAAAA0']], true, true);
             ['tone' => $tone, 'text' => $text] = liveProviderConnectionMessage($answer);
             liveSetFlash($tone, $text);
-            adminAudit('live_provider_test_connection', 'YouTube automation', $tone . ': ' . $text);
+            adminAudit('live_provider_test', 'YouTube automation', $tone . ': ' . $text);
         }
     } elseif ($action === 'reconnect') {
         if (trim(liveSetting('oauth_revoked_at')) === '') {
@@ -208,13 +211,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $errors[] = 'The Channel ID must start with UC and be 24 characters long.';
                 continue;
             }
-            if (!$keyOk && in_array($key, LIVE_SECRET_KEYS, true)) {
-                $errors[] = 'YouTube keys cannot be stored until LIVE_SETTINGS_KEY is set on the server, or put them in the server environment.';
+            if (!$keyOk) {
+                $errors[] = 'YouTube credentials cannot be stored until LIVE_SETTINGS_KEY is set on the server, or put them in the server environment.';
                 continue;
             }
             $changes[$key] = $posted;
             $effective[$field] = $posted;
         }
+        // liveSettingsSaveMany() clears the OAuth revocation when any OAuth
+        // credential changes, so the mode check below must see the same thing.
+        $oauthChanging = (bool) array_intersect(array_keys($changes), ['youtube_client_id', 'youtube_client_secret', 'youtube_refresh_token']);
 
         // 2. Switches and numbers.
         foreach (['auto_starting', 'auto_start', 'auto_end'] as $flag) {
@@ -239,7 +245,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
         if ($mode === 'live') {
             $trio = $effective['client_id'] !== '' && $effective['client_secret'] !== '' && $effective['refresh_token'] !== '';
-            if ($effective['api_key'] === '' && !($trio && $cfg['oauth_revoked_at'] === null)) {
+            if ($effective['api_key'] === '' && !($trio && ($oauthChanging || $cfg['oauth_revoked_at'] === null))) {
                 $errors[] = 'Live needs a YouTube API key, or a working OAuth client ID, client secret and refresh token, before it can be chosen.';
                 $mode = $cfg['mode'] === 'live' ? 'off' : $cfg['mode'];
             } elseif (!function_exists('curl_init')) {
