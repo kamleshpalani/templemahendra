@@ -13,10 +13,15 @@ export default function NotifyForm({ stream, lang, t }) {
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState("");
   const savedRef = useRef(null);
+  const errorRef = useRef(null);
 
   useEffect(() => {
     if (saved) savedRef.current?.focus();
   }, [saved]);
+
+  useEffect(() => {
+    if (error) errorRef.current?.focus();
+  }, [error]);
 
   const submit = async (event) => {
     event.preventDefault();
@@ -53,7 +58,7 @@ export default function NotifyForm({ stream, lang, t }) {
 
   return (
     <form className="live-notify" onSubmit={submit}>
-      {error && <Alert tone="error" role="alert">{error}</Alert>}
+      {error && <div ref={errorRef} tabIndex={-1}><Alert tone="error">{error}</Alert></div>}
       <Field label={t("மின்னஞ்சல்", "Email")} required>
         {(a11y) => <input {...a11y} type="email" name="email" autoComplete="email" required maxLength={190} value={email} onChange={(event) => setEmail(event.target.value)} />}
       </Field>
