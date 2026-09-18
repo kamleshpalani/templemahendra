@@ -307,6 +307,7 @@ function requireAdminAuth(): void
         header('Location: /admin/login.php?reason=expired&next=' . $to);
         exit;
     }
+    adminRevalidateSession();
     $file = basename($_SERVER['PHP_SELF']);
 
     // A forced password change blocks everything except the profile page itself.
@@ -324,6 +325,32 @@ function requireAdminAuth(): void
         $write = adminPageWriteCapability($file);
         if (!adminCan($write)) adminDeny($write, true);
     }
+}
+
+/**
+ * Re-check a database account against admin_users on every request so that
+ * disabling, deleting or re-roling a committee member takes effect on their
+ * existing sessions, not only at their next sign-in.
+ */
+function adminRevalidateSession(): void
+{
+    if (!empty($_SESSION['admin_is_env']) || (int) ($_SESSION['admin_user_id'] ?? 0) < 1) return;
+    if (!adminUsersTableExists()) return;
+    try {
+        $stmt = getDB()->prepare('SELECT is_active, role, must_change FROM admin_users WHERE id = :id LIMIT 1');
+        $stmt->execute([':id' => (int) $_SESSION['admin_user_id']]);
+        $row = $stmt->fetch();
+    } catch (Throwable) {
+        return;
+    }
+    if (!$row || !$row['is_active']) {
+        adminAudit('session_revoked', null, $row ? 'account disabled' : 'account deleted');
+        adminLogout();
+        header('Location: /admin/login.php?reason=revoked');
+        exit;
+    }
+    $_SESSION['admin_role']        = $row['role'];
+    $_SESSION['admin_must_change'] = (bool) $row['must_change'];
 }
 
 /** Explicit per-block gate, for pages that mix capabilities. */

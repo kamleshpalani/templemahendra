@@ -268,6 +268,7 @@ export default function Layout() {
               end={to === "/"}
               tabIndex={menuOpen ? 0 : -1}
               style={{ "--i": i }}
+              onClick={closeMenu}
               className={({ isActive }) => "drawer__link" + (isActive ? " drawer__link--active" : "")}
             >
               <span className="drawer__icon" aria-hidden="true">
