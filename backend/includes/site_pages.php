@@ -127,6 +127,11 @@ function sitePages(): array
             'இன்று, நாளை மற்றும் இந்த வாரத்தின் நேரடி பூஜைகள், அபிஷேகங்கள் மற்றும் திருவிழா ஒளிபரப்புகளின் அட்டவணை.',
             'The schedule of live poojas, abhishekams and festival broadcasts for today, tomorrow and this week.',
         ],
+        '/live-darshan/archive' => [
+            'தரிசனப் பதிவுகள்', 'Darshan recordings',
+            'நிறைவடைந்த பூஜைகள், அபிஷேகங்கள் மற்றும் திருவிழாக்களின் பதிவுகளைக் காணுங்கள்.',
+            'Watch recordings of completed poojas, abhishekams and festivals.',
+        ],
     ];
 }
 

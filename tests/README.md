@@ -27,6 +27,20 @@ npm i playwright axe-core && npx playwright install chromium
 The admin suites sign in as `admin` / `Admin@Test123`; set `ADMIN_USERNAME`
 and `ADMIN_PASS_HASH` to match, or edit the credentials at the top of each file.
 
+## Live recordings archive (Phase 8)
+
+After the MySQL 8 schema and sorted migrations are installed:
+
+```bash
+DB_HOST=127.0.0.1 DB_PORT=3307 DB_NAME=templemahendra DB_USER=root DB_PASS=root node tests/live-archive.mjs
+```
+
+The suite starts PHP on 8089 (`LIVE_ARCHIVE_PORT` overrides it), creates uniquely
+prefixed streams and removes only those rows in `finally`. It covers the public
+archive, pagination, month boundaries, safe recording edits/playback, manual
+completion and the poller's completion transaction with synthetic provider facts.
+It does not call YouTube. `live-sync.mjs` separately exercises the HTTP stand-in.
+
 ## The suites
 
 | Script | What it proves |

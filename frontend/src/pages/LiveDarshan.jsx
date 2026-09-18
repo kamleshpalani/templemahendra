@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
-import { LuCalendarDays, LuTv, LuYoutube } from "react-icons/lu";
+import { LuCalendarDays, LuTv, LuYoutube, LuVideo } from "react-icons/lu";
 import Seo from "../components/Seo";
 import PageHero from "../components/ui/PageHero";
 import SectionHeader from "../components/ui/SectionHeader";
@@ -183,7 +183,12 @@ export default function LiveDarshan() {
         title={title}
         lead={lead}
         crumbs={crumbs}
-        actions={<ShareButton variant="outline-light" title={seoTitle} text={seoDescription} to={sharePath} />}
+        actions={<>
+          <ShareButton variant="outline-light" title={seoTitle} text={seoDescription} to={sharePath} />
+          <Button to="/live-darshan/archive" variant="outline-light" icon={<LuVideo aria-hidden="true" />}>
+            {t("தரிசனப் பதிவுகள்", "Recordings")}
+          </Button>
+        </>}
         aside={stream && <HeroStatus stream={stream} lang={lang} t={t} started={startPassed || startHasPassed(stream, serverOffset)} />}
       />
 
