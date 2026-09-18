@@ -26,7 +26,7 @@ export default function StreamDonations({ stream, lang, t }) {
       {t("நன்கொடை மொத்தம் இப்போது கிடைக்கவில்லை.", "Donation totals are unavailable.")}
       <Button variant="ghost" onClick={() => setAttempt((n) => n + 1)}>{t("மீண்டும் முயல்க", "Try again")}</Button>
     </Alert> : result.totals.length ? <ul>
-      {result.totals.map((total) => <li key={total.currency}>{formatMoney(total.amount, total.currency, lang)} · {total.count} {t("நன்கொடைகள்", "donations")}</li>)}
+      {result.totals.map((total) => <li key={total.currency}>{formatMoney(total.amount, total.currency, lang)} · {total.count} {total.count === 1 ? t("நன்கொடை", "donation") : t("நன்கொடைகள்", "donations")}</li>)}
     </ul> : <p>{t("இதுவரை உறுதிப்படுத்தப்பட்ட நன்கொடைகள் இல்லை.", "No confirmed donations yet.")}</p>}
     <p className="live-stream__desc">{t("உண்மையான இணையவழிப் பணம் மட்டும்; திருப்பிய தொகை கழிக்கப்பட்டது.", "Real online payments only, after completed refunds. Test payments are excluded.")}</p>
   </section>;
