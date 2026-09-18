@@ -157,9 +157,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if (!empty($summary['locked'])) {
                 liveSetFlash('warning', 'A check is already going on (the scheduled one). Try again in a minute.');
             } else {
+                liveConfigReset();
                 $checked = (int) ($summary['checked'] ?? 0);
-                $moved   = (int) ($summary['moved'] ?? 0);
-                $notice  = trim((string) ($summary['notice'] ?? ''));
+                $moved   = (int) ($summary['changed'] ?? 0);
+                $errors  = (int) ($summary['errors'] ?? 0);
+                $notice  = '';
+                foreach ((array) ($summary['items'] ?? []) as $it) {
+                    if (is_array($it) && in_array((string) ($it['outcome'] ?? ''), LIVE_SYNC_CALL_FAILURES, true)) {
+                        $answer = ['outcome' => (string) $it['outcome']];
+                        if ($answer['outcome'] === 'auth') $answer['notice'] = liveSetting('provider_notice');
+                        $notice = 'Could not check with YouTube: ' . liveProviderConnectionMessage($answer)['text'];
+                        break;
+                    }
+                }
+                if ($notice === '' && $errors > 0) {
+                    $notice = $errors . ' stream' . ($errors === 1 ? '' : 's') . ' reported a problem — see the ⚠ marks on Live Streaming.';
+                }
                 liveSetFlash(
                     $notice !== '' ? 'warning' : 'success',
                     'Checked ' . $checked . ' stream' . ($checked === 1 ? '' : 's') . ', moved ' . $moved . '.' . ($notice !== '' ? ' ' . $notice : '')

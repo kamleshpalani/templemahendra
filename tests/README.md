@@ -114,19 +114,22 @@ when the server it is given has payments enabled (start it with
 
 ## Live Darshan (YouTube Live)
 
-Four suites cover `docs/live/SPEC-PHASE1.md` §6 and `docs/live/SPEC-PHASE2.md`
-§3. Like the payments suites they start and stop their own servers — PHP on
-ports **8081–8083**, the YouTube stand-in on **8091** (built for phase 3 and
-only smoke-started here) and, for the browser suite, a throwaway Vite on
+Five suites cover `docs/live/SPEC-PHASE1.md` §6, `docs/live/SPEC-PHASE2.md`
+§3 and `docs/live/SPEC-PHASE3.md` §11.3. Like the payments suites they start
+and stop their own servers — PHP on ports **8081–8085**, the YouTube stand-in
+on **8091** / **8092** and, for the browser suite, a throwaway Vite on
 **5195** whose `/api` proxy points at the suite's PHP. Ports in use → exit 2.
 Migration `011_live_streams.sql` must be applied (each suite checks and says
-so; phase 2 needs no migration). YouTube's hosts are answered by a stub inside
+so; phase 2 needs no migration; `live-sync.mjs` also needs
+`012_live_automation.sql`, and the right to `CREATE`/`DROP` a scratch database
+for its missing-migration scenarios). YouTube's hosts are answered by a stub inside
 the browser, so nothing leaves the machine and no real video plays.
 
 | Script | Ports | What it proves |
 | ------ | ----- | -------------- |
 | `live-unit.php` | — (CLI, database only) | The module's rules against the real code and database: every accepted and refused form of a YouTube reference, the embed/watch/thumbnail builders, slugs (uniqueness across deleted rows, `-2` suffixes, digits-only titles, the lock after publishing), UTC round trips and DST, the whole `liveValidate` matrix with hostile input, the store (lists, ordering, the 3-hour grace for a late broadcast, soft delete and restore), every legal and illegal transition, readiness for Publish / Go live, uploads with a real PNG, a text file and an oversize blob; phase 2: the day / week / festival windows in Asia/Kolkata (23:59 IST inside, the next midnight outside, the week ending Sunday, month and year rollovers), `day_bucket` and `starts_in_seconds`, the schedule list's membership (cancelled rows out, ended ones in), order (live first, undated last, ended last within a day) and counts, the reserved slug `schedule`, and the Vimeo / AWS IVS placeholders — 720 checks |
 | `live-api.mjs` | PHP 8081, mock 8091 | The public routes (index, live, upcoming, by id and by slug: shapes, ordering, caching headers, 404s, 405s, escaping, no cookies) and the admin JSON API (401/403 as JSON, the CSRF token, create / edit / transition / delete, 422 for hostile fields and unready drafts, 409 for illegal jumps, the locked slug, viewer and editor roles, audit rows), plus that `/api/events`, `/api/homepage_widgets` and `/api/search` still answer; phase 2: `/api/live-streams/schedule` with rows across today / tomorrow / this week / next week / past / festival / live / ended-today / cancelled / draft / deleted — every filter's membership and order, the counts, the ISO window, the limit cap, `filter=bogus`, the 30-second cache header, the item shape, `now` / `next` on the index, and that the browser's copies of the event-type and filter labels (`frontend/src/lib/live.js`) still mirror `backend/includes/live/config.php` word for word — 365 checks |
+| `live-sync.mjs` | PHP 8084–8085, mock 8092 | The phase 3 poller through its three doors — `bin/live_cron.php`, `/api/live-cron` and the fixture's `sync` (`liveCronRun()`) — against the YouTube stand-in with `LIVE_ALLOW_SIMULATOR=1` and a fake key: the CLI's `--help`, refused and clamped options, `--stream-ids=` (empty) touching nothing, `--dry-run` leaving the row byte-identical, mode off, cadence (a checked row is not due again at once), exit codes without migration 012 (0) and 011 (1); the flow — four rows in one `videos.list` request, `SCHEDULED→STARTING`, `→LIVE` with `actual_start_at`, `LIVE→COMPLETED` with `actual_end_at` and `recording_url`, the one-sweep catch-up to COMPLETED with two `live_stream_status` audit rows, the provider's own schedule stored while `scheduled_start_at` stays; the guards — grace and notices for missing / restricted / not-a-broadcast videos, a forward human move adopted and a backwards one pausing the row, paused rows skipped unscoped and reported when scoped, `auto_end = 0` holding, DRAFT / CANCELLED / deleted / non-YouTube rows never selected, a video from another time or channel refused as a mismatch, the stuck-STARTING pause (G22), a long live broadcast left alone; failures — `Retry-After`, back-off steps and the 300 s ceiling, the twelve-failure pause (G15), one bad row not spoiling the batch, a wrong key read as `auth`, the quota breaker stopping every call and the next sweep making none, the simulated failure after LIVE rolling both steps back; HTTP — 404 without a key or with a short one, 403 and the thirty-an-hour lock, the seven-key answer and nothing more, `Allow: GET, POST`; the advisory lock (`hold-lock` then a run answers `locked: true`); and no key, token or provider URL in any output or log — 101 checks |
 | `admin-live.mjs` | PHP 8082 | Admin → Live Streaming over HTTP and in a browser: create with an exact Tamil round-trip, the edit view, an update that changes only what was edited, the validation matrix, the status buttons (a bare draft cannot be published; Go live re-checks the row), delete and restore, thumbnail uploads, filters / search / sort / pagination, hostile query strings, viewer and editor roles, forged CSRF, overflow and axe at 390 and 1440 — 235 checks |
 | `live-ui.mjs` | PHP 8083, Vite 5195 | The devotee's side in a real browser: `/live-darshan` at four widths, the broadcast's facts, the `youtube-nocookie.com` iframe and its attributes in Tamil then English, the 16:9 box, slug routes (not found, draft, offline, completed, error), the header / drawer / footer / Home entry points, the header fit at 36 widths in both languages, polling (a STARTING broadcast goes LIVE under the visitor and is announced; nothing polls after leaving the page), the scheduled poster, a broadcast running late ("Starting shortly"), the empty state; phase 2: `/live-darshan/schedule` at four widths (axe with iframes off), the five filters with their counts, switching that updates the address and the list, `?filter=` on a direct load, the day groups, the compact countdown on a card, the per-filter empty state and its switch button, Tamil; the countdown on `/live-darshan` (HH:MM:SS from a fixture starting in 90 s, two samples 5 s apart, the sr-only sentence, "Starting shortly" at T+0) and a `server_time` skewed by ±10 minutes shifting it; the homepage's LIVE NOW, next-darshan and nothing states with the hero row; and the review fixes — the filter strip at 390 in both languages (every chip inside the viewport, 44 px, the selected one in view), the days unit on a countdown eight days out and its absence under a day, the 44 px targets of the homepage's live section, the poster, the hero and the homepage's hero row flipping to "Starting shortly" at T+0, the Tamil weekday-first day label, a filter switch that keeps its list while a delayed answer is awaited, a broadcast going live under the schedule page without a reload, the Today / Tomorrow empty state's way out on a Sunday and on a Monday, and the shared address carrying `?filter=` — 356 checks |
 
@@ -135,6 +138,7 @@ PHP_BIN=/path/to/php.sh
 $PHP_BIN tests/live-unit.php
 PHP_BIN=$PHP_BIN node tests/live-api.mjs
 PHP_BIN=$PHP_BIN node tests/admin-live.mjs
+PHP_BIN=$PHP_BIN node tests/live-sync.mjs
 LIVE_SHOTS=/tmp/live-shots PHP_BIN=$PHP_BIN node tests/live-ui.mjs   # screenshots land in LIVE_SHOTS (default shots/live)
 ```
 
@@ -148,8 +152,9 @@ browser suite's scenarios while a failure is chased.
 Support files: `support/live_fixtures.php` (CLI fixture: create a stream in any
 status through the module's own write path — `starts_in_seconds` places its
 start that many seconds from now, to the second, for the countdown checks —
-change its status, run SQL, clean up) and `support/youtube_mock.mjs` (the
-oEmbed / Data API stand-in for phase 3).
+change its status, run SQL, `sync` — one `liveCronRun()` with the given ids,
+`dry_run` and `actor` —, `due` and `hold-lock`, clean up) and
+`support/youtube_mock.mjs` (the oEmbed / Data API stand-in for phase 3).
 
 `admin-smoke.mjs`, `admin-roles.mjs`, `admin-hostile-input.mjs`, `og.mjs`,
 `public-e2e.mjs` and `search-api.mjs` include the Live Streaming page, the
