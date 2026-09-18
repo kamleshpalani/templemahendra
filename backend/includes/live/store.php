@@ -101,6 +101,32 @@ function liveSelectSql(): string
               LEFT JOIN deities d ON d.id = s.deity_id';
 }
 
+/** Completed recordings, newest first; month boundaries are UTC instants. */
+function liveListArchive(PDO $db, string $eventType, ?string $from, ?string $to, int $page): array
+{
+    $date = 'COALESCE(s.actual_end_at, s.scheduled_start_at, s.created_at)';
+    $where = ["s.deleted_at IS NULL", "s.status = 'COMPLETED'", 's.archive_enabled = 1',
+        "s.provider = 'youtube'",
+        "REGEXP_LIKE(s.recording_url, '^https://www[.]youtube[.]com/watch[?]v=[A-Za-z0-9_-]{11}$', 'c')",
+        "s.recording_url <> 'https://www.youtube.com/watch?v=live_stream'"];
+    $params = [];
+    if ($eventType !== '') {
+        $where[] = 's.event_type = :event_type';
+        $params[':event_type'] = $eventType;
+    }
+    if ($from !== null && $to !== null) {
+        $where[] = "$date >= :from AND $date < :to";
+        $params[':from'] = $from;
+        $params[':to'] = $to;
+    }
+    $offset = (max(1, min(10000, $page)) - 1) * 12;
+    $stmt = $db->prepare(liveSelectSql() . ' WHERE ' . implode(' AND ', $where)
+        . " ORDER BY $date DESC, s.id DESC LIMIT 13 OFFSET $offset");
+    $stmt->execute($params);
+    $rows = $stmt->fetchAll();
+    return ['streams' => array_map('liveShapePublic', array_slice($rows, 0, 12)), 'has_more' => count($rows) > 12 && $page < 10000];
+}
+
 /** One stream by id. Deleted rows only when asked; $lock takes FOR UPDATE inside a transaction. */
 function liveLoad(PDO $db, int $id, bool $withDeleted = false, bool $lock = false): ?array
 {
@@ -454,7 +480,7 @@ function liveAdminCounts(PDO $db): array
 /** The writable columns, in the order the INSERT/UPDATE names them. */
 const LIVE_WRITE_COLUMNS = [
     'temple_id', 'deity_id', 'title_ta', 'title_en', 'slug', 'description_ta', 'description_en',
-    'event_type', 'provider', 'provider_broadcast_id', 'playback_url', 'thumbnail_url', 'banner_url',
+    'event_type', 'provider', 'provider_broadcast_id', 'playback_url', 'recording_url', 'thumbnail_url', 'banner_url',
     'scheduled_start_at', 'scheduled_end_at', 'timezone',
     'is_featured', 'show_on_homepage', 'donations_enabled', 'notifications_enabled', 'sharing_enabled', 'archive_enabled',
 ];
@@ -528,12 +554,13 @@ function liveUpdate(PDO $db, int $id, array $values, string $actor): void
             foreach ([
                 'sync_state', 'synced_status', 'last_synced_at', 'last_sync_ok_at', 'next_sync_at', 'sync_error',
                 'provider_thumbnail_url', 'provider_scheduled_start_at', 'provider_scheduled_end_at', 'viewer_count',
-                'provider_stream_id', 'recording_url',
+                'provider_stream_id',
             ] as $c) {
                 $sets[] = "$c = NULL";
             }
             $sets[] = 'sync_attempts = 0';
         }
+        if (array_intersect($changed, ['provider', 'provider_broadcast_id'])) $sets[] = 'recording_url = NULL';
         if ($sets) {
             $db->prepare('UPDATE live_streams SET ' . implode(', ', $sets) . ', updated_by = :by, updated_at = :now WHERE id = :id')->execute($params);
         }

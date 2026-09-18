@@ -219,6 +219,16 @@ Upload via Hostinger File Manager or FTP:
 for f in database/migrations/*.sql; do mysql -u <user> -p <db> < "$f"; done
 ```
 
+### Live recordings archive (Phase 8)
+
+`/live-darshan/archive` lists completed recordings, with event-type and
+temple-local completion-month filters. In the stream editor, enable archive and
+save a YouTube recording URL (or let the scheduled poller fill it on completion).
+An ended stream without a recording stays off the archive. Clear the recording
+or disable archive to remove it and its detail-page playback. The existing
+recording column is in migration 011; automatic completion uses migration 012.
+No additional worker or migration is needed. See `docs/live/SPEC-PHASE8.md`.
+
 ### Step 4 — Environment variables
 
 Set via Hostinger hPanel → Advanced → PHP Config → Environment Variables,

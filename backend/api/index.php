@@ -114,7 +114,7 @@ if ($path === '/live-cron') { require __DIR__ . '/live_cron.php'; exit; }
 // the admin session and answers 401/403 as JSON, never a redirect. Anything
 // else under either prefix is not a route.
 if (preg_match('#^/live-streams/([0-9]{1,10}|[a-z0-9][a-z0-9-]{1,118})/donations$#', $path, $liveMatch)) { $liveRoute = $liveMatch[1]; $liveDonations = true; require __DIR__ . '/live_streams.php'; exit; }
-if (preg_match('#^/live-streams(?:/(live|upcoming|schedule|[0-9]{1,10}|[a-z0-9][a-z0-9-]{1,118}))?$#', $path, $liveMatch)) { $liveRoute = $liveMatch[1] ?? 'index'; require __DIR__ . '/live_streams.php'; exit; }
+if (preg_match('#^/live-streams(?:/(live|upcoming|schedule|archive|[0-9]{1,10}|[a-z0-9][a-z0-9-]{1,118}))?$#', $path, $liveMatch)) { $liveRoute = $liveMatch[1] ?? 'index'; require __DIR__ . '/live_streams.php'; exit; }
 if (str_starts_with($path, '/live-streams/')) sendError('Not found', 404);
 if ($path === '/live-subscriptions' || $path === '/live-subscriptions/unsubscribe') {
     $liveSubscriptionAction = str_ends_with($path, '/unsubscribe') ? 'unsubscribe' : 'subscribe';
