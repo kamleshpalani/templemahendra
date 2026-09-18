@@ -8,6 +8,19 @@ description: Run templemahendra React/PHP CMS end-to-end tests against MySQL, in
 - PHP needs pdo_mysql and mbstring. From `backend`, run `php -S localhost:8000 router.php` with DB_HOST, DB_PORT, DB_NAME, DB_USER, DB_PASS, ADMIN_USERNAME and ADMIN_PASS_HASH. Generate a bcrypt hash of the chosen local test password rather than storing a plaintext admin password.
 - Run `npm install` and `npm run dev` from `frontend`. Vite defaults to :5173 and proxies `/api` to :8000.
 - Log in at :8000/admin/login.php; admin sidebar exposes Homepage Widgets, Announcements, Settings, Messages and Seva Bookings.
+- The environment blueprint creates a MySQL 8 container named `my8` on host port 3307 (root/root); if it is missing, run `docker ps -a` to find the existing container or `docker run -d --name my8 -e MYSQL_ROOT_PASSWORD=root -p 3307:3306 mysql:8`. After a machine restart, `docker start my8` and inspect tables before importing. Avoid re-importing seed content into preserved fixtures.
+- `database/schema.sql` contains `CREATE DATABASE`/`USE templemahendra`, so it always lands in `templemahendra` regardless of the database passed to `mysql`. Import it as-is, then apply every `database/migrations/*.sql` in sorted order to that same database: `for f in database/migrations/*.sql; do mysql --default-character-set=utf8mb4 templemahendra < "$f"; done`. Set `DB_NAME=templemahendra` for the PHP server. To use another test database name, strip the `CREATE DATABASE`/`USE` lines first and pass that name to every import and to DB_NAME.
+- Payment and bulk-upload runtime paths also need PHP curl and zip. Restart PHP with the full environment (including ADMIN variables); an existing server might have different credentials.
+- Put recordings/logs and important helpers under `/home/ubuntu` when they must survive restarts; `/tmp` may be wiped.
+
+## Expanded application regression
+- Admin row actions use `role=menuitem` and often open a second confirmation dialog. Click the confirmation button before checking persistence (for example Go live, End stream, Delete photo, Disable). A menu click alone has not changed anything.
+- Committee accounts require a first-sign-in password change. Test a viewer on an allowed data list such as Seva Bookings, not a CMS editing page; deny Users, Settings and Payment Gateway by direct navigation.
+- Family registration is passwordless in the current design. Check the registration documentation before planning devotee login/session tests; retired account URLs may redirect to `/register`.
+- Compare Pournami's actual pinned content card before/after toggling; the hero's informational "Next Pournami" text is a separate display.
+- Use `NOTIFY_ALLOW_TEST_DRIVER=1` and test channel drivers for local sends. Campaign recipients need update consent; an audience count alone does not mean it can receive a campaign. Use only your own QA registrations for consent fixtures.
+- Run notification workers scoped to a campaign or explicit notification IDs (`--campaign-id=N` or `--notification-ids=N,M`, with `--skip-reminders`) rather than draining unrelated queues. A subsequent scoped run may finalize a campaign from Sending to Sent. Check both the campaign detail and analytics pages after sending.
+- CCAvenue and YouTube stand-ins live in `tests/support/ccavenue_mock.mjs` and `tests/support/youtube_mock.mjs`; use invented test credentials and distinguish mock acceptance from real settlement/playback. Test-driver acceptance is not provider delivery confirmation.
 
 ## Runtime checks
 - Verify unique CMS content on the refreshed public homepage after create/update/delete, not merely a successful admin toast. Toggle language via EN to verify English widget fields.
