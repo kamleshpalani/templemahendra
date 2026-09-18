@@ -279,7 +279,7 @@ previews as the same generic page. So:
 
 | Piece | Role |
 | ----- | ---- |
-| `backend/api/og.php` | Renders a real preview per path — title, description, image, canonical. Reads one seva or one photograph straight from the database for `?seva=` / `?photo=` links. |
+| `backend/api/og.php` | Renders a real preview per path — title, description, image, canonical. Reads one seva, photograph or public live broadcast for `?seva=`, `?photo=` or `/live-darshan/<slug>` links. |
 | `backend/includes/site_pages.php` | The per-page copy og.php uses. The same sentences the React pages pass to `<Seo>`. |
 | `deploy/htaccess_public_html` | Sends unfurler user agents to `og.php`. Search engines are deliberately excluded — they run JavaScript and should index the real page. |
 | `backend/router.php` | The same diversion locally, so previews can be checked before shipping: `curl -A "WhatsApp/2.23" http://127.0.0.1:8000/sevas?seva=1` |
@@ -290,6 +290,13 @@ exactly the kind of thing that drifts. `tests/og.mjs` loads every route in a rea
 browser, reads the tags React wrote, and fails if they disagree with what
 `og.php` returns for the same path — so changing a page's lead tells you to
 update the table.
+
+Live broadcast previews use the saved title, description and thumbnail with
+Tamil/English fallback. Draft and deleted broadcasts return 404/noindex;
+canonical links omit tracking queries and resolve numeric IDs to the saved
+slug. Stream previews cache for 60 seconds and make no YouTube API calls.
+Set backend `SITE_URL` and frontend `VITE_SITE_URL` to the same public origin
+when overriding the host. See `docs/live/SPEC-PHASE5.md`.
 
 Set `VITE_SITE_URL` at build time only if the browser cannot see the public
 origin (behind a proxy, or a preview build that should advertise the real

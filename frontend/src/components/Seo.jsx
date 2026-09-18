@@ -50,6 +50,7 @@ export default function Seo({
    * committee shares that link.
    */
   robots,
+  canonicalPath,
   children,
 }) {
   const { lang, t } = useLang();
@@ -60,7 +61,7 @@ export default function Seo({
   const docTitle = title ? `${title} — ${siteName}` : siteName;
   // The query string stays in: on /search it is what is on screen, and it is
   // what the visitor expects the link they share to reopen.
-  const url = siteOrigin() + pathname + (search || "");
+  const url = siteOrigin() + (canonicalPath ?? pathname + (search || ""));
   const preview = absoluteUrl(image || SHARE_IMAGE_FALLBACK || SHARE_IMAGE_LAST_RESORT);
 
   return (

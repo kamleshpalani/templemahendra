@@ -154,8 +154,8 @@ export default function LiveDarshan() {
   const lead = t(...PAGE_DESCRIPTION);
   const streamName = stream ? streamTitle(stream, lang) : "";
   const streamText = stream ? streamDescription(stream, lang) : "";
-  const seoTitle = stream ? streamName : title;
-  const seoDescription = streamText || lead;
+  const seoTitle = notFound ? t("ஒளிபரப்பு கிடைக்கவில்லை", "Broadcast not found") : slug && stream ? streamName : title;
+  const seoDescription = notFound ? "" : Array.from((slug && stream ? streamText || lead : lead).trim().replace(/\s+/gu, " ")).slice(0, 200).join("");
   const sharePath = slug && stream ? `/live-darshan/${stream.slug}` : "/live-darshan";
   const crumbs = slug && stream ? [{ label: title, to: "/live-darshan" }, { label: streamName }] : [{ label: title }];
 
@@ -164,9 +164,11 @@ export default function LiveDarshan() {
       <Seo
         title={seoTitle}
         description={seoDescription}
-        image={stream?.thumbnail_url || undefined}
-        imageAlt={stream ? streamName : undefined}
-        type={stream ? "video.other" : "website"}
+        image={slug && stream?.thumbnail_url || undefined}
+        imageAlt={slug && stream ? streamName : undefined}
+        type={slug && stream ? "video.other" : "website"}
+        canonicalPath={slug ? `/live-darshan/${stream?.slug || slug}` : "/live-darshan"}
+        robots={notFound || error ? "noindex, nofollow" : undefined}
       />
 
       <PageHero

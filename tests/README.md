@@ -114,6 +114,11 @@ when the server it is given has payments enabled (start it with
 
 ## Live Darshan (YouTube Live)
 
+`node tests/live-og.mjs` checks per-stream crawler previews using disposable
+MySQL fixtures (migration 011 required). Pass the usual DB environment variables;
+it owns its PHP server and cleans up its own streams. Browser/metadata agreement
+for public routes remains covered by `og.mjs`.
+
 Five suites cover `docs/live/SPEC-PHASE1.md` §6, `docs/live/SPEC-PHASE2.md`
 §3 and `docs/live/SPEC-PHASE3.md` §11.3. Like the payments suites they start
 and stop their own servers — PHP on ports **8081–8085**, the YouTube stand-in
