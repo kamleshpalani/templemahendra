@@ -220,7 +220,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
         // liveSettingsSaveMany() clears the OAuth revocation when any OAuth
         // credential changes, so the mode check below must see the same thing.
-        $oauthChanging = (bool) array_intersect(array_keys($changes), ['youtube_client_id', 'youtube_client_secret', 'youtube_refresh_token']);
+        // Secrets are always rewritten; the plain client ID only counts when it differs from what is stored.
+        $storedClientId = liveSettingsRows()['youtube_client_id']['v'] ?? '';
+        $oauthChanging  = isset($changes['youtube_client_secret']) || isset($changes['youtube_refresh_token'])
+            || (array_key_exists('youtube_client_id', $changes) && ($changes['youtube_client_id'] ?? '') !== $storedClientId);
 
         // 2. Switches and numbers.
         foreach (['auto_starting', 'auto_start', 'auto_end'] as $flag) {
