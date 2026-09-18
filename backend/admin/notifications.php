@@ -1174,7 +1174,6 @@ if ($gets('view') !== '') {
           <?= adminKpi([
               ['icon' => 'users',        'value' => number_format((int) $stats['recipients']), 'label' => 'Devotees reached', 'variant' => 'accent'],
               ['icon' => 'check-circle', 'value' => number_format($sentTotal), 'label' => 'Messages sent'],
-              ['icon' => 'eye',          'value' => number_format((int) $stats['read']), 'label' => 'Read in the bell'],
               ['icon' => 'mail',         'value' => number_format((int) $stats['opened']), 'label' => 'Emails opened'],
               ['icon' => 'arrow-up-right', 'value' => number_format((int) $stats['clicked']), 'label' => 'Link clicks'],
               ['icon' => 'alert-circle', 'value' => number_format((int) $stats['failed'] + (int) $stats['dead']), 'label' => 'Failed', 'sub' => (int) $stats['dead'] > 0 ? (int) $stats['dead'] . ' gave up after retries' : null],
