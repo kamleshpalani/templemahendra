@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Alert from "../ui/Alert";
 import Button from "../ui/Button";
 import { Field } from "../ui/Field";
@@ -12,6 +12,11 @@ export default function NotifyForm({ stream, lang, t }) {
   const [sending, setSending] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState("");
+  const savedRef = useRef(null);
+
+  useEffect(() => {
+    if (saved) savedRef.current?.focus();
+  }, [saved]);
 
   const submit = async (event) => {
     event.preventDefault();
@@ -36,12 +41,14 @@ export default function NotifyForm({ stream, lang, t }) {
   };
 
   if (saved) return (
-    <Alert tone="success">
+    <div ref={savedRef} tabIndex={-1}>
+      <Alert tone="success">
       {t(
         "கோரிக்கை பெறப்பட்டது. இந்த ஒளிபரப்பிற்கு முன்பு விலகவில்லை என்றால், தொடங்குவதற்கு முன் மின்னஞ்சல் நினைவூட்டல் வரும்.",
         "Request received. Unless you previously unsubscribed from this broadcast, we’ll email a reminder near its scheduled start.",
       )}
-    </Alert>
+      </Alert>
+    </div>
   );
 
   return (
