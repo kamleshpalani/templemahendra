@@ -32,9 +32,8 @@
 require_once __DIR__ . '/../includes/helpers.php';
 require_once __DIR__ . '/../includes/db.php';
 require_once __DIR__ . '/../includes/site_pages.php';
+require_once __DIR__ . '/../includes/live.php';
 
-// A crawler must never be handed a stack trace, and a preview is not worth a
-// 500: anything unexpected falls through to the temple's name and front page.
 ini_set('display_errors', '0');
 ini_set('log_errors', '1');
 
@@ -117,8 +116,9 @@ function ogPublicFile(string $path): ?string
         __DIR__ . '/../../frontend/public', // local checkout
     ]);
     foreach ($roots as $root) {
-        $candidate = rtrim((string) $root, '/\\') . '/' . ltrim($path, '/');
-        if (is_file($candidate)) return $candidate;
+        $base = realpath((string) $root);
+        $candidate = realpath(rtrim((string) $root, '/\\') . '/' . ltrim($path, '/'));
+        if ($base && $candidate && str_starts_with($candidate, $base . DIRECTORY_SEPARATOR) && is_file($candidate)) return $candidate;
     }
     return null;
 }
@@ -126,7 +126,11 @@ function ogPublicFile(string $path): ?string
 /** The preview image for a path: the caller's own, else the sanctum photo, else the app icon. */
 function ogImage(?string $preferred): array
 {
-    $candidates = array_filter([$preferred, '/images/deities-alankaram.jpg', '/icons/icon-512x512.png']);
+    $safe = liveSafeUrl($preferred);
+    if ($safe !== null && str_starts_with(strtolower($safe), 'https://')) {
+        return ['url' => $safe, 'width' => null, 'height' => null];
+    }
+    $candidates = array_filter([$safe, '/images/deities-alankaram.jpg', '/icons/icon-512x512.png']);
     foreach ($candidates as $path) {
         $file = ogPublicFile($path);
         if ($file === null) continue;
@@ -156,6 +160,7 @@ $imageAlt    = $lang === 'en' ? $id['alt_en'] : $id['alt_ta'];
 $type        = 'website';
 $robots      = '';
 $status      = 200;
+$streamPath  = str_starts_with($path, '/live-darshan/') && $path !== '/live-darshan/schedule';
 
 try {
     $pages = sitePages();
@@ -190,6 +195,29 @@ try {
             $description = $lang === 'en' ? $descEn : $descTa;
         }
         $type = 'article';
+    } elseif ($streamPath) {
+        $key = substr($path, strlen('/live-darshan/'));
+        $db = getDB();
+        $row = liveTablesExist()
+            ? (preg_match('/^[0-9]{1,10}$/', $key) ? liveLoad($db, (int) $key) : liveLoadBySlug($db, $key))
+            : null;
+        if ($row !== null && in_array($row['status'], LIVE_PUBLIC_STATUSES, true)) {
+            $stream = liveShapePublic($row);
+            $other = $lang === 'en' ? 'ta' : 'en';
+            [, , $descTa, $descEn] = $pages['/live-darshan'];
+            $title = trim((string) $stream['title_' . $lang]) ?: trim((string) $stream['title_' . $other]);
+            $description = trim((string) $stream['description_' . $lang]) ?: trim((string) $stream['description_' . $other]);
+            $description = $description ?: ($lang === 'en' ? $descEn : $descTa);
+            $image = $stream['thumbnail_url'];
+            $imageAlt = $title;
+            $type = 'video.other';
+            $path = '/live-darshan/' . $stream['slug'];
+        } else {
+            $title = $lang === 'en' ? 'Broadcast not found' : 'ஒளிபரப்பு கிடைக்கவில்லை';
+            $description = '';
+            $robots = 'noindex, nofollow';
+            $status = 404;
+        }
     } elseif (isset($pages[$path])) {
         [$titleTa, $titleEn, $descTa, $descEn] = $pages[$path];
         $title       = $lang === 'en' ? $titleEn : $titleTa;
@@ -209,7 +237,12 @@ try {
     }
 } catch (Throwable $e) {
     // A database that is down must not cost the temple its preview.
-    error_log('[og] ' . get_class($e) . ': ' . $e->getMessage());
+    error_log('[og] ' . get_class($e) . ': ' . liveRedact($e->getMessage()));
+    if ($streamPath) {
+        $title = $lang === 'en' ? 'Live Darshan' : 'நேரடி தரிசனம்';
+        $robots = 'noindex, nofollow';
+        $status = 503;
+    }
     if ($title === '' && isset($pages[$path])) {
         [$titleTa, $titleEn] = $pages[$path];
         $title = $lang === 'en' ? $titleEn : $titleTa;
@@ -219,14 +252,14 @@ try {
 $canonical   = siteUrl($path) . ($path === '/search' && ($_GET['q'] ?? '') !== '' ? '?q=' . urlencode((string) $_GET['q']) : '');
 $preview     = ogImage($image);
 $docTitle    = $title === '' ? $site : $title . ' — ' . $site;
-$description = ogTrim($description);
+$description = $streamPath ? mb_substr(preg_replace('/\s+/u', ' ', trim($description)), 0, 200) : ogTrim($description);
 $h           = static fn(?string $v): string => htmlspecialchars((string) $v, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
 
 http_response_code($status);
 header('Content-Type: text/html; charset=utf-8');
-// Unfurlers scrape the same link repeatedly; five minutes spares the database
-// without holding a stale title for long.
-header('Cache-Control: public, max-age=300');
+header('Cache-Control: ' . ($streamPath ? ($status === 200 ? 'public, max-age=60' : 'no-store, private') : 'public, max-age=300'));
+header('Vary: Accept-Language, User-Agent');
+if ($status === 503) header('Retry-After: 60');
 ?>
 <!doctype html>
 <html lang="<?= $lang === 'en' ? 'en' : 'ta' ?>">

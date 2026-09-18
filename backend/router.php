@@ -4,6 +4,11 @@
 
 $uri = parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH);
 
+if ($uri === '/api/og.php') {
+    require __DIR__ . '/api/og.php';
+    return true;
+}
+
 // Route all /api/* requests through the front-controller
 if (str_starts_with($uri, '/api')) {
     require __DIR__ . '/api/index.php';
