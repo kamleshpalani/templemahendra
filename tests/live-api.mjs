@@ -417,7 +417,6 @@ try {
     ["a slug of one character", "/api/live-streams/a"],
     ["a slug with a dot", "/api/live-streams/a.b"],
     ["a slug of 120 characters", `/api/live-streams/${"a".repeat(120)}`],
-    ["a route-like name that is not a stream", "/api/live-streams/archive"],
     ["script in the path", `/api/live-streams/${encodeURIComponent(XSS)}`],
     ["a near miss on the collection name", "/api/live-streamsx"],
     ["a near miss under /api/admin/", "/api/admin/live-streamz"],
@@ -425,6 +424,10 @@ try {
     r = await pub(path, { ip: IP.hostile });
     check(isNotFound(r), `${label} → 404 {"error":"Not found"}`, `${r.status} ${r.text.slice(0, 120)}`);
   }
+  r = await pub("/api/live-streams/archive");
+  check(r.status === 200 && isJson(r) && sameKeys(r.data, ["event_types", "has_more", "page", "server_time", "streams", "timezone"])
+    && Array.isArray(r.data?.streams) && r.data.page === 1 && typeof r.data.has_more === "boolean",
+    "GET /archive → 200 with the paginated archive contract", `${r.status} ${r.text.slice(0, 300)}`);
   r = await pub(`/api/live-streams/${F.completed.slug}`);
   check(r.status === 200 && r.data?.stream?.status === "COMPLETED" && r.data.stream.actual_end_at !== null && r.data.stream.is_live === false, "a COMPLETED stream is public with its actual_end_at", show(r.data?.stream?.status));
   r = await pub(`/api/live-streams/${F.cancelled.slug}`);
