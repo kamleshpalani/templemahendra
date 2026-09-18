@@ -64,7 +64,7 @@ export const EVENT_TYPE_LABELS = {
   festival: { ta: "திருவிழா", en: "Festival" },
   bhajan: { ta: "பஜனை", en: "Bhajan" },
   discourse: { ta: "சொற்பொழிவு", en: "Discourse" },
-  procession: { ta: "ஊர்வலம்", en: "Procession" },
+  procession: { ta: "திருவீதி உலா", en: "Procession" },
   special_event: { ta: "சிறப்பு நிகழ்வு", en: "Special event" },
   other: { ta: "மற்றவை", en: "Other" },
 };
@@ -163,6 +163,23 @@ export function formatStreamDate(iso, lang = "ta", tz = IST) {
   return formatIn(iso, lang, tz, { weekday: "long", day: "numeric", month: "long", year: "numeric" });
 }
 
+/** The named pieces of a formatted date ({ weekday, day, month, … }), empty when the instant is unusable. */
+function partsIn(iso, lang, tz, options) {
+  if (!iso) return {};
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return {};
+  const format = (zone) => new Intl.DateTimeFormat(locale(lang), { ...options, timeZone: zone }).formatToParts(date);
+  let parts;
+  try {
+    parts = format(tz || IST);
+  } catch {
+    parts = format(IST);
+  }
+  const out = {};
+  for (const part of parts) if (part.type !== "literal") out[part.type] = part.value;
+  return out;
+}
+
 // A time is one word: "6:00 pm IST" is joined with no-break spaces (Intl's
 // own am/pm separator is a plain space) so neither "pm" nor "IST" wraps onto
 // a line of its own.
@@ -216,6 +233,20 @@ export const isScheduleFilter = (value) => SCHEDULE_FILTERS.some((f) => f.value 
 /** The filter a URL names, or "all" (the API treats anything else the same way). */
 export const normaliseFilter = (value) => (isScheduleFilter(value) ? value : "all");
 
+/**
+ * True when "this week" covers a single day — a Sunday, since the week runs
+ * through the coming Sunday inclusive (SPEC-PHASE2 §0). On such a day the
+ * Today and Tomorrow empty states cannot send a devotee to "this week": it is
+ * the same one-day window, and it cannot contain tomorrow (review fix O11).
+ * Read from the window the API returns (`today`, on the temple's clock).
+ */
+export function weekIsOneDay(win) {
+  const ymd = String(win?.today ?? "");
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(ymd)) return false;
+  const day = new Date(`${ymd}T00:00:00Z`);
+  return !Number.isNaN(day.getTime()) && day.getUTCDay() === 0;
+}
+
 /** Under five minutes the countdown is "soon" (a warmer accent, nothing more). */
 export const COUNTDOWN_SOON_SECONDS = 5 * 60;
 
@@ -263,7 +294,16 @@ export function dayLabel(stream, lang = "ta", serverOffset = 0) {
   if (bucket === "tomorrow") return lang === "ta" ? "நாளை" : "Tomorrow";
   const when = stream?.scheduled_start_at;
   if (!when) return lang === "ta" ? "தேதி விரைவில் அறிவிக்கப்படும்" : "Date to be announced";
-  return formatIn(when, lang, stream?.timezone || IST, { weekday: "long", day: "numeric", month: "long" });
+  const tz = stream?.timezone || IST;
+  const options = { weekday: "long", day: "numeric", month: "long" };
+  if (lang === "ta") {
+    // ICU's Tamil pattern without a year puts the weekday last ("செப்டம்பர் 24,
+    // வியாழன்"), which reads against the day heading above it ("வியாழன், 24
+    // செப்டம்பர், 2026"). The pieces are reassembled in the heading's order.
+    const p = partsIn(when, lang, tz, options);
+    if (p.weekday && p.day && p.month) return `${p.weekday}, ${p.day} ${p.month}`;
+  }
+  return formatIn(when, lang, tz, options);
 }
 
 /**
@@ -280,11 +320,23 @@ export function startsInSeconds(stream, serverOffset = 0) {
   return Math.round((at - (Date.now() + (Number.isFinite(serverOffset) ? serverOffset : 0))) / 1000);
 }
 
-/** Whole hours, minutes and seconds of a count, each as two digits ("01", "35", "07"). */
+/**
+ * The count as the clock shows it: `{ dd, hh, mm, ss }`, each as two digits
+ * ("01", "35", "07"). A count of a day or more keeps whole days in `dd` and
+ * the hours within the day in `hh`, so a broadcast eight days away reads
+ * "08 : 07 : 38 : 52" and never "191 : 38 : 52" (review fix F2); under a day
+ * `dd` is null and the clock is the plain HH : MM : SS.
+ */
 export function countdownParts(seconds) {
   const s = Math.max(0, Math.floor(Number(seconds) || 0));
   const two = (n) => String(n).padStart(2, "0");
-  return { hh: two(Math.floor(s / 3600)), mm: two(Math.floor((s % 3600) / 60)), ss: two(s % 60) };
+  const days = Math.floor(s / 86_400);
+  return {
+    dd: days > 0 ? two(days) : null,
+    hh: two(Math.floor((s % 86_400) / 3600)),
+    mm: two(Math.floor((s % 3600) / 60)),
+    ss: two(s % 60),
+  };
 }
 
 /**
@@ -586,17 +638,39 @@ export function useStream(slug) {
 }
 
 /**
+ * How near a start has to be for the schedule page to keep asking: a row
+ * within a quarter of an hour either side of its start is one whose pill is
+ * about to change ("Starting shortly" → "Live now"), so the page polls while
+ * one is listed (review fix O7). Further off, the poller sleeps until the
+ * nearest row enters that window, and at most this long.
+ */
+const SCHEDULE_WATCH_MS = 15 * 60_000;
+const SCHEDULE_SLEEP_MAX_MS = 30 * 60_000;
+
+/**
  * `{ streams, counts, window, filter, serverOffset, loading, error, refresh }`
  * for one schedule filter from `/api/live-streams/schedule?filter=`
- * (SPEC-PHASE2 §2.1). Fetched again whenever the filter changes (the previous
- * list stays until the new one arrives), polled every 60 s while any listed
- * broadcast is live, and refetched when a hidden tab is shown again.
+ * (SPEC-PHASE2 §2.1). Fetched again whenever the filter changes — `streams`
+ * keeps the previous answer while `loading` is true, so the page can dim the
+ * list it has instead of blanking it (review fix F6); only a failed load
+ * empties it, so the retry starts from skeletons again.
+ *
+ * Polled every 30 s while a listed broadcast is on air and every 60 s while
+ * one is within a quarter of an hour of its start (so a pill turns into the
+ * Live now group without a reload); otherwise the poller sleeps until the
+ * nearest start comes into that window. A hidden tab pauses it and a tab
+ * shown again asks at once.
  */
 export function useSchedule(filter) {
   const key = normaliseFilter(filter);
   const [state, setState] = useState({ streams: [], counts: null, window: null, filter: key, serverOffset: 0, loading: true, error: false });
   const [attempt, setAttempt] = useState(0);
   const anyLive = useRef(false);
+  // The listed starts (ms) and the offset to the server's clock, as the last
+  // answer left them: the cadence is worked out when the poller re-arms, not
+  // from the `starts_in_seconds` of an answer that is already a minute old.
+  const starts = useRef([]);
+  const offsetRef = useRef(0);
   const refresh = useCallback(() => setAttempt((n) => n + 1), []);
 
   useEffect(() => {
@@ -609,7 +683,9 @@ export function useSchedule(filter) {
       if (res.ok && isObject(res.body)) {
         const streams = Array.isArray(res.body.streams) ? res.body.streams.filter(isObject) : [];
         anyLive.current = streams.some((s) => isLiveStatus(s.status));
+        starts.current = streams.map((s) => Date.parse(String(s.scheduled_start_at ?? ""))).filter((n) => Number.isFinite(n));
         const offset = offsetFrom(res.body);
+        if (offset !== null) offsetRef.current = offset;
         setState((prev) => ({
           streams,
           counts: isObject(res.body.counts) ? res.body.counts : null,
@@ -621,13 +697,25 @@ export function useSchedule(filter) {
         }));
         return true;
       }
-      // A failed poll keeps what is on screen; a failed load is an error.
-      setState((prev) => (prev.loading ? { ...prev, loading: false, error: true } : prev));
+      // A failed poll keeps what is on screen; a failed load is an error, and
+      // leaves nothing behind — the retry is a first load again.
+      setState((prev) => (prev.loading ? { ...prev, streams: [], loading: false, error: true } : prev));
       return false;
+    };
+    const cadence = () => {
+      if (anyLive.current) return POLL_LIVE_MS;
+      const now = Date.now() + offsetRef.current;
+      let sleep = 0;
+      for (const at of starts.current) {
+        const left = at - now;
+        if (Math.abs(left) <= SCHEDULE_WATCH_MS) return POLL_IDLE_MS;
+        if (left > SCHEDULE_WATCH_MS) sleep = sleep ? Math.min(sleep, left - SCHEDULE_WATCH_MS) : left - SCHEDULE_WATCH_MS;
+      }
+      return sleep ? Math.min(sleep, SCHEDULE_SLEEP_MAX_MS) : 0;
     };
     fetchOnce().then(() => {
       if (cancelled) return;
-      stop = schedulePolling(fetchOnce, () => (anyLive.current ? POLL_IDLE_MS : 0));
+      stop = schedulePolling(fetchOnce, cadence);
     });
     return () => {
       cancelled = true;
@@ -685,4 +773,49 @@ export function useCountdown(startsAtIso, serverOffset = 0) {
 
   const phase = !valid || seconds <= 0 ? "started" : seconds < COUNTDOWN_SOON_SECONDS ? "soon" : "waiting";
   return { seconds, parts: countdownParts(seconds), phase, valid };
+}
+
+/**
+ * True once an instant has passed by the server's clock, flipped by a timeout
+ * at the instant itself rather than by the next poll (review fix F4): the
+ * poster, the hero and the countdown all say "Starting shortly" together, not
+ * up to a minute apart. False without a usable instant. The wait is re-armed
+ * at most a minute at a time (a long wait, a device that slept, a tab shown
+ * again), and a tab shown again re-checks at once.
+ */
+export function useStartPassed(startsAtIso, serverOffset = 0) {
+  const target = Date.parse(String(startsAtIso ?? ""));
+  const valid = Number.isFinite(target);
+  const offset = Number.isFinite(serverOffset) ? serverOffset : 0;
+  const [started, setStarted] = useState(() => valid && target <= Date.now() + offset);
+
+  useEffect(() => {
+    if (!valid) {
+      setStarted(false);
+      return undefined;
+    }
+    let timer = null;
+    const clear = () => {
+      if (timer) clearTimeout(timer);
+      timer = null;
+    };
+    const arm = () => {
+      clear();
+      const left = target - (Date.now() + offset);
+      setStarted(left <= 0);
+      // A quarter of a second past the instant, so the flip is never a tick early.
+      if (left > 0) timer = setTimeout(arm, Math.min(left + 250, 60_000));
+    };
+    const onVisibility = () => {
+      if (pageVisible()) arm();
+    };
+    arm();
+    if (typeof document !== "undefined") document.addEventListener("visibilitychange", onVisibility);
+    return () => {
+      clear();
+      if (typeof document !== "undefined") document.removeEventListener("visibilitychange", onVisibility);
+    };
+  }, [target, offset, valid]);
+
+  return valid && started;
 }

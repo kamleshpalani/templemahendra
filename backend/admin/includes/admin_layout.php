@@ -40,6 +40,7 @@ function adminNavGroups(): array
         'Data & System' => [
             'bulk_upload.php'      => ['upload',      'Bulk Upload',      'Import CSV / Excel data'],
             'payment_settings.php' => ['shield',      'Payment Gateway',  'CCAvenue mode, keys, currencies and limits'],
+            'live_settings.php'    => ['refresh',    'YouTube Automation', 'API keys and automatic status updates'],
             'settings.php'         => ['settings',    'Settings',         'Homepage sections and account'],
         ],
         'People' => [
@@ -282,7 +283,7 @@ function adminFooter(): void
     // Online payments.
     'landmark' => adminIcon('landmark'), 'shield' => adminIcon('shield'),
     // Live streaming.
-    'tv' => adminIcon('tv'),
+    'tv' => adminIcon('tv'), 'refresh' => adminIcon('refresh'),
 ], JSON_UNESCAPED_SLASHES | JSON_HEX_TAG) ?></script>
 <script src="/admin/assets/admin.js" defer></script>
 </body>

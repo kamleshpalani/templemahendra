@@ -546,6 +546,11 @@
 .home-live {
   scroll-margin-top: var(--header-h);
 }
+/* Its "Schedule" action is a full 44 px touch target, like every button in
+   the cards below it (review fix F3; the pattern LiveDarshan.css uses). */
+.home-live .section-head__actions .btn {
+  min-height: 44px;
+}
 
 /* ── Visit planner (darshan modes) ───────────────────────────────── */
 .home-visit .section-head__actions {

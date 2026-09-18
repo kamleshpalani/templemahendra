@@ -10,6 +10,9 @@ import { useRef } from "react";
  *     onChange={setFilter}
  *     items={[{ value: "all", label: "All", count: 12 }, …]}
  *   />
+ *
+ * `listRef` hands the caller the tablist element itself — for a strip that
+ * scrolls, so the selected tab can be brought into view (ScheduleFilters).
  */
 export default function SegmentedControl({
   items,
@@ -18,6 +21,7 @@ export default function SegmentedControl({
   label,
   variant = "pill",
   className = "",
+  listRef = null,
 }) {
   const refs = useRef([]);
 
@@ -36,6 +40,7 @@ export default function SegmentedControl({
 
   return (
     <div
+      ref={listRef}
       className={`tabs${variant === "underline" ? " tabs--underline" : ""} ${className}`.trim()}
       role="tablist"
       aria-label={label}

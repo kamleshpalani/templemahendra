@@ -34,6 +34,24 @@
   font-variant-numeric: tabular-nums;
 }
 
+/* ── The list, and the moment between two filters ────────────────── */
+/* Switching a filter keeps the list that is on screen: it dims and is marked
+   aria-busy until the new answer lands, instead of blanking into skeletons
+   (review fix F6). Skeletons stay for the first load and after an error. */
+.live-schedule__list {
+  min-width: 0;
+}
+.live-schedule__list--busy {
+  opacity: 0.55;
+  transition: opacity var(--transition);
+  pointer-events: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  .live-schedule__list--busy {
+    transition: none;
+  }
+}
+
 /* ── One day of the schedule ─────────────────────────────────────── */
 .live-schedule__day + .live-schedule__day {
   margin-top: clamp(1.75rem, 3.5vw, 2.75rem);
@@ -71,11 +89,17 @@
   background: var(--danger);
   animation: pulse-dot 1.6s ease-in-out infinite;
 }
+.live-schedule__day-title > span:first-child {
+  min-width: 0;
+}
+/* The count never breaks mid-word: on a phone the date wraps, not "1 pro-gramme". */
 .live-schedule__day-count {
+  flex-shrink: 0;
   color: var(--text-3);
   font-family: var(--font-body);
   font-size: var(--text-sm);
   font-weight: var(--weight-regular);
+  white-space: nowrap;
 }
 
 /* ── Loading and empty ───────────────────────────────────────────── */

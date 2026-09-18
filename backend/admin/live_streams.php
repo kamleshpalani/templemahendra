@@ -14,10 +14,20 @@
 // live.publish (editor). requireAdminAuth() refuses a viewer's POST before this
 // file's own handlers run; the explicit checks below keep each rule visible
 // where its action lives.
+//
+// YouTube automation (docs/live/SPEC-PHASE3.md §8.4), once migration 012 is
+// applied: each YouTube row's menu offers Check now and Switch to manual /
+// automatic (live.publish, like the status buttons, because a check can move a
+// status); the list gains a Sync column and the edit view a read-only
+// Automation panel. Check now is throttled twice before any call to YouTube —
+// not within LIVE_POLL_MIN_SECONDS of the row's last check, and at most 30 an
+// hour per admin (the live-check-now bucket the settings page shares) — so no
+// amount of pressing can spend the day's quota. Without 012 none of it is shown.
 require_once __DIR__ . '/../includes/auth.php';
 requireAdminAuth();
 require_once __DIR__ . '/../includes/db.php';
 require_once __DIR__ . '/../includes/live.php';
+require_once __DIR__ . '/../includes/rate_limit.php';
 require_once __DIR__ . '/includes/admin_layout.php';
 
 const LIVE_ADMIN_BASE     = '/admin/live_streams.php';
@@ -67,6 +77,167 @@ function lsRowMenu(array $items, string $label): string
         }
     }
     return $out . '</div></div>';
+}
+
+/* ── YouTube automation (SPEC-PHASE3 §8.4) ──────────────────────────────── */
+
+/** What YouTube last said (live_streams.sync_state, LIVE_PROVIDER_STATES), in the committee's words. */
+const LS_SYNC_STATE_LABELS = [
+    'upcoming'      => 'YouTube: upcoming',
+    'starting'      => 'YouTube: starting',
+    'live'          => 'YouTube: live',
+    'ended'         => 'YouTube: ended',
+    'not_broadcast' => 'YouTube: not a live broadcast',
+    'restricted'    => 'YouTube: private or not embeddable',
+    'missing'       => 'YouTube: not found',
+    'revoked'       => 'YouTube: revoked',
+    'unknown'       => 'YouTube: unclear answer',
+];
+
+/** A flash from the automation actions: one committee sentence, always through liveRedact(). */
+function lsSyncFlash(string $tone, string $text): void
+{
+    lsFlash($tone, liveRedact($text, 500));
+}
+
+/**
+ * The one sentence a scoped Check now leaves, from liveCronRun()'s summary:
+ * [tone, text]. A call-level failure reads "Could not check with YouTube: "
+ * plus the §8.3 sentence for it — on a row whose automation is off, the only
+ * record of that failure, because the row itself is left byte-identical.
+ */
+function lsCheckNowFlash(array $summary, int $id): array
+{
+    if (!empty($summary['locked'])) {
+        return ['warning', 'A check is already going on (the scheduled one). Try again in a minute.'];
+    }
+    $item = null;
+    foreach ((array) ($summary['items'] ?? []) as $it) {
+        if (is_array($it) && (int) ($it['id'] ?? 0) === $id) {
+            $item = $it;
+            break;
+        }
+    }
+    liveConfigReset();   // the run may have moved the breaker or the provider notice
+    $quotaOut = static fn(): array => ['warning', 'Could not check with YouTube: ' . LIVE_PROVIDER_MESSAGES['quota']];
+    if ($item === null) {
+        if (liveQuotaBlockedUntil() !== null) return $quotaOut();
+        if (!liveAutomationReady()['ok']) return ['warning', 'YouTube automation is not configured yet — open YouTube Automation.'];
+        return ['info', 'The job does not check this broadcast: it needs a YouTube video id and the status Scheduled, Starting soon or Live.'];
+    }
+    $outcome = (string) ($item['outcome'] ?? '');
+    switch ($outcome) {
+        case 'live':
+            return ['success', 'Checked with YouTube: it is live now — the broadcast is live on the site.'];
+        case 'starting':
+            return ['success', 'Checked with YouTube: it is about to start — the broadcast now shows as starting soon on the site.'];
+        case 'ended':
+            return ['success', 'Checked with YouTube: the broadcast has ended — it is marked as ended on the site.'];
+        case 'unchanged':
+            return ['info', 'Checked with YouTube: nothing has changed.'];
+        case 'overridden':
+            return ['info', 'Checked with YouTube: nothing has changed — the status set by hand is kept.'];
+        case 'held':
+            return ['info', 'Checked with YouTube: a change is due, but its switch is off in YouTube Automation, so nothing was changed.'];
+        case 'paused':
+            return ['warning', 'Automation paused for this broadcast.'];
+        case 'mismatch':
+            return ['warning', 'That YouTube video does not look like this broadcast — check the video id.'];
+        case 'not_found':
+            return ['warning', 'YouTube did not return that video — it may be deleted, private, or the id may be wrong.'];
+        case 'not_broadcast':
+            return ['warning', 'That video is not a live broadcast.'];
+        case 'restricted':
+            return ['warning', 'That YouTube video is private or cannot be embedded; it must be public or unlisted, and embeddable.'];
+        case 'revoked':
+            return ['warning', 'YouTube reports this broadcast as revoked. Nothing was changed — cancel it by hand if it is not happening.'];
+        case 'not_ready':
+            return ['error', 'YouTube reports a change, but the stream is not ready for it — edit the stream and check its fields.'];
+        case 'refused':
+            return ['error', 'That status change is not allowed.'];
+        case 'error':
+            return ['error', 'The check could not be completed; the scheduled job will try again.'];
+        case 'not_configured':
+            return ['warning', 'YouTube automation is not configured yet — open YouTube Automation.'];
+        case 'skipped':
+            return liveQuotaBlockedUntil() !== null ? $quotaOut() : ['warning', 'The check did not run. Try again in a minute.'];
+        case 'rate_limited':
+        case 'quota':
+        case 'auth':
+        case 'request':
+        case 'unreachable':
+            $answer = ['outcome' => $outcome];
+            // An auth refusal has several causes (the key, the OAuth client, the
+            // refresh token); the provider notice the run wrote names which.
+            if ($outcome === 'auth') $answer['notice'] = liveSetting('provider_notice');
+            $m = liveProviderConnectionMessage($answer);
+            return [$m['tone'], 'Could not check with YouTube: ' . $m['text']];
+        default:
+            return ['info', 'Checked with YouTube.'];
+    }
+}
+
+/** "3 min ago" for a UTC instant, measured on the module's clock (a future instant, clock skew, reads "just now"). */
+function lsAgo(string $utc): string
+{
+    $then = strtotime($utc . ' UTC');
+    $now  = strtotime(liveUtcNow() . ' UTC');
+    if ($then === false || $now === false) return '';
+    $d = max(0, $now - $then);
+    return match (true) {
+        $d < 60    => 'just now',
+        $d < 3600  => intdiv($d, 60) . ' min ago',
+        $d < 86400 => intdiv($d, 3600) . ' h ago',
+        default    => intdiv($d, 86400) . ' d ago',
+    };
+}
+
+/** A UTC instant as the committee reads it, in the row's zone: "18 Sep 2026 · 18:00 IST"; '' when blank. */
+function lsWhen(?string $utc, string $tz): string
+{
+    if ($utc === null || $utc === '') return '';
+    $s = liveFromUtc($utc, $tz, 'd M Y · H:i');
+    return $s === '' ? '' : $s . ' ' . liveZoneLabel($tz, $utc);
+}
+
+/** A <time> element for a UTC instant: the relative time, the full local time as its title. */
+function lsTime(string $utc, string $tz): string
+{
+    return '<time datetime="' . h(str_replace(' ', 'T', $utc) . 'Z') . '" title="' . h(lsWhen($utc, $tz)) . '">' . h(lsAgo($utc)) . '</time>';
+}
+
+/**
+ * The list's Sync cell: Auto / Manual, when it was last checked, what YouTube
+ * said, and a ⚠ carrying the clipped sync_error as its title. A notice is
+ * shown as the notice, not as an error; a STARTING row the job paused as stuck
+ * carries the danger badge until a person ends, cancels or resumes it.
+ */
+function lsSyncCell(array $row): string
+{
+    if ((string) ($row['provider'] ?? '') !== 'youtube') return '<span class="text-muted">—</span>';
+    $on     = (int) ($row['sync_enabled'] ?? 1) === 1;
+    $error  = trim((string) ($row['sync_error'] ?? ''));
+    $status = (string) ($row['status'] ?? '');
+    $tz     = (string) ($row['timezone'] ?? liveTempleTz());
+
+    $out = '<span class="cluster">' . adminBadge($on ? 'Auto' : 'Manual', $on ? 'success' : 'muted');
+    if (!$on && $status === 'STARTING' && str_starts_with($error, 'paused: stuck')) {
+        $out .= ' ' . adminBadge('stuck — a person must end or cancel this', 'danger');
+    }
+    $out .= '</span>';
+    $last = (string) ($row['last_synced_at'] ?? '');
+    $out .= '<span class="cell-sub">' . ($last !== '' ? 'Checked ' . lsTime($last, $tz) : 'Not checked yet') . '</span>';
+    $state = (string) ($row['sync_state'] ?? '');
+    if ($state !== '') $out .= '<span class="cell-sub">' . h(LS_SYNC_STATE_LABELS[$state] ?? 'YouTube: ' . $state) . '</span>';
+    if ($error !== '') {
+        $clip = mb_strlen($error) > 160 ? mb_substr($error, 0, 159) . '…' : $error;
+        if (str_starts_with($error, 'notice:')) {
+            $out .= '<span class="cell-sub live-sync__notice">' . h(trim(mb_substr($clip, 7))) . '</span>';
+        } else {
+            $out .= '<span class="live-sync__error" role="img" title="' . h($clip) . '" aria-label="' . h('Last error: ' . $clip) . '">⚠</span>';
+        }
+    }
+    return $out;
 }
 
 // ── Flash left by the previous request (POST → 303 → GET) ────────────────────
@@ -217,6 +388,49 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         else lsFlash('warning', 'That stream is not in the bin.');
         header('Location: ' . $back, true, 303);
         exit;
+    } elseif ($msg === '' && $action === 'sync') {
+        requireAdminCan('live.publish');
+        $id  = (int) $str($_POST, 'id');
+        $row = liveLoad($db, $id);
+        if (!liveAutomationInstalled()) {
+            lsSyncFlash('error', 'YouTube automation is not installed yet: apply database migration 012_live_automation.sql first.');
+        } elseif ($row === null) {
+            lsSyncFlash('warning', 'That stream no longer exists (or is in the bin).');
+        } else {
+            // Two throttles, both before any provider call; §8.3 shares the second.
+            $last  = $row['last_synced_at'] ?? null;
+            $since = $last !== null ? max(0, time() - (int) strtotime($last . ' UTC')) : PHP_INT_MAX;
+            if ($since < LIVE_POLL_MIN_SECONDS) {
+                lsSyncFlash('warning', 'Checked a moment ago — try again in ' . (LIVE_POLL_MIN_SECONDS - $since) . ' seconds.');
+            } elseif (!rateLimitAllow('live-check-now', 30, 3600, $actor)) {
+                lsSyncFlash('warning', 'You have run a lot of checks in the last hour. The scheduled job is still running normally — try again shortly.');
+            } else {
+                // A scoped run: it reads this one row even when its automation is
+                // off (it then records the facts and moves nothing, G4).
+                $summary = liveCronRun(['stream_ids' => [$id], 'limit' => 1, 'actor' => $actor, 'trigger' => 'admin']);
+                [$tone, $text] = lsCheckNowFlash($summary, $id);
+                lsSyncFlash($tone, $text);
+            }
+        }
+        header('Location: ' . $back, true, 303);
+        exit;
+    } elseif ($msg === '' && $action === 'automation') {
+        requireAdminCan('live.publish');
+        $id = (int) $str($_POST, 'id');
+        $on = $str($_POST, 'on') === '1';
+        if (!liveAutomationInstalled()) {
+            lsSyncFlash('error', 'YouTube automation is not installed yet: apply database migration 012_live_automation.sql first.');
+        } elseif (liveSetSyncEnabled($db, $id, $on, $actor)) {
+            // Switch to manual is a person's pause (sync_error NULL); Switch to
+            // automatic is Resume automation, which resets the row's baseline (§6.4).
+            lsSyncFlash('success', $on ? 'Automation resumed.' : 'Automation paused for this broadcast.');
+        } elseif (liveLoad($db, $id) === null) {
+            lsSyncFlash('warning', 'That stream no longer exists (or is in the bin).');
+        } else {
+            lsSyncFlash('info', $on ? 'Automation is already on for this broadcast.' : 'Automation is already off for this broadcast.');
+        }
+        header('Location: ' . $back, true, 303);
+        exit;
     } elseif ($msg === '') {
         lsFlash('error', 'That action is not available on this page.');
         header('Location: ' . $back, true, 303);
@@ -259,6 +473,8 @@ if ($editing === null && isset($_GET['edit'])) {
 }
 $isEdit   = !empty($editing['id']);
 $formOpen = $editing !== null;
+// Migration 012 applied: the Sync column and the Automation panel are shown (§8.4).
+$syncInstalled = liveAutomationInstalled();
 
 // ── List ─────────────────────────────────────────────────────────────────────
 $list       = liveListAdmin($db, $filters, $filters['page'], LIVE_ADMIN_PER_PAGE);
@@ -523,6 +739,53 @@ echo adminPageIntro(
         </label>
       </fieldset>
 
+      <?php if ($syncInstalled && $existingRow !== null && (string) $existingRow['provider'] === 'youtube'):
+          // Read-only: what the scheduled YouTube check knows about this row
+          // (SPEC-PHASE3 §8.4). Nothing here is a form field, and no viewer
+          // figure, provider thumbnail, stream id or recording address is shown.
+          $sr        = $existingRow;
+          $srTz      = liveIsTimezone((string) $sr['timezone']) ? (string) $sr['timezone'] : liveTempleTz();
+          $srOn      = (int) ($sr['sync_enabled'] ?? 1) === 1;
+          $srError   = trim((string) ($sr['sync_error'] ?? ''));
+          $srNotice  = str_starts_with($srError, 'notice:');
+          $srPaused  = str_starts_with($srError, 'paused');
+          $srWorking = in_array((string) $sr['status'], ['SCHEDULED', 'STARTING', 'LIVE'], true);
+          $srNone    = '<span class="text-muted">—</span>';
+          $srAt      = static fn(?string $utc, string $empty = 'Not yet'): string
+              => ($utc !== null && $utc !== '') ? h(lsWhen($utc, $srTz)) : '<span class="text-muted">' . h($empty) . '</span>';
+          $srNext    = match (true) {
+              !$srOn      => '<span class="text-muted">None while automation is off</span>',
+              !$srWorking => '<span class="text-muted">None in this status</span>',
+              ($sr['next_sync_at'] ?? null) === null => 'As soon as the scheduled job next runs',
+              default     => h(lsWhen((string) $sr['next_sync_at'], $srTz)),
+          };
+      ?>
+      <section class="live-sync-panel" aria-labelledby="sync-panel-title">
+        <h3 id="sync-panel-title"><?= adminIcon('refresh', 'ico--sm') ?> Automation</h3>
+        <p class="field__hint">What the scheduled YouTube check knows about this broadcast. Read-only; change it from the row's menu or YouTube Automation.</p>
+        <dl class="dl-grid">
+          <dt>Automation</dt>
+          <dd>
+            <?= adminBadge($srOn ? 'Auto' : 'Manual', $srOn ? 'success' : 'muted') ?>
+            <?php if (!$srOn && $srPaused): ?>
+              <span class="field__hint">Paused by the job: <?= h(trim(mb_substr($srError, mb_strlen('paused:')))) ?></span>
+            <?php elseif (!$srOn): ?>
+              <span class="field__hint">Switched to manual by a person; the job leaves this broadcast alone.</span>
+            <?php endif; ?>
+          </dd>
+          <dt>Last checked</dt><dd><?= $srAt($sr['last_synced_at'] ?? null) ?></dd>
+          <dt>Last good answer from YouTube</dt><dd><?= $srAt($sr['last_sync_ok_at'] ?? null) ?></dd>
+          <dt>Next check</dt><dd><?= $srNext ?></dd>
+          <dt>Provider state</dt><dd><?= ($sr['sync_state'] ?? null) !== null ? h(LS_SYNC_STATE_LABELS[(string) $sr['sync_state']] ?? 'YouTube: ' . $sr['sync_state']) : $srNone ?></dd>
+          <dt><?= $srNotice ? 'Notice' : 'Last error' ?></dt><dd><?= $srError !== '' ? h($srError) : $srNone ?></dd>
+          <dt>Scheduled start</dt><dd><?= $srAt($sr['scheduled_start_at'] ?? null, 'Not set') ?></dd>
+          <dt>Scheduled start — what YouTube says</dt><dd><?= $srAt($sr['provider_scheduled_start_at'] ?? null, 'Not reported') ?></dd>
+          <dt>Scheduled end</dt><dd><?= $srAt($sr['scheduled_end_at'] ?? null, 'Not set') ?></dd>
+          <dt>Scheduled end — what YouTube says</dt><dd><?= $srAt($sr['provider_scheduled_end_at'] ?? null, 'Not reported') ?></dd>
+        </dl>
+      </section>
+      <?php endif; ?>
+
       <fieldset<?= $disabled ?>>
         <legend>Options</legend>
         <?php
@@ -586,6 +849,7 @@ echo adminPageIntro(
             <?= adminSortLink('schedule', 'Schedule', $query) ?>
             <?= adminSortLink('status', 'Status', $query) ?>
             <th scope="col">Provider</th>
+            <?php if ($syncInstalled): ?><th scope="col">Sync</th><?php endif; ?>
             <?= adminSortLink('updated', 'Updated', $query) ?>
             <th scope="col"><span class="sr-only">Actions</span></th>
           </tr>
@@ -609,6 +873,13 @@ echo adminPageIntro(
                           $menu[] = ['label' => $a['label'], 'icon' => $a['icon'], 'danger' => $a['danger'],
                                      'form' => ['action' => 'status', 'id' => $rid, 'to' => $a['to']] + $formState,
                                      'confirm' => $a['confirm'], 'confirmLabel' => $a['label']];
+                      }
+                      // YouTube automation: Check now, Switch to manual / automatic (none without 012).
+                      $syncActions = liveAdminSyncActions($row, liveAutomationInstalled());
+                      if ($syncActions) $menu[] = 'divider';
+                      foreach ($syncActions as $a) {
+                          $menu[] = ['label' => $a['label'], 'icon' => $a['icon'],
+                                     'form' => ['action' => $a['action'], 'id' => $rid] + (isset($a['on']) ? ['on' => $a['on']] : []) + $formState];
                       }
                   }
                   if ($canManage) {
@@ -657,6 +928,9 @@ echo adminPageIntro(
               <span class="cell-title"><?= h(LIVE_PROVIDERS[$row['provider']] ?? $row['provider']) ?></span>
               <?php if (!empty($row['provider_broadcast_id'])): ?><span class="cell-sub tabular"><?= h($row['provider_broadcast_id']) ?></span><?php endif; ?>
             </td>
+            <?php if ($syncInstalled): ?>
+            <td class="live-sync"><?= lsSyncCell($row) ?></td>
+            <?php endif; ?>
             <td class="cell-date">
               <time datetime="<?= h(str_replace(' ', 'T', (string) $row['updated_at']) . 'Z') ?>"><?= h(liveFromUtc((string) $row['updated_at'], liveTempleTz(), 'd M Y · H:i')) ?></time>
               <?php if (!empty($row['updated_by'])): ?><span class="cell-sub"><?= h($row['updated_by']) ?></span><?php endif; ?>

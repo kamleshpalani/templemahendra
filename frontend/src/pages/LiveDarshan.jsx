@@ -19,10 +19,12 @@ import {
   formatStreamTime,
   isLiveStatus,
   pickStream,
+  startHasPassed,
   streamDescription,
   streamInstant,
   streamTitle,
   useLiveOverview,
+  useStartPassed,
   useStream,
 } from "../lib/live";
 import "../components/Live/Live.css";
@@ -64,14 +66,18 @@ const TRANSITIONS = {
 };
 
 /** The hero's aside: the status pill with the one time that matters. */
-function HeroStatus({ stream, lang, t }) {
+function HeroStatus({ stream, lang, t, started = false }) {
   const tz = stream.timezone || "Asia/Kolkata";
   let line = "";
   if (isLiveStatus(stream.status) && stream.actual_start_at) {
     const at = formatStreamTime(stream.actual_start_at, lang, tz);
     line = t(`தொடங்கியது ${at}`, `Started ${at}`);
   } else if (stream.status === "SCHEDULED" && stream.scheduled_start_at) {
-    line = `${formatStreamDate(stream.scheduled_start_at, lang, tz)} · ${formatStreamTime(stream.scheduled_start_at, lang, tz)}`;
+    // Once the start has passed the hero stops announcing a time that has gone
+    // by, at the same instant as the poster and the countdown (review fix F4).
+    line = started
+      ? t("விரைவில் தொடங்கும்", "Starting shortly")
+      : `${formatStreamDate(stream.scheduled_start_at, lang, tz)} · ${formatStreamTime(stream.scheduled_start_at, lang, tz)}`;
   } else if (stream.status === "COMPLETED" && (stream.actual_end_at || streamInstant(stream))) {
     line = formatStreamDate(stream.actual_end_at || streamInstant(stream), lang, tz);
   }
@@ -105,6 +111,14 @@ export default function LiveDarshan() {
   const error = slug ? single.error : overview.error;
   const notFound = Boolean(slug) && single.notFound;
   const retry = slug ? single.refresh : overview.refresh;
+
+  /*
+   * The instant a scheduled broadcast was due: when it passes with the page
+   * open, the poster and the hero flip to "Starting shortly" with the card's
+   * countdown, driven by one timeout rather than the 60 s poll (review fix
+   * F4). Any other status has no such instant.
+   */
+  const startPassed = useStartPassed(stream?.status === "SCHEDULED" ? stream?.scheduled_start_at : null, serverOffset);
 
   const others = useMemo(() => {
     const seen = new Set();
@@ -162,7 +176,7 @@ export default function LiveDarshan() {
         lead={lead}
         crumbs={crumbs}
         actions={<ShareButton variant="outline-light" title={seoTitle} text={seoDescription} to={sharePath} />}
-        aside={stream && <HeroStatus stream={stream} lang={lang} t={t} />}
+        aside={stream && <HeroStatus stream={stream} lang={lang} t={t} started={startPassed || startHasPassed(stream, serverOffset)} />}
       />
 
       <section className="section live-page">
@@ -231,7 +245,7 @@ export default function LiveDarshan() {
           {!loading && !error && stream && (
             <div className="split live-stage">
               <div className="live-stage__main">
-                <LivePlayer stream={stream} lang={lang} t={t} serverOffset={serverOffset} />
+                <LivePlayer stream={stream} lang={lang} t={t} serverOffset={serverOffset} started={startPassed} />
                 {!slug && stream.status === "SCHEDULED" ? (
                   // Nothing is live: the poster above, and under it the next
                   // darshan with its countdown (SPEC-PHASE2 §2.3). The card

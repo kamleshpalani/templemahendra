@@ -469,9 +469,11 @@ account (YouTube Studio, a phone, or OBS), pastes the video's link into the
 admin, and presses **Go live** when the pooja starts. The website embeds that
 video (the privacy-enhanced `youtube-nocookie.com` player), shows the next
 scheduled darshan as a poster with its date and time in the temple's own zone,
-and lists the upcoming ones. There are no YouTube API calls in this phase — no
-keys to configure, and nothing that can expire. Every rule is in
-`docs/live/SPEC-PHASE1.md`.
+and lists the upcoming ones. Phase 2 adds the schedule page
+(`/live-darshan/schedule`), the countdown to the next darshan and the
+homepage block. There are no YouTube API calls in either phase — no keys to
+configure, and nothing that can expire. Every rule is in
+`docs/live/SPEC-PHASE1.md` and `docs/live/SPEC-PHASE2.md`.
 
 Needs migration `011_live_streams.sql` (it seeds the temple and its three
 deities). Until it is applied the admin page says so and the public page
@@ -519,20 +521,73 @@ empty page.
 ### The public page and API
 
 `/live-darshan` shows the live broadcast if there is one, else the one that is
-starting, else the next scheduled one as a poster, else a quiet "nothing
-scheduled" card that points at the temple's YouTube channel.
-`/live-darshan/<slug>` is one broadcast in any public status (drafts and
-deleted streams are a 404). The page asks the server again every 30 seconds
-while a broadcast is live (60 while it is scheduled), so it notices the stream
-begin without a reload; it is in Tamil by default and English after the toggle,
-like the rest of the site.
+starting, else the next scheduled one as a poster **with a "Next Live Darshan"
+card and a countdown** under it, else a quiet "nothing scheduled" card that
+points at the temple's YouTube channel. `/live-darshan/<slug>` is one broadcast
+in any public status (drafts and deleted streams are a 404). The page asks the
+server again every 30 seconds while a broadcast is live (60 while it is
+scheduled), so it notices the stream begin without a reload; it is in Tamil by
+default and English after the toggle, like the rest of the site.
 
 | Method | Path | Answers |
 | ------ | ---- | ------- |
-| GET | `/api/live-streams` | `{ live: [...], upcoming: [...], server_time }` — what the page needs in one call (`no-store`) |
+| GET | `/api/live-streams` | `{ live: [...], upcoming: [...], now, next, server_time }` — what the page and the homepage need in one call (`no-store`). `now` is the featured live broadcast and `next` the first upcoming one, or `null` |
 | GET | `/api/live-streams/live` | The LIVE and STARTING broadcasts, most recently started first |
 | GET | `/api/live-streams/upcoming?limit=` | SCHEDULED broadcasts that have not ended, soonest first (default 10, max 50; cached for a minute) |
+| GET | `/api/live-streams/schedule?filter=&limit=` | The schedule for one filter — `today`, `tomorrow`, `week`, `festivals` or `all` (the default) — as `{ streams, filter, window, counts, server_time }`; default 50 items, max 100; cached for 30 seconds. See *The schedule page* |
 | GET | `/api/live-streams/<id>` or `/<slug>` | One broadcast; digits are an id, so a slug is never digits only |
+
+### The schedule page, the countdown and the homepage (phase 2)
+
+`/live-darshan/schedule` lists every planned broadcast under five filters —
+**Today · Tomorrow · This week · Festivals · All** — each with its count. The
+windows are worked out on the server, on the temple's own clock
+(Asia/Kolkata), so a devotee abroad sees the same "today" as one in
+Pudupatti: a day runs from midnight to midnight IST, *This week* is today
+through the coming Sunday, *Festivals* is the festival, procession and
+special-event programmes of the next 90 days, and *All* is everything from
+today for 90 days plus anything on air. A broadcast that ended today stays
+on today's list marked *Ended*, a cancelled one leaves the schedule, and one
+that is live now leads every list it belongs to. Cards are grouped by day ("Live now", "Today · …", "Tomorrow · …",
+then the weekday and date) and show the title, temple, deity, programme,
+date, time, thumbnail and status; a card within the next day counts down in
+minutes. On a phone the five filters wrap into two rows, so the chosen one is
+never off the edge. The chosen filter is in the address (`?filter=week`), and
+the Share button hands out that same address, so a link to a particular list
+can be shared; switching a filter keeps the list that is on screen (dimmed)
+until the new one arrives, rather than blanking it. Each empty filter offers
+the next wider one ("No live darshan today — see this week's schedule"), except
+on a Sunday, when "this week" is that one day and both Today and Tomorrow offer
+every upcoming broadcast instead. The page keeps asking while a listed
+broadcast is on air (every 30 seconds) or within a quarter of an hour of its
+start (every minute), so a *Starting shortly* pill becomes the *Live now* group
+without a reload.
+
+The countdown ("Live darshan starts in HH : MM : SS") counts from the
+**server's** time, never the phone's clock alone: every answer carries
+`server_time`, and the page keeps the difference to its own clock. A broadcast
+a day or more away gains a days unit ("07 : 23 : 38 : 52"), so the hour count
+never runs into three digits. The digits are decoration for sighted visitors; a
+screen reader gets one plain sentence ("Starts in about 1 hour 35 minutes") that
+changes once a minute, not once a second. When the instant passes the clock
+gives way to "Starting shortly" — the committee is about to press Go live — and
+the poster, the hero and the homepage's hero row say it at that same instant,
+not at the next poll. Nothing pulses, so a reduced-motion preference has
+nothing to still.
+
+The homepage carries the broadcast without ever showing an empty band: while
+one is on air, a red **LIVE NOW** card with the title and a *Watch live*
+button (which opens the broadcast's page, where the player is); while one is
+scheduled, the *Next Live Darshan* card with the day, the time, the countdown
+and a *View schedule* button; and nothing at all when neither exists. The
+glass panel in the hero gains a matching "Live darshan" row ("LIVE now", or
+"Next at 6:30 pm IST") that is hidden when there is nothing to say.
+
+The `provider` seam now has named placeholders — `VimeoProvider` (a numeric
+id or a `vimeo.com/…` link) and `AwsIvsProvider` (a channel ARN or an https
+`.m3u8` address) — that recognise their reference and are otherwise inert:
+neither is configured, neither can be chosen in the admin yet, and neither
+plays anything. They are the slots a later phase fills.
 
 Each item carries both titles and descriptions, the temple and deity names in
 both languages, the schedule as UTC instants and as the wall clock in its zone,
@@ -573,12 +628,11 @@ change.
 
 ### What the later phases add
 
-Phase 2 puts the live stream on the homepage and lists past broadcasts;
-phase 3 talks to the YouTube Data API (the keys already listed in
+Phase 3 talks to the YouTube Data API (the keys already listed in
 `backend/.env.example`) so a stream's status follows YouTube automatically
 through a cron job; later phases add reminders through the notification
-service, an archive of recordings, per-stream share previews and other
-providers (the `provider` field, Vimeo and AWS IVS placeholders and the
+service, an archive of past broadcasts, per-stream share previews and other
+providers (the `provider` field, the Vimeo and AWS IVS placeholders and the
 `StreamingProvider` interface are already in place for that).
 
 ---
@@ -595,7 +649,7 @@ providers (the `provider` field, Vimeo and AWS IVS placeholders and the
 | POST   | `/api/contact`       | Submit contact message |
 | GET    | `/api/search`        | Search sevas, events, poojas, announcements, gallery captions and the static pages. `?q=` and an optional `?limit=`. Answers in both languages. |
 | GET    | `/api/og.php`        | The share preview for a path: `?path=/sevas&seva=3`. Returns HTML, not JSON — it is what link unfurlers read. See *Shared links and rich previews*. |
-| GET    | `/api/live-streams`  | Live and upcoming YouTube Live broadcasts (`/live`, `/upcoming`, `/<id>`, `/<slug>`). See *Live Darshan (YouTube Live)*. |
+| GET    | `/api/live-streams`  | Live and upcoming YouTube Live broadcasts (`/live`, `/upcoming`, `/schedule?filter=`, `/<id>`, `/<slug>`). See *Live Darshan (YouTube Live)*. |
 
 ### Devotee accounts
 

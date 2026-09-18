@@ -1,32 +1,66 @@
 #!/usr/bin/env node
 /**
- * tests/support/youtube_mock.mjs — a stand-in for the two YouTube endpoints the
- * live-darshan module may call, so later phases can be driven without the real
- * service (docs/live/SPEC-PHASE1.md §6; the Phase 3 poller is its first user —
- * Phase 1 only starts it to prove it works).
+ * tests/support/youtube_mock.mjs — a stand-in for the YouTube endpoints the
+ * live-darshan module may call, so every phase can be driven without the real
+ * service, a Google account or a key (docs/live/SPEC-PHASE1.md §6; the Phase 3
+ * poller is its main user, docs/live/SPEC-PHASE3.md §10.2 and §10.4).
  *
- *   const mock = await startYoutubeMock({ port: 8091 });
- *     GET /oembed?url=<video url>&format=json   → the oEmbed document for the id in the URL
- *     GET /youtube/v3/videos?part=…&id=a,b&key= → videos.list: items with snippet,
- *                                                 liveStreamingDetails and status
- *     POST /token                               → an access token for a refresh_token grant
- *     GET /__health                             → "ok", for the port check
- *   mock.requests[]                             every request, newest last
- *   mock.setVideo(id, { title, liveBroadcastContent, scheduledStartTime, … })
+ *   const mock = await startYoutubeMock({ port: 8092, apiKey, clientSecret, tokenTtl: 3599, rotateRefreshToken: false });
+ *     GET  /oembed?url=<video url>&format=json        → the oEmbed document for the id in the URL
+ *     GET  /youtube/v3/videos?part=…&id=a,b&key=       → videos.list: snippet, status, liveStreamingDetails.
+ *                                                        Credential: ?key= OR Authorization: Bearer <token>
+ *     GET  /youtube/v3/liveBroadcasts?part=…&id=a,b    → liveBroadcasts.list (Tier 2): id, status
+ *                                                        (lifeCycleStatus, recordingStatus), contentDetails
+ *                                                        (boundStreamId). Bearer only.
+ *     POST /token                                      → an access token for a refresh_token grant
+ *     GET  /__health                                   → "ok", for the port check
+ *   mock.requests[]      every request, newest last: { method, path, query, headers (all of them), body }
+ *   mock.quotaUnits      units spent: 1 per videos.list or liveBroadcasts.list request, refused ones included
+ *   mock.tokensIssued    access tokens /token has issued
+ *   mock.setVideo(id, { … })          field-by-field overrides (below); a later call merges into an earlier one
+ *   mock.failNext(id, times, scenario) the id's next `times` videos.list requests answer as `scenario`, then normally
  *   await mock.close()
  *
- * Scenarios are chosen by the LAST FOUR characters of the video id, so a suite
- * never has to configure the mock before a call:
- *   …0404  the video does not exist   videos: 200 with no items · oEmbed: 400
- *   …0429  too many requests           429 with Retry-After: 30
- *   …0500  YouTube is broken           500
- *   …0403  quota exhausted             videos: 403 quotaExceeded · oEmbed: 401 (private / not embeddable)
- * Anything else is a public, embeddable video.
+ * Scenarios are chosen by the LAST FOUR characters of the video id (SPEC-PHASE3
+ * §10.2), so a suite never has to configure the mock before a call. Instants are
+ * relative to the mock's clock at the moment of the request.
+ *   …0404  200 with the id omitted from items[] (missing)      oEmbed: 400
+ *   …0429  429 rateLimitExceeded + Retry-After: 30             oEmbed: 429
+ *   …0500  500, plain text                                     oEmbed: 500
+ *   …0403  403 quotaExceeded, domain youtube.quota             oEmbed: 401
+ *   …0401  401 authError on every request (key= or bearer)
+ *   …UPCM  upcoming; scheduledStartTime now + 5 min            Tier 2: ready
+ *   …STRT  upcoming; scheduledStartTime now + 5 min            Tier 2: testing
+ *   …LIVE  live, concurrentViewers; scheduled/actual start now − 5 min   Tier 2: live, recording
+ *   …HIDE  as LIVE, concurrentViewers omitted
+ *   …DONE  none; scheduled/actual start now − 15 min, actualEndTime now − 5 min   Tier 2: complete, recorded
+ *   …PRIV  as LIVE but privacyStatus private: omitted from items[] for a key= request, returned to a valid bearer
+ *   …NOEM  as LIVE but embeddable false
+ *   …NOLS  a plain upload: no liveStreamingDetails
+ *   …RVOK  as UPCM                                            Tier 2: revoked
+ *   anything else: a public, embeddable video with liveBroadcastContent "none" and no
+ *   liveStreamingDetails — which the poller reads as not_broadcast.
+ * Each id in a batch contributes its own item or omission. A whole-response error
+ * (429 / 500 / 403 / 401) is returned only when EVERY requested id carries that
+ * scenario, as the real API fails a whole request; an error-scenario id in a mixed
+ * batch is simply omitted. More than 50 ids → 400 badRequest.
  *
- * With apiKey given, videos.list refuses any other key (400 badRequest) and
- * /token any other client secret (401 invalid_client), so a suite can prove the
- * server sends the right credential — and only in the place it belongs.
- * Nothing here is a secret: keys a suite passes in are invented for the run.
+ * setVideo fields (each wins over the scenario default for that field only; null
+ * removes a defaulted instant): title, description, channelTitle, channelId,
+ * publishedAt, thumbnails, liveBroadcastContent, scheduledStartTime,
+ * scheduledEndTime, actualStartTime, actualEndTime, concurrentViewers,
+ * concurrentViewersSeq (one value per response, the last one repeating),
+ * hideViewers, privacyStatus, embeddable, lifeCycleStatus, recordingStatus,
+ * boundStreamId.
+ *
+ * With apiKey given, a key= request with any other key gets 400 badRequest "API
+ * key not valid. Please pass a valid API key."; a bearer the mock did not issue,
+ * or one past its tokenTtl, gets 401 authError. With clientSecret given, /token
+ * refuses any other client secret (401 invalid_client). /token answers 400
+ * invalid_grant for the refresh token mock-refresh-invalid-grant and a plain-text
+ * 500 for mock-refresh-unavailable; with rotateRefreshToken it returns a new
+ * refresh_token on every grant. Nothing here is a secret: every credential a
+ * suite passes in is an obviously fake literal invented for the run.
  */
 
 import http from "node:http";
@@ -56,12 +90,41 @@ export function portInUse(port, host = "127.0.0.1") {
   });
 }
 
+/** Every tail of SPEC-PHASE3 §10.2's table. */
+const SCENARIOS = ["0404", "0429", "0500", "0403", "0401", "UPCM", "STRT", "LIVE", "HIDE", "DONE", "PRIV", "NOEM", "NOLS", "RVOK"];
+/** The tails that fail a whole request (when every id in it carries the same one). */
+const ERROR_SCENARIOS = new Set(["0429", "0500", "0403", "0401"]);
+
 const scenarioOf = (id) => {
   const tail = String(id ?? "").slice(-4);
-  return ["0404", "0429", "0500", "0403"].includes(tail) ? tail : "ok";
+  return SCENARIOS.includes(tail) ? tail : "ok";
 };
 
-export async function startYoutubeMock({ port, host = "127.0.0.1", apiKey = null, clientSecret = null } = {}) {
+/*
+ * The defaults each broadcast scenario gives a field the test has not overridden.
+ * Instants are minutes from the moment of the request. docs/live/SPEC-PHASE3.md
+ * §10.2: liveYoutubeSimulate() answers from the same table.
+ */
+const UPCOMING = { liveBroadcastContent: "upcoming", scheduledStartTime: 5, lifeCycleStatus: "ready", recordingStatus: "notRecording" };
+const LIVE_NOW = { liveBroadcastContent: "live", scheduledStartTime: -5, actualStartTime: -5, lifeCycleStatus: "live", recordingStatus: "recording" };
+const SCENARIO_DEFAULTS = {
+  UPCM: UPCOMING,
+  STRT: { ...UPCOMING, lifeCycleStatus: "testing" },
+  LIVE: LIVE_NOW,
+  HIDE: { ...LIVE_NOW, hideViewers: true },
+  DONE: { liveBroadcastContent: "none", scheduledStartTime: -15, actualStartTime: -15, actualEndTime: -5, lifeCycleStatus: "complete", recordingStatus: "recorded" },
+  PRIV: { ...LIVE_NOW, privacyStatus: "private" },
+  NOEM: { ...LIVE_NOW, embeddable: false },
+  NOLS: {},
+  RVOK: { ...UPCOMING, lifeCycleStatus: "revoked" },
+};
+const INSTANTS = ["scheduledStartTime", "scheduledEndTime", "actualStartTime", "actualEndTime"];
+const has = (o, k) => Object.prototype.hasOwnProperty.call(o, k);
+/** RFC 3339 in UTC to the second, as the Data API writes it. */
+const rfc3339 = (ms) => new Date(ms).toISOString().replace(/\.\d{3}Z$/, "Z");
+
+export async function startYoutubeMock({ port, host = "127.0.0.1", apiKey = null, clientSecret = null, tokenTtl = 3599, rotateRefreshToken = false } = {}) {
+  const ttl = Number.isInteger(tokenTtl) && tokenTtl > 0 ? tokenTtl : 3599;
   const mock = {
     port,
     host,
@@ -71,14 +134,35 @@ export async function startYoutubeMock({ port, host = "127.0.0.1", apiKey = null
     tokenUrl: `http://${host}:${port}/token`,
     apiKey,
     clientSecret,
-    /** Every request that reached the mock, newest last: { method, path, query, headers }. */
+    /** Seconds an issued access token lives (expires_in); a bearer past it is refused. */
+    tokenTtl: ttl,
+    /** When true, every successful refresh also returns a new refresh_token. */
+    rotateRefreshToken: Boolean(rotateRefreshToken),
+    /** Every request that reached the mock, newest last: { method, path, query, headers, body }. */
     requests: [],
-    /** id → overrides for what videos.list and oEmbed say about it. */
+    /** Units spent: 1 per videos.list or liveBroadcasts.list request, refused ones included. */
+    quotaUnits: 0,
+    /** id → overrides for what videos.list, liveBroadcasts.list and oEmbed say about it. */
     videos: new Map(),
+    /** id → { times, scenario } armed by failNext(). */
+    failures: new Map(),
     tokensIssued: 0,
   };
+  /** Access tokens this mock issued → the instant (ms) each stops being accepted. */
+  const tokens = new Map();
+  /** id → how many viewer figures of its concurrentViewersSeq have been served. */
+  const viewerSeqPos = new Map();
+
   mock.setVideo = (id, fields = {}) => {
+    if (has(fields, "concurrentViewersSeq")) viewerSeqPos.delete(id);
     mock.videos.set(id, { ...(mock.videos.get(id) ?? {}), ...fields });
+  };
+  mock.failNext = (id, times, scenario) => {
+    if (!SCENARIOS.includes(scenario)) throw new Error(`failNext: "${scenario}" is not a scenario of SPEC-PHASE3 §10.2`);
+    const n = Math.floor(Number(times));
+    if (!Number.isFinite(n) || n < 0) throw new Error(`failNext: times must be a whole number, got ${times}`);
+    if (n === 0) mock.failures.delete(id);
+    else mock.failures.set(id, { times: n, scenario });
   };
 
   const json = (res, status, body, headers = {}) => {
@@ -91,16 +175,72 @@ export async function startYoutubeMock({ port, host = "127.0.0.1", apiKey = null
   };
   const apiError = (res, code, reason, message, headers = {}) =>
     json(res, code, { error: { code, message, errors: [{ message, domain: reason === "quotaExceeded" ? "youtube.quota" : "global", reason }] } }, headers);
+  const authError = (res) => apiError(res, 401, "authError", "Invalid Credentials");
+  /** The answer a whole request gets when every id in it carries this error scenario. */
+  const wholeError = (res, scenario) => {
+    if (scenario === "0429") return apiError(res, 429, "rateLimitExceeded", "Too many requests", { "Retry-After": "30" });
+    if (scenario === "0500") return text(res, 500, "Internal Server Error");
+    if (scenario === "0403") return apiError(res, 403, "quotaExceeded", "The request cannot be completed because you have exceeded your quota.");
+    return authError(res);
+  };
 
-  /** The document videos.list returns for one id (a public, embeddable video unless overridden). */
-  const videoItem = (id) => {
+  const bearerOf = (req) => {
+    const m = /^Bearer\s+(\S+)\s*$/i.exec(String(req.headers.authorization ?? ""));
+    return m ? m[1] : null;
+  };
+  const bearerValid = (token) => tokens.has(token) && tokens.get(token) > Date.now();
+
+  /** The requested ids (duplicates kept, so the 50-id guard counts what was sent). */
+  const idsOf = (query) => (query.get("id") ?? "").split(",").map((s) => s.trim()).filter(Boolean);
+  /** One of the whole-request answers, or null when the ids are fine to answer one by one. */
+  const batchRefusal = (res, ids, scenarios, missingMessage) => {
+    if (!ids.length) return apiError(res, 400, "missingRequiredParameter", missingMessage);
+    if (ids.length > 50) return apiError(res, 400, "badRequest", `Too many ids: at most 50 may be requested at once, got ${ids.length}.`);
+    const first = scenarios[0];
+    if (ERROR_SCENARIOS.has(first) && scenarios.every((s) => s === first)) return wholeError(res, first);
+    return null;
+  };
+
+  /** Everything the mock says about one id under one scenario, before it is shaped into an item. */
+  const describe = (id, scenario, now) => {
     const v = mock.videos.get(id) ?? {};
-    const live = v.liveBroadcastContent ?? "none";
-    const details = {};
-    if (v.scheduledStartTime) details.scheduledStartTime = v.scheduledStartTime;
-    if (v.actualStartTime) details.actualStartTime = v.actualStartTime;
-    if (v.actualEndTime) details.actualEndTime = v.actualEndTime;
-    if (live === "live") details.concurrentViewers = String(v.concurrentViewers ?? 42);
+    const d = SCENARIO_DEFAULTS[scenario] ?? {};
+    const pick = (k) => (has(v, k) ? v[k] : d[k]);
+    const live = pick("liveBroadcastContent") ?? "none";
+    const instants = {};
+    for (const k of INSTANTS) {
+      if (has(v, k)) {
+        if (v[k] !== null && v[k] !== undefined && v[k] !== "") instants[k] = String(v[k]);
+      } else if (typeof d[k] === "number") {
+        instants[k] = rfc3339(now + d[k] * 60 * 1000);
+      }
+    }
+    return {
+      v,
+      live,
+      instants,
+      privacy: pick("privacyStatus") ?? "public",
+      embeddable: pick("embeddable") ?? true,
+      hidden: Boolean(pick("hideViewers")),
+      lifeCycleStatus: pick("lifeCycleStatus") ?? null,
+      recordingStatus: pick("recordingStatus") ?? null,
+      broadcast: has(SCENARIO_DEFAULTS, scenario) && scenario !== "NOLS",
+    };
+  };
+  const viewersOf = (id, v) => {
+    if (Array.isArray(v.concurrentViewersSeq) && v.concurrentViewersSeq.length) {
+      const pos = viewerSeqPos.get(id) ?? 0;
+      viewerSeqPos.set(id, pos + 1);
+      return v.concurrentViewersSeq[Math.min(pos, v.concurrentViewersSeq.length - 1)];
+    }
+    return v.concurrentViewers ?? 42;
+  };
+
+  /** The document videos.list returns for one id (a public, embeddable video unless the scenario or an override says otherwise). */
+  const videoItem = (id, s) => {
+    const { v, live } = s;
+    const details = { ...s.instants };
+    if (live === "live" && !s.hidden) details.concurrentViewers = String(viewersOf(id, v));
     return {
       kind: "youtube#video",
       etag: `mock-${id}`,
@@ -110,7 +250,7 @@ export async function startYoutubeMock({ port, host = "127.0.0.1", apiKey = null
         channelId: v.channelId ?? "UCmockmockmockmockmockmo",
         title: v.title ?? `Mock video ${id}`,
         description: v.description ?? "",
-        thumbnails: {
+        thumbnails: v.thumbnails ?? {
           default: { url: `https://i.ytimg.com/vi/${id}/default.jpg`, width: 120, height: 90 },
           medium: { url: `https://i.ytimg.com/vi/${id}/mqdefault.jpg`, width: 320, height: 180 },
           high: { url: `https://i.ytimg.com/vi/${id}/hqdefault.jpg`, width: 480, height: 360 },
@@ -120,11 +260,37 @@ export async function startYoutubeMock({ port, host = "127.0.0.1", apiKey = null
       },
       status: {
         uploadStatus: "processed",
-        privacyStatus: v.privacyStatus ?? "public",
-        embeddable: v.embeddable ?? true,
+        privacyStatus: s.privacy,
+        embeddable: s.embeddable,
         madeForKids: false,
       },
       ...(live === "none" && Object.keys(details).length === 0 ? {} : { liveStreamingDetails: details }),
+    };
+  };
+
+  /** The document liveBroadcasts.list returns for one id, or null when the id is not a broadcast. */
+  const broadcastItem = (id, s) => {
+    const { v } = s;
+    const tier2Override = ["lifeCycleStatus", "recordingStatus", "boundStreamId"].some((k) => has(v, k));
+    const isBroadcast = s.broadcast || tier2Override || s.live !== "none" || Object.keys(s.instants).length > 0;
+    if (!isBroadcast) return null;
+    const lifeCycleStatus = s.lifeCycleStatus ?? (s.instants.actualEndTime ? "complete" : s.live === "live" ? "live" : "ready");
+    const recordingStatus = s.recordingStatus ?? (lifeCycleStatus === "complete" ? "recorded" : lifeCycleStatus === "live" ? "recording" : "notRecording");
+    const boundStreamId = has(v, "boundStreamId") ? v.boundStreamId : `mock-stream-${id}`;
+    return {
+      kind: "youtube#liveBroadcast",
+      etag: `mock-bc-${id}`,
+      id,
+      status: { lifeCycleStatus, privacyStatus: s.privacy, recordingStatus, madeForKids: false, selfDeclaredMadeForKids: false },
+      contentDetails: {
+        ...(boundStreamId ? { boundStreamId } : {}),
+        enableAutoStart: true,
+        enableAutoStop: true,
+        enableDvr: true,
+        recordFromStart: true,
+        startWithSlate: false,
+        latencyPreference: "normal",
+      },
     };
   };
 
@@ -156,21 +322,75 @@ export async function startYoutubeMock({ port, host = "127.0.0.1", apiKey = null
   }
 
   function handleVideos(req, res, query) {
-    if (mock.apiKey !== null && query.get("key") !== mock.apiKey) {
+    const bearer = bearerOf(req);
+    if (bearer !== null) {
+      if (!bearerValid(bearer)) return authError(res);
+    } else if (mock.apiKey !== null && query.get("key") !== mock.apiKey) {
       return apiError(res, 400, "badRequest", "API key not valid. Please pass a valid API key.");
     }
-    const ids = (query.get("id") ?? "").split(",").map((s) => s.trim()).filter(Boolean);
-    if (!ids.length) return apiError(res, 400, "missingRequiredParameter", "No filter selected. Expected one of: id, chart, myRating");
-    const scenario = scenarioOf(ids[0]);
-    if (scenario === "0429") return apiError(res, 429, "rateLimitExceeded", "Too many requests", { "Retry-After": "30" });
-    if (scenario === "0500") return text(res, 500, "Internal Server Error");
-    if (scenario === "0403") return apiError(res, 403, "quotaExceeded", "The request cannot be completed because you have exceeded your quota.");
-    const items = ids.filter((id) => YT_ID.test(id) && scenarioOf(id) !== "0404").map(videoItem);
+    const ids = idsOf(query);
+    // Each id's scenario for this request: an armed failNext() first (spent once
+    // by this request, however often the id repeats in it), else its tail.
+    const effective = new Map();
+    const scenarios = ids.map((id) => {
+      if (effective.has(id)) return effective.get(id);
+      let scenario = scenarioOf(id);
+      const armed = ids.length <= 50 ? mock.failures.get(id) : null;
+      if (armed) {
+        armed.times -= 1;
+        if (armed.times <= 0) mock.failures.delete(id);
+        scenario = armed.scenario;
+      }
+      effective.set(id, scenario);
+      return scenario;
+    });
+    const refused = batchRefusal(res, ids, scenarios, "No filter selected. Expected one of: id, chart, myRating");
+    if (refused !== null) return refused;
+    const now = Date.now();
+    const seen = new Set();
+    const items = [];
+    ids.forEach((id, i) => {
+      const scenario = scenarios[i];
+      if (seen.has(id)) return;
+      seen.add(id);
+      if (!YT_ID.test(id) || scenario === "0404" || ERROR_SCENARIOS.has(scenario)) return;
+      const s = describe(id, scenario, now);
+      // As Google does it: a private video is invisible to a key= request and
+      // is returned only to the owner's bearer.
+      if (s.privacy === "private" && bearer === null) return;
+      items.push(videoItem(id, s));
+    });
     return json(res, 200, {
       kind: "youtube#videoListResponse",
       etag: "mock",
       items,
       pageInfo: { totalResults: items.length, resultsPerPage: items.length },
+    });
+  }
+
+  function handleBroadcasts(req, res, query) {
+    const bearer = bearerOf(req);
+    if (bearer === null || !bearerValid(bearer)) return authError(res);
+    const ids = idsOf(query);
+    const scenarios = ids.map(scenarioOf);
+    const refused = batchRefusal(res, ids, scenarios, "No filter selected. Expected one of: id, mine, broadcastStatus");
+    if (refused !== null) return refused;
+    const now = Date.now();
+    const seen = new Set();
+    const items = [];
+    ids.forEach((id, i) => {
+      const scenario = scenarios[i];
+      if (seen.has(id)) return;
+      seen.add(id);
+      if (!YT_ID.test(id) || scenario === "0404" || ERROR_SCENARIOS.has(scenario)) return;
+      const item = broadcastItem(id, describe(id, scenario, now));
+      if (item) items.push(item);
+    });
+    return json(res, 200, {
+      kind: "youtube#liveBroadcastListResponse",
+      etag: "mock",
+      items,
+      pageInfo: { totalResults: items.length, resultsPerPage: 50 },
     });
   }
 
@@ -182,8 +402,16 @@ export async function startYoutubeMock({ port, host = "127.0.0.1", apiKey = null
     if (mock.clientSecret !== null && form.client_secret !== mock.clientSecret) {
       return json(res, 401, { error: "invalid_client", error_description: "The OAuth client was not found." });
     }
+    if (form.refresh_token === "mock-refresh-invalid-grant") {
+      return json(res, 400, { error: "invalid_grant", error_description: "Token has been expired or revoked." });
+    }
+    if (form.refresh_token === "mock-refresh-unavailable") return text(res, 500, "Internal Server Error");
     mock.tokensIssued += 1;
-    return json(res, 200, { access_token: `mock-access-${mock.tokensIssued}`, expires_in: 3599, scope: "https://www.googleapis.com/auth/youtube.readonly", token_type: "Bearer" });
+    const accessToken = `mock-access-${mock.tokensIssued}`;
+    tokens.set(accessToken, Date.now() + mock.tokenTtl * 1000);
+    const out = { access_token: accessToken, expires_in: mock.tokenTtl, scope: "https://www.googleapis.com/auth/youtube.readonly", token_type: "Bearer" };
+    if (mock.rotateRefreshToken) out.refresh_token = `mock-refresh-rotated-${mock.tokensIssued}-not-secret`;
+    return json(res, 200, out);
   }
 
   const server = http.createServer(async (req, res) => {
@@ -196,14 +424,19 @@ export async function startYoutubeMock({ port, host = "127.0.0.1", apiKey = null
       method: req.method,
       path: url.pathname,
       query: Object.fromEntries(query.entries()),
-      headers: { authorization: req.headers.authorization ?? null, "user-agent": req.headers["user-agent"] ?? null },
+      // Every header, so a check can prove the API key never travels in one.
+      headers: { authorization: null, "user-agent": null, ...req.headers },
       body: body.length ? body.toString("utf8").slice(0, 2000) : "",
     };
     mock.requests.push(record);
     try {
       if (req.method === "GET" && url.pathname === "/__health") return text(res, 200, "ok");
       if (url.pathname === "/oembed") return req.method === "GET" ? handleOembed(req, res, query) : text(res, 405, "Method not allowed", { Allow: "GET" });
-      if (url.pathname === "/youtube/v3/videos") return req.method === "GET" ? handleVideos(req, res, query) : text(res, 405, "Method not allowed", { Allow: "GET" });
+      if (url.pathname === "/youtube/v3/videos" || url.pathname === "/youtube/v3/liveBroadcasts") {
+        if (req.method !== "GET") return text(res, 405, "Method not allowed", { Allow: "GET" });
+        mock.quotaUnits += 1;
+        return url.pathname === "/youtube/v3/videos" ? handleVideos(req, res, query) : handleBroadcasts(req, res, query);
+      }
       if (url.pathname === "/token") return req.method === "POST" ? handleToken(req, res, body) : text(res, 405, "Method not allowed", { Allow: "POST" });
       return json(res, 404, { error: { code: 404, message: `Unknown mock route ${url.pathname}`, errors: [{ reason: "notFound" }] } });
     } catch (e) {

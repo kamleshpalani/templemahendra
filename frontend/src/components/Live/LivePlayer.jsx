@@ -32,7 +32,7 @@ import "./Live.css";
 const ALLOW = "accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share";
 
 /** The sentence under the badge on the poster, per status. */
-function stateText(stream, lang, t, serverOffset) {
+function stateText(stream, lang, t, serverOffset, started) {
   const tz = stream.timezone || "Asia/Kolkata";
   switch (stream.status) {
     case "SCHEDULED": {
@@ -40,8 +40,10 @@ function stateText(stream, lang, t, serverOffset) {
         return t("நேரம் விரைவில் அறிவிக்கப்படும்.", "The time will be announced shortly.");
       }
       // Past its start but not yet live: the committee is about to press Go
-      // live, and a time that has gone by would only puzzle the visitor.
-      if (startHasPassed(stream, serverOffset)) return t("விரைவில் தொடங்கும்", "Starting shortly");
+      // live, and a time that has gone by would only puzzle the visitor. The
+      // page says when that instant passes (`started`, review fix F4); on its
+      // own the poster works it out from the last answer it was given.
+      if (started || startHasPassed(stream, serverOffset)) return t("விரைவில் தொடங்கும்", "Starting shortly");
       const date = formatStreamDate(stream.scheduled_start_at, lang, tz);
       const time = formatStreamTime(stream.scheduled_start_at, lang, tz);
       // The time token already ends in am/pm and the zone ("6:00 pm IST"), so
@@ -71,7 +73,7 @@ function stateText(stream, lang, t, serverOffset) {
   }
 }
 
-export default function LivePlayer({ stream, lang, t, serverOffset = 0 }) {
+export default function LivePlayer({ stream, lang, t, serverOffset = 0, started = false }) {
   const title = streamTitle(stream, lang);
   const live = isLiveStatus(stream?.status);
   const src = live ? embedSrc(stream, lang) : null;
@@ -118,7 +120,7 @@ export default function LivePlayer({ stream, lang, t, serverOffset = 0 }) {
           <div className="live-player__poster-veil" aria-hidden="true" />
           <div className="live-player__state">
             <LiveStatusBadge status={stream.status} size="lg" onDark />
-            <p className="live-player__state-text">{stateText(stream, lang, t, serverOffset)}</p>
+            <p className="live-player__state-text">{stateText(stream, lang, t, serverOffset, started)}</p>
             {stream.status === "SCHEDULED" && (
               <p className="live-player__state-sub">
                 {t("ஒளிபரப்பு தொடங்கியதும் இங்கே காணலாம்.", "The broadcast will appear here when it begins.")}

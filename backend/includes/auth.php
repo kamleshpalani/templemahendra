@@ -98,6 +98,7 @@ function adminPageCapability(string $file): string
         'payment_settings.php'       => 'payments.settings',
         'donation_categories.php'    => 'content.edit',
         'live_streams.php'           => 'live.view',
+        'live_settings.php'          => 'live.provider',
     ][$file] ?? 'view';
 }
 
@@ -128,6 +129,7 @@ function adminPageWriteCapability(string $file): string
         'donation_categories.php'    => 'content.edit',
         // The status buttons on live_streams.php additionally require live.publish.
         'live_streams.php'           => 'live.manage',
+        'live_settings.php'          => 'live.provider',
     ];
     if (isset($explicit[$file])) return $explicit[$file];
     $read = adminPageCapability($file);
