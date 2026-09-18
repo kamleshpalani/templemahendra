@@ -23,6 +23,7 @@ const PaymentReceipt = lazy(() => import("./pages/PaymentReceipt"));
 const ReceiptVerify = lazy(() => import("./pages/ReceiptVerify"));
 const LiveDarshan = lazy(() => import("./pages/LiveDarshan"));
 const LiveSchedule = lazy(() => import("./pages/LiveSchedule"));
+const LiveArchive = lazy(() => import("./pages/LiveArchive"));
 const NotFound = lazy(() => import("./pages/NotFound"));
 
 /*
@@ -112,6 +113,7 @@ function App() {
             <Route path="live-darshan" element={<LiveDarshan />} />
             {/* The schedule (docs/live/SPEC-PHASE2.md §2.3); `schedule` is a reserved slug, so it never collides. */}
             <Route path="live-darshan/schedule" element={<LiveSchedule />} />
+            <Route path="live-darshan/archive" element={<LiveArchive />} />
             <Route path="live-darshan/:slug" element={<LiveDarshan />} />
 
             {RETIRED_ACCOUNT_PATHS.map((path) => (

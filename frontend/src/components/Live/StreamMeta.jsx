@@ -1,5 +1,4 @@
 import { LuCalendarDays, LuClock, LuFlame, LuFlower2, LuLandmark, LuRadio } from "react-icons/lu";
-import ShareButton from "../Share/ShareButton";
 import LiveStatusBadge from "./LiveStatusBadge";
 import {
   deityName,
@@ -8,8 +7,6 @@ import {
   formatStreamRange,
   formatStreamTime,
   isLiveStatus,
-  streamDescription,
-  streamTitle,
   templeName,
 } from "../../lib/live";
 import "./Live.css";
@@ -17,7 +14,8 @@ import "./Live.css";
 /**
  * StreamMeta — the facts about one broadcast as a definition list
  * (SPEC-PHASE1 §5.2): temple, deity, programme, date, time in the stream's
- * own zone, status, and a share button when the committee allowed sharing.
+ * own zone and status. Share moved to the action row under the player
+ * (StreamActions, Phase 4).
  */
 
 function Row({ icon, label, children }) {
@@ -43,7 +41,6 @@ export default function StreamMeta({ stream, lang, t }) {
   const ended = stream.status === "COMPLETED" && stream.actual_end_at ? formatStreamTime(stream.actual_end_at, lang, tz) : "";
   const deity = deityName(stream, lang);
   const kind = eventTypeLabel(stream, lang);
-  const title = streamTitle(stream, lang);
 
   return (
     <div className="card card--solid card--static live-meta-card">
@@ -78,15 +75,6 @@ export default function StreamMeta({ stream, lang, t }) {
           <LiveStatusBadge status={stream.status} />
         </Row>
       </dl>
-      {stream.flags?.sharing && stream.slug && (
-        <div className="live-meta-card__foot">
-          <ShareButton
-            to={`/live-darshan/${stream.slug}`}
-            title={title}
-            text={streamDescription(stream, lang) || t("கோயிலின் நேரடி தரிசனம்", "Live darshan from the temple")}
-          />
-        </div>
-      )}
     </div>
   );
 }

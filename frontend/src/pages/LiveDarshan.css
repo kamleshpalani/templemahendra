@@ -87,7 +87,7 @@
 .live-stream__head {
   display: grid;
   gap: var(--space-2);
-  margin-top: var(--space-5);
+  margin-bottom: var(--space-5);
 }
 /* The next-darshan card takes the head's place under the poster (Phase 2). */
 .live-stage__next {

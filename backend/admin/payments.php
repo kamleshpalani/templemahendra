@@ -349,6 +349,9 @@ if ($detail !== null):
             <dt>Refunded</dt><dd class="cell-money"><?= h(payAdminMoney($p['amount_refunded'], $p['currency'])) ?></dd>
           <?php endif; ?>
           <dt><?= $isDonation ? 'Purpose' : 'Seva' ?></dt><dd><?= h($purpose) ?></dd>
+          <?php if ($isDonation && !empty($p['live_stream_id'])): ?>
+            <dt>Live darshan</dt><dd><a href="/admin/live_streams.php?edit=<?= (int) $p['live_stream_id'] ?>">Stream #<?= (int) $p['live_stream_id'] ?></a></dd>
+          <?php endif; ?>
           <?php if (!$isDonation): ?>
             <dt>Preferred date</dt><dd><?= h($p['preferred_date'] ? adminFmtDate($p['preferred_date']) : 'To be confirmed') ?></dd>
             <dt>Booking status</dt><dd><?= adminBadge(ucfirst((string) $p['booking_status']), adminStatusTone((string) $p['booking_status'])) ?></dd>

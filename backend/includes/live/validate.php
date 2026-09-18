@@ -17,7 +17,7 @@
 /** The input keys liveValidate() reads (the page inputs and the JSON body). */
 const LIVE_INPUT_KEYS = [
     'title_ta', 'title_en', 'description_ta', 'description_en', 'slug', 'temple_id', 'deity_id',
-    'event_type', 'provider', 'provider_reference', 'playback_url', 'thumbnail_url', 'banner_url',
+    'event_type', 'provider', 'provider_reference', 'playback_url', 'recording_url', 'thumbnail_url', 'banner_url',
     'scheduled_date', 'start_time', 'end_time', 'end_date', 'timezone', 'status',
     'is_featured', 'show_on_homepage', 'donations_enabled', 'notifications_enabled', 'sharing_enabled', 'archive_enabled',
 ];
@@ -59,6 +59,7 @@ function liveRowToInput(array $row): array
         'provider'           => (string) ($row['provider'] ?? 'youtube'),
         'provider_reference' => (string) ($row['provider_broadcast_id'] ?? ''),
         'playback_url'       => (string) ($row['playback_url'] ?? ''),
+        'recording_url'      => (string) ($row['recording_url'] ?? ''),
         'thumbnail_url'      => (string) ($row['thumbnail_url'] ?? ''),
         'banner_url'         => (string) ($row['banner_url'] ?? ''),
         'scheduled_date'     => (string) ($start['date'] ?? ''),
@@ -203,6 +204,15 @@ function liveValidate(array $in, ?array $existing, PDO $db): array
     }
     if ($provider === 'custom' && !$isDraft && $values['playback_url'] === null && !isset($errors['playback_url'])) {
         $errors['playback_url'] = 'Enter the playback URL before publishing.';
+    }
+    if (array_key_exists('recording_url', $in)) {
+        $raw = $text('recording_url');
+        $values['recording_url'] = null;
+        if ($raw !== null && $raw !== '') {
+            $recordingId = liveYoutubeId($raw);
+            if ($provider !== 'youtube' || $recordingId === null) $errors['recording_url'] = 'Enter a YouTube recording link or video ID.';
+            else $values['recording_url'] = liveYoutubeWatchUrl($recordingId);
+        }
     }
 
     // ── Schedule ──────────────────────────────────────────────────────────

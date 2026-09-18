@@ -27,6 +27,20 @@ npm i playwright axe-core && npx playwright install chromium
 The admin suites sign in as `admin` / `Admin@Test123`; set `ADMIN_USERNAME`
 and `ADMIN_PASS_HASH` to match, or edit the credentials at the top of each file.
 
+## Live recordings archive (Phase 8)
+
+After the MySQL 8 schema and sorted migrations are installed:
+
+```bash
+DB_HOST=127.0.0.1 DB_PORT=3307 DB_NAME=templemahendra DB_USER=root DB_PASS=root node tests/live-archive.mjs
+```
+
+The suite starts PHP on 8089 (`LIVE_ARCHIVE_PORT` overrides it), creates uniquely
+prefixed streams and removes only those rows in `finally`. It covers the public
+archive, pagination, month boundaries, safe recording edits/playback, manual
+completion and the poller's completion transaction with synthetic provider facts.
+It does not call YouTube. `live-sync.mjs` separately exercises the HTTP stand-in.
+
 ## The suites
 
 | Script | What it proves |
@@ -124,10 +138,11 @@ Five suites cover `docs/live/SPEC-PHASE1.md` §6, `docs/live/SPEC-PHASE2.md`
 and stop their own servers — PHP on ports **8081–8085**, the YouTube stand-in
 on **8091** / **8092** and, for the browser suite, a throwaway Vite on
 **5195** whose `/api` proxy points at the suite's PHP. Ports in use → exit 2.
-Migration `011_live_streams.sql` must be applied (each suite checks and says
-so; phase 2 needs no migration; `live-sync.mjs` also needs
-`012_live_automation.sql`, and the right to `CREATE`/`DROP` a scratch database
-for its missing-migration scenarios). YouTube's hosts are answered by a stub inside
+Migration `011_live_streams.sql` must be applied. The API and UI suites also
+check for `012_live_automation.sql`, needed by the Phase 4 viewer tests.
+The public application still works without 012, with no viewer count.
+`live-sync.mjs` needs both migrations and the right to `CREATE`/`DROP` a scratch
+database for its missing-migration scenarios. YouTube's hosts are answered by a stub inside
 the browser, so nothing leaves the machine and no real video plays.
 
 | Script | Ports | What it proves |
@@ -166,6 +181,24 @@ change its status, run SQL, `sync` — one `liveCronRun()` with the given ids,
 `/live-darshan` route and `/live-darshan/schedule`. Run `og.mjs` before
 creating any live fixture: its `/live-darshan` comparison holds only while no
 broadcast is live or upcoming (the schedule page's strings are static).
+
+## Live email reminders
+
+After migration 013, run `node tests/live-subscriptions.mjs` with the MySQL
+environment. It starts PHP on 8086 (`LIVE_SUBS_PORT` overrides it), uses the
+notification test driver, and removes only its uniquely named fixtures.
+It covers public validation, duplicate/privacy behavior, consent, unsubscribe,
+queue/delivery eligibility, rescheduling and flood buckets. Test-driver
+acceptance does not prove real email delivery.
+
+## Stream-linked donations
+
+After migration 014, run `node tests/live-donations.mjs` with the MySQL
+environment. It starts PHP on 8088 (`LIVE_DONATIONS_PORT` overrides it).
+Owned fixtures cover stream validation, checkout attribution, retry and
+validation/write races, separate-currency totals, production/test separation,
+callback replay, partial/full refunds and public privacy. The fixture state
+transitions are local only; no real money moves.
 
 ## Design-system check
 

@@ -166,7 +166,8 @@ try {
                 $temple  = $db->query("SELECT id, slug, name_ta, name_en, timezone FROM temples ORDER BY sort_order, id LIMIT 1")->fetch(PDO::FETCH_ASSOC) ?: null;
                 $deities = $db->query('SELECT id, temple_id, slug, name_ta, name_en FROM deities ORDER BY sort_order, id')->fetchAll(PDO::FETCH_ASSOC);
             }
-            liveFixtureOut(['tables' => $tables, 'now' => liveUtcNow(), 'temple' => $temple, 'deities' => $deities]);
+            $viewerColumns = (int) $db->query("SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'live_streams' AND COLUMN_NAME IN ('viewer_count', 'last_sync_ok_at')")->fetchColumn() === 2;
+            liveFixtureOut(['tables' => $tables, 'viewer_columns' => $viewerColumns, 'now' => liveUtcNow(), 'temple' => $temple, 'deities' => $deities]);
         }
 
         case 'create-stream': {

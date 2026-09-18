@@ -160,10 +160,11 @@ $imageAlt    = $lang === 'en' ? $id['alt_en'] : $id['alt_ta'];
 $type        = 'website';
 $robots      = '';
 $status      = 200;
-$streamPath  = str_starts_with($path, '/live-darshan/') && $path !== '/live-darshan/schedule';
+$streamPath  = false;
 
 try {
     $pages = sitePages();
+    $streamPath = str_starts_with($path, '/live-darshan/') && !isset($pages[$path]);
 
     if ($path === '/gallery' && ($_GET['photo'] ?? '') !== '') {
         $stmt = getDB()->prepare('SELECT caption, filename FROM gallery WHERE id = :id AND is_active = 1');
