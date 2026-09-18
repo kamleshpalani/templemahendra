@@ -7,9 +7,11 @@ import SectionHeader from "../components/ui/SectionHeader";
 import Button from "../components/ui/Button";
 import ShareButton from "../components/Share/ShareButton";
 import { EmptyState, ErrorState, SkeletonCards } from "../components/ui/Feedback";
+import LiveHeader from "../components/Live/LiveHeader";
 import LivePlayer from "../components/Live/LivePlayer";
 import LiveStatusBadge from "../components/Live/LiveStatusBadge";
 import NextDarshanCard from "../components/Live/NextDarshanCard";
+import StreamActions from "../components/Live/StreamActions";
 import StreamCard from "../components/Live/StreamCard";
 import StreamMeta from "../components/Live/StreamMeta";
 import { useLang } from "../context/LangContext";
@@ -46,6 +48,9 @@ import "./LiveDarshan.css";
 
 // The single channel constant (SPEC Decision 5) lives in data/temple.js.
 const CHANNEL_URL = TEMPLE.youtube.channelUrl;
+
+/** The upcoming grid shows this many at most; the schedule page has the rest (SPEC-PHASE4 §2.5). */
+const UPCOMING_MAX = 6;
 
 /** The §4.6 strings, exactly as backend/includes/site_pages.php carries them. */
 const PAGE_TITLE = ["நேரடி தரிசனம்", "Live Darshan"];
@@ -122,11 +127,13 @@ export default function LiveDarshan() {
 
   const others = useMemo(() => {
     const seen = new Set();
-    return [...overview.live, ...overview.upcoming].filter((s) => {
-      if (!s?.slug || s.slug === stream?.slug || seen.has(s.slug)) return false;
-      seen.add(s.slug);
-      return true;
-    });
+    return [...overview.live, ...overview.upcoming]
+      .filter((s) => {
+        if (!s?.slug || s.slug === stream?.slug || seen.has(s.slug)) return false;
+        seen.add(s.slug);
+        return true;
+      })
+      .slice(0, UPCOMING_MAX);
   }, [overview.live, overview.upcoming, stream]);
 
   /*
@@ -245,20 +252,27 @@ export default function LiveDarshan() {
           {!loading && !error && stream && (
             <div className="split live-stage">
               <div className="live-stage__main">
-                <LivePlayer stream={stream} lang={lang} t={t} serverOffset={serverOffset} started={startPassed} />
+                <LivePlayer stream={stream} lang={lang} t={t} serverOffset={serverOffset} started={startPassed} onRetry={retry} />
                 {!slug && stream.status === "SCHEDULED" ? (
                   // Nothing is live: the poster above, and under it the next
                   // darshan with its countdown (SPEC-PHASE2 §2.3). The card
-                  // carries the title as the page's h2.
-                  <NextDarshanCard stream={stream} serverOffset={serverOffset} t={t} lang={lang} heading="h2" showDescription className="live-stage__next" />
+                  // carries the title as the page's h2; the description
+                  // lives in "About this pooja" beside it (Phase 4).
+                  <NextDarshanCard stream={stream} serverOffset={serverOffset} t={t} lang={lang} heading="h2" className="live-stage__next" />
                 ) : (
-                  <header className="live-stream__head">
-                    <h2 className="live-stream__title">{streamName}</h2>
-                    {streamText && <p className="live-stream__desc">{streamText}</p>}
-                  </header>
+                  <LiveHeader stream={stream} lang={lang} t={t} />
                 )}
+                <StreamActions stream={stream} lang={lang} t={t} />
               </div>
               <aside className="split__sticky live-stage__aside" aria-label={t("ஒளிபரப்பு விவரங்கள்", "Broadcast details")}>
+                <section className="live-about" aria-labelledby="live-about-title">
+                  <h3 id="live-about-title" className="live-about__title">
+                    {t("இந்த பூஜை பற்றி", "About this pooja")}
+                  </h3>
+                  <p className="live-stream__desc">
+                    {streamText || t("இந்த ஒளிபரப்பிற்கு விளக்கம் எதுவும் இல்லை.", "No description has been given for this broadcast.")}
+                  </p>
+                </section>
                 <StreamMeta stream={stream} lang={lang} t={t} />
               </aside>
             </div>

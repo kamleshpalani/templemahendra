@@ -76,7 +76,9 @@ function liveFresh(?string $utc, int $seconds): bool
 {
     if ($utc === null || trim($utc) === '') return false;
     $ts = strtotime($utc . ' UTC');
-    return $ts !== false && strtotime(liveUtcNow() . ' UTC') - $ts <= $seconds;
+    if ($ts === false) return false;
+    $age = strtotime(liveUtcNow() . ' UTC') - $ts;
+    return $age >= 0 && $age <= $seconds;
 }
 
 /**

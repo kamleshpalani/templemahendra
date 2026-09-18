@@ -222,17 +222,6 @@
   font-size: var(--text-sm);
   font-weight: var(--weight-regular);
 }
-.live-meta-card__foot {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-2);
-  margin-top: var(--space-5);
-  padding-top: var(--space-4);
-  border-top: 1px solid var(--border-soft);
-}
-.live-meta-card__foot .btn {
-  min-height: 44px;
-}
 @media (max-width: 480px) {
   .live-meta-card {
     padding: var(--space-4);
@@ -711,5 +700,84 @@
   }
   .live-now__body {
     padding: var(--space-4);
+  }
+}
+
+/* ── Phase 4: the header strip, the action row, About this pooja ────────── */
+.live-header__row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-3);
+}
+.live-header__viewers {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: 0.2rem 0.65rem;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-pill);
+  background: var(--bg-alt);
+  color: var(--text-2);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-semibold);
+  font-variant-numeric: tabular-nums;
+  line-height: 1.6;
+}
+.live-header__viewers svg {
+  width: 1em;
+  height: 1em;
+}
+.live-header__meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+  margin: 0;
+  color: var(--text-3);
+  font-size: var(--text-sm);
+}
+.live-header__dot {
+  margin: 0 var(--space-2) 0 var(--space-1);
+}
+.live-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2) var(--space-3);
+  margin-top: var(--space-4);
+}
+.live-actions .btn {
+  min-height: 44px;
+}
+.live-notify__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-top: var(--space-4);
+}
+.live-notify__actions .btn {
+  min-height: 44px;
+}
+.live-about {
+  display: grid;
+  gap: var(--space-2);
+  margin-bottom: var(--space-5);
+}
+.live-about__title {
+  margin: 0;
+  color: var(--maroon-700);
+  font-family: var(--font-display);
+  font-size: var(--text-lg);
+  line-height: 1.3;
+}
+:lang(ta) .live-about__title {
+  font-family: var(--font-tamil);
+  line-height: 1.45;
+}
+.live-player__action {
+  min-height: 44px;
+}
+@media (max-width: 480px) {
+  .live-actions .btn {
+    flex: 1 1 calc(50% - var(--space-3));
   }
 }

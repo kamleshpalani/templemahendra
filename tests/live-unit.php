@@ -867,6 +867,8 @@ try {
     eq(liveShapePublic($withViewers($row($idLive), 42, $fresh))['viewers'], 42, 'viewers is the figure as returned on a LIVE row with a fresh last_sync_ok_at');
     eq(liveShapePublic($withViewers($row($idLive), 0, $fresh))['viewers'], 0, 'a returned zero is shown as zero');
     eq(liveShapePublic($withViewers($row($idLive), 42, $stale))['viewers'], null, '…null when the last good check is 6 minutes old');
+    eq(liveShapePublic($withViewers($row($idLive), 42, date('Y-m-d H:i:s', strtotime($fresh . ' UTC') + 120)))['viewers'], null, '…null when the last good check claims to be in the future');
+    eq(liveShapePublic($withViewers($row($idLive), 42, 'not a date'))['viewers'], null, '…null when the instant does not parse');
     eq(liveShapePublic($withViewers($row($idLive), 42, null))['viewers'], null, '…null when there was never a good check');
     eq(liveShapePublic($withViewers($row($idLive), null, $fresh))['viewers'], null, '…null when YouTube gave no figure (never zero-filled)');
     eq(liveShapePublic($withViewers($row($idStarting), 42, $fresh))['viewers'], null, '…null on STARTING');

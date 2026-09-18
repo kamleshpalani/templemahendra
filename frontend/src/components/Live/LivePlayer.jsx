@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { LuExternalLink } from "react-icons/lu";
+import { LuExternalLink, LuPlay, LuRefreshCw } from "react-icons/lu";
 import Button from "../ui/Button";
 import LiveStatusBadge from "./LiveStatusBadge";
 import {
@@ -24,6 +24,11 @@ import "./Live.css";
  * sentence saying what is happening. A poster that fails to load falls back
  * to the emblem: a thumbnail URL is a guess about the provider's CDN, not a
  * promise.
+ *
+ * Phase 4 (SPEC-PHASE4 §2.3): a COMPLETED broadcast the committee chose to
+ * archive keeps its poster until the visitor presses "Watch the recording",
+ * which mounts the same iframe in the same 16:9 box; OFFLINE and ERROR offer
+ * "Try again", which asks the page to fetch the broadcast afresh.
  */
 
 // The permissions YouTube's own embed snippet asks for. `autoplay` is not a
@@ -73,10 +78,13 @@ function stateText(stream, lang, t, serverOffset, started) {
   }
 }
 
-export default function LivePlayer({ stream, lang, t, serverOffset = 0, started = false }) {
+export default function LivePlayer({ stream, lang, t, serverOffset = 0, started = false, onRetry = null }) {
   const title = streamTitle(stream, lang);
   const live = isLiveStatus(stream?.status);
-  const src = live ? embedSrc(stream, lang) : null;
+  const recording = stream?.status === "COMPLETED" && Boolean(stream?.flags?.archive) ? embedSrc(stream, lang) : null;
+  const [playRecording, setPlayRecording] = useState(false);
+  const src = live ? embedSrc(stream, lang) : playRecording ? recording : null;
+  const retry = (stream?.status === "OFFLINE" || stream?.status === "ERROR") && typeof onRetry === "function";
   const poster = stream?.banner_url || stream?.thumbnail_url || null;
   const [posterBroken, setPosterBroken] = useState(false);
   const url = watchUrlOf(stream);
@@ -86,6 +94,10 @@ export default function LivePlayer({ stream, lang, t, serverOffset = 0, started 
   useEffect(() => {
     setPosterBroken(false);
   }, [poster]);
+  // Another broadcast, or one that is no longer an archived recording, starts on its poster.
+  useEffect(() => {
+    setPlayRecording(false);
+  }, [stream?.slug, recording]);
 
   const showPoster = Boolean(poster) && !posterBroken;
 
@@ -96,7 +108,7 @@ export default function LivePlayer({ stream, lang, t, serverOffset = 0, started 
           <iframe
             className="live-player__iframe"
             src={src}
-            title={t("நேரடி தரிசனம் – ", "Live darshan – ") + title}
+            title={(live ? t("நேரடி தரிசனம் – ", "Live darshan – ") : t("பதிவு – ", "Recording – ")) + title}
             allow={ALLOW}
             allowFullScreen
             loading="lazy"
@@ -125,6 +137,30 @@ export default function LivePlayer({ stream, lang, t, serverOffset = 0, started 
               <p className="live-player__state-sub">
                 {t("ஒளிபரப்பு தொடங்கியதும் இங்கே காணலாம்.", "The broadcast will appear here when it begins.")}
               </p>
+            )}
+            {recording && (
+              <Button
+                type="button"
+                variant="gold"
+                size="sm"
+                className="live-player__action"
+                icon={<LuPlay aria-hidden="true" />}
+                onClick={() => setPlayRecording(true)}
+              >
+                {t("பதிவைப் பார்க்க", "Watch the recording")}
+              </Button>
+            )}
+            {retry && (
+              <Button
+                type="button"
+                variant="outline-light"
+                size="sm"
+                className="live-player__action"
+                icon={<LuRefreshCw aria-hidden="true" />}
+                onClick={() => onRetry()}
+              >
+                {t("மீண்டும் முயற்சி", "Try again")}
+              </Button>
             )}
           </div>
         </div>
