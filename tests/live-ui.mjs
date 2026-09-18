@@ -131,13 +131,14 @@ async function scenario(key, name, fn) {
 }
 
 /* ── PHP fixtures ───────────────────────────────────────────────────────── */
+const STRIP = /^(LIVE_|YOUTUBE_|GOOGLE_)/i; // no real YouTube key or LIVE_CRON_KEY from the shell reaches a PHP child (SPEC-PHASE3 §11.4)
 const viaBash = /\.sh$/i.test(PHP_BIN);
 const phpNoise = [];
 /** One fixture command; the JSON travels on stdin so Tamil survives the Windows command line. */
 function fixture(command, args = {}) {
   const argv = ["tests/support/live_fixtures.php", command, "-"];
   const r = spawnSync(viaBash ? "bash" : PHP_BIN, viaBash ? [PHP_BIN, ...argv] : argv, {
-    cwd: ROOT, input: JSON.stringify(args), encoding: "utf8", env: { ...process.env, ...SERVER_ENV }, maxBuffer: 16 * 1024 * 1024, windowsHide: true,
+    cwd: ROOT, input: JSON.stringify(args), encoding: "utf8", env: { ...Object.fromEntries(Object.entries(process.env).filter(([k]) => !STRIP.test(k))), ...SERVER_ENV }, maxBuffer: 16 * 1024 * 1024, windowsHide: true,
   });
   if (r.error) throw r.error;
   const m = /(PHP )?(Warning|Notice|Deprecated|Fatal error|Parse error):[^\n]*/.exec(`${r.stdout}\n${r.stderr}`);
@@ -172,7 +173,7 @@ function portInUse(port, host = "127.0.0.1") {
 }
 function startPhp() {
   const args = ["-S", `127.0.0.1:${PHP_PORT}`, "router.php"];
-  const child = spawn(viaBash ? "bash" : PHP_BIN, viaBash ? [PHP_BIN, ...args] : args, { cwd: resolve(ROOT, "backend"), env: { ...process.env, ...SERVER_ENV }, windowsHide: true });
+  const child = spawn(viaBash ? "bash" : PHP_BIN, viaBash ? [PHP_BIN, ...args] : args, { cwd: resolve(ROOT, "backend"), env: { ...Object.fromEntries(Object.entries(process.env).filter(([k]) => !STRIP.test(k))), ...SERVER_ENV }, windowsHide: true });
   const server = { child, port: PHP_PORT, log: "" };
   child.stdout.setEncoding("utf8").on("data", (d) => (server.log += d));
   child.stderr.setEncoding("utf8").on("data", (d) => (server.log += d));
@@ -225,7 +226,7 @@ const IGNORE = /fonts\.gstatic|googleapis|google\.com\/maps|wa\.me|favicon|ERR_A
  * (Tamil); otherwise the remembered language is pre-set. Every YouTube host
  * is stubbed before the first navigation.
  */
-async function newPage({ width = 1440, height = 900, lang = "en", address = nextIp() } = {}) {
+async function newPage({ width = 1440, height = 900, lang = "en", address = nextIp(), slowApi = null, slowMs = 800 } = {}) {
   const ctx = await browser.newContext({ viewport: { width, height }, locale: "en-IN", timezoneId: "Asia/Kolkata" });
   await ctx.addInitScript((l) => {
     try {
@@ -246,6 +247,16 @@ async function newPage({ width = 1440, height = 900, lang = "en", address = next
     return route.continue({ headers: { ...req.headers(), "x-forwarded-for": address } });
   });
   await ctx.route(YOUTUBE_HOSTS, (route) => route.fulfill({ status: 200, contentType: "text/html", body: "<!doctype html><title>stub</title>" }));
+  // An API answer held back, so what the page does while it waits can be seen
+  // (the filter switch keeping its list — review fix F6). Registered last, so
+  // it answers before the header route above; it forwards the same address.
+  if (slowApi) {
+    await ctx.route(slowApi, async (route) => {
+      await sleep(slowMs);
+      const req = route.request();
+      await route.continue({ headers: { ...req.headers(), "x-forwarded-for": address } }).catch(() => {});
+    });
+  }
   const page = await ctx.newPage();
   page.setDefaultTimeout(45000);
   page.setDefaultNavigationTimeout(90000);
@@ -335,6 +346,38 @@ async function openSchedule(page, query = "") {
 /** "HH:MM:SS" of a countdown clock, and that as seconds. */
 const clockOf = async (loc) => (await loc.locator(".live-countdown__digits").allTextContents()).map((s) => s.trim()).join(":");
 const clockSeconds = (s) => { const [h, m, sec] = s.split(":").map(Number); return h * 3600 + m * 60 + sec; };
+/** The clock's units as the page draws them: [{ digits, label }, …] — four once a days unit is shown. */
+const clockUnits = (loc) =>
+  loc.locator(".live-countdown__unit").evaluateAll((els) =>
+    els.map((el) => ({
+      digits: el.querySelector(".live-countdown__digits")?.textContent.trim() ?? "",
+      label: el.querySelector(".live-countdown__label")?.textContent.trim() ?? "",
+    })),
+  );
+/** Every filter chip as it is laid out: its box, whether it is selected and whether it sits inside the strip. */
+const filterChips = (page) =>
+  page.evaluate(() => {
+    const strip = document.querySelector(".live-filters");
+    if (!strip) return null;
+    const box = strip.getBoundingClientRect();
+    return [...strip.querySelectorAll('[role="tab"]')].map((el) => {
+      const r = el.getBoundingClientRect();
+      return {
+        label: el.textContent.replace(/\s+/g, " ").trim(),
+        left: Math.round(r.left),
+        right: Math.round(r.right),
+        height: Math.round(r.height),
+        selected: el.getAttribute("aria-selected") === "true",
+        inStrip: r.left >= box.left - 1 && r.right <= box.right + 1,
+      };
+    });
+  });
+/** "வியாழன், 24 செப்டம்பர்" — the Tamil day label the page should build (review fix F5). */
+function taDayLabel(ymd) {
+  const parts = new Intl.DateTimeFormat("ta-IN", { timeZone: "Asia/Kolkata", weekday: "long", day: "numeric", month: "long" }).formatToParts(new Date(`${ymd}T12:00:00+05:30`));
+  const get = (type) => parts.find((p) => p.type === type)?.value ?? "";
+  return `${get("weekday")}, ${get("day")} ${get("month")}`;
+}
 
 /* ── Scenarios ──────────────────────────────────────────────────────────── */
 async function liveAtWidths() {
@@ -725,6 +768,25 @@ async function schedulePage() {
   S.tomorrowEarly = mkStream({ label: "Kalasanthi tomorrow", status: "SCHEDULED", event_type: "daily_pooja", scheduled_start_local: `${tomorrowIst} 06:30` });
   S.festival = mkStream({ label: "Festival procession", status: "SCHEDULED", event_type: "festival", deity_slug: "renukadevi", scheduled_start_local: `${tomorrowIst} 10:00` });
   S.nextWeek = mkStream({ label: "Next week bhajan", status: "SCHEDULED", event_type: "bhajan", scheduled_start_local: `${istDate(8)} 18:00` });
+  try {
+    await schedulePageChecks(S);
+  } finally {
+    // Whatever happened above, these rows must not be the next broadcast the later scenarios see.
+    for (const f of [S.todayLate, S.tomorrowEarly, S.nextWeek, S.festival]) {
+      try { setStatus(f.id, "CANCELLED"); } catch { /* already cancelled */ }
+    }
+  }
+}
+
+/** Cancel (or end) a fixture whatever state a failed check left it in. */
+function retire(row) {
+  if (!row?.id) return;
+  for (const to of ["COMPLETED", "CANCELLED"]) {
+    try { setStatus(row.id, to); return; } catch { /* not allowed from this status; try the next */ }
+  }
+}
+
+async function schedulePageChecks(S) {
   const api = await fetch(`${PHP_BASE}/api/live-streams/schedule?filter=all&limit=100`).then((r) => r.json());
   check(Array.isArray(api.streams) && api.counts && api.streams.some((s) => s.slug === S.todayLate.slug), "fixture: the API's schedule lists the new rows", JSON.stringify(api.counts));
 
@@ -742,6 +804,28 @@ async function schedulePage() {
     }
     check(page.errors().length === 0, `/live-darshan/schedule @${w}: no console errors`, page.errors().slice(0, 3).join(" | "));
     await page.context().close();
+  }
+
+  // The filter strip on a phone (review fix F1): five chips, in both
+  // languages, every one of them inside the viewport and inside its own strip
+  // — the selected chip included, which used to sit past the right edge with
+  // no scrollbar, fade or wrap to hint at it.
+  for (const lang of ["en", null]) {
+    for (const query of ["", "?filter=festivals"]) {
+      const strip = await newPage({ width: 390, height: 844, lang });
+      await openSchedule(strip, query);
+      const chips = await filterChips(strip);
+      const outside = (chips ?? []).filter((c) => c.left < -1 || c.right > 390 + 1);
+      const short = (chips ?? []).filter((c) => c.height < 44);
+      const selected = (chips ?? []).find((c) => c.selected);
+      const where = `${lang ?? "ta"}${query || " (All)"}`;
+      check((chips ?? []).length === 5 && outside.length === 0, `filter strip @390 (${where}): every chip is inside the viewport`, JSON.stringify(chips));
+      check(short.length === 0, `filter strip @390 (${where}): every chip is at least 44 px tall`, JSON.stringify(short));
+      check(Boolean(selected) && selected.inStrip, `filter strip @390 (${where}): the selected chip is in view`, JSON.stringify(selected));
+      check(!(await overflow(strip)), `filter strip @390 (${where}): no horizontal overflow`);
+      if (query === "") await shot(strip, `schedule-filters-390-${lang ?? "ta"}`);
+      await strip.context().close();
+    }
   }
 
   const page = await newPage();
@@ -792,12 +876,50 @@ async function schedulePage() {
   const direct = await newPage();
   await openSchedule(direct, "?filter=week");
   check((await direct.locator('.live-filters [role="tab"]').nth(2).getAttribute("aria-selected")) === "true" && (await direct.locator(`.live-card[href="/live-darshan/${S.nextWeek.slug}"]`).count()) === 0 && (await direct.locator(`.live-card[href="/live-darshan/${S.todayLate.slug}"]`).count()) === 1, "a direct load with ?filter=week selects This week and lists this week only");
+  // The share link carries the filter that is on screen (review fix O13).
+  await openSchedule(direct, "?filter=week");
+  await direct.locator(".page-hero .share-btn").click();
+  const sharedWeek = await direct.locator(".share-link__url").inputValue().catch(() => "");
+  check(sharedWeek === `${BASE}/live-darshan/schedule?filter=week`, "the share sheet hands out the schedule with ?filter=week", sharedWeek);
+  await direct.keyboard.press("Escape");
   await openSchedule(direct, "?filter=bogus");
   check((await direct.locator('.live-filters [role="tab"]').nth(4).getAttribute("aria-selected")) === "true", "?filter=bogus falls back to All");
+  await direct.locator(".page-hero .share-btn").click();
+  const sharedAll = await direct.locator(".share-link__url").inputValue().catch(() => "");
+  check(sharedAll === `${BASE}/live-darshan/schedule`, "…and the plain page (All) is shared without a filter", sharedAll);
+  await direct.keyboard.press("Escape");
   await direct.context().close();
 
-  // The empty state: once the festival is cancelled the Festivals filter has nothing, and its button switches to All.
+  // Switching a filter keeps the list that is on screen while the new answer
+  // is on its way — dimmed and aria-busy, never skeletons (review fix F6).
+  const slow = await newPage({ slowApi: "**/api/live-streams/schedule**", slowMs: 900 });
+  await openSchedule(slow);
+  const shown = (p) => p.evaluate(() => ({
+    days: document.querySelectorAll(".live-schedule__day").length,
+    cards: document.querySelectorAll(".live-card").length,
+    skeletons: document.querySelectorAll(".live-schedule__skeleton").length,
+    busy: document.querySelectorAll('.live-schedule__list[aria-busy="true"]').length,
+    filter: new URL(location.href).searchParams.get("filter"),
+  }));
+  const before = await shown(slow);
+  check(before.days >= 2 && before.skeletons === 0 && before.busy === 0, "slow API: the first answer is shown, no skeletons left", JSON.stringify(before));
+  await slow.locator('.live-filters [role="tab"]').nth(1).click();
+  await slow.waitForTimeout(300);
+  const during = await shown(slow);
+  check(during.filter === "tomorrow" && during.skeletons === 0 && during.days >= 2 && during.cards >= before.cards, "…switching to Tomorrow keeps the previous list on screen (no skeletons, nothing blanks)", JSON.stringify(during));
+  check(during.busy === 1, "…and marks it aria-busy while the answer is awaited", JSON.stringify(during));
+  await slow.waitForFunction(() => document.querySelectorAll('.live-schedule__list[aria-busy="true"]').length === 0, null, { timeout: 15000 });
+  await slow.locator(`.live-card[href="/live-darshan/${S.tomorrowEarly.slug}"]`).waitFor({ timeout: 15000 });
+  const after = await shown(slow);
+  check(after.busy === 0 && after.skeletons === 0 && after.cards === api.counts.tomorrow, "…and when it lands the new list replaces it, busy cleared", JSON.stringify(after));
+  check(slow.errors().length === 0, "slow API: no console errors", slow.errors().slice(0, 2).join(" | "));
+  await slow.context().close();
+
+  // The empty state: a cancelled broadcast leaves the schedule (only ended ones stay), so once the
+  // festival is cancelled the Festivals filter has nothing, and the empty state's button switches to All.
   setStatus(S.festival.id, "CANCELLED");
+  const festivalsLeft = await fetch(`${PHP_BASE}/api/live-streams/schedule?filter=festivals`).then((r) => r.json());
+  check(festivalsLeft.streams.length === 0 && festivalsLeft.counts.festivals === 0, "fixture: with the festival cancelled the Festivals filter is empty and counts 0", JSON.stringify(festivalsLeft.streams.map((s) => s.slug)));
   const empty = await newPage();
   await openSchedule(empty, "?filter=festivals");
   const box = empty.locator(".live-schedule__empty");
@@ -809,6 +931,7 @@ async function schedulePage() {
   check(new URL(empty.url()).searchParams.get("filter") === "all" && (await empty.locator(".live-card").count()) >= 4, "…which switches to All and lists the broadcasts", empty.url());
   await empty.context().close();
 
+
   const ta = await newPage({ lang: null });
   await openSchedule(ta);
   check((await htmlLang(ta)) === "ta" && (await text(ta.locator("h1"))) === "நேரடி தரிசன அட்டவணை", "Tamil: the h1", await text(ta.locator("h1")));
@@ -817,9 +940,15 @@ async function schedulePage() {
   const taHeadings = await ta.locator(".live-schedule__day-title").allTextContents();
   check(/^இப்போது நேரலை/.test(taHeadings[0] ?? "") && taHeadings.some((h) => /^இன்று ·/.test(h)) && taHeadings.some((h) => /^நாளை ·/.test(h)), "Tamil: Live now, Today and Tomorrow headings", taHeadings.join(" | "));
   check(/நிகழ்ச்சி/.test(await text(ta.locator('.live-schedule [role="status"][aria-live="polite"]'))), "Tamil: the live region", await text(ta.locator('.live-schedule [role="status"][aria-live="polite"]')));
+  // A later day reads "வியாழன், 24 செப்டம்பர்" — weekday, day, month, as the
+  // day heading above it does, not ICU's "செப்டம்பர் 24, வியாழன்" (review fix F5).
+  const wantTaDay = taDayLabel(istDate(8));
+  const nextWeekWhen = await text(ta.locator(`.live-card[href="/live-darshan/${S.nextWeek.slug}"] .live-card__when`));
+  check(nextWeekWhen.startsWith(wantTaDay), "Tamil: a later day reads weekday, day month (as the heading does)", `${nextWeekWhen} (expected to start with ${wantTaDay})`);
+  const taFullDate = new Intl.DateTimeFormat("ta-IN", { timeZone: "Asia/Kolkata", weekday: "long", day: "numeric", month: "long", year: "numeric" }).format(new Date(`${istDate(8)}T12:00:00+05:30`));
+  const taLaterHeading = (await ta.locator(".live-schedule__day-title").allTextContents()).find((h) => h.includes(taFullDate));
+  check(Boolean(taLaterHeading) && taFullDate.startsWith(wantTaDay.split(",")[0]), "Tamil: its day heading is the same weekday-first date with the year", `${taLaterHeading ?? "no heading"} / ${taFullDate}`);
   await ta.context().close();
-
-  for (const f of [S.todayLate, S.tomorrowEarly, S.nextWeek]) setStatus(f.id, "CANCELLED");
 }
 
 /* ── Phase 2: the countdown and the homepage's three states ─────────────── */
@@ -829,6 +958,79 @@ async function countdownAndHome() {
     console.log(`  (other broadcasts exist in this database — ${api?.live.length} live, ${api?.upcoming.length} upcoming — the homepage states cannot be shown here)`);
     return;
   }
+  const made = [];
+  try {
+    await countdownAndHomeChecks(made);
+  } finally {
+    for (const row of made) retire(row);
+  }
+}
+
+/**
+ * A filter with nothing on it offers a way out: Today and Tomorrow send the
+ * visitor to "this week" — except on a Sunday, when the week is that one day
+ * and cannot hold tomorrow, and both offer every upcoming broadcast instead
+ * (review fix O11). What to expect is read from the window the API returns,
+ * so this holds whatever day the suite is run on.
+ */
+async function emptySwitchCheck(filter) {
+  const answer = await fetch(`${PHP_BASE}/api/live-streams/schedule?filter=${filter}`).then((r) => r.json());
+  if (answer.streams.length) {
+    console.log(`  (the database has ${answer.streams.length} broadcast(s) on the ${filter} filter — its empty state cannot be shown here)`);
+    return;
+  }
+  const sunday = new Date(`${answer.window.today}T00:00:00Z`).getUTCDay() === 0;
+  const want = sunday ? "all" : "week";
+  const label = sunday ? /See all/ : /This week's schedule/;
+  const page = await newPage();
+  await openSchedule(page, `?filter=${filter}`);
+  const box = page.locator(".live-schedule__empty");
+  check((await box.count()) === 1, `${filter} with nothing: the empty state`, await text(box));
+  const go = box.locator("button").first();
+  check(label.test(await text(go)), `…its button offers the "${want}" way out (today is ${answer.window.today}, ${sunday ? "a Sunday" : "not a Sunday"})`, await text(go));
+  check((await go.evaluate((el) => el.getBoundingClientRect().height)) >= 44, "…at least 44 px tall");
+  await go.click();
+  await page.waitForTimeout(700);
+  check(new URL(page.url()).searchParams.get("filter") === want, `…and switches to ?filter=${want}`, page.url());
+  check(page.errors().length === 0, `${filter} empty: no console errors`, page.errors().slice(0, 2).join(" | "));
+  await page.context().close();
+}
+
+/**
+ * The same rule with the weekday forced, so both sides of it are pinned on
+ * whatever day the suite runs: the answer's window is rewritten to a Sunday
+ * (the week is that one day → "See all") and to a Monday (→ "This week's
+ * schedule"), with nothing listed either way (review fix O11).
+ */
+async function emptySwitchWeekdayCheck() {
+  const SUNDAY = "2026-09-20";
+  const MONDAY = "2026-09-21";
+  for (const filter of ["today", "tomorrow"]) {
+    for (const [ymd, want, label] of [[SUNDAY, "all", /See all/], [MONDAY, "week", /This week's schedule/]]) {
+      const page = await newPage();
+      await page.route("**/api/live-streams/schedule**", async (route) => {
+        const res = await route.fetch();
+        const body = await res.json();
+        body.streams = [];
+        body.counts = { today: 0, tomorrow: 0, week: 0, festivals: 0, all: 0 };
+        if (body.window) body.window = { ...body.window, today: ymd };
+        await route.fulfill({ response: res, json: body });
+      });
+      await openSchedule(page, `?filter=${filter}`);
+      const go = page.locator(".live-schedule__empty button").first();
+      const who = `${filter} empty on ${ymd === SUNDAY ? "a Sunday" : "a Monday"}`;
+      check(label.test(await text(go)), `${who}: the button offers the "${want}" way out`, await text(go));
+      await go.click();
+      await page.waitForTimeout(600);
+      check(new URL(page.url()).searchParams.get("filter") === want, `${who}: …and switches to ?filter=${want}`, page.url());
+      check(page.errors().length === 0, `${who}: no console errors`, page.errors().slice(0, 2).join(" | "));
+      await page.context().close();
+    }
+  }
+}
+
+async function countdownAndHomeChecks(made) {
+  const keep = (row) => { made.push(row); return row; };
   const noEmptySection = (page) => page.evaluate(() => [...document.querySelectorAll("main section")].every((s) => s.getBoundingClientRect().height > 40 || s.hidden));
 
   // 1. Nothing live or scheduled: no live section, no hero row, no empty band.
@@ -840,8 +1042,14 @@ async function countdownAndHome() {
   check(none.errors().length === 0, "Home (nothing scheduled): no console errors", none.errors().slice(0, 2).join(" | "));
   await none.context().close();
 
+  // With nothing scheduled, the Today and Tomorrow filters show their empty
+  // state — and the way out it offers depends on the weekday (review fix O11).
+  await emptySwitchCheck("today");
+  await emptySwitchCheck("tomorrow");
+  await emptySwitchWeekdayCheck();
+
   // 2. A broadcast in ten minutes: the homepage's upcoming state and the hero row.
-  F.nextHome = mkStream({ label: "Evening Deeparadhana", status: "SCHEDULED", event_type: "deeparadhana", deity_slug: "renukadevi", starts_in_seconds: 600 });
+  F.nextHome = keep(mkStream({ label: "Evening Deeparadhana", status: "SCHEDULED", event_type: "deeparadhana", deity_slug: "renukadevi", starts_in_seconds: 600 }));
   for (const w of [1440, 390]) {
     const home = await newPage({ width: w, height: w < 700 ? 844 : 900 });
     await home.goto(`${BASE}/`, { waitUntil: "domcontentloaded" });
@@ -852,7 +1060,15 @@ async function countdownAndHome() {
     check((await card.locator(".live-countdown__clock").count()) === 1 && /^00:(09|10):\d{2}$/.test(await clockOf(card)), `Home upcoming @${w}: the countdown reads about ten minutes`, await clockOf(card));
     const view = card.locator('a[href="/live-darshan/schedule"]', { hasText: /View schedule/ });
     check((await view.count()) === 1 && (await view.evaluate((el) => el.getBoundingClientRect().height)) >= 44, `Home upcoming @${w}: View schedule → /live-darshan/schedule, 44 px`);
-    check((await home.locator('.home-live .section-head__actions a[href="/live-darshan/schedule"]').count()) === 1, `Home upcoming @${w}: the section header's Schedule action`);
+    const headAction = home.locator('.home-live .section-head__actions a[href="/live-darshan/schedule"]');
+    check((await headAction.count()) === 1, `Home upcoming @${w}: the section header's Schedule action`);
+    // The section's own action is a full touch target too (review fix F3).
+    const smallTargets = await home.evaluate(() =>
+      [...document.querySelectorAll(".home-live a.btn, .home-live button")]
+        .map((el) => ({ h: Math.round(el.getBoundingClientRect().height), t: el.textContent.trim().slice(0, 30) }))
+        .filter((x) => x.h > 0 && x.h < 44),
+    );
+    check(smallTargets.length === 0, `Home upcoming @${w}: every target in the live section is at least 44 px tall`, JSON.stringify(smallTargets));
     const row = home.locator(".home-hero__row--live");
     check((await row.count()) === 1 && /Next at \d{1,2}:\d{2} (am|pm) IST/.test(await text(row)) && (await row.locator('a[href="/live-darshan/schedule"]').count()) === 1 && (await row.locator(".home-hero__row--live-on, .home-hero__live-dot").count()) === 0, `Home upcoming @${w}: the hero row reads "Next at <time>" and links to the schedule`, await text(row));
     check((await home.locator(".home-live").evaluate((el) => el.getBoundingClientRect().height)) > 40 && (await noEmptySection(home)), `Home upcoming @${w}: the live section has content, no empty section`);
@@ -871,19 +1087,81 @@ async function countdownAndHome() {
   await taHome.context().close();
   setStatus(F.nextHome.id, "CANCELLED");
 
-  // 3. T+0: a broadcast starting in a few seconds reads "Starting shortly" once the instant passes.
-  const t0 = mkStream({ label: "Starting now", status: "SCHEDULED", starts_in_seconds: 8 });
+  // 3. T+0: a broadcast starting in a few seconds reads "Starting shortly" once
+  // the instant passes — the countdown, the poster and the hero together, at
+  // the instant itself rather than at the next 60 s poll (review fix F4).
+  const t0 = keep(mkStream({ label: "Starting now", status: "SCHEDULED", starts_in_seconds: 25 }));
   const p0 = await newPage();
   await openLive(p0);
   check((await mainTitle(p0)) === t0.title_en, "T+0: the list route features the broadcast about to start", await mainTitle(p0));
-  const shortly = await p0.locator(".live-next .live-countdown--started", { hasText: /Starting shortly/ }).waitFor({ timeout: 25000 }).then(() => true).catch(() => false);
+  const beforeState = await text(p0.locator(".live-player__state-text"));
+  check(/^Starts /.test(beforeState), "T+0: before the instant the poster still announces the start", beforeState);
+  await p0.evaluate(() => { window.__noReload = true; });
+  const shortly = await p0.locator(".live-next .live-countdown--started", { hasText: /Starting shortly/ }).waitFor({ timeout: 40000 }).then(() => true).catch(() => false);
   check(shortly, "T+0: the countdown reads Starting shortly once the instant has passed");
   check((await p0.locator(".live-countdown__clock").count()) === 0, "T+0: the digits are gone");
+  const posterFlipped = await p0.locator(".live-player__state-text", { hasText: /^Starting shortly$/ }).waitFor({ timeout: 5000 }).then(() => true).catch(() => false);
+  check(posterFlipped, "T+0: the poster flips within seconds of the card, not at the next poll", await text(p0.locator(".live-player__state-text")));
+  const heroLine = await text(p0.locator(".live-hero__status"));
+  check(/Starting shortly/.test(heroLine), "T+0: the hero status says so too", heroLine);
+  check(/Scheduled/.test(heroLine), "T+0: …and still carries the Scheduled badge", heroLine);
+  check(await p0.evaluate(() => window.__noReload === true), "T+0: nothing reloaded the page");
+  check(p0.errors().length === 0, "T+0: no console errors", p0.errors().slice(0, 2).join(" | "));
   await p0.context().close();
   setStatus(t0.id, "CANCELLED");
 
+  // …and the homepage's hero row flips with them, under the visitor.
+  const t0home = keep(mkStream({ label: "Starting now on the homepage", status: "SCHEDULED", starts_in_seconds: 30 }));
+  const h0 = await newPage();
+  await h0.goto(`${BASE}/`, { waitUntil: "domcontentloaded" });
+  await h0.locator(".home-hero__row--live").waitFor({ timeout: 30000 });
+  check(/Next at \d{1,2}:\d{2} (am|pm) IST/.test(await text(h0.locator(".home-hero__row--live"))), "T+0 (Home): the hero row first reads Next at <time>", await text(h0.locator(".home-hero__row--live")));
+  await h0.evaluate(() => { window.__noReload = true; });
+  const rowFlipped = await h0.locator(".home-hero__row--live", { hasText: /Starting shortly/ }).waitFor({ timeout: 45000 }).then(() => true).catch(() => false);
+  check(rowFlipped, "T+0 (Home): the hero row flips to Starting shortly at the instant", await text(h0.locator(".home-hero__row--live")));
+  check(await h0.evaluate(() => window.__noReload === true), "T+0 (Home): without a reload");
+  check(h0.errors().length === 0, "T+0 (Home): no console errors", h0.errors().slice(0, 2).join(" | "));
+  await h0.context().close();
+  setStatus(t0home.id, "CANCELLED");
+
+  // 3b. A broadcast days away: the clock grows a days unit instead of counting
+  // 191 hours (review fix F2), and the Tamil captions read as sentences (O15).
+  const far = keep(mkStream({ label: "Aadi festival procession", status: "SCHEDULED", event_type: "procession", scheduled_start_local: `${istDate(8)} 10:00` }));
+  for (const [w, lang] of [[1440, "en"], [390, null]]) {
+    const p = await newPage({ width: w, height: w < 700 ? 844 : 900, lang });
+    await openLive(p);
+    const far90 = p.locator(".live-next");
+    const units = await clockUnits(far90);
+    const who = `${w} (${lang ?? "ta"})`;
+    check(units.length === 4, `days countdown @${who}: four units — days, hours, minutes, seconds`, JSON.stringify(units));
+    check(units[0]?.label === (lang === "en" ? "days" : "நாட்கள்"), `days countdown @${who}: the first unit is captioned days`, JSON.stringify(units[0]));
+    check(/^\d{2}$/.test(units[1]?.digits ?? "") && Number(units[1]?.digits) < 24, `days countdown @${who}: the hour count is two digits, under 24 (never 191)`, JSON.stringify(units[1]));
+    check(Number(units[0]?.digits) >= 7 && Number(units[0]?.digits) <= 8, `days countdown @${who}: the days count is the whole days left`, JSON.stringify(units[0]));
+    const farSr = await text(far90.locator(".live-countdown .sr-only"));
+    check(lang === "en" ? /^Starts in about \d+ days?( \d+ hours?)?$/.test(farSr) : /நாட்/.test(farSr), `days countdown @${who}: the sr sentence still speaks in days`, farSr);
+    if (lang === null) {
+      check((await text(far90.locator(".live-countdown__caption"))) === "நேரடி தரிசனம் தொடங்க இன்னும்", "days countdown (ta): the caption reads as a sentence", await text(far90.locator(".live-countdown__caption")));
+      check(units[3]?.label === "நொடி", "days countdown (ta): the seconds unit is நொடி", JSON.stringify(units[3]));
+      check(/திருவீதி உலா/.test(await text(far90.locator(".live-next__line"))), "days countdown (ta): the procession label matches config.php", await text(far90.locator(".live-next__line")));
+    }
+    check(!(await overflow(p)), `days countdown @${who}: no horizontal overflow`);
+    const fits = await far90.evaluate((el) => {
+      const clock = el.querySelector(".live-countdown__clock");
+      const panel = el.querySelector(".live-countdown");
+      if (!clock || !panel) return false;
+      const c = clock.getBoundingClientRect();
+      const b = panel.getBoundingClientRect();
+      return c.width > 0 && c.left >= b.left - 1 && c.right <= b.right + 1;
+    });
+    check(fits, `days countdown @${who}: the four units sit inside the countdown panel`);
+    await shot(p, `next-days-${w}-${lang ?? "ta"}`);
+    check(p.errors().length === 0, `days countdown @${who}: no console errors`, p.errors().slice(0, 2).join(" | "));
+    await p.context().close();
+  }
+  setStatus(far.id, "CANCELLED");
+
   // 4. The countdown proper: a broadcast in 90 s on /live-darshan.
-  F.next90 = mkStream({ label: "Evening Deeparadhana", status: "SCHEDULED", event_type: "deeparadhana", deity_slug: "renukadevi", starts_in_seconds: 90 });
+  F.next90 = keep(mkStream({ label: "Evening Deeparadhana", status: "SCHEDULED", event_type: "deeparadhana", deity_slug: "renukadevi", starts_in_seconds: 90 }));
   const page = await newPage();
   await openLive(page);
   const card = page.locator(".live-next");
@@ -895,6 +1173,7 @@ async function countdownAndHome() {
   const group = card.locator('.live-countdown[role="group"]');
   check((await group.count()) === 1 && /Time until it starts/.test((await group.getAttribute("aria-label")) ?? ""), "the countdown is a labelled group");
   check((await card.locator(".live-countdown__clock").getAttribute("aria-hidden")) === "true", "the digits are aria-hidden");
+  check((await clockUnits(card)).length === 3, "under a day the clock is HH : MM : SS — no days unit", JSON.stringify(await clockUnits(card)));
   const d1 = await clockOf(card);
   check(/^\d{2}:\d{2}:\d{2}$/.test(d1) && clockSeconds(d1) > 40 && clockSeconds(d1) <= 90, "the clock reads HH:MM:SS with about a minute and a half left", d1);
   check(/^Live darshan starts in$/.test(await text(card.locator(".live-countdown__caption"))), "…under the caption Live darshan starts in", await text(card.locator(".live-countdown__caption")));
@@ -933,8 +1212,31 @@ async function countdownAndHome() {
     await p.context().close();
   }
 
+  // 4b. The schedule page keeps asking while a listed broadcast is within a
+  // quarter of an hour of its start, so the pill becomes the Live now group
+  // under the visitor, with no reload (review fix O7). Nothing else is live
+  // here: before the fix the page stopped polling altogether.
+  const goLive = await newPage();
+  await openSchedule(goLive, "?filter=today");
+  await goLive.evaluate(() => { window.__noReload = true; });
+  check(
+    (await goLive.locator(`.live-card[href="/live-darshan/${F.next90.slug}"]`).count()) === 1 && (await goLive.locator(".live-schedule__day-title--live").count()) === 0,
+    "go live: today's schedule lists the broadcast and has no Live now group yet",
+  );
+  setStatus(F.next90.id, "LIVE");
+  const joined = await goLive
+    .locator(`.live-schedule__day:has(.live-schedule__day-title--live) .live-card[href="/live-darshan/${F.next90.slug}"]`)
+    .waitFor({ state: "attached", timeout: 90000 })
+    .then(() => true)
+    .catch(() => false);
+  check(joined, "…a poll moves it into the Live now group without a reload");
+  check(await goLive.evaluate(() => window.__noReload === true), "…and the page really was never reloaded");
+  check(goLive.errors().length === 0, "go live: no console errors", goLive.errors().slice(0, 2).join(" | "));
+  await goLive.context().close();
+  setStatus(F.next90.id, "COMPLETED");
+
   // 5. A broadcast goes live: the homepage's LIVE NOW state, and the schedule's Live now group.
-  F.morning = mkStream({ label: "Morning Abhishekam", status: "LIVE", event_type: "abhishekam", deity_slug: "lingammal", scheduled_start_local: `${tomorrowIst} 06:00` });
+  F.morning = keep(mkStream({ label: "Morning Abhishekam", status: "LIVE", event_type: "abhishekam", deity_slug: "lingammal", scheduled_start_local: `${tomorrowIst} 06:00` }));
   for (const w of [1440, 390]) {
     const home = await newPage({ width: w, height: w < 700 ? 844 : 900 });
     await home.goto(`${BASE}/`, { waitUntil: "domcontentloaded" });
@@ -973,7 +1275,6 @@ async function countdownAndHome() {
   check(/^Live now/.test((first ?? "").trim()) && (await sched.locator(`.live-schedule__day:first-of-type .live-card[href="/live-darshan/${F.morning.slug}"]`).count()) === 1, "the schedule's Today filter leads with the Live now group holding the broadcast", first ?? "");
   await sched.context().close();
   setStatus(F.morning.id, "COMPLETED");
-  setStatus(F.next90.id, "CANCELLED");
 }
 
 /* ── Main ───────────────────────────────────────────────────────────────── */

@@ -12,6 +12,12 @@
  *
  * Rows come back joined with their temple and deity names (temple_*, deity_*
  * columns) so shaping needs no second query.
+ *
+ * Phase 3 (docs/live/SPEC-PHASE3.md §5.1) adds the scheduled job's side:
+ * liveListDueForSync() (the working set), liveRecordSync() (the cron-only
+ * writer of the sync columns — never `status`) and liveSetSyncEnabled() (the
+ * per-row automation switch). The job's status moves still go through
+ * liveSetStatus(), which takes the provider's own instant as $at.
  */
 
 /** Thrown by liveSetStatus() for a jump LIVE_TRANSITIONS does not allow. */
@@ -205,7 +211,8 @@ function liveNextUpcoming(PDO $db): ?array
  *
  * Streams that are live (LIVE, STARTING) belong to every window except
  * `tomorrow` — they are happening today — and to `festivals` only when they
- * are of a festival type.
+ * are of a festival type. COMPLETED (and OFFLINE / ERROR) rows of a window
+ * stay listed; CANCELLED rows never are.
  */
 function liveScheduleWindow(string $filter, string $tz, ?string $today = null): array
 {
@@ -244,7 +251,10 @@ function liveScheduleWindow(string $filter, string $tz, ?string $today = null): 
  */
 function liveScheduleWhereSql(array $window, string $suffix = ''): array
 {
-    $public = "'" . implode("','", LIVE_PUBLIC_STATUSES) . "'";
+    // Every public status but CANCELLED: a broadcast that ended today stays on
+    // today's list (marked Ended), a cancelled one is not a programme any more —
+    // the same line the Phase 1 upcoming rule draws.
+    $public = "'" . implode("','", array_values(array_diff(LIVE_PUBLIC_STATUSES, ['CANCELLED']))) . "'";
     // A live broadcast is happening today whatever its schedule said (its
     // day_bucket is "today"): a window that does not take live rows must
     // not list one by its date either.
@@ -507,6 +517,23 @@ function liveUpdate(PDO $db, int $id, array $values, string $actor): void
             $sets[] = "$c = :$c";
             $params[':' . $c] = $new;
         }
+        // A new video (provider or provider_broadcast_id changed) makes everything the
+        // job knew about the old one stale: the same UPDATE resets the sync columns to
+        // their "reset on a new video" values (SPEC-PHASE3 §2.2, §5.1). sync_enabled
+        // comes first — MySQL assigns a single-table UPDATE left to right, so it still
+        // sees the old sync_error: a machine pause (G15, G22: 'paused…') is lifted, a
+        // person's pause (sync_error NULL) is kept. Only on a database with 012.
+        if ($sets && array_intersect($changed, ['provider', 'provider_broadcast_id']) && liveAutomationInstalled()) {
+            $sets[] = "sync_enabled = IF(sync_enabled = 0 AND sync_error LIKE 'paused%', 1, sync_enabled)";
+            foreach ([
+                'sync_state', 'synced_status', 'last_synced_at', 'last_sync_ok_at', 'next_sync_at', 'sync_error',
+                'provider_thumbnail_url', 'provider_scheduled_start_at', 'provider_scheduled_end_at', 'viewer_count',
+                'provider_stream_id', 'recording_url',
+            ] as $c) {
+                $sets[] = "$c = NULL";
+            }
+            $sets[] = 'sync_attempts = 0';
+        }
         if ($sets) {
             $db->prepare('UPDATE live_streams SET ' . implode(', ', $sets) . ', updated_by = :by, updated_at = :now WHERE id = :id')->execute($params);
         }
@@ -560,15 +587,26 @@ function liveRestore(PDO $db, int $id, string $actor): bool
  * a video id or a start time cannot be published by a button, the API or the
  * poller — the same rule the form applies when it saves a non-draft status.
  *
+ * @param ?string $at  The provider's own instant, UTC 'Y-m-d H:i:s', for the
+ *   column this transition stamps (actual_start_at on LIVE, actual_end_at on
+ *   COMPLETED). Null means liveUtcNow() — the Phase 1 behaviour. Each column
+ *   is still written only when it is currently NULL.
+ *
+ *   Validated, never trusted: it came from a third-party response. Anything
+ *   that is not a real UTC instant in exactly that format is discarded and
+ *   $now used instead, silently — a status move must not fail because a
+ *   provider sent a strange string, and the column is public
+ *   (store.php:647-648).
+ *
  * @return array{changed: bool, from: string, to: string}
  * @throws LiveTransitionException when the jump is not allowed
  * @throws LiveValidationException when the row is not ready for the target status
  * @throws RuntimeException when the stream does not exist (or is deleted)
  */
-function liveSetStatus(PDO $db, int $id, string $to, string $actor): array
+function liveSetStatus(PDO $db, int $id, string $to, string $actor, ?string $at = null): array
 {
     $to = strtoupper(trim($to));
-    return liveTransaction($db, function (PDO $db) use ($id, $to, $actor): array {
+    return liveTransaction($db, function (PDO $db) use ($id, $to, $actor, $at): array {
         $row = liveLoad($db, $id, false, true);
         if ($row === null) throw new RuntimeException('That stream no longer exists.');
         $from = (string) $row['status'];
@@ -583,19 +621,200 @@ function liveSetStatus(PDO $db, int $id, string $to, string $actor): array
             if ($checked['errors']) throw new LiveValidationException($checked['errors']);
         }
         $now = liveUtcNow();
+        // SPEC-PHASE3 §5.1: the provider's instant only when it round-trips as a real UTC instant.
+        $t     = is_string($at) ? DateTimeImmutable::createFromFormat('!Y-m-d H:i:s', $at, new DateTimeZone('UTC')) : false;
+        $stamp = $t !== false && $t->format('Y-m-d H:i:s') === $at ? $at : $now;
         $sets = ['status = :to', 'updated_by = :by', 'updated_at = :now'];
         $params = [':to' => $to, ':by' => mb_substr($actor, 0, 60), ':now' => $now, ':id' => $id];
         if ($to === 'LIVE' && $row['actual_start_at'] === null) {
             $sets[] = 'actual_start_at = :started';
-            $params[':started'] = $now;
+            $params[':started'] = $stamp;
         }
         if ($to === 'COMPLETED' && $row['actual_end_at'] === null) {
             $sets[] = 'actual_end_at = :ended';
-            $params[':ended'] = $now;
+            $params[':ended'] = $stamp;
         }
         $db->prepare('UPDATE live_streams SET ' . implode(', ', $sets) . ' WHERE id = :id')->execute($params);
         liveAudit('live_stream_status', 'Stream #' . $id, mb_substr($from . ' → ' . $to . ' by ' . $actor . ' — “' . mb_substr((string) $row['title_en'], 0, 120) . '”', 0, 500), $actor);
         return ['changed' => true, 'from' => $from, 'to' => $to];
+    });
+}
+
+/* ── YouTube automation (docs/live/SPEC-PHASE3.md §5.1) ──────────────────── */
+
+/**
+ * The ids due for a check, §5.3 step 6, built on liveSyncEligibleWhere(). Only ids; each row is re-loaded with liveLoad().
+ *
+ * $opts: stream_ids (a scoped run when the key is present and not null:
+ * WHERE {eligible} AND s.id IN (…), which drops the sync_enabled, next_sync_at
+ * and window clauses — G4 — and never widens: an empty list is []), limit
+ * (default 50, clamped 1–200), and optionally lead_minutes, stale_hours and
+ * catchup_hours (default liveAutomationConfig()'s, clamped to
+ * LIVE_SETTING_RANGES) so the sweep can pass the values it captured.
+ * Ordered LIVE, STARTING, SCHEDULED, then least recently due.
+ *
+ * @return list<int>
+ */
+function liveListDueForSync(PDO $db, array $opts): array
+{
+    $limit = max(1, min(200, (int) ($opts['limit'] ?? 50)));
+    [$eligible, $params] = liveSyncEligibleWhere();
+    $order = "ORDER BY FIELD(s.status,'LIVE','STARTING','SCHEDULED'),
+              (s.next_sync_at IS NULL) DESC, s.next_sync_at ASC, s.id ASC
+     LIMIT {$limit}";
+
+    if (array_key_exists('stream_ids', $opts) && $opts['stream_ids'] !== null) {
+        $ids = [];
+        foreach ((array) $opts['stream_ids'] as $v) {
+            if (is_int($v) || (is_string($v) && ctype_digit(trim($v)))) {
+                $n = (int) $v;
+                if ($n > 0) $ids[$n] = $n;
+            }
+        }
+        if (!$ids) return [];   // a scoped run never widens (G17)
+        $sql = "SELECT s.id
+                  FROM live_streams s
+                 WHERE {$eligible}
+                   AND s.id IN (" . implode(',', $ids) . ")
+                 {$order}";
+    } else {
+        $cfg = liveAutomationConfig();
+        $clamp = static function (string $k) use ($opts, $cfg): int {
+            [$min, $max] = LIVE_SETTING_RANGES[$k];
+            return max($min, min($max, (int) ($opts[$k] ?? $cfg[$k])));
+        };
+        $lead    = $clamp('lead_minutes');
+        $stale   = $clamp('stale_hours');
+        $catchup = $clamp('catchup_hours');
+        $sql = "SELECT s.id
+                  FROM live_streams s
+                 WHERE {$eligible}
+                   AND s.sync_enabled = 1
+                   AND (s.next_sync_at IS NULL OR s.next_sync_at <= UTC_TIMESTAMP() + INTERVAL 5 SECOND)
+                   AND (
+                         s.status IN ('STARTING','LIVE')
+                         OR (s.scheduled_start_at IS NOT NULL
+                             AND s.scheduled_start_at <= UTC_TIMESTAMP() + INTERVAL {$lead} MINUTE
+                             AND COALESCE(s.scheduled_end_at,
+                                          s.scheduled_start_at + INTERVAL " . LIVE_UPCOMING_GRACE_HOURS . " HOUR)
+                                 >= UTC_TIMESTAMP() - INTERVAL {$stale} HOUR)
+                         OR (s.status = 'SCHEDULED'
+                             AND s.scheduled_start_at <= UTC_TIMESTAMP()
+                             AND s.scheduled_start_at >= UTC_TIMESTAMP() - INTERVAL {$catchup} HOUR)
+                       )
+                 {$order}";
+    }
+    $stmt = $db->prepare($sql);
+    $stmt->execute($params);
+    return array_map('intval', $stmt->fetchAll(PDO::FETCH_COLUMN));
+}
+
+/**
+ * The cron-only writer for the 012 columns and the provider-owned fields.
+ * Never validates, never audits, never writes `status`, and exists so none of
+ * these joins LIVE_WRITE_COLUMNS (store.php:449-454). Writes exactly the keys
+ * given — state, synced_status, error, attempts, next_sync_at,
+ * last_synced_at, last_sync_ok_at, viewers, provider_thumbnail_url,
+ * provider_scheduled_start, provider_scheduled_end, provider_stream_id,
+ * recording_url — and nothing else; §5.5 says which outcome passes which.
+ * scheduled_start_at and scheduled_end_at are not accepted keys.
+ *
+ * As built: "never validates" means liveValidate() never runs; each value is
+ * still type-checked for its column, and an unknown key or a value of the
+ * wrong shape throws InvalidArgumentException (nothing is written). null
+ * writes NULL (so pass `viewers` only when the fact has a figure: an absent
+ * figure is frozen, never zeroed). `error` is stored through liveRedact(),
+ * clipped to 300 characters, '' as NULL; `attempts` is clamped to 0–65535;
+ * instants must be UTC 'Y-m-d H:i:s'; the two addresses must be https
+ * (liveSafeUrl()). updated_at / updated_by are not touched — a check is not
+ * an edit.
+ */
+function liveRecordSync(PDO $db, int $id, array $facts): void
+{
+    static $columns = [
+        'state'                    => 'sync_state',
+        'synced_status'            => 'synced_status',
+        'error'                    => 'sync_error',
+        'attempts'                 => 'sync_attempts',
+        'next_sync_at'             => 'next_sync_at',
+        'last_synced_at'           => 'last_synced_at',
+        'last_sync_ok_at'          => 'last_sync_ok_at',
+        'viewers'                  => 'viewer_count',
+        'provider_thumbnail_url'   => 'provider_thumbnail_url',
+        'provider_scheduled_start' => 'provider_scheduled_start_at',
+        'provider_scheduled_end'   => 'provider_scheduled_end_at',
+        'provider_stream_id'       => 'provider_stream_id',
+        'recording_url'            => 'recording_url',
+    ];
+    $bad = static fn(string $k): InvalidArgumentException => new InvalidArgumentException("liveRecordSync(): {$k} is not a value it can write.");
+    $instant = static function (mixed $v, string $k) use ($bad): ?string {
+        if ($v === null) return null;
+        $t = is_string($v) ? DateTimeImmutable::createFromFormat('!Y-m-d H:i:s', $v, new DateTimeZone('UTC')) : false;
+        if ($t === false || $t->format('Y-m-d H:i:s') !== $v) throw $bad($k);
+        return $v;
+    };
+    $sets = [];
+    $params = [':id' => $id];
+    foreach ($facts as $key => $v) {
+        $key = (string) $key;
+        if (!isset($columns[$key])) throw new InvalidArgumentException("liveRecordSync() does not write {$key}.");
+        $value = match ($key) {
+            'state'         => $v === null ? null : (is_string($v) && in_array($v, LIVE_PROVIDER_STATES, true) ? $v : throw $bad($key)),
+            'synced_status' => $v === null ? null : (liveIsStatus($v) ? $v : throw $bad($key)),
+            'error'         => $v === null || $v === '' ? null : (is_string($v) ? ((($r = liveRedact($v, 300)) === '') ? null : $r) : throw $bad($key)),
+            'attempts'      => is_int($v) || (is_string($v) && ctype_digit($v)) ? max(0, min(65535, (int) $v)) : throw $bad($key),
+            'viewers'       => $v === null ? null : (is_int($v) && $v >= 0 ? min($v, 4294967295) : throw $bad($key)),
+            'provider_thumbnail_url', 'recording_url'
+                            => $v === null ? null : (($u = liveSafeUrl($v)) !== null && stripos($u, 'https://') === 0 ? $u : throw $bad($key)),
+            'provider_stream_id'
+                            => $v === null ? null : (is_string($v) && preg_match('/^[A-Za-z0-9_-]{1,100}$/D', $v) ? $v : throw $bad($key)),
+            default         => $instant($v, $key),
+        };
+        $sets[] = $columns[$key] . ' = :' . $key;
+        $params[':' . $key] = $value;
+    }
+    if (!$sets) return;
+    $db->prepare('UPDATE live_streams SET ' . implode(', ', $sets) . ' WHERE id = :id')->execute($params);
+}
+
+/**
+ * Flip one row's automation, with one audit row (live_sync_paused /
+ * live_sync_resumed, detail $why).
+ * Off: sync_enabled = 0 and sync_error = 'paused: ' . $why when $machine is
+ * true (G15, G22 — the only machine pauses), else sync_error = NULL (a
+ * person's Switch to manual, and G8, which is a person's backwards move).
+ * On (Resume automation): a full reset in the same UPDATE — sync_enabled = 1,
+ * synced_status = status, sync_attempts = 0, sync_error = NULL,
+ * next_sync_at = NULL — so the next pass neither re-pauses the row on the old
+ * baseline nor on the old failure count, and checks it at once.
+ *
+ * As built: true when the row changed and was audited; false — nothing
+ * written — when migration 012 is not applied, the row does not exist or is
+ * deleted, or its automation is already in the state asked for. The row is
+ * locked FOR UPDATE inside a liveTransaction(). The machine sentence is
+ * stored through liveRedact(), clipped to the column's 300 characters; the
+ * audit detail is $why, or "Automation paused/resumed by <actor>" when $why
+ * is empty.
+ */
+function liveSetSyncEnabled(PDO $db, int $id, bool $on, string $actor, string $why = '', bool $machine = false): bool
+{
+    if ($id <= 0 || !liveAutomationInstalled()) return false;
+    return liveTransaction($db, function (PDO $db) use ($id, $on, $actor, $why, $machine): bool {
+        $row = liveLoad($db, $id, false, true);
+        if ($row === null) return false;
+        if (((int) ($row['sync_enabled'] ?? 1) === 1) === $on) return false;
+        if ($on) {
+            $db->prepare('UPDATE live_streams
+                             SET sync_enabled = 1, synced_status = status, sync_attempts = 0, sync_error = NULL, next_sync_at = NULL
+                           WHERE id = :id')
+               ->execute([':id' => $id]);
+        } else {
+            $db->prepare('UPDATE live_streams SET sync_enabled = 0, sync_error = :e WHERE id = :id')
+               ->execute([':e' => $machine ? liveRedact('paused: ' . $why, 300) : null, ':id' => $id]);
+        }
+        $detail = trim($why) !== '' ? $why : ($on ? 'Automation resumed' : 'Automation paused') . ' by ' . $actor;
+        liveAudit($on ? 'live_sync_resumed' : 'live_sync_paused', 'Stream #' . $id, liveRedact($detail, 500), $actor);
+        return true;
     });
 }
 

@@ -79,7 +79,8 @@ const section = (t) => console.log(`\n── ${t}`);
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 /* ── PHP, fixtures and SQL ─────────────────────────────────────────────── */
-const PHP_ENV = { ...process.env, TRUSTED_PROXIES: "127.0.0.1,::1", SITE_URL: BASE, CORS_ORIGIN: "*", ADMIN_USERNAME: "admin" };
+const STRIP = /^(LIVE_|YOUTUBE_|GOOGLE_)/i; // no real YouTube key or LIVE_CRON_KEY from the shell reaches a PHP child (SPEC-PHASE3 §11.4)
+const PHP_ENV = { ...Object.fromEntries(Object.entries(process.env).filter(([k]) => !STRIP.test(k))), TRUSTED_PROXIES: "127.0.0.1,::1", SITE_URL: BASE, CORS_ORIGIN: "*", ADMIN_USERNAME: "admin" };
 function phpCommand(args) {
   return viaBash ? ["bash", [PHP_BIN, ...args]] : [PHP_BIN, args];
 }

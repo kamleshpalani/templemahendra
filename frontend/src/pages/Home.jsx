@@ -65,7 +65,7 @@ import { SkeletonCards } from "../components/ui/Feedback";
 import Reviews from "../components/Reviews/Reviews";
 import HomepageWidgets from "../components/HomepageWidgets/HomepageWidgets";
 import LiveHomeSection from "../components/Live/LiveHomeSection";
-import { dayBucket, dayLabel, formatStreamTime, streamTitle, useLiveOverview } from "../lib/live";
+import { dayBucket, dayLabel, formatStreamTime, startHasPassed, streamTitle, useLiveOverview, useStartPassed } from "../lib/live";
 import "./Home.css";
 
 /**
@@ -525,6 +525,13 @@ export default function Home() {
   const liveOverview = useLiveOverview();
   const liveStream = liveOverview.now ?? liveOverview.next ?? null;
   const liveIsOn = Boolean(liveOverview.now);
+  // The hero row stops naming a start time the moment it passes — with the
+  // card below it, not a poll later (docs/live/SPEC-PHASE2.md, review fix F4).
+  const liveStartPassed = useStartPassed(
+    !liveIsOn && liveStream?.status === "SCHEDULED" ? liveStream?.scheduled_start_at : null,
+    liveOverview.serverOffset,
+  );
+  const liveStarting = !liveIsOn && Boolean(liveStream) && (liveStartPassed || startHasPassed(liveStream, liveOverview.serverOffset));
 
   // Live IST clock — ticks every second
   useEffect(() => {
@@ -729,7 +736,13 @@ export default function Home() {
                   <dd>
                     <Link to={liveIsOn ? `/live-darshan/${liveStream.slug}` : "/live-darshan/schedule"} className="home-hero__live-link">
                       {liveIsOn && <span className="home-hero__live-dot" aria-hidden="true" />}
-                      <span>{liveIsOn ? t("இப்போது நேரலை", "LIVE now") : nextDarshanLine(liveStream, lang, t, liveOverview.serverOffset)}</span>
+                      <span>
+                        {liveIsOn
+                          ? t("இப்போது நேரலை", "LIVE now")
+                          : liveStarting
+                            ? t("விரைவில் தொடங்கும்", "Starting shortly")
+                            : nextDarshanLine(liveStream, lang, t, liveOverview.serverOffset)}
+                      </span>
                       <small>{streamTitle(liveStream, lang)}</small>
                     </Link>
                   </dd>

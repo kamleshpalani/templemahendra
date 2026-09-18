@@ -661,6 +661,19 @@
   min-height: 44px;
   padding-inline: 1.05rem;
 }
+/* Five filters — "இந்த வாரம்", "திருவிழாக்கள்" — are wider than a phone. The
+   strip wraps into two rows there instead of scrolling the selected chip out
+   of sight with no scrollbar to hint at it (review fix F1). Above this the
+   strip still scrolls, and ScheduleFilters keeps the selected chip in view. */
+@media (max-width: 640px) {
+  .live-filters {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-2);
+    overflow-x: visible;
+    border-radius: var(--radius-lg);
+  }
+}
 
 @media (max-width: 820px) {
   .live-next {

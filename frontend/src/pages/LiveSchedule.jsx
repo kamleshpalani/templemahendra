@@ -10,7 +10,7 @@ import ScheduleFilters from "../components/Live/ScheduleFilters";
 import StreamCard from "../components/Live/StreamCard";
 import { useLang } from "../context/LangContext";
 import { TEMPLE } from "../data/temple";
-import { dayBucket, formatStreamDate, isLiveStatus, normaliseFilter, useSchedule, zoneLabel } from "../lib/live";
+import { dayBucket, formatStreamDate, isLiveStatus, normaliseFilter, useSchedule, weekIsOneDay, zoneLabel } from "../lib/live";
 import "../components/Live/Live.css";
 import "./LiveSchedule.css";
 
@@ -151,8 +151,24 @@ export default function LiveSchedule() {
 
   const title = t(...PAGE_TITLE);
   const lead = t(...PAGE_DESCRIPTION);
-  const empty = EMPTY[filter] ?? EMPTY.all;
   const range = windowText(win, lang);
+
+  /*
+   * The empty state's way out. On a Sunday "this week" is today alone, so
+   * Today's and Tomorrow's offer of "this week" would be the same one-day
+   * window (and could never hold tomorrow): both send the visitor to every
+   * upcoming broadcast instead (review fix O11).
+   */
+  const base = EMPTY[filter] ?? EMPTY.all;
+  const empty = base.to === "week" && weekIsOneDay(win) ? { ...base, to: EMPTY.week.to, text: EMPTY.week.text, cta: EMPTY.week.cta } : base;
+
+  /*
+   * A filter that is fetching keeps the list it has, dimmed and marked busy;
+   * skeletons belong to the first load and to a retry after an error
+   * (review fix F6).
+   */
+  const firstLoad = loading && streams.length === 0;
+  const refreshing = loading && streams.length > 0;
 
   return (
     <>
@@ -169,7 +185,13 @@ export default function LiveSchedule() {
             <Button to="/live-darshan" variant="outline-light" size="sm" icon={<LuTv aria-hidden="true" />}>
               {t("நேரடி தரிசனம்", "Live darshan")}
             </Button>
-            <ShareButton variant="outline-light" title={title} text={lead} to="/live-darshan/schedule" />
+            {/* What is shared is what is on screen: the chosen filter travels with the link (review fix O13). */}
+            <ShareButton
+              variant="outline-light"
+              title={title}
+              text={lead}
+              to={filter === "all" ? "/live-darshan/schedule" : `/live-darshan/schedule?filter=${filter}`}
+            />
           </>
         }
       />
@@ -182,13 +204,11 @@ export default function LiveSchedule() {
           </div>
 
           {loading && (
-            <>
-              <p className="sr-only" role="status">
-                {t("ஏற்றுகிறது…", "Loading…")}
-              </p>
-              <SkeletonCards count={3} className="grid-3 live-schedule__skeleton" />
-            </>
+            <p className="sr-only" role="status">
+              {t("ஏற்றுகிறது…", "Loading…")}
+            </p>
           )}
+          {firstLoad && <SkeletonCards count={3} className="grid-3 live-schedule__skeleton" />}
 
           {!loading && error && (
             <ErrorState onRetry={refresh} title={t("அட்டவணையை ஏற்ற முடியவில்லை", "Couldn't load the schedule")} />
@@ -227,23 +247,25 @@ export default function LiveSchedule() {
             </EmptyState>
           )}
 
-          {!loading &&
-            !error &&
-            groups.map((g) => (
-              <section key={g.key} className="live-schedule__day" aria-labelledby={`live-day-${g.key}`}>
-                <h2 id={`live-day-${g.key}`} className={`live-schedule__day-title${g.tone === "live" ? " live-schedule__day-title--live" : ""}`}>
-                  <span>{g.title}</span>
-                  <span className="live-schedule__day-count">
-                    {g.items.length === 1 ? t("1 நிகழ்ச்சி", "1 programme") : t(`${g.items.length} நிகழ்ச்சிகள்`, `${g.items.length} programmes`)}
-                  </span>
-                </h2>
-                <div className="grid-3">
-                  {g.items.map((s, i) => (
-                    <StreamCard key={s.slug} stream={s} lang={lang} index={i} serverOffset={serverOffset} />
-                  ))}
-                </div>
-              </section>
-            ))}
+          {!error && groups.length > 0 && (
+            <div className={`live-schedule__list${refreshing ? " live-schedule__list--busy" : ""}`} aria-busy={refreshing ? "true" : undefined}>
+              {groups.map((g) => (
+                <section key={g.key} className="live-schedule__day" aria-labelledby={`live-day-${g.key}`}>
+                  <h2 id={`live-day-${g.key}`} className={`live-schedule__day-title${g.tone === "live" ? " live-schedule__day-title--live" : ""}`}>
+                    <span>{g.title}</span>
+                    <span className="live-schedule__day-count">
+                      {g.items.length === 1 ? t("1 நிகழ்ச்சி", "1 programme") : t(`${g.items.length} நிகழ்ச்சிகள்`, `${g.items.length} programmes`)}
+                    </span>
+                  </h2>
+                  <div className="grid-3">
+                    {g.items.map((s, i) => (
+                      <StreamCard key={s.slug} stream={s} lang={lang} index={i} serverOffset={serverOffset} />
+                    ))}
+                  </div>
+                </section>
+              ))}
+            </div>
+          )}
 
           <p className="sr-only" role="status" aria-live="polite">
             {announcement}

@@ -23,10 +23,24 @@
  *   set-status     {id, status, actor?}     liveSetStatus() → {changed, from, to}
  *   unlink         {url}                    liveDeleteUpload() for a /uploads/live-… file → {deleted}
  *   sql            {query, params}          one statement, rows back
- *   cleanup        {title_prefix, admin_prefix?, ips?}
+ *   sync           {ids?, limit?, actor?, dry_run?}
+ *                                           (Phase 3) one liveCronRun() → its whole result, printed
+ *                                           as it is. ids present (even []) makes the run scoped to
+ *                                           exactly those rows; absent, the run is the job's own
+ *                                           unscoped sweep. actor defaults to "e2e-live-sync".
+ *   due            {ids, attempts?}         (Phase 3) next_sync_at = NULL on exactly those rows, and
+ *                                           sync_attempts = attempts when given; never global, and
+ *                                           last_synced_at is left alone → {matched, updated}
+ *   hold-lock      {seconds}                (Phase 3) takes GET_LOCK('temple_live_cron', 0), prints
+ *                                           {"locked":true} on its own line the moment it has it,
+ *                                           holds it for seconds (1-120), releases it and exits 0
+ *   cleanup        {title_prefix, admin_prefix?, ips?, actors?}
  *                                           every stream this prefix created (hard delete), its
  *                                           admin_activity rows, its uploaded files, and optionally
- *                                           the test admin accounts and rate-limit buckets
+ *                                           the test admin accounts (with their live-check-now
+ *                                           rate-limit buckets), the rate-limit buckets of ips, and
+ *                                           the admin_activity rows written by exactly the actors
+ *                                           named (each "e2e-…" or "e2e_…")
  *
  * create-stream writes through the module's own path — liveValidate() then
  * liveInsert() — and then walks liveSetStatus() along a legal route to the
@@ -68,6 +82,23 @@ function liveFixtureIn(array $ids): string
 {
     $ids = array_values(array_filter(array_map('intval', $ids), static fn(int $i): bool => $i > 0));
     return $ids ? implode(',', $ids) : '0';
+}
+
+/**
+ * A list of stream ids from a command's JSON, each a positive whole number, or
+ * the command fails: a scoped fixture never quietly drops an id it was given.
+ * @return list<int>
+ */
+function liveFixtureIdList(mixed $raw, string $name = 'ids'): array
+{
+    if (!is_array($raw) || !array_is_list($raw)) liveFixtureOut(['error' => "{$name} must be a list of stream ids"], 1);
+    $ids = [];
+    foreach ($raw as $v) {
+        $ok = (is_int($v) && $v > 0) || (is_string($v) && ctype_digit($v) && (int) $v > 0);
+        if (!$ok) liveFixtureOut(['error' => "every one of {$name} must be a positive whole number"], 1);
+        $ids[] = (int) $v;
+    }
+    return $ids;
 }
 
 $livePhp = __DIR__ . '/../../backend/includes/live.php';
@@ -122,7 +153,7 @@ function liveFixtureFlags(array $args): array
 
 try {
     $db = getDB();
-    $needTables = in_array($cmd, ['create-stream', 'set-status', 'cleanup'], true);
+    $needTables = in_array($cmd, ['create-stream', 'set-status', 'cleanup', 'due'], true);
     if ($needTables && !liveTablesExist(true)) {
         liveFixtureOut(['error' => 'the live streaming tables are missing; apply migration 011 first'], 1);
     }
@@ -293,9 +324,86 @@ try {
             liveFixtureOut(['rows' => $rows, 'affected' => $stmt->rowCount()]);
         }
 
+        case 'sync': {
+            // docs/live/SPEC-PHASE3.md §10.5: one run of the job, the result printed
+            // whole, as payments_fixtures.php's `sweep` does. The suites pass
+            // actor "e2e-live-sync", so an audit row a sweep writes outside a
+            // "Stream #<id>" subject is removable by actor.
+            if (!function_exists('liveCronRun')) {
+                liveFixtureOut(['error' => 'liveCronRun() is missing: backend/includes/live/poll.php (SPEC-PHASE3 §13 step 3) is not built yet'], 1);
+            }
+            $actor = (string) ($args['actor'] ?? 'e2e-live-sync');
+            if ($actor === '') liveFixtureOut(['error' => 'actor must not be empty'], 1);
+            $opts = ['trigger' => 'cli', 'actor' => $actor];
+            if (array_key_exists('ids', $args) && $args['ids'] !== null) {
+                // Kept even when empty: a scoped run never widens (§5.3 step 5).
+                $opts['stream_ids'] = liveFixtureIdList($args['ids']);
+            }
+            if (array_key_exists('limit', $args) && $args['limit'] !== null) {
+                if (!is_numeric($args['limit'])) liveFixtureOut(['error' => 'limit must be a number'], 1);
+                $opts['limit'] = (int) $args['limit'];
+            }
+            if (!empty($args['dry_run'])) $opts['dry_run'] = true;
+            liveFixtureOut(liveCronRun($opts));
+        }
+
+        case 'due': {
+            // §10.5: make exactly the named rows due now, and optionally set their
+            // failure count (G15's threshold without eleven runs). Never global,
+            // and last_synced_at is left alone so Check now's floor still holds.
+            if (!array_key_exists('ids', $args) || $args['ids'] === null) liveFixtureOut(['error' => 'due needs ids: it is never global'], 1);
+            $ids = liveFixtureIdList($args['ids']);
+            if (!$ids) liveFixtureOut(['error' => 'due needs at least one id: it is never global'], 1);
+            if (function_exists('liveAutomationInstalled') && !liveAutomationInstalled(true)) {
+                liveFixtureOut(['error' => 'the Phase 3 sync columns are missing; apply migration 012 first'], 1);
+            }
+            $set = 'next_sync_at = NULL';
+            $params = [];
+            if (array_key_exists('attempts', $args) && $args['attempts'] !== null) {
+                $a = $args['attempts'];
+                $ok = (is_int($a) && $a >= 0) || (is_string($a) && ctype_digit($a));
+                if (!$ok || (int) $a > 65535) liveFixtureOut(['error' => 'attempts must be a whole number from 0 to 65535'], 1);
+                $set .= ', sync_attempts = :attempts';
+                $params[':attempts'] = (int) $a;
+            }
+            $in = liveFixtureIn($ids);
+            $matched = (int) $db->query("SELECT COUNT(*) FROM live_streams WHERE id IN ({$in})")->fetchColumn();
+            $stmt = $db->prepare("UPDATE live_streams SET {$set} WHERE id IN ({$in})");
+            $stmt->execute($params);
+            liveFixtureOut(['matched' => $matched, 'updated' => $stmt->rowCount()]);
+        }
+
+        case 'hold-lock': {
+            // §10.5: hold the job's advisory lock from a second process, so "another
+            // run holds the lock" is proved with no test hook in production code.
+            // GET_LOCK is per connection: this process's one connection holds it.
+            $seconds = max(1, min(120, (int) ($args['seconds'] ?? 15)));
+            $got = (int) $db->query("SELECT GET_LOCK('temple_live_cron', 0)")->fetchColumn();
+            if ($got !== 1) liveFixtureOut(['error' => 'another process already holds temple_live_cron'], 1);
+            fwrite(STDOUT, json_encode(['locked' => true]) . "\n");
+            fflush(STDOUT);
+            sleep($seconds);
+            try {
+                $db->query("SELECT RELEASE_LOCK('temple_live_cron')")->closeCursor();
+            } catch (Throwable) {
+                // the lock is released with the connection anyway
+            }
+            exit(0);
+        }
+
         case 'cleanup': {
             $prefix = (string) ($args['title_prefix'] ?? '');
             if (!liveFixtureSafePrefix($prefix)) liveFixtureOut(['error' => 'title_prefix must be at least eight plain characters'], 1);
+            // Phase 3: exact actor names, checked before anything is deleted. A bare
+            // "e2e" is refused: it is the shared default actor of every live suite.
+            $actors = $args['actors'] ?? [];
+            if (!is_array($actors) || !array_is_list($actors)) liveFixtureOut(['error' => 'actors must be a list of actor names'], 1);
+            foreach ($actors as $a) {
+                if (!is_string($a) || !preg_match('/^e2e[-_][A-Za-z0-9._-]{1,56}$/D', $a)) {
+                    liveFixtureOut(['error' => 'every actor must be an exact test actor name starting "e2e-" or "e2e_"'], 1);
+                }
+            }
+            $actors = array_values(array_unique($actors));
             $like = addcslashes($prefix, '%_') . '%';
             $counts = ['streams' => 0, 'activity' => 0, 'uploads' => 0, 'notifications' => 0, 'admin_users' => 0, 'buckets' => 0];
 
@@ -329,6 +437,16 @@ try {
                 $counts['streams'] = (int) $db->exec("DELETE FROM live_streams WHERE id IN ({$in})");
             }
 
+            // Phase 3 (SPEC-PHASE3 §10.5): audit rows a suite's sweeps wrote outside a
+            // "Stream #<id>" subject, removed only by the exact actor names given —
+            // never by a subject such as "YouTube automation", which real rows share.
+            if ($actors) {
+                $marks = implode(',', array_fill(0, count($actors), '?'));
+                $del = $db->prepare("DELETE FROM admin_activity WHERE actor IN ({$marks})");
+                $del->execute($actors);
+                $counts['activity'] += $del->rowCount();
+            }
+
             // Test committee accounts a suite made for the role checks (never a real one:
             // the prefix must be at least eight plain characters and start with e2e).
             $adminPrefix = (string) ($args['admin_prefix'] ?? '');
@@ -343,6 +461,13 @@ try {
                 $del = $db->prepare('DELETE FROM admin_users WHERE username LIKE :u');
                 $del->execute([':u' => $alike]);
                 $counts['admin_users'] = $del->rowCount();
+                // Phase 3: the Check now bucket is keyed by admin name, not by the IP
+                // the ips clause below matches (SPEC-PHASE3 §8.4, §10.5).
+                if (liveFixtureHasTable($db, 'rate_limits')) {
+                    $del = $db->prepare('DELETE FROM rate_limits WHERE bucket LIKE :b');
+                    $del->execute([':b' => 'live-check-now:' . $alike]);
+                    $counts['buckets'] += $del->rowCount();
+                }
             }
             foreach ((array) ($args['ips'] ?? []) as $ip) {
                 if (!is_string($ip) || !preg_match('/^[0-9a-fA-F.:]{3,45}$/D', $ip)) continue;
@@ -353,7 +478,7 @@ try {
             liveFixtureOut($counts);
         }
     }
-    liveFixtureOut(['error' => "unknown command \"{$cmd}\"; use probe, create-stream, set-status, unlink, sql or cleanup"], 1);
+    liveFixtureOut(['error' => "unknown command \"{$cmd}\"; use probe, create-stream, set-status, unlink, sql, sync, due, hold-lock or cleanup"], 1);
 } catch (Throwable $e) {
     liveFixtureOut(['error' => get_class($e) . ': ' . $e->getMessage()], 1);
 }

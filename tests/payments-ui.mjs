@@ -276,16 +276,28 @@ async function newPage({ width = 1440, height = 900, lang = "en", address = next
       window.__printed += 1;
     };
     // The hand-off to the gateway is a form.submit() the page builds itself.
-    // Record what it posts and hold it for a moment, so the "Redirecting…"
-    // card can be read and photographed before the browser leaves the page.
+    // Record what it posts and hold it until the test lets it go
+    // (awaitHandoff → __releaseHandoff), so the "Redirecting…" card can be
+    // read and photographed however long that takes. A fixed delay here raced
+    // the full-page screenshot, which takes 3–6 s at 1440 px on a busy machine:
+    // the browser left mid-shot and the checks after it ran on the simulator.
     const nativeSubmit = HTMLFormElement.prototype.submit;
+    const held = [];
     window.__handoff = [];
-    HTMLFormElement.prototype.submit = function submitLater() {
+    HTMLFormElement.prototype.submit = function submitHeld() {
       const fields = {};
       for (const el of Array.from(this.elements)) if (el.name) fields[el.name] = el.value;
       window.__handoff.push({ action: this.action, method: this.method, fields });
-      const form = this;
-      setTimeout(() => nativeSubmit.call(form), 2500);
+      held.push(this);
+    };
+    // The first post goes ahead, as it would have without the hold (a real
+    // browser has left the page before a second one could run). It is started
+    // on a fresh task so the evaluate that calls this returns first.
+    window.__releaseHandoff = () => {
+      const form = held.shift();
+      held.length = 0;
+      if (form) setTimeout(() => nativeSubmit.call(form), 0);
+      return form ? 1 : 0;
     };
   }, lang);
   // X-Forwarded-For only on requests to the site itself: as a context-wide
@@ -399,9 +411,9 @@ async function fillDetails(page, { name = DONOR, phone = "9876512345", email = E
 
 /**
  * The hand-off: the "Redirecting…" card is on screen and the page has called
- * form.submit() (held for a moment by the init script above). Returns what
- * the page is about to post and what the card said; `before` runs while the
- * card is still up.
+ * form.submit(), which the init script above holds. Returns what the page is
+ * about to post and what the card said; `before` runs while the card is still
+ * up, and only then is the post released and the browser allowed to leave.
  */
 async function awaitHandoff(page, { shotName = null, before = null } = {}) {
   await page.locator(".pay-redirect__title").waitFor();
@@ -411,6 +423,8 @@ async function awaitHandoff(page, { shotName = null, before = null } = {}) {
   seen.role = (await page.locator(".pay-redirect").getAttribute("role")) ?? "";
   if (shotName) await shot(page, shotName);
   if (before) await before(page, seen);
+  const released = await page.evaluate(() => window.__releaseHandoff());
+  if (released !== 1) throw new Error(`awaitHandoff: no held gateway post to release on ${page.url()}`);
   return seen;
 }
 
@@ -676,7 +690,9 @@ async function successFlow() {
     before: async (p, s) => {
       // A back-forward-cache return fires pageshow with persisted=true.
       await p.evaluate(() => window.dispatchEvent(new PageTransitionEvent("pageshow", { persisted: true })));
-      await p.waitForTimeout(150);
+      // The handler only sets state; React takes the card down on its next
+      // render. Wait for that render instead of a fixed pause, then read.
+      await p.locator(".pay-redirect").waitFor({ state: "detached", timeout: 5000 }).catch(() => {});
       s.afterShow = {
         redirect: await p.locator(".pay-redirect").count(),
         label: await text(p.locator(".don-actions__next:visible")),
@@ -969,7 +985,15 @@ async function awaitedThenConfirmed() {
   check(sweep.sweep?.changed >= 1, "sweep: the status API upgraded the attempt", JSON.stringify(sweep).slice(0, 200));
   await title.filter({ hasText: /Thank you for your contribution/ }).waitFor({ timeout: 25000 });
   check(true, "pending: the page polled its way to the success view");
-  check(/confirmed/.test(await text(page.locator(".sr-only[role='status']").last())), "pending → success is announced to screen readers");
+  // PaymentResult empties its live region and writes the sentence on the next
+  // animation frame (so a repeated message is spoken again), which is after
+  // the heading has changed: wait for that write rather than reading the
+  // region the moment the heading appears, when it is still empty.
+  const announcedPaid = await page
+    .waitForFunction(() => /confirmed/.test([...document.querySelectorAll(".sr-only[role='status']")].pop()?.textContent ?? ""), null, { timeout: 5000 })
+    .then(() => true)
+    .catch(() => false);
+  check(announcedPaid, "pending → success is announced to screen readers", await text(page.locator(".sr-only[role='status']").last()));
   check(/^SIM-/.test((await facts(page, ".pay-result__facts"))["Receipt number"] ?? ""), "pending → success: the receipt number appears");
   const att = sql("SELECT status, verification FROM payment_transactions WHERE order_id = ?", [number])[0];
   check(att?.status === "SUCCESS" && att.verification === "status_api", "DB: SUCCESS verified by the status API", JSON.stringify(att));

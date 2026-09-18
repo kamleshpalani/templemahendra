@@ -3,7 +3,9 @@ import "./Live.css";
 
 /**
  * StreamCountdown — "Live darshan starts in HH : MM : SS" for a broadcast
- * that has not begun (SPEC-PHASE2 §2.2).
+ * that has not begun (SPEC-PHASE2 §2.2). A broadcast a day or more away
+ * gains a days unit — "DD : HH : MM : SS" — so the hour count never runs to
+ * three digits (review fix F2).
  *
  * The clock is driven by the server's time (the offset each API answer
  * gives), never the phone's clock alone. The digits are decoration for
@@ -43,9 +45,18 @@ export default function StreamCountdown({ startsAt, serverOffset = 0, t, lang = 
       ) : (
         <>
           <p className="live-countdown__caption" aria-hidden="true">
-            {t("நேரடி தரிசனம் தொடங்க", "Live darshan starts in")}
+            {t("நேரடி தரிசனம் தொடங்க இன்னும்", "Live darshan starts in")}
           </p>
           <div className="live-countdown__clock" aria-hidden="true">
+            {parts.dd && (
+              <>
+                <span className="live-countdown__unit">
+                  <span className="live-countdown__digits">{parts.dd}</span>
+                  <span className="live-countdown__label">{t("நாட்கள்", "days")}</span>
+                </span>
+                <span className="live-countdown__sep">:</span>
+              </>
+            )}
             <span className="live-countdown__unit">
               <span className="live-countdown__digits">{parts.hh}</span>
               <span className="live-countdown__label">{t("மணி", "hrs")}</span>
@@ -58,7 +69,7 @@ export default function StreamCountdown({ startsAt, serverOffset = 0, t, lang = 
             <span className="live-countdown__sep">:</span>
             <span className="live-countdown__unit">
               <span className="live-countdown__digits">{parts.ss}</span>
-              <span className="live-countdown__label">{t("வினா", "sec")}</span>
+              <span className="live-countdown__label">{t("நொடி", "sec")}</span>
             </span>
           </div>
           <p className="sr-only">{countdownText(seconds, lang)}</p>

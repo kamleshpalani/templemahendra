@@ -1076,9 +1076,11 @@ try {
     ok(count($liveNow) >= 2 && $has($liveNow, $idLive) && $has($liveNow, $idStarting), 'the LIVE and STARTING fixtures are on air for these checks', json_encode($liveNow));
 
     $today = $listed('today');
-    ok($has($today['ids'], $S['today']) && $has($today['ids'], $S['todayDone']) && $has($today['ids'], $S['procession']) && $has($today['ids'], $S['cancelledToday']), 'today lists the 23:59 stream, the completed one, the procession and the cancelled one', json_encode($today['ids']));
+    ok($has($today['ids'], $S['today']) && $has($today['ids'], $S['todayDone']) && $has($today['ids'], $S['procession']), 'today lists the 23:59 stream, the completed one (marked Ended) and the procession', json_encode($today['ids']));
     ok($has($today['ids'], $idLive) && $has($today['ids'], $idStarting), 'today lists the LIVE and STARTING rows (they are on now)', json_encode($today['ids']));
     ok(!$has($today['ids'], $S['tomorrow0']) && !$has($today['ids'], $S['yesterday']) && !$has($today['ids'], $S['draft']) && !$has($today['ids'], $S['deleted']) && !$has($today['ids'], $S['undated']) && !$has($today['ids'], $S['nextWeek']), 'today excludes tomorrow 00:00, yesterday, the draft, the deleted, the undated and next week', json_encode($today['ids']));
+    ok(!$has($today['ids'], $S['cancelledToday']), 'a CANCELLED broadcast of today is not listed (only COMPLETED ones stay)', json_encode($today['ids']));
+    ok(array_reduce($today['rows'], static fn(bool $c, array $r): bool => $c && (string) $r['status'] !== 'CANCELLED', true), 'no CANCELLED row anywhere on today');
     eq(array_slice($today['ids'], 0, count($liveNow)), $liveNow, "the live rows lead, in the live list's own order (LIVE most recently started, then STARTING)");
     $todayRest = array_values(array_filter($today['ids'], static fn(int $id): bool => !in_array($id, $liveNow, true)));
     ok(end($todayRest) === $S['todayDone'], "the COMPLETED row is last among today's", json_encode($todayRest));
@@ -1106,9 +1108,14 @@ try {
     ok(!$has($fest['ids'], $S['today']) && !$has($fest['ids'], $idLive) && !$has($fest['ids'], $idA) && !$has($fest['ids'], $S['far']), 'festivals excludes the other programme types (a live one included) and anything beyond 90 days', json_encode($fest['ids']));
 
     $all = $listed('all');
-    foreach (['today', 'todayDone', 'tomorrow0', 'sunday', 'nextWeek', 'festival', 'procession', 'undated', 'cancelledToday'] as $k) ok($has($all['ids'], $S[$k]), "all lists {$k}", json_encode($all['ids']));
+    foreach (['today', 'todayDone', 'tomorrow0', 'sunday', 'nextWeek', 'festival', 'procession', 'undated'] as $k) ok($has($all['ids'], $S[$k]), "all lists {$k}", json_encode($all['ids']));
     ok($has($all['ids'], $idLive) && $has($all['ids'], $idStarting), 'all lists the live rows');
-    foreach (['far', 'yesterday', 'draft', 'deleted'] as $k) ok(!$has($all['ids'], $S[$k]), "all excludes {$k}", json_encode($all['ids']));
+    foreach (['far', 'yesterday', 'draft', 'deleted', 'cancelledToday'] as $k) ok(!$has($all['ids'], $S[$k]), "all excludes {$k}", json_encode($all['ids']));
+    $cancelledCounts = liveScheduleCounts($db, $IST_TZ);
+    $db->prepare("UPDATE live_streams SET status = 'SCHEDULED' WHERE id = :id")->execute([':id' => $S['cancelledToday']]);
+    $restoredCounts = liveScheduleCounts($db, $IST_TZ);
+    $db->prepare("UPDATE live_streams SET status = 'CANCELLED' WHERE id = :id")->execute([':id' => $S['cancelledToday']]);
+    ok($restoredCounts['today'] === $cancelledCounts['today'] + 1 && $restoredCounts['all'] === $cancelledCounts['all'] + 1 && $restoredCounts['week'] === $cancelledCounts['week'] + 1 && $restoredCounts['tomorrow'] === $cancelledCounts['tomorrow'], 'a CANCELLED row is not counted either (today, week and all each gain one when it is scheduled again)', json_encode([$cancelledCounts, $restoredCounts]));
     $tail = array_slice($all['all'], -2);
     ok(in_array($S['undated'], $tail, true) && in_array($idNoStart, $tail, true), 'the undated rows are last on all', json_encode(array_slice($all['all'], -4)));
     eq(array_slice($all['ids'], 0, count($liveNow)), $liveNow, 'all leads with the live rows');

@@ -42,9 +42,43 @@ interface StreamingProvider
     public function thumbnailUrl(array $stream): ?string;
 
     /**
-     * Phase 3: ask the provider what the broadcast is doing. Phase 1 answers
-     * ['ok' => false, 'error' => 'not configured'] and never touches the network.
-     * @return array{ok: bool, error?: string}
+     * True when this provider can be asked what a broadcast is doing: the mode
+     * allows a call and the credentials are on file. Separate from
+     * isConfigured(), which means "may be chosen for a stream" and gates
+     * LIVE_SAVABLE_PROVIDERS — redefining that one would start refusing
+     * YouTube streams on every site with no Google account.
+     */
+    public function canAutomate(): bool;
+
+    /**
+     * Phase 3: ask the provider what the broadcast is doing. Never throws,
+     * never more than one HTTP round trip per sweep, and answers exactly
+     * ['ok' => false, 'error' => 'not configured'] whenever canAutomate() is
+     * false — which is every provider but YouTube, and YouTube itself until an
+     * owner configures it.
+     *
+     * @return array{
+     *   ok: bool,
+     *   state: string,               // LIVE_PROVIDER_STATES
+     *   raw_state: ?string,          // snippet.liveBroadcastContent as received
+     *   lifecycle: ?string,          // Tier 2: status.lifeCycleStatus
+     *   scheduled_start: ?string,    // UTC 'Y-m-d H:i:s'; stored in provider_scheduled_start_at only
+     *   scheduled_end: ?string,      // UTC; stored in provider_scheduled_end_at only
+     *   actual_start: ?string,
+     *   actual_end: ?string,
+     *   privacy: ?string,            // public | unlisted | private
+     *   embeddable: ?bool,
+     *   viewers: ?int,               // absent means unknown, never zero
+     *   thumbnail: ?string,          // the best address YouTube reports, via liveSafeUrl(); stored only
+     *   recording_status: ?string,   // Tier 2: notRecording | recording | recorded
+     *   provider_stream_id: ?string, // Tier 2: contentDetails.boundStreamId
+     *   channel_id: ?string,         // snippet.channelId
+     *   channel_expected: ?string,   // the youtube_channel_id setting when set, else null (G24)
+     *   checked_at: string,          // UTC 'Y-m-d H:i:s'
+     *   error: ?string,
+     *   class: ?string,              // LIVE_SYNC_ERROR_CLASSES
+     *   retry_after: ?int,
+     * }
      */
     public function fetchStatus(array $stream): array;
 }
@@ -121,9 +155,44 @@ final class YouTubeProvider implements StreamingProvider
         return preg_match(LIVE_YT_ID_RE, $id) && $id !== 'live_stream' ? liveYoutubeThumbnailUrl($id) : null;
     }
 
+    /**
+     * The scheduled job may ask YouTube (SPEC-PHASE3 §4.1): migrations 011 and
+     * 012 applied, mode not off, a credential on file (waived for the
+     * simulator), curl present and the quota breaker closed.
+     */
+    public function canAutomate(): bool { return liveAutomationReady()['ok']; }
+
+    /**
+     * The exact Phase 1 literal while canAutomate() is false; otherwise one
+     * liveYoutubeFetchMany() for this row and its one answer, or — when the
+     * call itself failed — a fact with ok false carrying the class, the error
+     * and the Retry-After seconds.
+     */
     public function fetchStatus(array $stream): array
     {
-        return ['ok' => false, 'error' => 'not configured'];
+        if (!$this->canAutomate()) return ['ok' => false, 'error' => 'not configured'];
+        try {
+            liveYoutubeRunStart();
+            $r = liveYoutubeFetchMany([$stream]);
+            if (isset($r['answers'][0])) return $r['answers'][0];
+            if ($r['outcome'] === 'not_configured') return ['ok' => false, 'error' => 'not configured'];
+            return array_replace(liveYoutubeMissingFact(), [
+                'ok'          => false,
+                'state'       => 'unknown',
+                'error'       => $r['error'] ?? $r['outcome'] ?? 'no answer',
+                'class'       => $r['class'] ?? ($r['outcome'] === 'skipped' ? 'quota' : 'transient'),
+                'retry_after' => $r['retry_after'] ?? null,
+            ]);
+        } catch (Throwable) {
+            // liveYoutubeFetchMany() catches its own failures; this is the last guard of "never throws".
+            return [
+                'ok' => false, 'state' => 'unknown', 'raw_state' => null, 'lifecycle' => null,
+                'scheduled_start' => null, 'scheduled_end' => null, 'actual_start' => null, 'actual_end' => null,
+                'privacy' => null, 'embeddable' => null, 'viewers' => null, 'thumbnail' => null,
+                'recording_status' => null, 'provider_stream_id' => null, 'channel_id' => null, 'channel_expected' => null,
+                'checked_at' => gmdate('Y-m-d H:i:s'), 'error' => 'internal error', 'class' => 'transient', 'retry_after' => null,
+            ];
+        }
     }
 }
 
@@ -145,6 +214,7 @@ final class VimeoProvider implements StreamingProvider
     public function name(): string { return 'vimeo'; }
     public function label(string $lang = 'en'): string { return 'Vimeo'; }
     public function isConfigured(): bool { return false; }
+    public function canAutomate(): bool { return false; }
 
     public function parseReference(string $input): ?string
     {
@@ -179,6 +249,7 @@ final class AwsIvsProvider implements StreamingProvider
     public function name(): string { return 'aws_ivs'; }
     public function label(string $lang = 'en'): string { return 'AWS IVS'; }
     public function isConfigured(): bool { return false; }
+    public function canAutomate(): bool { return false; }
 
     /** The reference must fit the stored column (100 characters); a longer address is refused. */
     public function parseReference(string $input): ?string
@@ -223,6 +294,7 @@ final class UnavailableProvider implements StreamingProvider
     public function name(): string { return $this->key; }
     public function label(string $lang = 'en'): string { return $this->title; }
     public function isConfigured(): bool { return false; }
+    public function canAutomate(): bool { return false; }
 
     public function parseReference(string $input): ?string
     {

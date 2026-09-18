@@ -113,6 +113,32 @@ function liveAdminActions(array $row): array
 }
 
 /**
+ * The automation items a row's menu offers (docs/live/SPEC-PHASE3.md §8.4): []
+ * when $installed is false, the row is deleted, or its provider is not
+ * youtube; otherwise
+ *   ['action' => 'sync',       'label' => 'Check now',           'icon' => 'refresh'],
+ *   ['action' => 'automation', 'on' => '0', 'label' => 'Switch to manual',    'icon' => 'toggle']
+ *   (or 'on' => '1', 'Switch to automatic', when sync_enabled is 0).
+ * $installed is an argument, never read inside, so a test can ask for the
+ * "012 not applied" menu without touching the database.
+ *
+ * A sibling of liveAdminActions(), never a change to it: that one's output is
+ * exactly the legal status transitions (LIVE_TRANSITIONS), and these items
+ * carry no `to`, so the status menu and its tests are untouched.
+ */
+function liveAdminSyncActions(array $row, bool $installed): array
+{
+    if (!$installed || !empty($row['deleted_at']) || (string) ($row['provider'] ?? '') !== 'youtube') return [];
+    $on = (int) ($row['sync_enabled'] ?? 1) === 1;
+    return [
+        ['action' => 'sync', 'label' => 'Check now', 'icon' => 'refresh'],
+        $on
+            ? ['action' => 'automation', 'on' => '0', 'label' => 'Switch to manual', 'icon' => 'toggle']
+            : ['action' => 'automation', 'on' => '1', 'label' => 'Switch to automatic', 'icon' => 'toggle'],
+    ];
+}
+
+/**
  * IANA zones for the form's select, grouped by region with Asia/Kolkata first:
  * ['Asia' => ['Asia/Kolkata', …], 'Europe' => […], …].
  */

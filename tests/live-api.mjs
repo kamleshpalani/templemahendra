@@ -44,6 +44,7 @@
  */
 
 import { spawn, spawnSync } from "node:child_process";
+import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
 import { startYoutubeMock, portInUse } from "./support/youtube_mock.mjs";
@@ -103,8 +104,11 @@ function phpCommand(args) {
   const viaBash = /\.sh$/i.test(PHP_BIN);
   return viaBash ? ["bash", [PHP_BIN, ...args]] : [PHP_BIN, args];
 }
+const STRIP = /^(LIVE_|YOUTUBE_|GOOGLE_)/i; // no real YouTube key or LIVE_CRON_KEY from the shell reaches a PHP child (SPEC-PHASE3 §11.4)
 function phpEnv(extra = {}) {
-  return { ...process.env, TRUSTED_PROXIES: "127.0.0.1,::1", SITE_URL: BASE, CORS_ORIGIN: "*", ...extra };
+  const env = {};
+  for (const [k, v] of Object.entries(process.env)) if (!STRIP.test(k)) env[k] = v;
+  return { ...env, TRUSTED_PROXIES: "127.0.0.1,::1", SITE_URL: BASE, CORS_ORIGIN: "*", ...extra };
 }
 const phpNoise = [];
 function notePhpNoise(label, text) {
@@ -831,6 +835,13 @@ try {
   check(r.data?.filter === "tomorrow" && r.data?.window?.from === `${istDate(0)}T18:30:00Z` && r.data?.window?.to === `${istDate(1)}T18:30:00Z`, "tomorrow's window is the next IST day", show(r.data?.window));
   check([P2.tomorrow0.id, P2.festival.id, F.future.id].every((id) => tomorrowIds.includes(id)), "tomorrow lists 00:00 tomorrow, the festival and the tomorrow fixture", show(tomorrowIds));
   check(![P2.todayLate.id, F.live.id, F.starting.id, P2.nextWeek.id, F.nostart.id].some((id) => tomorrowIds.includes(id)), "tomorrow excludes today, the live rows, next week and the undated row", show(tomorrowIds));
+  check(!idsOf(r.data?.streams).includes(F.cancelled.id) && (r.data?.streams ?? []).every((s) => s.status !== "CANCELLED"), "the CANCELLED broadcast of tomorrow 09:00 is not listed (cancelled rows leave the schedule; ended ones stay)", show(idsOf(r.data?.streams)));
+  const tomorrowCount = r.data?.counts?.tomorrow;
+  const uncancel = fixture("set-status", { id: F.cancelled.id, status: "SCHEDULED", actor: "e2e" });
+  r = await sched("filter=tomorrow&limit=100");
+  check(uncancel.changed && idsOf(r.data?.streams).includes(F.cancelled.id) && r.data?.counts?.tomorrow === tomorrowCount + 1, "…and is not counted: scheduling it again adds one to the tomorrow list and count", show([r.data?.counts?.tomorrow, tomorrowCount]));
+  fixture("set-status", { id: F.cancelled.id, status: "CANCELLED", actor: "e2e" });
+  r = await sched("filter=tomorrow&limit=100");
   check(itemOf(r, P2.tomorrow0.id)?.day_bucket === "tomorrow" && itemOf(r, P2.tomorrow0.id)?.local?.start_time === "00:00", "00:00 IST tomorrow is bucket tomorrow", show(itemOf(r, P2.tomorrow0.id)?.local));
   const tomorrowStarts = (r.data?.streams ?? []).filter((s) => s.status !== "COMPLETED").map((s) => s.scheduled_start_at);
   check(tomorrowStarts.every((t, i) => i === 0 || t >= tomorrowStarts[i - 1]), "tomorrow is in start order", show(tomorrowStarts));
@@ -907,6 +918,28 @@ try {
   check(endLive.changed && endStarting.changed && r.data?.now === null && r.data?.live?.length === 0, "with nothing live, now is null", show([r.data?.now, r.data?.live?.length]));
   r = await sched("filter=today&limit=100");
   check(mineP2(r.data?.streams).includes(F.live.id) && itemOf(r, F.live.id)?.status === "COMPLETED", "the ended broadcast stays on today's schedule as COMPLETED");
+
+  // The browser keeps its own copy of the event-type labels for an answer that
+  // carries none (frontend/src/lib/live.js EVENT_TYPE_LABELS). The API's label
+  // wins on screen, so a mirror that drifts is only wrong where it is used —
+  // which is exactly where nobody looks (review fix O14).
+  const phpSource = readFileSync(resolve(ROOT, "backend/includes/live/config.php"), "utf8");
+  const jsSource = readFileSync(resolve(ROOT, "frontend/src/lib/live.js"), "utf8");
+  const pairs = (source, re, inner) => Object.fromEntries([...(re.exec(source)?.[1] ?? "").matchAll(inner)].map((m) => [m[1], `${m[2]}|${m[3]}`]));
+  const phpLabels = pairs(phpSource, /const LIVE_EVENT_TYPES = \[([\s\S]*?)\n\];/, /'([a-z_]+)'\s*=>\s*\['([^']*)',\s*'([^']*)'\]/g);
+  const jsLabels = pairs(jsSource, /export const EVENT_TYPE_LABELS = \{([\s\S]*?)\n\};/, /([a-z_]+):\s*\{\s*ta:\s*"([^"]*)",\s*en:\s*"([^"]*)"\s*\}/g);
+  const drift = Object.keys(phpLabels).filter((k) => jsLabels[k] !== phpLabels[k]);
+  check(
+    Object.keys(phpLabels).length >= 10 && Object.keys(jsLabels).length === Object.keys(phpLabels).length && drift.length === 0,
+    "the browser's event-type labels mirror config.php exactly",
+    drift.map((k) => `${k}: php ${phpLabels[k]} vs js ${jsLabels[k]}`).join(" | ") || `php ${Object.keys(phpLabels).length}, js ${Object.keys(jsLabels).length}`,
+  );
+  const phpFilters = pairs(phpSource, /const LIVE_SCHEDULE_FILTERS = \[([\s\S]*?)\n\];/, /'([a-z_]+)'\s*=>\s*\['([^']*)',\s*'([^']*)'\]/g);
+  const jsFilters = Object.fromEntries(
+    [...(/export const SCHEDULE_FILTERS = \[([\s\S]*?)\n\];/.exec(jsSource)?.[1] ?? "").matchAll(/value:\s*"([a-z]+)",\s*ta:\s*"([^"]*)",\s*en:\s*"([^"]*)"/g)].map((m) => [m[1], `${m[2]}|${m[3]}`]),
+  );
+  const filterDrift = Object.keys(phpFilters).filter((k) => jsFilters[k] !== phpFilters[k]);
+  check(Object.keys(jsFilters).length === 5 && filterDrift.length === 0, "…and the five filter labels mirror it too", filterDrift.map((k) => `${k}: php ${phpFilters[k]} vs js ${jsFilters[k]}`).join(" | "));
 
   /* ── 6. Hygiene ────────────────────────────────────────────────────── */
   section("6. hygiene");

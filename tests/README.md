@@ -114,20 +114,21 @@ when the server it is given has payments enabled (start it with
 
 ## Live Darshan (YouTube Live)
 
-Four suites cover `docs/live/SPEC-PHASE1.md` §6. Like the payments suites they
-start and stop their own servers — PHP on ports **8081–8083**, the YouTube
-stand-in on **8091** (built for phase 3 and only smoke-started here) and, for
-the browser suite, a throwaway Vite on **5195** whose `/api` proxy points at the
-suite's PHP. Ports in use → exit 2. Migration `011_live_streams.sql` must be
-applied (each suite checks and says so). YouTube's hosts are answered by a stub
-inside the browser, so nothing leaves the machine and no real video plays.
+Four suites cover `docs/live/SPEC-PHASE1.md` §6 and `docs/live/SPEC-PHASE2.md`
+§3. Like the payments suites they start and stop their own servers — PHP on
+ports **8081–8083**, the YouTube stand-in on **8091** (built for phase 3 and
+only smoke-started here) and, for the browser suite, a throwaway Vite on
+**5195** whose `/api` proxy points at the suite's PHP. Ports in use → exit 2.
+Migration `011_live_streams.sql` must be applied (each suite checks and says
+so; phase 2 needs no migration). YouTube's hosts are answered by a stub inside
+the browser, so nothing leaves the machine and no real video plays.
 
 | Script | Ports | What it proves |
 | ------ | ----- | -------------- |
-| `live-unit.php` | — (CLI, database only) | The module's rules against the real code and database: every accepted and refused form of a YouTube reference, the embed/watch/thumbnail builders, slugs (uniqueness across deleted rows, `-2` suffixes, digits-only titles, the lock after publishing), UTC round trips and DST, the whole `liveValidate` matrix with hostile input, the store (lists, ordering, the 3-hour grace for a late broadcast, soft delete and restore), every legal and illegal transition, readiness for Publish / Go live, uploads with a real PNG, a text file and an oversize blob — 572 checks |
-| `live-api.mjs` | PHP 8081, mock 8091 | The public routes (index, live, upcoming, by id and by slug: shapes, ordering, caching headers, 404s, 405s, escaping, no cookies) and the admin JSON API (401/403 as JSON, the CSRF token, create / edit / transition / delete, 422 for hostile fields and unready drafts, 409 for illegal jumps, the locked slug, viewer and editor roles, audit rows), plus that `/api/events`, `/api/homepage_widgets` and `/api/search` still answer — 289 checks |
+| `live-unit.php` | — (CLI, database only) | The module's rules against the real code and database: every accepted and refused form of a YouTube reference, the embed/watch/thumbnail builders, slugs (uniqueness across deleted rows, `-2` suffixes, digits-only titles, the lock after publishing), UTC round trips and DST, the whole `liveValidate` matrix with hostile input, the store (lists, ordering, the 3-hour grace for a late broadcast, soft delete and restore), every legal and illegal transition, readiness for Publish / Go live, uploads with a real PNG, a text file and an oversize blob; phase 2: the day / week / festival windows in Asia/Kolkata (23:59 IST inside, the next midnight outside, the week ending Sunday, month and year rollovers), `day_bucket` and `starts_in_seconds`, the schedule list's membership (cancelled rows out, ended ones in), order (live first, undated last, ended last within a day) and counts, the reserved slug `schedule`, and the Vimeo / AWS IVS placeholders — 720 checks |
+| `live-api.mjs` | PHP 8081, mock 8091 | The public routes (index, live, upcoming, by id and by slug: shapes, ordering, caching headers, 404s, 405s, escaping, no cookies) and the admin JSON API (401/403 as JSON, the CSRF token, create / edit / transition / delete, 422 for hostile fields and unready drafts, 409 for illegal jumps, the locked slug, viewer and editor roles, audit rows), plus that `/api/events`, `/api/homepage_widgets` and `/api/search` still answer; phase 2: `/api/live-streams/schedule` with rows across today / tomorrow / this week / next week / past / festival / live / ended-today / cancelled / draft / deleted — every filter's membership and order, the counts, the ISO window, the limit cap, `filter=bogus`, the 30-second cache header, the item shape, `now` / `next` on the index, and that the browser's copies of the event-type and filter labels (`frontend/src/lib/live.js`) still mirror `backend/includes/live/config.php` word for word — 365 checks |
 | `admin-live.mjs` | PHP 8082 | Admin → Live Streaming over HTTP and in a browser: create with an exact Tamil round-trip, the edit view, an update that changes only what was edited, the validation matrix, the status buttons (a bare draft cannot be published; Go live re-checks the row), delete and restore, thumbnail uploads, filters / search / sort / pagination, hostile query strings, viewer and editor roles, forged CSRF, overflow and axe at 390 and 1440 — 235 checks |
-| `live-ui.mjs` | PHP 8083, Vite 5195 | The devotee's side in a real browser: `/live-darshan` at four widths, the broadcast's facts, the `youtube-nocookie.com` iframe and its attributes in Tamil then English, the 16:9 box, slug routes (not found, draft, offline, completed, error), the header / drawer / footer / Home entry points, the header fit at 36 widths in both languages, polling (a STARTING broadcast goes LIVE under the visitor and is announced; nothing polls after leaving the page), the scheduled poster, a broadcast running late ("Starting shortly"), the empty state — 158 checks |
+| `live-ui.mjs` | PHP 8083, Vite 5195 | The devotee's side in a real browser: `/live-darshan` at four widths, the broadcast's facts, the `youtube-nocookie.com` iframe and its attributes in Tamil then English, the 16:9 box, slug routes (not found, draft, offline, completed, error), the header / drawer / footer / Home entry points, the header fit at 36 widths in both languages, polling (a STARTING broadcast goes LIVE under the visitor and is announced; nothing polls after leaving the page), the scheduled poster, a broadcast running late ("Starting shortly"), the empty state; phase 2: `/live-darshan/schedule` at four widths (axe with iframes off), the five filters with their counts, switching that updates the address and the list, `?filter=` on a direct load, the day groups, the compact countdown on a card, the per-filter empty state and its switch button, Tamil; the countdown on `/live-darshan` (HH:MM:SS from a fixture starting in 90 s, two samples 5 s apart, the sr-only sentence, "Starting shortly" at T+0) and a `server_time` skewed by ±10 minutes shifting it; the homepage's LIVE NOW, next-darshan and nothing states with the hero row; and the review fixes — the filter strip at 390 in both languages (every chip inside the viewport, 44 px, the selected one in view), the days unit on a countdown eight days out and its absence under a day, the 44 px targets of the homepage's live section, the poster, the hero and the homepage's hero row flipping to "Starting shortly" at T+0, the Tamil weekday-first day label, a filter switch that keeps its list while a delayed answer is awaited, a broadcast going live under the schedule page without a reload, the Today / Tomorrow empty state's way out on a Sunday and on a Monday, and the shared address carrying `?filter=` — 356 checks |
 
 ```bash
 PHP_BIN=/path/to/php.sh
@@ -145,13 +146,16 @@ the start and at the end. `LIVE_ONLY=widths,facts` runs a subset of the
 browser suite's scenarios while a failure is chased.
 
 Support files: `support/live_fixtures.php` (CLI fixture: create a stream in any
-status through the module's own write path, change its status, run SQL, clean
-up) and `support/youtube_mock.mjs` (the oEmbed / Data API stand-in for phase 3).
+status through the module's own write path — `starts_in_seconds` places its
+start that many seconds from now, to the second, for the countdown checks —
+change its status, run SQL, clean up) and `support/youtube_mock.mjs` (the
+oEmbed / Data API stand-in for phase 3).
 
 `admin-smoke.mjs`, `admin-roles.mjs`, `admin-hostile-input.mjs`, `og.mjs`,
-`public-e2e.mjs` and `search-api.mjs` include the Live Streaming page and the
-`/live-darshan` route. Run `og.mjs` before creating any live fixture: its
-`/live-darshan` comparison holds only while no broadcast is live or upcoming.
+`public-e2e.mjs` and `search-api.mjs` include the Live Streaming page, the
+`/live-darshan` route and `/live-darshan/schedule`. Run `og.mjs` before
+creating any live fixture: its `/live-darshan` comparison holds only while no
+broadcast is live or upcoming (the schedule page's strings are static).
 
 ## Design-system check
 
