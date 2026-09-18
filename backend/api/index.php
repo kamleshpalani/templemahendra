@@ -115,6 +115,11 @@ if ($path === '/live-cron') { require __DIR__ . '/live_cron.php'; exit; }
 // else under either prefix is not a route.
 if (preg_match('#^/live-streams(?:/(live|upcoming|schedule|[0-9]{1,10}|[a-z0-9][a-z0-9-]{1,118}))?$#', $path, $liveMatch)) { $liveRoute = $liveMatch[1] ?? 'index'; require __DIR__ . '/live_streams.php'; exit; }
 if (str_starts_with($path, '/live-streams/')) sendError('Not found', 404);
+if ($path === '/live-subscriptions' || $path === '/live-subscriptions/unsubscribe') {
+    $liveSubscriptionAction = str_ends_with($path, '/unsubscribe') ? 'unsubscribe' : 'subscribe';
+    require __DIR__ . '/live_subscriptions.php';
+    exit;
+}
 if (preg_match('#^/admin/live-streams(?:/([0-9]{1,10}))?$#', $path, $liveAdminMatch)) { $liveAdminId = isset($liveAdminMatch[1]) ? (int) $liveAdminMatch[1] : null; require __DIR__ . '/admin_live_streams.php'; exit; }
 if (str_starts_with($path, '/admin/')) sendError('Not found', 404);
 

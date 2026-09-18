@@ -149,6 +149,14 @@ function notifyDispatchClaimed(array $d, array $secretVars): array
     }
     if ($notif['to_email'] !== null) $recipient['email'] = $notif['to_email'];
     if ($notif['to_phone'] !== null) $recipient['phone'] = $notif['to_phone'];
+    if ($notif['entity_type'] === 'live_subscription') {
+        $recipient = liveSubscriptionRecipient(
+            (int) $notif['entity_id'], (string) $notif['to_email'], (string) ($vars['scheduledStart'] ?? '')
+        );
+        if ($recipient === null) {
+            return notifyApplyResult($d, NotifyResult::skipped('live subscription unavailable'), null, $hasSecret);
+        }
+    }
 
     // A family that unsubscribed, or whose consent the committee withdrew, after
     // the message was queued has said no, and that wins over a campaign queued
@@ -264,6 +272,9 @@ function notifyBuildMessage(array $d, array $notif, array $recipient, array $var
     $unsubscribe = $notif['devotee_id'] !== null && in_array($kind, NOTIFY_CONSENT_KINDS, true)
         ? notifyUnsubscribeUrl((int) $notif['devotee_id'])
         : null;
+    if ($notif['entity_type'] === 'live_subscription') {
+        $unsubscribe = liveSubscriptionUnsubscribeUrl((int) $notif['entity_id']);
+    }
 
     switch ($channel) {
         case 'email': {
@@ -282,6 +293,9 @@ function notifyBuildMessage(array $d, array $notif, array $recipient, array $var
                 'details'         => (array) ($vars['_details'] ?? []),
                 'logo_url'        => siteUrl('/icons/icon-192x192.png'),
                 'unsubscribe_url' => $unsubscribe,
+                'footer_note'     => $notif['entity_type'] === 'live_subscription'
+                    ? ($lang === 'ta' ? 'இந்த ஒளிபரப்பிற்கான நினைவூட்டலை நீங்கள் கேட்டுள்ளீர்கள்.' : 'You requested a reminder for this broadcast.')
+                    : null,
                 'open_pixel_url'  => notifyOpenPixelUrl($deliveryId),
             ];
             $headers = $unsubscribe !== null
@@ -551,6 +565,9 @@ function notifyWorkerRun(array $opts = []): array
             if (empty($opts['skip_reminders']) && !$scoped) {
                 $step('reminders', static function () use (&$result, $testClock): void {
                     $result['reminders_created'] = notifyRemindersMaybeRun($testClock);
+                });
+                $step('live reminders', static function () use (&$result, $db): void {
+                    $result['reminders_created'] += liveQueueReminders($db);
                 });
             }
 

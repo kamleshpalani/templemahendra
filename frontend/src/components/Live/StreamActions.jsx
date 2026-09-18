@@ -3,6 +3,7 @@ import { LuBellRing, LuCalendarDays, LuHeartHandshake } from "react-icons/lu";
 import Button from "../ui/Button";
 import Modal from "../ui/Modal";
 import ShareButton from "../Share/ShareButton";
+import NotifyForm from "./NotifyForm";
 import { usePaymentsConfig, paymentsUsable } from "../../lib/payments";
 import { streamDescription, streamTitle } from "../../lib/live";
 import "./Live.css";
@@ -15,9 +16,7 @@ import "./Live.css";
  *   • Donate also waits for /api/payments/config (the same cached answer the
  *     donation page uses) and appears only when the gateway is enabled and
  *     ready — never while that answer is loading or after it failed;
- *   • Notify Me appears only before the broadcast (SCHEDULED, STARTING) and,
- *     until Phase 6 brings reminders, opens a small note saying so with the
- *     schedule as the way to plan ahead;
+ *   • Notify Me appears only before the broadcast (SCHEDULED, STARTING);
  *   • Share reuses the site's ShareButton with the broadcast's own address.
  *
  * When nothing applies the row is not rendered at all.
@@ -61,12 +60,13 @@ export default function StreamActions({ stream, lang, t }) {
           onClose={() => setNotify(false)}
           size="sm"
           eyebrow={title}
-          title={t("நினைவூட்டல்கள் விரைவில்", "Reminders are coming soon")}
+          title={t("எனக்கு நினைவூட்டு", "Remind me")}
           description={t(
-            "இந்த தரிசனம் தொடங்கும் முன் ஒரு நினைவூட்டல் அனுப்பும் வசதி விரைவில் வரும். அதுவரை அட்டவணையில் நேரத்தைப் பார்த்துக்கொள்ளலாம்.",
-            "We will soon be able to send you a reminder before this darshan begins. Until then, the schedule has every upcoming time.",
+            "இந்த தரிசனம் தொடங்கும் நேரத்தில் மின்னஞ்சல் நினைவூட்டலைப் பெறுங்கள்.",
+            "Get an email reminder near this darshan’s scheduled start.",
           )}
         >
+          {notify && <NotifyForm key={stream.id} stream={stream} lang={lang} t={t} />}
           <div className="live-notify__actions">
             <Button to="/live-darshan/schedule" variant="primary" size="sm" icon={<LuCalendarDays aria-hidden="true" />}>
               {t("முழு அட்டவணை", "Full schedule")}

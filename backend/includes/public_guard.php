@@ -35,6 +35,8 @@ const PUBLIC_GUARD_LIMITS = [
     'donation-saved'       => [8, 3600],
     'contact-attempt'      => [15, 3600],
     'contact-saved'        => [5, 3600],
+    'live-subscription-attempt' => [20, 3600],
+    'live-subscription-saved'   => [8, 3600],
     // Family registration. More room than contact: a temple gathering on shared
     // Wi-Fi or one mobile carrier's address can register several families an hour.
     'registration-attempt' => [15, 3600],
