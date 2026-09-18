@@ -195,11 +195,16 @@ Upload via Hostinger File Manager or FTP:
 
 ### Step 3 — Database
 
-1. Create database in Hostinger hPanel → Databases → MySQL
-2. Import `database/schema.sql` via phpMyAdmin
-3. Run the migrations in `database/migrations/` in order. Each is additive and
-   safe to re-run on an existing database; a fresh `schema.sql` install already
-   contains them.
+1. Create the database and its user in Hostinger hPanel → Databases → MySQL.
+2. For a fresh installation, select that database in phpMyAdmin and import
+   `database/schema.sql`. Remove the complete `CREATE DATABASE ...;` and
+   `USE templemahendra;` statements from the import copy first: Hostinger uses
+   the database name assigned in hPanel, which must also be your `DB_NAME`.
+   Skip the schema import when upgrading an existing installation.
+3. Run **every** migration in `database/migrations/`, in filename order, against
+   the same database. This is required for both fresh installations and
+   upgrades: `schema.sql` provides the baseline and does not include all later
+   migrations.
 
 | Migration | What it adds |
 | --------- | ------------ |
@@ -214,6 +219,9 @@ Upload via Hostinger File Manager or FTP:
 | `009_family_registration.sql` | Family registration replaces devotee sign-in (`docs/registration/SPEC.md`): optional non-unique email, address, language, consent and `family_members`; `duplicate_of` marks a repeated phone number for the committee to merge. |
 | `010_payments.sql` | Online payments through CCAvenue (`docs/payments/SPEC.md`): `donation_categories`, `payment_transactions`, `payment_refunds`, `payment_audit_log`, `payment_settings` and `payment_counters`, plus the online-payment columns on `donations` and `seva_bookings`. Pledges and request-only bookings are untouched (`source='pledge'`, `payment_mode='offline'`). |
 | `011_live_streams.sql` | Live Darshan, phase 1 (`docs/live/SPEC-PHASE1.md`): seeded `temples` and `deities` tables and `live_streams`, the YouTube Live broadcasts the committee schedules in Admin → Live Streaming and the public sees at `/live-darshan`. |
+| `012_live_automation.sql` | YouTube automation settings and stream synchronization fields for the scheduled poller. |
+| `013_live_subscriptions.sql` | Per-stream email subscriptions and the live-reminder notification category. |
+| `014_live_donations.sql` | `donations.live_stream_id` and its index and foreign key for stream-linked checkout and totals. |
 
 ```bash
 for f in database/migrations/*.sql; do mysql -u <user> -p <db> < "$f"; done
