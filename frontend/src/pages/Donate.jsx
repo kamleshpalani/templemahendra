@@ -31,6 +31,7 @@ import { countryName } from "../lib/familyRegistration";
 import { formatInternational, subdivisionLabel, subdivisionsOf } from "../lib/phone";
 import { currencySymbol, formatMoney, parseAmountInput } from "../lib/money";
 import { paymentsUsable, postJson, usePaymentsConfig, writeLastPayment } from "../lib/payments";
+import { streamTitle, useStream } from "../lib/live";
 import {
   DONATE_FORM_STEPS,
   DONATE_STEPS,
@@ -137,6 +138,15 @@ export default function Donate() {
   const { lang, t } = useLang();
   const { config, loading } = usePaymentsConfig();
   const [params, setParams] = useSearchParams();
+  const streamSlug = params.get("stream");
+  const broadcast = useStream(streamSlug);
+  const streamAllowed = !streamSlug || (!broadcast.loading && !broadcast.error && broadcast.stream?.flags?.donations && broadcast.stream.status !== "CANCELLED");
+  const stepParams = useCallback((key) => {
+    const next = new URLSearchParams();
+    if (streamSlug) next.set("stream", streamSlug);
+    if (key) next.set("step", key);
+    return next;
+  }, [streamSlug]);
 
   const [draft] = useState(readDraft);
   const [form, setForm] = useState(() => (draft ? restoreForm(draft.form, lang, null) : initialDonationForm(lang, null)));
@@ -203,9 +213,9 @@ export default function Donate() {
   const goTo = useCallback(
     (key, { replace = false } = {}) => {
       setDirection(DONATE_STEP_KEYS.indexOf(key) >= stepIndex ? "forward" : "back");
-      setParams({ step: key }, { replace });
+      setParams(stepParams(key), { replace });
     },
-    [setParams, stepIndex],
+    [setParams, stepIndex, stepParams],
   );
 
   // A step whose earlier steps are unfinished is never shown: a shared
@@ -217,15 +227,15 @@ export default function Donate() {
   useEffect(() => {
     if (gateway || loading) return;
     if (requested !== null && !DONATE_STEP_KEYS.includes(requested)) {
-      setParams({}, { replace: true });
+      setParams(stepParams(null), { replace: true });
       return;
     }
     if (!isReachable(stepIndex)) {
       let allowed = stepIndex;
       while (allowed > 0 && !isReachable(allowed)) allowed -= 1;
-      setParams(allowed === 0 ? {} : { step: DONATE_STEP_KEYS[allowed] }, { replace: true });
+      setParams(stepParams(allowed === 0 ? null : DONATE_STEP_KEYS[allowed]), { replace: true });
     }
-  }, [gateway, loading, requested, stepIndex, isReachable, setParams]);
+  }, [gateway, loading, requested, stepIndex, isReachable, setParams, stepParams]);
 
   useEffect(() => {
     if (shownStep.current === stepKey || gateway) return;
@@ -365,7 +375,7 @@ export default function Donate() {
   };
 
   const submit = async () => {
-    if (sending.current) return;
+    if (sending.current || !streamAllowed) return;
     const all = validateDonationAll(form, t, config);
     const firstBad = DONATE_STEP_KEYS.find((key) => Object.keys(all[key]).length);
     if (firstBad) {
@@ -377,7 +387,7 @@ export default function Donate() {
 
     sending.current = true;
     setStatus("sending");
-    const res = await postJson("/api/payments/donations", toDonationPayload(form));
+    const res = await postJson("/api/payments/donations", { ...toDonationPayload(form), ...(streamSlug ? { stream: streamSlug } : {}) });
 
     if (res.ok && res.body?.success && res.body.gateway) {
       writeLastPayment({ number: res.body.number, token: res.body.token, kind: "donation" });
@@ -386,6 +396,11 @@ export default function Donate() {
       return;
     }
     sending.current = false;
+    if (res.body?.fields?.stream) {
+      broadcast.refresh();
+      setStatus("error");
+      return;
+    }
 
     const limited = rateLimitInfo(res.status, res.body, res.retryAfterHeader);
     if (limited) {
@@ -504,6 +519,16 @@ export default function Donate() {
     );
   }
 
+  if (!streamAllowed) {
+    return <>{hero}<section className="section"><div className="container container--narrow">
+      {broadcast.loading ? <SkeletonText lines={3} /> : <Alert tone="error">
+        {t("இந்த ஒளிபரப்பிற்கு இப்போது நன்கொடை வழங்க முடியாது.", "This broadcast is not accepting donations right now.")}
+        <Button onClick={broadcast.refresh} variant="ghost">{t("மீண்டும் முயல்க", "Try again")}</Button>
+        <Button to="/donate" variant="outline">{t("பொது நன்கொடை", "Make a general donation")}</Button>
+      </Alert>}
+    </div></section></>;
+  }
+
   const step = DONATE_STEPS[stepIndex];
   const busy = status === "sending";
   const summaryEntries = Object.entries(errors[stepKey] ?? {}).map(([key, message]) => ({
@@ -574,6 +599,10 @@ export default function Donate() {
       <section className="section don-section">
         <div className="container container--narrow don">
           <SimulatorBanner simulator={config.simulator} testMode={config.testMode} />
+          {streamSlug && broadcast.stream && <Alert>
+            {t("இந்த தரிசனத்திற்கான நன்கொடை: ", "Donation for this darshan: ")}
+            <Link to={`/live-darshan/${broadcast.stream.slug}`}>{streamTitle(broadcast.stream, lang)}</Link>
+          </Alert>}
 
           <div ref={stepperRef} className="don__stepper">
             <FormStepper

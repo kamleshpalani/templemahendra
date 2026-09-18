@@ -387,6 +387,11 @@ function payValidateDonation(array $body, array $cfg): array
 {
     $fields = [];
     $values = [];
+    $stream = $body['stream'] ?? '';
+    if (!is_string($stream) || ($stream !== '' && liveDonationStreamId(getDB(), $stream) === null)) {
+        $fields['stream'] = 'This broadcast is not accepting donations.';
+        $stream = '';
+    }
 
     // Purpose
     $slug = payFieldText($body, 'category');
@@ -504,6 +509,7 @@ function payValidateDonation(array $body, array $cfg): array
         'category'           => $category['slug'] ?? null,
         'category_id'        => $category['id'] ?? null,
         'category_name'      => $category['name'] ?? null,
+        'stream'             => $stream,
         'amount'             => $amount,
         'currency'           => $currency,
         'name'               => $name,
