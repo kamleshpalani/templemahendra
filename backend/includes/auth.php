@@ -307,7 +307,10 @@ function requireAdminAuth(): void
         header('Location: /admin/login.php?reason=expired&next=' . $to);
         exit;
     }
-    adminRevalidateSession();
+    if (!adminRevalidateSession()) {
+        header('Location: /admin/login.php?reason=revoked');
+        exit;
+    }
     $file = basename($_SERVER['PHP_SELF']);
 
     // A forced password change blocks everything except the profile page itself.
@@ -330,27 +333,31 @@ function requireAdminAuth(): void
 /**
  * Re-check a database account against admin_users on every request so that
  * disabling, deleting or re-roling a committee member takes effect on their
- * existing sessions, not only at their next sign-in.
+ * existing sessions, not only at their next sign-in. Returns false after
+ * clearing the session when the account is gone or disabled; the caller
+ * chooses the response (a redirect for pages, JSON for the AJAX endpoints).
+ * Otherwise refreshes the session's role and must_change from the row.
  */
-function adminRevalidateSession(): void
+function adminRevalidateSession(): bool
 {
-    if (!empty($_SESSION['admin_is_env']) || (int) ($_SESSION['admin_user_id'] ?? 0) < 1) return;
-    if (!adminUsersTableExists()) return;
+    if (empty($_SESSION['admin_logged_in'])) return false;
+    if (!empty($_SESSION['admin_is_env']) || (int) ($_SESSION['admin_user_id'] ?? 0) < 1) return true;
+    if (!adminUsersTableExists()) return true;
     try {
         $stmt = getDB()->prepare('SELECT is_active, role, must_change FROM admin_users WHERE id = :id LIMIT 1');
         $stmt->execute([':id' => (int) $_SESSION['admin_user_id']]);
         $row = $stmt->fetch();
     } catch (Throwable) {
-        return;
+        return true;
     }
     if (!$row || !$row['is_active']) {
         adminAudit('session_revoked', null, $row ? 'account disabled' : 'account deleted');
         adminLogout();
-        header('Location: /admin/login.php?reason=revoked');
-        exit;
+        return false;
     }
     $_SESSION['admin_role']        = $row['role'];
     $_SESSION['admin_must_change'] = (bool) $row['must_change'];
+    return true;
 }
 
 /** Explicit per-block gate, for pages that mix capabilities. */
