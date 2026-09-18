@@ -462,6 +462,27 @@ try {
     check(audit(out1.id).every((x) => x.action !== "live_sync_paused"), "…and write no live_sync_paused row");
     check(secondsBetween(o1.last_synced_at, o1.next_sync_at) >= 30, "…but the row is backed off", `${o1.last_synced_at} → ${o1.next_sync_at}`);
 
+    // G23 on a call-level failure: a row an editor re-pointed while the call was
+    // out keeps its fresh error and due time; its untouched neighbour is backed off.
+    const raced = mk("race-call", "0500", 0);
+    const calm = mk("race-calm", "0500", 0);
+    const newVideo = ytId("LIVE", 990);
+    const racedDue = utc(0);
+    mock.beforeAnswer = async (q) => {
+      if (/\/videos$/.test(q.path) && String(q.query?.id ?? "").split(",").includes(raced.yt)) {
+        sql("UPDATE live_streams SET provider_broadcast_id = ?, sync_error = NULL, next_sync_at = ? WHERE id = ?", [newVideo, racedDue, raced.id]);
+      }
+    };
+    try {
+      await sync({ ids: [raced.id, calm.id] });
+    } finally {
+      mock.beforeAnswer = null;
+    }
+    const rr = row(raced.id);
+    const rc = row(calm.id);
+    check(rr.provider_broadcast_id === newVideo && rr.sync_error === null && rr.next_sync_at === racedDue, "G23: a call-level failure is not written onto a row re-pointed during the call", show(rr));
+    check(/^transient:/.test(rc.sync_error ?? "") && secondsBetween(rc.last_synced_at, rc.next_sync_at) >= 30, "…while the unchanged row in the same batch takes the error and the back-off", show(rc));
+
     // G15: twelve row failures pause.
     const gone = mk("gone", "0404", -(GRACE_H + 1) * 3600);
     for (let i = 0; i < 12; i += 1) await sync({ ids: [gone.id] });

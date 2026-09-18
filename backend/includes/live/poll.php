@@ -41,6 +41,9 @@ const LIVE_POLL_NO_EVIDENCE = ['missing', 'restricted', 'not_broadcast', 'revoke
 /** The facts on a STARTING row past its grace that pause it (G22). */
 const LIVE_POLL_STUCK_STATES = ['upcoming', 'not_broadcast', 'missing'];
 
+/** The columns whose change since the snapshot means the answer is about another broadcast or another decision (G23). */
+const LIVE_POLL_FENCE = ['status', 'synced_status', 'sync_enabled', 'provider', 'provider_broadcast_id', 'deleted_at'];
+
 /* ── Small helpers ───────────────────────────────────────────────────────── */
 
 /** A UTC 'Y-m-d H:i:s' as a Unix timestamp, or null for anything else. */
@@ -72,6 +75,31 @@ function livePollName(array $row): string
     $title = trim((string) ($row['title_en'] ?? ''));
     if ($title === '') $title = trim((string) ($row['title_ta'] ?? ''));
     return 'Stream #' . (int) ($row['id'] ?? 0) . ' “' . mb_substr($title, 0, 80) . '”';
+}
+
+/** G23: true while every LIVE_POLL_FENCE column still reads as the snapshot did. */
+function livePollUnchanged(array $snapshot, array $current): bool
+{
+    foreach (LIVE_POLL_FENCE as $k) {
+        if ((string) ($current[$k] ?? '') !== (string) ($snapshot[$k] ?? '')) return false;
+    }
+    return true;
+}
+
+/**
+ * The same fence as SQL for a write made from a snapshot without a lock:
+ * ['s.status <=> :f_status AND …', [':f_status' => …, …]].
+ */
+function livePollFenceSql(array $snapshot): array
+{
+    $where = [];
+    $params = [];
+    foreach (LIVE_POLL_FENCE as $k) {
+        $p = ':f_' . $k;
+        $where[] = "s.{$k} <=> {$p}";
+        $params[$p] = $snapshot[$k] ?? null;
+    }
+    return [implode(' AND ', $where), $params];
 }
 
 /** The first token of a sync_error (its class), or null. */
@@ -371,11 +399,9 @@ function livePollStream(PDO $db, array $row, array $fact, array $cfg, string $ac
             if ($locked === null) return ['outcome' => 'skipped'] + $base;
 
             // G23: the row changed while the call was in flight.
-            foreach (['status', 'synced_status', 'sync_enabled', 'provider', 'provider_broadcast_id', 'deleted_at'] as $k) {
-                if ((string) ($locked[$k] ?? '') !== (string) ($row[$k] ?? '')) {
-                    liveRecordSync($db, $id, ['last_synced_at' => $now]);
-                    return ['outcome' => 'overridden', 'from' => (string) $locked['status']] + $base;
-                }
+            if (!livePollUnchanged($row, $locked)) {
+                liveRecordSync($db, $id, ['last_synced_at' => $now]);
+                return ['outcome' => 'overridden', 'from' => (string) $locked['status']] + $base;
             }
 
             $locked['_poll_actor'] = $actor;
@@ -461,24 +487,32 @@ function livePollStream(PDO $db, array $row, array $fact, array $cfg, string $ac
         error_log('[live] poll ' . ($row['slug'] ?? '?') . ' failed: ' . liveRedact($message));
     }
 
-    // A rolled-back row failure, recorded in a separate write (§5.5). A row
-    // with sync_enabled = 0 is left byte-identical.
+    // A rolled-back row failure, recorded in a separate write under its own
+    // lock (§5.5); a row a person changed meanwhile (G23) is left alone, as is
+    // a row with sync_enabled = 0.
     $error = livePollFailureText($outcome, $row, liveRedact($message, 250));
     if ((int) ($row['sync_enabled'] ?? 1) === 1) {
         try {
-            $attempts = (int) ($row['sync_attempts'] ?? 0) + 1;
-            if ($attempts >= LIVE_SYNC_GIVE_UP_ATTEMPTS) {
-                liveSetSyncEnabled($db, $id, false, $actor, 'after ' . LIVE_SYNC_GIVE_UP_ATTEMPTS . ' failures: ' . $error, true);
-                liveRecordSync($db, $id, ['attempts' => $attempts, 'last_synced_at' => $now, 'next_sync_at' => null]);
-                return ['outcome' => 'paused', 'error' => $error] + $base;
-            }
-            livePollAuditError($row, $error, $actor);
-            liveRecordSync($db, $id, [
-                'error'          => $error,
-                'attempts'       => $attempts,
-                'last_synced_at' => $now,
-                'next_sync_at'   => liveSyncNextAt($row, $outcome, $cfg, $now, $attempts),
-            ]);
+            $written = liveTransaction($db, function (PDO $db) use ($row, $id, $actor, $now, $cfg, $outcome, $error): ?string {
+                $locked = liveLoad($db, $id, true, true);
+                if ($locked === null || !livePollUnchanged($row, $locked)) return 'overridden';
+                $attempts = (int) ($locked['sync_attempts'] ?? 0) + 1;
+                if ($attempts >= LIVE_SYNC_GIVE_UP_ATTEMPTS) {
+                    liveSetSyncEnabled($db, $id, false, $actor, 'after ' . LIVE_SYNC_GIVE_UP_ATTEMPTS . ' failures: ' . $error, true);
+                    liveRecordSync($db, $id, ['attempts' => $attempts, 'last_synced_at' => $now, 'next_sync_at' => null]);
+                    return 'paused';
+                }
+                livePollAuditError($locked, $error, $actor);
+                liveRecordSync($db, $id, [
+                    'error'          => $error,
+                    'attempts'       => $attempts,
+                    'last_synced_at' => $now,
+                    'next_sync_at'   => liveSyncNextAt($locked, $outcome, $cfg, $now, $attempts),
+                ]);
+                return null;
+            });
+            if ($written === 'overridden') return ['outcome' => 'overridden'] + $base;
+            if ($written === 'paused') return ['outcome' => 'paused', 'error' => $error] + $base;
         } catch (Throwable $e2) {
             error_log('[live] poll ' . ($row['slug'] ?? '?') . ' could not record its failure: ' . liveRedact($e2->getMessage()));
         }
@@ -496,7 +530,11 @@ function livePollSweep(PDO $db, array $opts = []): array
     $started = microtime(true);
     $summary = ['checked' => 0, 'changed' => 0, 'started' => 0, 'ended' => 0, 'errors' => 0, 'skipped' => 0, 'calls' => 0, 'units' => 0, 'items' => []];
 
-    // Steps 1–3: nothing to do, no throw, no call.
+    // Steps 1–3: nothing to do, no throw, no call. Fresh settings, and a run
+    // whose provider audit rows (a revoked or rotated token) name this actor.
+    $actor = mb_substr(trim((string) ($opts['actor'] ?? 'cron')), 0, 60) ?: 'cron';
+    liveConfigReset();
+    liveYoutubeRunStart($actor);
     if (!liveTablesExist() || !liveAutomationInstalled()) return ['skipped' => 1] + $summary;
     if (!liveAutomationReady()['ok']) return ['skipped' => 1] + $summary;
     if (liveQuotaBlockedUntil() !== null) return ['skipped' => 1] + $summary;
@@ -504,7 +542,6 @@ function livePollSweep(PDO $db, array $opts = []): array
     // Step 4: clamps, and the run's one instant.
     $limit      = max(1, min(200, (int) ($opts['limit'] ?? 50)));
     $maxSeconds = max(1, min(300, (int) ($opts['max_seconds'] ?? 50)));
-    $actor      = mb_substr(trim((string) ($opts['actor'] ?? 'cron')), 0, 60) ?: 'cron';
     $trigger    = in_array($opts['trigger'] ?? '', ['cli', 'http', 'admin'], true) ? $opts['trigger'] : 'cli';
     $dryRun     = !empty($opts['dry_run']);
     $cfg        = liveAutomationConfig();
@@ -569,11 +606,15 @@ function livePollSweep(PDO $db, array $opts = []): array
                 $streak = liveProviderFailStreak($db, $class, $notice);
                 $next = liveSyncNextAt([], $outcome, $cfg, $now, $streak, $answer['retry_after'] ?? null);
                 [$eligible, $params] = liveSyncEligibleWhere();
-                $sql = 'UPDATE live_streams s
-                           SET s.sync_error = :err, s.last_synced_at = :now, s.next_sync_at = :next
-                         WHERE s.id IN (' . implode(',', array_map('intval', array_keys($chunk))) . ')
-                           AND s.sync_enabled = 1 AND ' . $eligible;
-                $db->prepare($sql)->execute($params + [':err' => liveRedact($class . ': ' . $notice, 300), ':now' => $now, ':next' => $next]);
+                // Only rows still as the snapshot saw them (G23): a row a person
+                // changed during the call keeps its own fresh error and due time.
+                foreach ($chunk as $rowId => $row) {
+                    [$fence, $fenceParams] = livePollFenceSql($row);
+                    $sql = 'UPDATE live_streams s
+                               SET s.sync_error = :err, s.last_synced_at = :now, s.next_sync_at = :next
+                             WHERE s.id = :id AND s.sync_enabled = 1 AND ' . $fence . ' AND ' . $eligible;
+                    $db->prepare($sql)->execute($params + $fenceParams + [':id' => (int) $rowId, ':err' => liveRedact($class . ': ' . $notice, 300), ':now' => $now, ':next' => $next]);
+                }
             }
             foreach ($chunk as $row) {
                 $summary['checked']++;
