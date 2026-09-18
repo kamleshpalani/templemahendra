@@ -807,7 +807,7 @@ async function premiumPage() {
         const y = (sel) => document.querySelector(sel)?.getBoundingClientRect().top ?? -1;
         return { player: y(".live-player"), head: y(".live-stream__head"), actions: y(".live-actions"), about: y(".live-about"), meta: y(".live-meta-card") };
       });
-      check(order.player < order.head && order.head < order.actions && order.actions < order.about && order.about < order.meta, "@390: player, header, actions, About, then the details — one column", JSON.stringify(order));
+      check(order.head < order.player && order.player < order.actions && order.actions < order.about && order.about < order.meta, "@390: header, player, actions, About, then the details — one column", JSON.stringify(order));
     }
     check(!(await overflow(page)), `@${w}: no horizontal overflow`);
     const v = await axe(page);
