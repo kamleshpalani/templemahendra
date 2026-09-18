@@ -119,10 +119,11 @@ Five suites cover `docs/live/SPEC-PHASE1.md` §6, `docs/live/SPEC-PHASE2.md`
 and stop their own servers — PHP on ports **8081–8085**, the YouTube stand-in
 on **8091** / **8092** and, for the browser suite, a throwaway Vite on
 **5195** whose `/api` proxy points at the suite's PHP. Ports in use → exit 2.
-Migration `011_live_streams.sql` must be applied (each suite checks and says
-so; phase 2 needs no migration; `live-sync.mjs` also needs
-`012_live_automation.sql`, and the right to `CREATE`/`DROP` a scratch database
-for its missing-migration scenarios). YouTube's hosts are answered by a stub inside
+Migration `011_live_streams.sql` must be applied. The API and UI suites also
+check for `012_live_automation.sql`, needed by the Phase 4 viewer tests.
+The public application still works without 012, with no viewer count.
+`live-sync.mjs` needs both migrations and the right to `CREATE`/`DROP` a scratch
+database for its missing-migration scenarios. YouTube's hosts are answered by a stub inside
 the browser, so nothing leaves the machine and no real video plays.
 
 | Script | Ports | What it proves |

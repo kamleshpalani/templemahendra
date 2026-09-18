@@ -81,9 +81,10 @@ function stateText(stream, lang, t, serverOffset, started) {
 export default function LivePlayer({ stream, lang, t, serverOffset = 0, started = false, onRetry = null }) {
   const title = streamTitle(stream, lang);
   const live = isLiveStatus(stream?.status);
-  const recording = stream?.status === "COMPLETED" && Boolean(stream?.flags?.archive) ? embedSrc(stream, lang) : null;
+  const recording = stream?.status === "COMPLETED" && Boolean(stream?.flags?.archive) && stream?.playback?.kind === "iframe"
+    ? stream.playback.embedUrl : null;
   const [playRecording, setPlayRecording] = useState(false);
-  const src = live ? embedSrc(stream, lang) : playRecording ? recording : null;
+  const src = live || (playRecording && recording) ? embedSrc(stream, lang) : null;
   const retry = (stream?.status === "OFFLINE" || stream?.status === "ERROR") && typeof onRetry === "function";
   const poster = stream?.banner_url || stream?.thumbnail_url || null;
   const [posterBroken, setPosterBroken] = useState(false);

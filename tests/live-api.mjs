@@ -267,6 +267,10 @@ try {
     console.error("✗ the live streaming tables are missing; apply database/migrations/011_live_streams.sql first.");
     process.exit(2);
   }
+  if (!probe.viewer_columns) {
+    console.error("✗ the viewer tests require migration 012_live_automation.sql.");
+    process.exit(2);
+  }
   console.log(`leftovers removed at start: ${show(cleanup())}`);
 } catch (e) {
   console.error(`✗ the fixtures cannot reach the database or the live module: ${e.message}`);

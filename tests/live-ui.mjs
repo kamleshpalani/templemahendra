@@ -1449,6 +1449,10 @@ try {
     console.log("✗ the live streaming tables are missing; apply migration 011 first");
     process.exit(1);
   }
+  if (!probe.viewer_columns) {
+    console.log("✗ the viewer tests require migration 012_live_automation.sql.");
+    process.exit(2);
+  }
   console.log(`  cleanup at start: ${JSON.stringify(cleanup())}`);
 
   php = startPhp();
@@ -1487,9 +1491,9 @@ try {
   await scenario("header", "Header fit at 30 widths with the new nav entry", headerFit);
   await scenario("polling", "Polling and the live region", liveRegionAndPolling);
   await scenario("schedule", "The schedule page: filters, address, counts, day groups, empty state (Phase 2)", schedulePage);
+  await scenario("phase4", "The premium player page: viewer count, actions, Notify me, the recording, Try again, About this pooja (Phase 4)", premiumPage);
   await scenario("scheduled", "After the live broadcast ends: SCHEDULED, then the empty state", scheduledThenEmpty);
   await scenario("phase2", "The countdown, the server offset and the homepage's three states (Phase 2)", countdownAndHome);
-  await scenario("phase4", "The premium player page: viewer count, actions, Notify me, the recording, Try again, About this pooja (Phase 4)", premiumPage);
 
   section("Hygiene");
   check(phpNoise.length === 0, "no PHP warnings, notices or fatals from the fixtures", phpNoise.slice(0, 3).join(" | "));

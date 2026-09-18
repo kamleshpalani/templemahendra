@@ -252,15 +252,14 @@ export default function LiveDarshan() {
           {!loading && !error && stream && (
             <div className="split live-stage">
               <div className="live-stage__main">
+                {(slug || stream.status !== "SCHEDULED") && <LiveHeader stream={stream} lang={lang} t={t} />}
                 <LivePlayer stream={stream} lang={lang} t={t} serverOffset={serverOffset} started={startPassed} onRetry={retry} />
-                {!slug && stream.status === "SCHEDULED" ? (
+                {!slug && stream.status === "SCHEDULED" && (
                   // Nothing is live: the poster above, and under it the next
                   // darshan with its countdown (SPEC-PHASE2 §2.3). The card
                   // carries the title as the page's h2; the description
                   // lives in "About this pooja" beside it (Phase 4).
                   <NextDarshanCard stream={stream} serverOffset={serverOffset} t={t} lang={lang} heading="h2" className="live-stage__next" />
-                ) : (
-                  <LiveHeader stream={stream} lang={lang} t={t} />
                 )}
                 <StreamActions stream={stream} lang={lang} t={t} />
               </div>
