@@ -227,6 +227,9 @@ echo adminKpi($kpis);
   <section class="card card--static">
     <div class="card__head">
       <h2><?= adminIcon('activity', 'ico--sm') ?> Recent activity</h2>
+      <?php if (adminCan('audit.view')): ?>
+        <a href="/admin/audit_log.php" class="btn btn-ghost btn--sm">CMS audit log <?= adminIcon('arrow-right', 'ico--sm') ?></a>
+      <?php endif; ?>
     </div>
     <?php if ($feed): ?>
       <div class="feed">

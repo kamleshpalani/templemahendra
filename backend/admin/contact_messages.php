@@ -84,6 +84,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $msg === '') {
         if ($id > 0) {
             $stmt = $db->prepare('DELETE FROM contact_messages WHERE id = :id');
             $stmt->execute([':id' => $id]);
+            if ($stmt->rowCount()) adminAudit('message_deleted', 'contact_message:' . $id);
             $_SESSION['flash_contact_messages'] = $stmt->rowCount()
                 ? ['success', 'Message deleted.']
                 : ['warning', 'That message was already deleted.'];
@@ -104,6 +105,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $msg === '') {
             $stmt = $db->prepare('DELETE FROM contact_messages WHERE id IN (' . implode(',', array_fill(0, count($ids), '?')) . ')');
             $stmt->execute($ids);
             $n = $stmt->rowCount();
+            if ($n > 0) adminAudit('message_deleted_bulk', 'contact_message:' . implode(',', array_slice($ids, 0, 40)), $n . ' deleted');
             $_SESSION['flash_contact_messages'] = ['success', $n . ' message' . ($n === 1 ? '' : 's') . ' deleted.'];
         } else {
             $_SESSION['flash_contact_messages'] = ['warning', 'Select at least one message to delete.'];

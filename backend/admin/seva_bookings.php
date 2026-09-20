@@ -167,6 +167,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $msg === '') {
                 $marks     = implode(',', array_fill(0, count($changeIds), '?'));
                 $stmt      = $db->prepare("UPDATE seva_bookings SET status = ? WHERE id IN ($marks)");
                 $stmt->execute(array_merge([$newStatus], $changeIds));
+                adminAudit('booking_status_bulk', 'seva_booking:' . implode(',', array_slice($changeIds, 0, 40)), count($changeIds) . ' → ' . $newStatus);
             }
             $actor    = (string) (currentAdmin()['username'] ?? 'admin');
             $notified = 0;
@@ -208,6 +209,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $msg === '') {
             } else {
                 $stmt = $db->prepare('UPDATE seva_bookings SET status = :s WHERE id = :id');
                 $stmt->execute([':s' => $newStatus, ':id' => $id]);
+                adminAudit('booking_status', 'seva_booking:' . $id, $found['status'] . ' → ' . $newStatus);
                 $eligible = isset(SB_EVENTS[$newStatus]) ? 1 : 0;
                 $notified = $eligible && sbNotifyStatusChange($found, $newStatus, (string) (currentAdmin()['username'] ?? 'admin')) ? 1 : 0;
                 sbFlash('success', $what . ' marked ' . ucfirst($newStatus) . '.' . sbNotifiedNote($notified, $eligible));
