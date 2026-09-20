@@ -878,6 +878,19 @@ textarea {
   gap: 0.5rem;
   font-size: var(--text-sm);
 }
+.live-health__verdict .cell-sub {
+  max-width: 28ch;
+}
+@media (max-width: 820px) {
+  .table--responsive .live-health__verdict {
+    flex-wrap: wrap;
+  }
+  .table--responsive .live-health__verdict .cell-sub {
+    flex-basis: 100%;
+    min-width: 0;
+    max-width: none;
+  }
+}
 .live-health__issues li {
   display: flex;
   flex-wrap: wrap;

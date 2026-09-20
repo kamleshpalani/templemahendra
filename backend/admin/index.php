@@ -357,7 +357,7 @@ echo adminKpi($kpis);
               <td data-label="Started"><?= $s['actual_start_at'] ? '<time datetime="' . h($s['actual_start_at']) . '">' . h(adminAgo($s['actual_start_at'])) . '</time>' : '<span class="text-muted">—</span>' ?></td>
               <td data-label="Viewers"><?= $s['viewer_count'] !== null ? number_format($s['viewer_count']) . ($s['viewers'] === null ? ' <span class="text-muted text-xs">(' . h($lhAgo($s['viewer_count_at'])) . ')</span>' : '') : '<span class="text-muted">—</span>' ?></td>
               <td data-label="Last check"><?= h($lhAgo($s['sync']['checked_at'])) ?></td>
-              <td data-label="Health"><?= adminBadge($s['health']['label'], $s['health']['tone']) ?><?php if ($s['health']['reason'] !== ''): ?><span class="cell-sub"><?= h($s['health']['reason']) ?></span><?php endif; ?></td>
+              <td data-label="Health" class="live-health__verdict"><?= adminBadge($s['health']['label'], $s['health']['tone']) ?><?php if ($s['health']['reason'] !== ''): ?><span class="cell-sub"><?= h($s['health']['reason']) ?></span><?php endif; ?></td>
             </tr>
           <?php endforeach; ?>
           </tbody>
