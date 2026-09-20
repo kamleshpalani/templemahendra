@@ -12,6 +12,12 @@ Options -Indexes
   # Pass /api/* and /admin/* straight through to PHP
   RewriteRule ^(api|admin|uploads)(/.*)?$ - [L]
 
+  # ── Crawler files ──────────────────────────────────────────
+  # Generated, so the Sitemap line and every <loc> carry the real origin and
+  # the sitemap lists the broadcasts that exist today.
+  RewriteRule ^robots\.txt$ api/robots.php [L]
+  RewriteRule ^sitemap\.xml$ api/sitemap.php [L]
+
   # ── Rich previews for shared links ─────────────────────────
   # Link unfurlers fetch the HTML once and never run JavaScript, so the React
   # app's own Open Graph tags are invisible to them and every shared link would
@@ -28,10 +34,13 @@ Options -Indexes
   RewriteCond %{REQUEST_FILENAME} !-d
   RewriteRule ^(.*)$ api/og.php?path=/$1 [QSA,L]
 
-  # For everything else that is not a real file/dir, serve React's index.html
+  # For everything else that is not a real file/dir, serve React's index.html —
+  # through api/spa.php, which answers 404 (same page, honest status) for an
+  # address the app has no route for. Plain `RewriteRule ^ index.html` would
+  # return 200 for every typo, a soft 404 search engines index as content.
   RewriteCond %{REQUEST_FILENAME} !-f
   RewriteCond %{REQUEST_FILENAME} !-d
-  RewriteRule ^ index.html [L]
+  RewriteRule ^(.*)$ api/spa.php?path=/$1 [QSA,L]
 </IfModule>
 
 # ── Security headers ──────────────────────────────────────

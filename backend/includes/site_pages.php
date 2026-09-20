@@ -140,3 +140,59 @@ function sitePages(): array
 // /reset-password, /verify-email) now only redirect to /register in the browser.
 // A crawler asking for one of them is told what og.php tells it about any
 // address that is not a page of the site: 404, noindex.
+
+// ── What the server answers for a public address ────────────────────────────
+//
+// The React app renders its own not-found page for any address it does not
+// know, but Apache's SPA fallback would still send that page with HTTP 200 — a
+// "soft 404" that search engines index as a real page. api/spa.php serves the
+// shell with the status this function returns, so the address bar, the crawler
+// and the status line all agree.
+
+/** Addresses that only redirect in the browser (App.jsx RETIRED_ACCOUNT_PATHS). */
+const SITE_REDIRECT_PATHS = ['/login', '/account', '/notifications', '/forgot-password', '/reset-password', '/verify-email'];
+
+/** One donor's own payment pages: real routes, never indexed. */
+const SITE_PRIVATE_PATHS = ['/payment/result', '/payment/receipt', '/payment/verify'];
+
+/** A path from the request, reduced to a plain local path or '/'. */
+function sitePathFromRequest(string $raw): string
+{
+    $raw = explode('?', $raw, 2)[0];
+    $raw = explode('#', $raw)[0];
+    $raw = '/' . ltrim($raw, '/');
+    if (strlen($raw) > 512 || preg_match('#[\\\\\s]|^/{2,}#', $raw)) return '/';
+    return rtrim($raw, '/') ?: '/';
+}
+
+/**
+ * 200 when the React app has a page for $path, 404 when it will show its
+ * not-found page. Broadcast pages are checked against the database; when the
+ * database is unavailable the stream is assumed to exist, because a wrong 404
+ * on a real page costs more than a wrong 200 on a missing one.
+ */
+function sitePathStatus(string $path): int
+{
+    if (isset(sitePages()[$path])) return 200;
+    if (in_array($path, SITE_REDIRECT_PATHS, true) || in_array($path, SITE_PRIVATE_PATHS, true)) return 200;
+    if (preg_match('#^/live-darshan/([0-9]{1,10}|[a-z0-9][a-z0-9-]{1,118})$#i', $path, $m)) {
+        try {
+            require_once __DIR__ . '/db.php';
+            require_once __DIR__ . '/live.php';
+            if (!liveTablesExist()) return 404;
+            $db  = getDB();
+            $row = preg_match('/^[0-9]{1,10}$/', $m[1]) ? liveLoad($db, (int) $m[1]) : liveLoadBySlug($db, $m[1]);
+            return $row !== null && in_array($row['status'], LIVE_PUBLIC_STATUSES, true) ? 200 : 404;
+        } catch (Throwable $e) {
+            error_log('[spa] ' . get_class($e) . ': ' . $e->getMessage());
+            return 200;
+        }
+    }
+    return 404;
+}
+
+/** Public pages worth listing in sitemap.xml: indexable, not one visitor's own. */
+function siteIndexablePaths(): array
+{
+    return array_values(array_filter(array_keys(sitePages()), static fn(string $p): bool => $p !== '/search'));
+}
