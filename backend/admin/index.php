@@ -39,6 +39,21 @@ try {
     $registrations = null;
 }
 
+// Live Darshan monitoring (Live phase 10). Guarded on its own: without
+// migrations 011/012, or for a role without live.view, the card is not shown.
+$liveHealth = null;
+if (adminCan('live.view')) {
+    try {
+        require_once __DIR__ . '/../includes/live.php';
+        if (liveTablesExist() && liveAutomationInstalled()) {
+            $liveHealth = liveHealthSummary($db);
+        }
+    } catch (Throwable $e) {
+        error_log('[dashboard] live health: ' . $e->getMessage());
+        $liveHealth = null;
+    }
+}
+
 // ── Counts ───────────────────────────────────────────────────────────────────
 $counts = [];
 foreach (['sevas', 'events', 'announcements', 'donations', 'gallery', 'seva_bookings', 'poojas', 'sponsors', 'homepage_widgets', 'contact_messages'] as $tbl) {
@@ -295,6 +310,87 @@ echo adminKpi($kpis);
     </div>
   </section>
 </div>
+
+<?php if ($liveHealth !== null): ?>
+<?php
+  $lh = $liveHealth;
+  $lhIssues = array_sum(array_intersect_key($lh['counts'], array_flip(LIVE_HEALTH_ISSUE_LEVELS)));
+  $lhTitle = static fn(array $s): string => $s['title_en'] !== '' ? $s['title_en'] : $s['title_ta'];
+  $lhAgo = static fn(?string $iso): string => $iso ? adminAgo($iso) : 'never';
+  $lhTone = $lh['automation']['ready'] ? ($lhIssues > 0 ? 'warning' : 'success') : 'muted';
+?>
+<section class="card card--static" id="live-health">
+  <div class="card__head">
+    <h2><?= adminIcon('activity', 'ico--sm') ?> Live Darshan</h2>
+    <div class="cluster">
+      <a href="/admin/live_streams.php?f=live" class="btn btn-ghost btn--sm">Streams <?= adminIcon('arrow-right', 'ico--sm') ?></a>
+      <?php if (adminCan('live.provider')): ?>
+        <a href="/admin/live_settings.php" class="btn btn-ghost btn--sm">YouTube automation <?= adminIcon('arrow-right', 'ico--sm') ?></a>
+      <?php endif; ?>
+    </div>
+  </div>
+  <div class="card__body">
+    <div class="cluster live-health__summary">
+      <?= adminBadge($lh['automation']['ready'] ? 'Automation on' : 'Automation off', $lhTone) ?>
+      <?= adminBadge($lhIssues === 0 ? 'No issues' : $lhIssues . ' need' . ($lhIssues === 1 ? 's' : '') . ' attention', $lhIssues === 0 ? 'success' : 'warning') ?>
+      <?php if ($lh['automation']['quota_blocked_until']): ?><?= adminBadge('YouTube quota used up', 'danger') ?><?php endif; ?>
+      <?php if ($lh['automation']['oauth_revoked_at']): ?><?= adminBadge('OAuth switched off', 'danger') ?><?php endif; ?>
+      <span class="text-muted text-xs">Last YouTube check: <?= h($lhAgo($lh['last_check_at'])) ?> · <?= (int) $lh['errors_24h'] ?> sync error<?= $lh['errors_24h'] === 1 ? '' : 's' ?> in 24 h</span>
+    </div>
+    <?php if (!$lh['automation']['ready'] && $lh['automation']['reason'] !== ''): ?>
+      <p class="text-muted text-sm mt-2"><?= h($lh['automation']['reason']) ?></p>
+    <?php endif; ?>
+    <?php if ($lh['automation']['provider_notice'] !== ''): ?>
+      <p class="text-sm mt-2 live-health__notice"><?= h($lh['automation']['provider_notice']) ?></p>
+    <?php endif; ?>
+
+    <?php if ($lh['now']): ?>
+      <div class="table-wrap mt-4">
+        <table class="table table--compact">
+          <thead><tr><th>Broadcast</th><th>Status</th><th>Provider</th><th>Started</th><th>Viewers</th><th>Last check</th><th>Health</th></tr></thead>
+          <tbody>
+          <?php foreach ($lh['now'] as $s): ?>
+            <tr>
+              <td data-label="Broadcast"><a href="/admin/live_streams.php?edit=<?= (int) $s['id'] ?>"><?= h($lhTitle($s)) ?></a></td>
+              <td data-label="Status"><?= adminBadge(liveStatusLabel($s['status']), liveStatusTone($s['status']), liveStatusIsLive($s['status'])) ?></td>
+              <td data-label="Provider"><?= h(ucfirst($s['provider'])) ?></td>
+              <td data-label="Started"><?= $s['actual_start_at'] ? '<time datetime="' . h($s['actual_start_at']) . '">' . h(adminAgo($s['actual_start_at'])) . '</time>' : '<span class="text-muted">—</span>' ?></td>
+              <td data-label="Viewers"><?= $s['viewer_count'] !== null ? number_format($s['viewer_count']) . ($s['viewers'] === null ? ' <span class="text-muted text-xs">(' . h($lhAgo($s['viewer_count_at'])) . ')</span>' : '') : '<span class="text-muted">—</span>' ?></td>
+              <td data-label="Last check"><?= h($lhAgo($s['sync']['checked_at'])) ?></td>
+              <td data-label="Health"><?= adminBadge($s['health']['label'], $s['health']['tone']) ?><?php if ($s['health']['reason'] !== ''): ?><span class="cell-sub"><?= h($s['health']['reason']) ?></span><?php endif; ?></td>
+            </tr>
+          <?php endforeach; ?>
+          </tbody>
+        </table>
+      </div>
+    <?php else: ?>
+      <p class="text-muted text-sm mt-4">Nothing is live right now.
+        <?php if ($lh['next']): ?>
+          Next: <a href="/admin/live_streams.php?edit=<?= (int) $lh['next']['id'] ?>"><?= h($lhTitle($lh['next'])) ?></a>
+          <?php if ($lh['next']['local']['date']): ?>on <?= h($lh['next']['local']['date']) ?> at <?= h((string) $lh['next']['local']['start_time']) ?> <?php endif; ?>
+          <?= adminBadge($lh['next']['health']['label'], $lh['next']['health']['tone']) ?>
+        <?php else: ?>
+          No broadcast is scheduled.
+        <?php endif; ?>
+      </p>
+    <?php endif; ?>
+
+    <?php if ($lh['issues']): ?>
+      <h3 class="subhead">Needs a person</h3>
+      <ul class="live-health__issues">
+        <?php foreach ($lh['issues'] as $s): ?>
+          <li>
+            <?= adminBadge($s['health']['label'], $s['health']['tone']) ?>
+            <a href="/admin/live_streams.php?edit=<?= (int) $s['id'] ?>"><?= h($lhTitle($s)) ?></a>
+            <span class="text-muted">(<?= h(liveStatusLabel($s['status'])) ?>)</span>
+            <?php if ($s['health']['reason'] !== ''): ?> — <?= h($s['health']['reason']) ?><?php endif; ?>
+          </li>
+        <?php endforeach; ?>
+      </ul>
+    <?php endif; ?>
+  </div>
+</section>
+<?php endif; ?>
 
 <section class="card card--static">
   <div class="card__head">

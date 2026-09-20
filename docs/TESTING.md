@@ -84,6 +84,7 @@ node tests/sponsors.mjs             # starts its own PHP server; sponsors CMS, c
 node tests/videos.mjs               # starts its own PHP server; videos CMS, categories, /api/videos, search, migration 017, RBAC
 node tests/calendar-entries.mjs     # starts its own PHP server; Temple Calendar CMS, merge into /api/calendar (add + suppress), migration 018, RBAC
 node tests/audit-log.mjs            # starts its own PHP server; Audit Logs page (§28), coverage across modules, filters, CSV, RBAC, proxy IP
+node tests/live-health.mjs          # starts its own PHP servers; live health verdicts (deleted/private video, quota, auth, overdue checks), dashboard Live Darshan card (§16, §32), RBAC
 node tests/seo-crawl.mjs   http://127.0.0.1:8000   # E2E-044
 node tests/public-e2e.mjs  http://localhost:5173   # E2E-001…004, 038/039, 041…043 (Vite + PHP)
 node tests/live-ui.mjs && node tests/live-archive.mjs && node tests/admin-live.mjs   # E2E-024…028
