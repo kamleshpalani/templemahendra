@@ -15,6 +15,31 @@ against the local simulators (`ccavenue` mock, `mail_log`, provider stubs,
 YouTube fixture data). They prove the application's side of each flow; they do
 not prove settlement, delivery or real playback. Those are G-14 (staging) work.
 
+## Prerequisites and layers
+
+PHP 8.1+ with `pdo_mysql`, `mbstring`, `sodium`, `openssl`; MySQL 8 (the
+`docker run` in `tests/README.md`; `utf8mb4_unicode_ci`); Node 18+; for the
+browser suites `npm i playwright axe-core && npx playwright install chromium`
+at the repo root. `.agents/skills/testing-mysql-cms/SKILL.md` records the
+local quirks (container on :3307, `ADMIN_PASS_HASH`, restart recovery).
+
+| Layer | What | Command |
+| --- | --- | --- |
+| Syntax | every PHP file, both shell scripts | `find backend -name '*.php' -exec php -l {} \; \| grep -v 'No syntax'`; `bash -n deploy/backup.sh deploy/restore.sh` |
+| Unit | pure PHP: state machines, crypto vectors, templates, health verdicts | `php tests/payments-unit.php`, `php tests/live-unit.php`, `php tests/notify-unit.php`, `php tests/notify-templates-unit.php` |
+| API / integration | Node scripts against a PHP server they start (or `:8000`) and MySQL; each owns its fixtures and cleans them in `finally` | `node tests/<suite>.mjs` — the §30 list below, plus `admin-*.mjs`, `live-*.mjs`, `payments-api.mjs`, `notifications-*.mjs`, `notify-*.mjs` |
+| Browser | Playwright + axe at 360/390/768/1024/1366/1920 against Vite `:5173` + PHP `:8000` | `node tests/public-e2e.mjs http://localhost:5173`, `live-ui.mjs`, `payments-ui.mjs`, `notifications-ui.mjs`, the recorded testing-agent runs linked from each PR |
+| Frontend | production build (no linter is configured; the browser suites assert zero console errors) + design-token audit | `cd frontend && npm run build && npm run audit` |
+| Database / backup | schema, foreign keys, Tamil round trip, backup → fresh-database restore, tamper rejection | `docs/DATABASE.md`; the rehearsal in `docs/DEPLOYMENT.md` → *Backups and restore* (`deploy/backup.sh`, `deploy/restore.sh`) |
+
+The brief's §31 payment cases map to `payments-api.mjs` / `payments-ui.mjs`
+(success, failure, cancel, invalid and tampered `encResp`, duplicate callback,
+refresh and back after payment, wrong amount, record mismatch, receipt); §32
+live cases to `live-api.mjs`, `live-sync.mjs`, `live-health.mjs`,
+`live-ui.mjs`; §33 database cases to `docs/DATABASE.md` and the restore
+rehearsal. Full detail per gateway: `docs/CCAvenue-INTEGRATION.md`,
+`docs/LIVE-STREAMING.md`.
+
 ## Matrix
 
 | Case | Requirement | Status | Where |
@@ -84,6 +109,7 @@ node tests/sponsors.mjs             # starts its own PHP server; sponsors CMS, c
 node tests/videos.mjs               # starts its own PHP server; videos CMS, categories, /api/videos, search, migration 017, RBAC
 node tests/calendar-entries.mjs     # starts its own PHP server; Temple Calendar CMS, merge into /api/calendar (add + suppress), migration 018, RBAC
 node tests/audit-log.mjs            # starts its own PHP server; Audit Logs page (§28), coverage across modules, filters, CSV, RBAC, proxy IP
+node tests/live-health.mjs          # starts its own PHP servers; live health verdicts (deleted/private video, quota, auth, overdue checks), dashboard Live Darshan card (§16, §32), RBAC
 node tests/seo-crawl.mjs   http://127.0.0.1:8000   # E2E-044
 node tests/public-e2e.mjs  http://localhost:5173   # E2E-001…004, 038/039, 041…043 (Vite + PHP)
 node tests/live-ui.mjs && node tests/live-archive.mjs && node tests/admin-live.mjs   # E2E-024…028
@@ -102,3 +128,18 @@ server it starts) and cleans every `E2E-BRIEF-<run>` row and upload it wrote.
 
 None of these change the verdict of a §30 row above; the affected assertions
 are not the ones cited.
+
+## Not testable locally (staging / production only)
+
+- Real CCAvenue TEST instruments, settlement, refunds and the dashboard export
+  (`CCAvenue-INTEGRATION.md` → *Going live*).
+- Real SMTP, SMS DLT and WhatsApp template delivery (only the local stubs and
+  `mail.log`).
+- Real YouTube Data API answers, OAuth consent, live playback.
+- Hostinger: `.htaccess` behaviour under Apache, hPanel environment variables,
+  cron, upload permissions, TLS and security headers from the deployed URL.
+- Production backup rehearsal on the live database (the procedure was
+  rehearsed locally on MySQL 8 with the 47-table schema).
+
+`docs/DEPLOYMENT.md` → *Staging validation* is the checklist for that run;
+its result and the production smoke test are recorded there before handover.
