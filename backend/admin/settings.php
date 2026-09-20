@@ -84,7 +84,7 @@ $user      = (string) ($me['username'] ?? 'admin');
 $name      = trim((string) ($me['display_name'] ?? '')) !== '' ? (string) $me['display_name'] : $user;
 $email     = trim((string) ($me['email'] ?? ''));
 $role      = (string) ($me['role'] ?? adminRole());
-$roleTone  = ['owner' => 'gold', 'editor' => 'info', 'viewer' => 'muted'][$role] ?? 'muted';
+$roleTone  = adminRoleTone($role);
 $isEnvUser = !empty($me['is_env']);
 $loginAt   = (int) ($_SESSION['admin_login_at'] ?? 0);
 
@@ -161,7 +161,7 @@ echo adminPageIntro(
             <?php endif; ?>
           </dd>
           <dt>Role</dt>
-          <dd><?= adminBadge(ucfirst($role), $roleTone) ?></dd>
+          <dd><?= adminBadge(adminRoleLabel($role), $roleTone) ?></dd>
         </dl>
         <div class="callout mt-4">
           <?= adminIcon('key') ?>

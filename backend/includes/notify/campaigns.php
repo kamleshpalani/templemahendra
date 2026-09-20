@@ -24,6 +24,7 @@
  * expansion harmless.
  */
 
+require_once __DIR__ . '/../roles.php';
 require_once __DIR__ . '/queue.php';
 require_once __DIR__ . '/audience.php';
 
@@ -40,8 +41,7 @@ const NOTIFY_RECIPIENT_LAG_SECONDS  = 43200;
 
 function notifyActorRole(array $actor): string
 {
-    $role = $actor['role'] ?? null;
-    return in_array($role, ['viewer', 'editor', 'owner'], true) ? $role : 'viewer';
+    return adminNormalizeRole($actor['role'] ?? null);
 }
 
 function notifyActorName(array $actor): string
@@ -53,14 +53,8 @@ function notifyActorName(array $actor): string
 /** The notification capabilities of SPEC §8.1, checked against the actor's role. An actor without a role is a viewer. */
 function notifyActorCan(array $actor, string $capability): bool
 {
-    $rank = ['viewer' => 0, 'editor' => 1, 'owner' => 2];
-    $need = [
-        'notifications.view'      => 'viewer',
-        'notifications.compose'   => 'editor',
-        'notifications.approve'   => 'owner',
-        'notifications.templates' => 'owner',
-    ][$capability] ?? 'owner';
-    return $rank[notifyActorRole($actor)] >= $rank[$need];
+    if (!str_starts_with($capability, 'notifications.')) return notifyActorRole($actor) === 'owner';
+    return adminRoleCan(notifyActorRole($actor), $capability);
 }
 
 /** The system itself, for reminders and expansion. */
@@ -100,7 +94,7 @@ function notifyAudit(?int $campaignId, string $action, array $actor, array $deta
              VALUES (:c, :n, :a, :actor, :role, :d, :ip, :now)'
         )->execute([
             ':c' => $campaignId, ':n' => $name, ':a' => mb_substr($action, 0, 32),
-            ':actor' => notifyActorName($actor), ':role' => in_array($role, ['viewer', 'editor', 'owner'], true) ? $role : null,
+            ':actor' => notifyActorName($actor), ':role' => in_array($role, ADMIN_ROLES, true) ? $role : null,
             ':d' => $json, ':ip' => $ip !== null ? mb_substr($ip, 0, 45) : null, ':now' => notifyNow(),
         ]);
     } catch (Throwable $e) {
@@ -558,7 +552,7 @@ function notifyCampaignSelfApprovalAllowed(array $c, string $approver): bool
     // The environment admin is always an owner, when it can sign in at all.
     if (notifyEnv('ADMIN_PASS_HASH') !== '' && notifyEnv('ADMIN_USERNAME', 'admin') !== $approver) return false;
     try {
-        $stmt = getDB()->prepare("SELECT COUNT(*) FROM admin_users WHERE role = 'owner' AND is_active = 1 AND username <> :u");
+        $stmt = getDB()->prepare("SELECT COUNT(*) FROM admin_users WHERE role IN ('owner','admin') AND is_active = 1 AND username <> :u");
         $stmt->execute([':u' => $approver]);
         return (int) $stmt->fetchColumn() === 0;
     } catch (Throwable) {

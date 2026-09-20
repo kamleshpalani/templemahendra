@@ -253,7 +253,14 @@ Values needed:
 | `DB_PASS`         | Database password                                        |
 | `ADMIN_USERNAME`  | Admin panel login                                        |
 | `ADMIN_PASS_HASH` | bcrypt hash of the admin password (see Step 5)           |
+| `ADMIN_IDLE_MINUTES` | Optional. Admin sessions end after this many idle minutes (default 30, max 1440) |
 | `CORS_ORIGIN`     | Allowed origin, e.g. `https://www.templemahendra.in`     |
+
+Admin sign-in locks an account for 15 minutes after 10 failed attempts (any
+IP, case-insensitive username). A Super Admin issuing a new password from
+Committee accounts clears the lock. Roles: `owner` = Super Admin, `admin` =
+Temple Admin, `editor` = Content Editor, `finance` = Finance Admin, `viewer` =
+read-only; the capability matrix lives in `backend/includes/roles.php`.
 
 Devotee accounts need a few more. They are only read once migration 003 has
 been applied; see `backend/.env.example` for the annotated version.

@@ -559,7 +559,7 @@ if ($ncMethod === 'POST') {
         }
         if (!adminCan('notifications.' . $needs[$ncAction])) {
             ncFlash('error', $needs[$ncAction] === 'approve'
-                ? 'Only an owner can do that. Your role is ' . ucfirst($actor['role']) . '.'
+                ? 'Only a Super Admin or Temple Admin can do that. Your role is ' . adminRoleLabel($actor['role']) . '.'
                 : 'Your role can read notifications but not change them.');
             ncRedirect($return);
         }
@@ -1095,7 +1095,7 @@ if ($gets('view') !== '') {
         <?php elseif ($canApprove): ?>
           <p class="nc-banner__note"><?= adminIcon('info') ?> You wrote this notification, so another owner needs to approve it.</p>
         <?php else: ?>
-          <p class="nc-banner__note"><?= adminIcon('info') ?> Your role (<?= h(ucfirst($actor['role'])) ?>) cannot approve. An owner will review it.</p>
+          <p class="nc-banner__note"><?= adminIcon('info') ?> Your role (<?= h(adminRoleLabel($actor['role'])) ?>) cannot approve. A Temple Admin or Super Admin will review it.</p>
         <?php endif; ?>
       </div>
     </section>

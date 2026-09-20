@@ -47,12 +47,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $error = 'Too many attempts. Please wait a minute and try again.';
     } elseif ($username === '' || $password === '') {
         $error = 'Please enter both username and password.';
+    } elseif (($lockLeft = adminAccountLockedFor($username)) > 0) {
+        adminAudit('login_failed', $username, 'account locked', $username);
+        $error = 'This account is temporarily locked after too many failed sign-ins. Try again in ' . max(1, (int) ceil($lockLeft / 60)) . ' minute' . ($lockLeft > 60 ? 's' : '') . '.';
     } elseif ($user = adminLogin($username, $password)) {
         adminStartSession($user);
         unset($_SESSION['login_fails'], $_SESSION['login_locked_until']);
         // A freshly issued password must be changed before anything else.
         header('Location: ' . ($user['must_change'] ? '/admin/profile.php?must_change=1' : $next));
         exit;
+    } elseif (($lockLeft = adminAccountLockedFor($username)) > 0) {
+        $error = 'This account is now temporarily locked after too many failed sign-ins. Try again in ' . max(1, (int) ceil($lockLeft / 60)) . ' minute' . ($lockLeft > 60 ? 's' : '') . '.';
     } else {
         $fails++;
         $_SESSION['login_fails'] = $fails;

@@ -10,16 +10,42 @@
 //  2. DATABASE accounts in `admin_users` (see database/migrations/001_admin_users.sql).
 //     These are the committee's day-to-day logins and carry a role.
 //
-// Roles, least to most: viewer → editor → owner.
-//   viewer  read-only: dashboard, lists, reports, CSV exports
-//   editor  everything a viewer can do plus create/update/delete content,
-//           bookings, donations and bulk imports
-//   owner   everything, plus managing accounts and system settings
+// Roles and the capabilities each one holds live in includes/roles.php.
 //
 // If the `admin_users` table has not been created yet the site behaves
 // exactly as it did before: env admin only, full access.
 
+require_once __DIR__ . '/roles.php';
+
+// Session cookie: never readable from JavaScript, never sent cross-site, and
+// only over HTTPS when the request itself arrived over HTTPS (Hostinger
+// terminates TLS in front of Apache, so the forwarded header counts too).
+if (session_status() === PHP_SESSION_NONE) {
+    $_https = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off')
+           || (($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? '') === 'https')
+           || (int) ($_SERVER['SERVER_PORT'] ?? 0) === 443;
+    session_set_cookie_params([
+        'lifetime' => 0,
+        'path'     => '/',
+        'secure'   => $_https,
+        'httponly' => true,
+        'samesite' => 'Lax',
+    ]);
+    ini_set('session.use_strict_mode', '1');
+    unset($_https);
+}
 session_start();
+
+/** Minutes of inactivity after which an admin must sign in again (ADMIN_IDLE_MINUTES, default 30). */
+function adminIdleMinutes(): int
+{
+    $v = (int) readEnv('ADMIN_IDLE_MINUTES', '30');
+    return $v > 0 ? min($v, 24 * 60) : 30;
+}
+
+/** Failed sign-ins per account before it is locked, and for how long. */
+const ADMIN_LOCKOUT_ATTEMPTS = 10;
+const ADMIN_LOCKOUT_MINUTES  = 15;
 
 // One safety net for every admin page: errors are logged, never printed.
 require_once __DIR__ . '/errors.php';
@@ -35,43 +61,6 @@ if (file_exists($_envFile)) {
 }
 unset($_envFile, $_line, $_k, $_v);
 
-const ADMIN_ROLES = ['viewer', 'editor', 'owner'];
-
-/** Capability → minimum role. Anything unlisted requires `owner`. */
-const ADMIN_CAPABILITIES = [
-    'view'          => 'viewer',   // read dashboards, lists, reports
-    'export'        => 'viewer',   // download CSV
-    'content.edit'  => 'editor',   // sevas, events, announcements, poojas, sponsors, gallery, widgets
-    'devotees.edit' => 'editor',   // booking status, delete messages
-    'import'        => 'editor',   // bulk upload
-    'settings.edit' => 'owner',    // homepage settings
-    'users.manage'  => 'owner',    // committee accounts
-    // Devotee notifications (docs/notifications/SPEC.md §8.1). Approval is an
-    // owner's alone: a broadcast to hundreds of devotees, a paid SMS run or an
-    // emergency banner cannot be taken back, so an editor may write and send
-    // small messages but never wave through a large one.
-    'notifications.view'      => 'viewer',  // campaigns, audiences, templates, analytics (read)
-    'notifications.compose'   => 'editor',  // write, submit, schedule, send what needs no approval, requeue
-    'notifications.approve'   => 'owner',   // approve / send back, emergency send, cancel others' campaigns
-    'notifications.templates' => 'owner',   // the wording of every automated message, categories
-    // Online payments (docs/payments/SPEC.md §10.1). Reading and exporting the
-    // money is a viewer's right; resending a receipt or asking CCAvenue about an
-    // order is an editor's day-to-day work. Sending money back, and holding the
-    // merchant account's keys, are an owner's alone — neither can be undone.
-    'payments.view'     => 'viewer',  // overview, transactions, refunds, reconciliation, CSV export
-    'payments.manage'   => 'editor',  // resend a receipt, check with CCAvenue, mark reviewed, reconcile
-    'payments.refund'   => 'owner',   // refund money to a donor
-    'payments.settings' => 'owner',   // gateway mode, credentials, currencies and limits
-    // Live darshan (docs/live/SPEC-PHASE1.md §4.5). Reading the schedule is a
-    // viewer's right; creating, editing and moving a stream through its
-    // statuses is an editor's day-to-day work. Provider credentials (Phase 3)
-    // are an owner's alone.
-    'live.view'      => 'viewer',  // list and open streams, the admin JSON API's GETs
-    'live.manage'    => 'editor',  // create, edit, delete, restore, thumbnails
-    'live.publish'   => 'editor',  // the status buttons: Publish, Go live, End, Cancel …
-    'live.provider'  => 'owner',   // YouTube credentials and provider settings (Phase 3)
-    'live.analytics' => 'viewer',  // viewer figures (Phase 11)
-];
 
 /**
  * Capability needed to OPEN each admin page. Unlisted pages need only 'view',
@@ -86,17 +75,18 @@ function adminPageCapability(string $file): string
         'poojas.php'           => 'content.edit',
         'sevas.php'            => 'content.edit',
         'events.php'           => 'content.edit',
-        'sponsors.php'         => 'content.edit',
+        'sponsors.php'         => 'finance.edit',
         'bulk_upload.php'      => 'import',
         'settings.php'         => 'settings.edit',
         'users.php'            => 'users.manage',
+        'audit_log.php'        => 'audit.view',
         'notifications.php'          => 'notifications.view',
         'notification_segments.php'  => 'notifications.view',
         'notification_templates.php' => 'notifications.view',
         'notification_analytics.php' => 'notifications.view',
         'payments.php'               => 'payments.view',
         'payment_settings.php'       => 'payments.settings',
-        'donation_categories.php'    => 'content.edit',
+        'donation_categories.php'    => 'finance.edit',
         'live_streams.php'           => 'live.view',
         'live_settings.php'          => 'live.provider',
     ][$file] ?? 'view';
@@ -115,7 +105,8 @@ function adminPageWriteCapability(string $file): string
         'users.php'            => 'users.manage',
         'bulk_upload.php'      => 'import',
         'seva_bookings.php'    => 'devotees.edit',
-        'donations.php'        => 'devotees.edit',
+        'donations.php'        => 'finance.edit',
+        'sponsors.php'         => 'finance.edit',
         'contact_messages.php' => 'devotees.edit',
         // Notification pages make finer checks per action (approve, emergency
         // send) on top of these, and the service re-checks the actor's role.
@@ -126,7 +117,7 @@ function adminPageWriteCapability(string $file): string
         // The refund actions on payments.php additionally require payments.refund.
         'payments.php'               => 'payments.manage',
         'payment_settings.php'       => 'payments.settings',
-        'donation_categories.php'    => 'content.edit',
+        'donation_categories.php'    => 'finance.edit',
         // The status buttons on live_streams.php additionally require live.publish.
         'live_streams.php'           => 'live.manage',
         'live_settings.php'          => 'live.provider',
@@ -194,6 +185,72 @@ function adminAudit(string $action, ?string $subject = null, ?string $detail = n
  */
 function adminLogin(string $username, string $password): ?array
 {
+    if (adminAccountLockedFor($username) > 0) {
+        adminAudit('login_failed', $username, 'account locked', $username);
+        return null;
+    }
+    $user = adminVerifyCredentials($username, $password);
+    if ($user === null) {
+        adminRecordFailedLogin($username);
+        return null;
+    }
+    adminClearFailedLogins($username);
+    return $user;
+}
+
+/**
+ * Seconds remaining on an account lock, or 0. Lockout is per account name so
+ * a guessing run against one login cannot be dodged by changing IP, and it
+ * cannot lock out other committee members; the per-IP throttle in login.php
+ * still applies on top. Counted in `rate_limits`, so the environment admin is
+ * covered too and nothing is needed in `admin_users`.
+ */
+function adminAccountLockedFor(string $username): int
+{
+    require_once __DIR__ . '/rate_limit.php';
+    if (!rateLimitTableExists()) return 0;
+    try {
+        $stmt = getDB()->prepare(
+            'SELECT hits, TIMESTAMPDIFF(SECOND, NOW(), window_start + INTERVAL ' . ADMIN_LOCKOUT_MINUTES . ' MINUTE) AS remaining
+               FROM rate_limits WHERE bucket = :b'
+        );
+        $stmt->execute([':b' => adminLockBucket($username)]);
+        $row = $stmt->fetch();
+        if (!$row || (int) $row['hits'] < ADMIN_LOCKOUT_ATTEMPTS) return 0;
+        return max(0, (int) $row['remaining']);
+    } catch (Throwable $e) {
+        error_log('[auth] lockout check: ' . $e->getMessage());
+        return 0;
+    }
+}
+
+function adminLockBucket(string $username): string
+{
+    return mb_substr('admin-login:' . mb_strtolower(trim($username)), 0, 190);
+}
+
+function adminRecordFailedLogin(string $username): void
+{
+    require_once __DIR__ . '/rate_limit.php';
+    // The window is the lockout period: the counter resets once it has passed.
+    $allowed = rateLimitAllow('admin-login', ADMIN_LOCKOUT_ATTEMPTS - 1, ADMIN_LOCKOUT_MINUTES * 60, mb_strtolower(trim($username)));
+    if (!$allowed) adminAudit('account_locked', $username, ADMIN_LOCKOUT_ATTEMPTS . ' failed sign-ins', $username);
+}
+
+function adminClearFailedLogins(string $username): void
+{
+    require_once __DIR__ . '/rate_limit.php';
+    if (!rateLimitTableExists()) return;
+    try {
+        getDB()->prepare('DELETE FROM rate_limits WHERE bucket = :b')->execute([':b' => adminLockBucket($username)]);
+    } catch (Throwable) {
+        // best-effort
+    }
+}
+
+/** Check a username/password pair without touching the lockout counters. */
+function adminVerifyCredentials(string $username, string $password): ?array
+{
     // 1. Database account
     if (adminUsersTableExists()) {
         try {
@@ -218,7 +275,7 @@ function adminLogin(string $username, string $password): ?array
                         'username'     => $row['username'],
                         'display_name' => $row['display_name'],
                         'email'        => $row['email'],
-                        'role'         => $row['role'],
+                        'role'         => adminNormalizeRole($row['role']),
                         'must_change'  => (bool) $row['must_change'],
                         'is_env'       => false,
                     ];
@@ -262,6 +319,7 @@ function adminStartSession(array $user): void
     $_SESSION['admin_is_env']    = $user['is_env'];
     $_SESSION['admin_must_change'] = $user['must_change'];
     $_SESSION['admin_login_at']  = time();
+    $_SESSION['admin_last_seen'] = time();
     adminAudit('login', $user['username'], $user['is_env'] ? 'environment account' : 'database account');
 }
 
@@ -288,10 +346,25 @@ function adminRole(): string
 /** Does the signed-in user hold this capability? */
 function adminCan(string $capability): bool
 {
-    $needed = ADMIN_CAPABILITIES[$capability] ?? 'owner';
-    $have   = array_search(adminRole(), ADMIN_ROLES, true);
-    $want   = array_search($needed, ADMIN_ROLES, true);
-    return $have !== false && $want !== false && $have >= $want;
+    return adminRoleCan(adminRole(), $capability);
+}
+
+/**
+ * Idle expiry: a session untouched for ADMIN_IDLE_MINUTES is ended. Called by
+ * adminRevalidateSession(), so pages and the JSON endpoints share one clock.
+ * Returns false after signing the user out.
+ */
+function adminSessionStillFresh(): bool
+{
+    if (empty($_SESSION['admin_logged_in'])) return false;
+    $last = (int) ($_SESSION['admin_last_seen'] ?? $_SESSION['admin_login_at'] ?? 0);
+    if ($last > 0 && time() - $last > adminIdleMinutes() * 60) {
+        adminAudit('session_expired', null, 'idle for more than ' . adminIdleMinutes() . ' minutes');
+        adminLogout();
+        return false;
+    }
+    $_SESSION['admin_last_seen'] = time();
+    return true;
 }
 
 /**
@@ -308,7 +381,8 @@ function requireAdminAuth(): void
         exit;
     }
     if (!adminRevalidateSession()) {
-        header('Location: /admin/login.php?reason=revoked');
+        $to = rawurlencode($_SERVER['REQUEST_URI'] ?? '/admin/');
+        header('Location: /admin/login.php?reason=' . (empty($_SESSION['admin_expired_idle']) ? 'revoked' : 'expired') . '&next=' . $to);
         exit;
     }
     $file = basename($_SERVER['PHP_SELF']);
@@ -341,6 +415,10 @@ function requireAdminAuth(): void
 function adminRevalidateSession(): bool
 {
     if (empty($_SESSION['admin_logged_in'])) return false;
+    if (!adminSessionStillFresh()) {
+        $_SESSION['admin_expired_idle'] = true;
+        return false;
+    }
     if (!empty($_SESSION['admin_is_env']) || (int) ($_SESSION['admin_user_id'] ?? 0) < 1) return true;
     if (!adminUsersTableExists()) return true;
     try {
@@ -355,7 +433,7 @@ function adminRevalidateSession(): bool
         adminLogout();
         return false;
     }
-    $_SESSION['admin_role']        = $row['role'];
+    $_SESSION['admin_role']        = adminNormalizeRole($row['role']);
     $_SESSION['admin_must_change'] = (bool) $row['must_change'];
     return true;
 }
@@ -373,7 +451,7 @@ function requireAdminCan(string $capability): void
 function adminDeny(string $capability, bool $wasWrite = false): void
 {
     http_response_code(403);
-    $role = htmlspecialchars(ucfirst(adminRole()), ENT_QUOTES, 'UTF-8');
+    $role = htmlspecialchars(adminRoleLabel(adminRole()), ENT_QUOTES, 'UTF-8');
     $what = htmlspecialchars(str_replace(['.', '_'], [' ', ' '], $capability), ENT_QUOTES, 'UTF-8');
     $verb = $wasWrite ? 'make changes here' : 'open this page';
     header('Content-Type: text/html; charset=utf-8');
