@@ -20,9 +20,11 @@ $hasTable   = adminUsersTableExists();
 $isEnv      = $me['is_env'];
 
 $ROLE_BLURB = [
-    'owner'  => 'Full access, including committee accounts and system settings.',
-    'editor' => 'Manage content, poojas, bookings, donations and bulk imports.',
-    'viewer' => 'Read-only access to dashboards, lists and CSV exports.',
+    'owner'   => 'Full access, including committee accounts, credentials and system settings.',
+    'admin'   => 'Content, finance, notifications and live streams; not accounts or credentials.',
+    'editor'  => 'Manage content, poojas, bookings, imports and live streams.',
+    'finance' => 'Donations, payments, refunds, sponsors and receipts.',
+    'viewer'  => 'Read-only access to dashboards, lists and CSV exports.',
 ];
 
 // Load the live record (session data can be stale)
@@ -116,7 +118,7 @@ echo adminPageIntro('Your sign-in details and password for the temple control ce
       <?php if ($isEnv): ?>
         <dl class="dl-grid mb-4">
           <dt>Username</dt><dd><?= h($me['username']) ?></dd>
-          <dt>Role</dt><dd><?= adminBadge('Owner', 'gold') ?></dd>
+          <dt>Role</dt><dd><?= adminBadge('Super Admin', 'gold') ?></dd>
           <dt>Account type</dt><dd>Built-in recovery account</dd>
         </dl>
         <div class="callout">
@@ -152,7 +154,7 @@ echo adminPageIntro('Your sign-in details and password for the temple control ce
           </div>
           <dl class="dl-grid mb-4">
             <dt>Username</dt><dd><?= h($row['username']) ?></dd>
-            <dt>Role</dt><dd><?= adminBadge(ucfirst($row['role']), ['owner' => 'gold', 'editor' => 'info', 'viewer' => 'muted'][$row['role']] ?? 'muted') ?> <span class="muted text-xs"><?= h($ROLE_BLURB[$row['role']] ?? '') ?></span></dd>
+            <dt>Role</dt><dd><?= adminBadge(adminRoleLabel($row['role']), adminRoleTone($row['role'])) ?> <span class="muted text-xs"><?= h($ROLE_BLURB[$row['role']] ?? '') ?></span></dd>
             <dt>Last sign-in</dt><dd><?= $row['last_login_at'] ? h(adminFmtDate($row['last_login_at'], true)) : 'this is your first' ?></dd>
           </dl>
           <div class="form-actions">

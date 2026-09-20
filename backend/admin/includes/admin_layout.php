@@ -206,7 +206,7 @@ function adminHeader(string $pageTitle, string $crumb = 'Temple Admin', array $o
       <span class="avatar" aria-hidden="true"><?= h($initials) ?></span>
       <span class="sidebar__user-name">
         <?= h($name) ?>
-        <small class="sidebar__user-role"><?= h(ucfirst($role)) ?></small>
+        <small class="sidebar__user-role"><?= h(adminRoleLabel($role)) ?></small>
       </span>
       <a href="/admin/logout.php" class="sidebar__logout" data-tip="Sign out" aria-label="Sign out"><?= adminIcon('logout') ?></a>
     </div>
@@ -233,7 +233,7 @@ function adminHeader(string $pageTitle, string $crumb = 'Temple Admin', array $o
           <?= adminIcon('chevron-down', 'ico--sm') ?>
         </button>
         <div class="menu" id="user-menu" role="menu" hidden>
-          <div class="menu__label">Signed in as <?= h($user) ?> · <?= h(ucfirst($role)) ?></div>
+          <div class="menu__label">Signed in as <?= h($user) ?> · <?= h(adminRoleLabel($role)) ?></div>
           <a class="menu__item" role="menuitem" href="/admin/profile.php"><?= adminIcon('user') ?>My profile</a>
           <?php if (adminCan('users.manage')): ?>
             <a class="menu__item" role="menuitem" href="/admin/users.php"><?= adminIcon('users') ?>Committee accounts</a>

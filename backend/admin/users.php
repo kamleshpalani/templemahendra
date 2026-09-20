@@ -36,12 +36,7 @@ if (!adminUsersTableExists()) {
     exit;
 }
 
-$ROLE_LABELS = [
-    'owner'  => 'Owner — full access, can manage accounts and settings',
-    'editor' => 'Editor — manage content, bookings, donations and imports',
-    'viewer' => 'Viewer — read-only access and CSV exports',
-];
-$ROLE_TONE = ['owner' => 'gold', 'editor' => 'info', 'viewer' => 'muted'];
+$ROLE_LABELS = ADMIN_ROLE_LABELS;
 
 /** How many active owners remain (never let the last one go). */
 function activeOwnerCount(PDO $db): int
@@ -119,6 +114,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         $sql .= ', pass_hash=:h, must_change=1';
                         $par[':h'] = password_hash($password, PASSWORD_BCRYPT);
                         $issued = ['username' => $username, 'password' => $password];
+                        adminClearFailedLogins($username);
                     }
                     $db->prepare($sql . ' WHERE id=:id')->execute($par);
                     adminAudit('user_update', $username, 'role=' . $role . ($active ? '' : ', disabled') . ($password !== '' ? ', password reset' : ''));
@@ -172,6 +168,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $_SESSION['flash'] = '<p class="alert alert--error">That is the last active owner — promote someone else first.</p>';
             } elseif ($row) {
                 $db->prepare('DELETE FROM admin_users WHERE id=:id')->execute([':id' => $id]);
+                adminClearFailedLogins($row['username']);
                 adminAudit('user_delete', $row['username']);
                 $_SESSION['flash'] = '<p class="alert alert--success">Removed ' . h($row['username']) . '.</p>';
             }
@@ -193,16 +190,16 @@ if ($editing === null && isset($_GET['edit'])) {
     $stmt->execute([':id' => (int) $_GET['edit']]);
     $editing = $stmt->fetch() ?: null;
 }
-$rows      = $db->query('SELECT * FROM admin_users ORDER BY FIELD(role,"owner","editor","viewer"), display_name')->fetchAll();
+$rows      = $db->query('SELECT * FROM admin_users ORDER BY FIELD(role,"owner","admin","editor","finance","viewer"), display_name')->fetchAll();
 $envUser   = readEnv('ADMIN_USERNAME', 'admin');
-$counts    = ['owner' => 0, 'editor' => 0, 'viewer' => 0, 'disabled' => 0];
+$counts    = array_fill_keys(ADMIN_ROLES, 0) + ['disabled' => 0];
 foreach ($rows as $r) {
     if (!$r['is_active']) { $counts['disabled']++; continue; }
-    $counts[$r['role']]++;
+    $counts[adminNormalizeRole($r['role'])]++;
 }
 $recent = [];
 try {
-    $recent = $db->query("SELECT * FROM admin_activity WHERE action LIKE 'user_%' OR action LIKE 'login%' ORDER BY created_at DESC LIMIT 12")->fetchAll();
+    $recent = $db->query("SELECT * FROM admin_activity WHERE action LIKE 'user_%' OR action LIKE 'login%' OR action IN ('account_locked','session_expired','session_revoked','password_change') ORDER BY created_at DESC LIMIT 12")->fetchAll();
 } catch (Throwable) {
 }
 
@@ -229,10 +226,12 @@ if ($issued): ?>
 <?php endif; ?>
 
 <?= adminKpi([
-    ['label' => 'Owners',  'value' => $counts['owner'],  'icon' => 'shield', 'sub' => 'Full access'],
-    ['label' => 'Editors', 'value' => $counts['editor'], 'icon' => 'pencil', 'sub' => 'Content + devotees'],
-    ['label' => 'Viewers', 'value' => $counts['viewer'], 'icon' => 'eye',    'sub' => 'Read-only'],
-    ['label' => 'Disabled','value' => $counts['disabled'],'icon' => 'lock',  'sub' => 'Cannot sign in'],
+    ['label' => 'Super Admins',  'value' => $counts['owner'],   'icon' => 'shield', 'sub' => 'Full access'],
+    ['label' => 'Temple Admins', 'value' => $counts['admin'],   'icon' => 'shield', 'sub' => 'Content + finance'],
+    ['label' => 'Editors',       'value' => $counts['editor'],  'icon' => 'pencil', 'sub' => 'Content + devotees'],
+    ['label' => 'Finance',       'value' => $counts['finance'], 'icon' => 'heart-hands', 'sub' => 'Donations + payments'],
+    ['label' => 'Viewers',       'value' => $counts['viewer'],  'icon' => 'eye',    'sub' => 'Read-only'],
+    ['label' => 'Disabled',      'value' => $counts['disabled'],'icon' => 'lock',   'sub' => 'Cannot sign in'],
 ]) ?>
 
 <div class="admin-two-col admin-two-col--collapsible" id="users-layout" data-editing="<?= $editing ? '1' : '0' ?>">
@@ -317,7 +316,7 @@ if ($issued): ?>
               <span class="cell-title"><?= h($envUser) ?></span>
               <span class="cell-sub">Built-in recovery account (environment variable)</span>
             </td>
-            <td><?= adminBadge('Owner', 'gold') ?></td>
+            <td><?= adminBadge('Super Admin', 'gold') ?></td>
             <td><?= adminBadge('Always on', 'muted') ?></td>
             <td class="cell-date">—</td>
             <td class="cell-actions"><span class="muted text-xs">Managed in hosting</span></td>
@@ -328,7 +327,7 @@ if ($issued): ?>
               <span class="cell-title"><?= h($r['display_name']) ?><?= $r['username'] === $self ? ' <span class="badge badge--info">you</span>' : '' ?></span>
               <span class="cell-sub"><?= h($r['username']) ?><?= $r['email'] ? ' · ' . h($r['email']) : '' ?></span>
             </td>
-            <td><?= adminBadge(ucfirst($r['role']), $ROLE_TONE[$r['role']] ?? 'muted') ?></td>
+            <td><?= adminBadge(adminRoleLabel($r['role']), adminRoleTone($r['role'])) ?></td>
             <td>
               <?= $r['is_active'] ? adminBadge('Active', 'success') : adminBadge('Disabled', 'muted') ?>
               <?= $r['must_change'] ? ' ' . adminBadge('Must change password', 'warning') : '' ?>
@@ -363,7 +362,7 @@ if ($issued): ?>
         <div class="feed">
           <?php foreach ($recent as $a): ?>
             <div class="feed__item">
-              <span class="feed__icon feed__icon--<?= str_contains($a['action'], 'failed') ? 'info' : 'success' ?>"><?= adminIcon(str_contains($a['action'], 'login') ? 'user' : 'users') ?></span>
+              <span class="feed__icon feed__icon--<?= (str_contains($a['action'], 'failed') || str_contains($a['action'], 'locked') || str_contains($a['action'], 'expired') || str_contains($a['action'], 'revoked')) ? 'info' : 'success' ?>"><?= adminIcon(str_contains($a['action'], 'login') ? 'user' : 'users') ?></span>
               <span class="feed__body"><strong><?= h($a['actor']) ?></strong> · <?= h(str_replace('_', ' ', $a['action'])) ?><?= $a['subject'] ? ' · ' . h($a['subject']) : '' ?><?= $a['detail'] ? ' <span class="muted">(' . h($a['detail']) . ')</span>' : '' ?></span>
               <time class="feed__time" datetime="<?= h($a['created_at']) ?>"><?= h(adminAgo($a['created_at'])) ?></time>
             </div>
