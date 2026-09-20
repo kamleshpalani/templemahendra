@@ -73,6 +73,7 @@ function adminPageCapability(string $file): string
         'announcements.php'    => 'content.edit',
         'gallery.php'          => 'content.edit',
         'poojas.php'           => 'content.edit',
+        'deities.php'          => 'content.edit',
         'sevas.php'            => 'content.edit',
         'events.php'           => 'content.edit',
         'sponsors.php'         => 'finance.edit',

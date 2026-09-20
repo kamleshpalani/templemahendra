@@ -18,6 +18,7 @@ function adminNavGroups(): array
             'live_streams.php'     => ['tv',          'Live Streaming',   'Live darshan broadcasts and schedule'],
         ],
         'Worship' => [
+            'deities.php'          => ['sparkles',    'Deities',          'Deities shown on the About page'],
             'poojas.php'           => ['flame',       'Poojas',           'Pournami, Amavasai and special poojas'],
             'sevas.php'            => ['sparkles',    'Sevas',            'Bookable sevas and prices'],
             'events.php'           => ['calendar',    'Events',           'Festivals and temple events'],

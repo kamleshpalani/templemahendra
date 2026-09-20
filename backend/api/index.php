@@ -127,6 +127,7 @@ if (str_starts_with($path, '/admin/')) sendError('Not found', 404);
 $routes = [
     'GET'  => [
         '/announcements'   => 'announcements.php',
+        '/deities'         => 'deities.php',
         '/search'          => 'search.php',
         '/sevas'           => 'sevas.php',
         '/events'          => 'events.php',
