@@ -2030,3 +2030,16 @@ code.cols {
     max-width: none;
   }
 }
+
+/* Inline row editor (Videos → Categories) */
+.inline-edit {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+.inline-edit input:not([type="hidden"]) {
+  flex: 1 1 150px;
+  min-width: 0;
+  min-height: 36px;
+}

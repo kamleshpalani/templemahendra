@@ -15,9 +15,11 @@ function adminNavGroups(): array
             'homepage_widgets.php' => ['layers',      'Homepage Widgets', 'Cards shown on the public homepage'],
             'announcements.php'    => ['megaphone',   'Announcements',    'Notices in the homepage ticker'],
             'gallery.php'          => ['image',       'Gallery',          'Photos for the public gallery'],
+            'videos.php'           => ['play',        'Videos',           'YouTube videos by category'],
             'live_streams.php'     => ['tv',          'Live Streaming',   'Live darshan broadcasts and schedule'],
         ],
         'Worship' => [
+            'deities.php'          => ['sparkles',    'Deities',          'Deities shown on the About page'],
             'poojas.php'           => ['flame',       'Poojas',           'Pournami, Amavasai and special poojas'],
             'sevas.php'            => ['sparkles',    'Sevas',            'Bookable sevas and prices'],
             'events.php'           => ['calendar',    'Events',           'Festivals and temple events'],

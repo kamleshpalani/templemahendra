@@ -56,6 +56,12 @@ function sitePages(): array
             'திருவிழாக்கள், பூஜைகள் மற்றும் கோயில் நிகழ்வுகளின் தருணங்கள்.',
             'Moments from festivals, poojas and temple gatherings.',
         ],
+        // pages/Videos.jsx carries these exact strings.
+        '/videos' => [
+            'காணொளிகள்', 'Videos',
+            'பூஜைகள், திருவிழாக்கள், தரிசனப் பதிவுகள் மற்றும் சொற்பொழிவுகளின் காணொளிகள்.',
+            'Videos of poojas, festivals, darshan recordings and discourses.',
+        ],
         // TRUST.name — the registered trust, in its own deity order.
         '/donations' => [
             'நன்கொடை', 'Donations',

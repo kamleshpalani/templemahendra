@@ -154,3 +154,25 @@ function publicGuardHasColumn(string $table, string $column): bool
         return $cache[$key] = false;
     }
 }
+
+/**
+ * SQL for showing a sponsor on the public site (migration 016).
+ *
+ *   'where' — condition on alias $s: active AND the sponsor agreed to be named.
+ *             Without the publish_consent column nobody has agreed, so it is
+ *             `0` and no sponsor is published at all.
+ *   'name'  — expression for the published name: the family name when given,
+ *             otherwise the sponsor's own name.
+ *
+ * @return array{where: string, name: string}
+ */
+function sponsorPublicSql(string $s = 's'): array
+{
+    if (!publicGuardHasColumn('sponsors', 'publish_consent')) {
+        return ['where' => '0', 'name' => $s . '.name'];
+    }
+    return [
+        'where' => $s . '.is_active = 1 AND ' . $s . '.publish_consent = 1',
+        'name'  => 'COALESCE(NULLIF(' . $s . '.family_name, \'\'), ' . $s . '.name)',
+    ];
+}

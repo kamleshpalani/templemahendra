@@ -10,7 +10,7 @@ description: Run templemahendra React/PHP CMS end-to-end tests against MySQL, in
 - Log in at :8000/admin/login.php; admin sidebar exposes Homepage Widgets, Announcements, Settings, Messages and Seva Bookings.
 - The environment blueprint creates a MySQL 8 container named `my8` on host port 3307 (root/root); if it is missing, run `docker ps -a` to find the existing container or `docker run -d --name my8 -e MYSQL_ROOT_PASSWORD=root -p 3307:3306 mysql:8`. After a machine restart, `docker start my8` and inspect tables before importing. Avoid re-importing seed content into preserved fixtures.
 - `database/schema.sql` contains `CREATE DATABASE`/`USE templemahendra`, so it always lands in `templemahendra` regardless of the database passed to `mysql`. Import it as-is, then apply every `database/migrations/*.sql` in sorted order to that same database: `for f in database/migrations/*.sql; do mysql --default-character-set=utf8mb4 templemahendra < "$f"; done`. Set `DB_NAME=templemahendra` for the PHP server. To use another test database name, strip the `CREATE DATABASE`/`USE` lines first and pass that name to every import and to DB_NAME.
-- Payment and bulk-upload runtime paths also need PHP curl and zip. Restart PHP with the full environment (including ADMIN variables); an existing server might have different credentials.
+- Payment and bulk-upload runtime paths also need PHP curl, zip and xml (SimpleXML for .xlsx; `sudo apt-get install -y php8.1-xml`). Restart PHP with the full environment (including ADMIN variables); an existing server might have different credentials.
 - Put recordings/logs and important helpers under `/home/ubuntu` when they must survive restarts; `/tmp` may be wiped.
 
 ## Expanded application regression

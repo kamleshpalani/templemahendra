@@ -10,6 +10,7 @@ import {
   LuMegaphone,
   LuMoon,
   LuSearch,
+  LuVideo,
   LuX,
 } from "react-icons/lu";
 import useDialogBehaviour from "../../hooks/useDialogBehaviour";
@@ -24,6 +25,7 @@ export const GROUP_ICONS = {
   poojas: LuMoon,
   announcements: LuMegaphone,
   gallery: LuImage,
+  videos: LuVideo,
 };
 
 const RECENTS_KEY = "temple:recent-searches";
