@@ -130,13 +130,26 @@ if ($liveAdminMethod === 'GET' || $liveAdminMethod === 'HEAD') {
     if ($liveAdminTarget === null) {
         $f = liveAdminFilters($_GET);
         $list = liveListAdmin($liveAdminDb, $f, $f['page'], 25);
-        liveAdminJson([
+        $out = [
             'streams' => array_map('liveShapeAdmin', $list['rows']),
             'total'   => $list['total'],
             'pages'   => $list['pages'],
             'page'    => $list['page'],
             'csrf'    => csrfToken(),
-        ]);
+        ];
+        // ?include=health: each row with its health verdict, plus the
+        // dashboard's monitoring summary (Live phase 10).
+        if (($_GET['include'] ?? '') === 'health') {
+            if (liveAutomationInstalled()) {
+                $automation = liveAutomationReady();
+                $cfg = liveAutomationConfig();
+                $out['streams'] = array_map(static fn(array $r): array => liveShapeHealth($r, $automation, $cfg), $list['rows']);
+                $out['health'] = liveHealthSummary($liveAdminDb);
+            } else {
+                $out['health'] = ['error' => 'Apply database migration 012_live_automation.sql first.', 'code' => 'not_installed'];
+            }
+        }
+        liveAdminJson($out);
     }
     $row = liveLoad($liveAdminDb, $liveAdminTarget, true);
     if ($row === null) liveAdminJson(['error' => 'Not found'], 404);

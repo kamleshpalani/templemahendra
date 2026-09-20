@@ -23,6 +23,7 @@ function adminNavGroups(): array
             'poojas.php'           => ['flame',       'Poojas',           'Pournami, Amavasai and special poojas'],
             'sevas.php'            => ['sparkles',    'Sevas',            'Bookable sevas and prices'],
             'events.php'           => ['calendar',    'Events',           'Festivals and temple events'],
+            'calendar_entries.php' => ['calendar',    'Temple Calendar',  'Custom entries on the Panchangam calendar'],
             'sponsors.php'         => ['heart-hands', 'Sponsors',         'Devotees sponsoring poojas'],
             'donation_categories.php' => ['heart-hands', 'Donation Categories', 'Purposes donors can give to'],
         ],
@@ -48,6 +49,7 @@ function adminNavGroups(): array
         'People' => [
             'users.php'            => ['users',       'Committee Accounts', 'Sign-ins and roles'],
             'profile.php'          => ['user',        'My Profile',         'Your details and password'],
+            'audit_log.php'        => ['history',     'Audit Logs',         'Who changed what, and when'],
         ],
     ];
 }

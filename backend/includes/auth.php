@@ -16,6 +16,7 @@
 // exactly as it did before: env admin only, full access.
 
 require_once __DIR__ . '/roles.php';
+require_once __DIR__ . '/rate_limit.php';
 
 // Session cookie: never readable from JavaScript, never sent cross-site, and
 // only over HTTPS when the request itself arrived over HTTPS (Hostinger
@@ -77,6 +78,7 @@ function adminPageCapability(string $file): string
         'deities.php'          => 'content.edit',
         'sevas.php'            => 'content.edit',
         'events.php'           => 'content.edit',
+        'calendar_entries.php' => 'content.edit',
         'sponsors.php'         => 'finance.edit',
         'bulk_upload.php'      => 'import',
         'settings.php'         => 'settings.edit',
@@ -170,11 +172,11 @@ function adminAudit(string $action, ?string $subject = null, ?string $detail = n
             'INSERT INTO admin_activity (actor, action, subject, detail, ip) VALUES (:a,:ac,:s,:d,:ip)'
         );
         $stmt->execute([
-            ':a'  => $actor ?? (string) ($_SESSION['admin_user'] ?? 'anonymous'),
-            ':ac' => $action,
-            ':s'  => $subject,
+            ':a'  => mb_substr($actor ?? (string) ($_SESSION['admin_user'] ?? 'anonymous'), 0, 60),
+            ':ac' => mb_substr($action, 0, 60),
+            ':s'  => $subject !== null ? mb_substr($subject, 0, 190) : null,
             ':d'  => $detail !== null ? mb_substr($detail, 0, 500) : null,
-            ':ip' => $_SERVER['REMOTE_ADDR'] ?? null,
+            ':ip' => PHP_SAPI === 'cli' ? null : mb_substr(clientIp(), 0, 45),
         ]);
     } catch (Throwable) {
         // auditing is best-effort
