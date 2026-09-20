@@ -63,7 +63,9 @@ $db->prepare(
 )->execute([':ta' => "$prefix பௌர்ணமி", ':en' => "$prefix Pournami", ':d' => $today]);
 $poojaId = (int) $db->lastInsertId();
 
-$db->prepare('INSERT INTO sponsors (name, phone, note, pooja_id, is_active) VALUES (:n, :p, :note, :pid, 1)')
+// Consent is given so the card carries the sponsor at all (migration 016); the
+// point of this harness is that the phone still never reaches the body.
+$db->prepare('INSERT INTO sponsors (name, phone, note, pooja_id, is_active, publish_consent) VALUES (:n, :p, :note, :pid, 1, 1)')
    ->execute([':n' => "$prefix Sponsor", ':p' => $phone, ':note' => "$prefix note", ':pid' => $poojaId]);
 $sponsorId = (int) $db->lastInsertId();
 

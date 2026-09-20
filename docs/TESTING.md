@@ -27,8 +27,8 @@ not prove settlement, delivery or real playback. Those are G-14 (staging) work.
 | E2E-006 | Upcoming pooja displays | Covered | `brief-e2e.mjs` — `E2E-006 an upcoming pooja is shown and every date is today or later` (`/api/homepage_widgets`) |
 | E2E-007 | Expired pooja is excluded | Covered | `brief-e2e.mjs` — `E2E-007 the expired Pournami is not shown as upcoming` (a calendar card still linked to a past pooja) |
 | E2E-008 | Next pooja automatically selected | Covered | `brief-e2e.mjs` — `E2E-008 the stale calendar card was re-pointed at the next valid Pournami-first pooja` (compared with the ordering rule in `api/homepage_widgets.php`) |
-| E2E-009 | Sponsor shown when consent enabled | Covered | `public-hardening.mjs` — `the linked sponsor card shows the sponsor's name`, `the sponsor object holds only name and note`, `donors lists the pledge with consent` |
-| E2E-010 | Sponsor hidden without consent | Covered | `public-hardening.mjs` — `donors does not list the pledge with <consent off>`, `does not list a row that never gave consent`, `no phone digits or phone key anywhere in the body` |
+| E2E-009 | Sponsor shown when consent enabled | Covered | `sponsors.mjs` — `/api/donors shows the sponsor under the family name`, `manually linked card shows the family name`, `zero-widget fallback attaches the consented sponsor`; `public-hardening.mjs` — `the linked sponsor card shows the sponsor's name`, `the sponsor object holds only name and note`, `donors lists the pledge with consent` |
+| E2E-010 | Sponsor hidden without consent | Covered | `sponsors.mjs` — `/api/donors omits an active sponsor without consent`, `hidden sponsor with consent leaves /api/donors`, `withdrawn consent removes the sponsor from /api/donors`, `phone, email, amount, reference and status never reach /api/donors`; `public-hardening.mjs` — `donors does not list the pledge with <consent off>`, `does not list a row that never gave consent`, `no phone digits or phone key anywhere in the body` |
 | E2E-011 | Admin login succeeds | Covered | `admin-auth.mjs`, `admin-roles.mjs`, `admin-smoke.mjs` (sign-in → dashboard); `brief-e2e.mjs` `admin signed in` |
 | E2E-012 | Invalid admin login rejected | Covered | `admin-auth.mjs` — `E2E-012 wrong password is rejected`, lockout after ten failures (`10th failure reports the account is locked`, `correct password is refused while locked`) |
 | E2E-013 | Unauthorized role rejected | Covered | `admin-auth.mjs` — `E2E-013 <page> → admin/editor/finance/viewer 200/403…` for every admin page; `admin-roles.mjs` — `editor is refused the users page with an explanation` |
@@ -80,6 +80,7 @@ export DB_HOST=127.0.0.1 DB_PORT=3307 DB_NAME=templemahendra DB_USER=root DB_PAS
 node tests/brief-e2e.mjs            # starts its own PHP server; E2E-006…023, 045, 047…049
 node tests/admin-auth.mjs  http://127.0.0.1:8000   # E2E-011…013, 046, 050
 node tests/public-hardening.mjs http://127.0.0.1:8000   # E2E-009/010, 039
+node tests/sponsors.mjs             # starts its own PHP server; sponsors CMS, consent, migration 016, bulk import, RBAC
 node tests/seo-crawl.mjs   http://127.0.0.1:8000   # E2E-044
 node tests/public-e2e.mjs  http://localhost:5173   # E2E-001…004, 038/039, 041…043 (Vite + PHP)
 node tests/live-ui.mjs && node tests/live-archive.mjs && node tests/admin-live.mjs   # E2E-024…028
