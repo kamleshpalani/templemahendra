@@ -47,3 +47,16 @@ If native GUI typing drops Tamil characters before save, use UTF-8 clipboard pas
 
 ## Devin Secrets Needed
 No external secrets are needed for a disposable local setup. Obtain authorized local database credentials and choose a test admin password; deployed testing requires the deployment's DB and admin credentials.
+
+## Audit Logs (People → Audit Logs)
+
+- Audit Logs is at People → Audit Logs, with a capability-gated dashboard “CMS audit log” shortcut. The sidebar logo and navigation link can both have the accessible name Dashboard; scope the latter to `.sidebar__link[href="/admin/"]`.
+- Verify real CMS mutations before checking their audit rows. Announcement deletion preserves the deleted title in Detail. Pooja visibility changes store `hidden`/`shown`, so search the exact `pooja:<id>` subject to find toggles rather than searching its display name.
+- Clicking an actor retains other filters. Clicking an action badge replaces the module filter with an exact action filter; removing that action chip does not restore the prior module. Re-select a module when needed.
+- Audit pagination is 50 rows per page. Compare structured timestamp/action/subject/detail values across navigation, not the relative “just now” text.
+- Submit filters with native keyboard input and await the resulting document URL/navigation before reading row counts; a pre-existing DOMContentLoaded state alone can still refer to the old page.
+- A filtered export downloads `audit-log-YYYY-MM-DD.csv` with a UTF-8 BOM and `id,when,actor,action,subject,detail,ip` headers. Verify downloaded contents and then the newly recorded `Audit exported` action. Check Tamil, exact active filters and sort order.
+- At narrow admin breakpoints, tables may become labeled stacked cards rather than staying horizontally scrollable columns. Inspect actual screenshots and all six audit fields; assert bounded document width and usable controls rather than requiring a particular overflow mechanism.
+- Viewer denial of the page and CSV generates expected browser403 resource messages. Separate those intentional RBAC responses from unexpected console/page/PHP errors.
+- For scoped cleanup, retain the initial audit maximum ID, record exact newly owned subjects/IDs, delete fixtures through their CMS confirmations, then remove only those owned audit IDs. Preserve unrelated audit history and compare original account/content hashes.
+- Sign in as the env owner by exporting ADMIN_USERNAME and ADMIN_PASS_HASH to the PHP server; do not assume that account also exists in `admin_users`. `tests/audit-log.mjs` shows the exact server invocation (it also sets TRUSTED_PROXIES=127.0.0.1 so `X-Forwarded-For` becomes the audited IP).
