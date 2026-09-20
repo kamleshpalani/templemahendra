@@ -34,6 +34,15 @@
 .panchang-page [data-type="pratipada"] {
   --dot: var(--moon-300);
 }
+.panchang-page [data-type="pooja"] {
+  --dot: var(--gold-500);
+}
+.panchang-page [data-type="holiday"] {
+  --dot: var(--text-muted);
+}
+.panchang-page [data-type="custom"] {
+  --dot: var(--info);
+}
 
 /* Amavasai badge: default tone + dark-ink fill */
 .panchang-badge--ink {
@@ -448,6 +457,17 @@
 }
 .panchang-detail__special {
   margin-bottom: var(--space-4);
+}
+.panchang-detail__notes {
+  display: grid;
+  gap: var(--space-2);
+  margin-bottom: var(--space-4);
+}
+.panchang-detail__note {
+  margin: 0;
+  font-size: var(--text-sm);
+  line-height: 1.55;
+  color: var(--text-muted);
 }
 .panchang-detail__section {
   display: flex;

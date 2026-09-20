@@ -18,6 +18,7 @@ const PAGES = only.length
      // Live Darshan (docs/live/SPEC-PHASE1.md §4.5): the list, the live chip and an unknown stream id.
      "live_streams.php", "live_streams.php?f=live", "live_streams.php?edit=999999999",
      "videos.php", "videos.php?f=featured&q=pournami", "videos.php?edit=999999999", "deities.php",
+     "calendar_entries.php", "calendar_entries.php?f=suppress", "calendar_entries.php?new=hide", "calendar_entries.php?edit=999999999",
      "bulk_upload.php", "settings.php", "users.php", "profile.php"];
 const BAD = /(<b>Warning<\/b>|<b>Fatal error<\/b>|<b>Deprecated<\/b>|<b>Notice<\/b>|Parse error|Uncaught|Stack trace)/;
 const XFF = process.env.SMOKE_XFF ? { "X-Forwarded-For": process.env.SMOKE_XFF } : {};

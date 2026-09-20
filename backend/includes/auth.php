@@ -77,6 +77,7 @@ function adminPageCapability(string $file): string
         'deities.php'          => 'content.edit',
         'sevas.php'            => 'content.edit',
         'events.php'           => 'content.edit',
+        'calendar_entries.php' => 'content.edit',
         'sponsors.php'         => 'finance.edit',
         'bulk_upload.php'      => 'import',
         'settings.php'         => 'settings.edit',
