@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useSearchParams } from "react-router-dom";
-import { LuChevronLeft, LuChevronRight, LuImages, LuMaximize2, LuX } from "react-icons/lu";
+import { LuChevronLeft, LuChevronRight, LuImages, LuMaximize2, LuVideo, LuX } from "react-icons/lu";
 import api from "../services/api";
 import { useLang } from "../context/LangContext";
 import Badge from "../components/ui/Badge";
@@ -153,7 +153,10 @@ export default function Gallery() {
         title={heading}
         lead={lead}
         crumbs={[{ label: t("தொகுப்பு", "Gallery") }]}
-        actions={<ShareButton variant="outline-light" title={heading} text={lead} to="/gallery" />}
+        actions={<>
+          <ShareButton variant="outline-light" title={heading} text={lead} to="/gallery" />
+          <Button to="/videos" variant="outline-light" icon={<LuVideo aria-hidden="true" />}>{t("காணொளிகள்", "Videos")}</Button>
+        </>}
         aside={
           !loading && total > 0 ? (
             <Badge tone="on-dark" size="lg">

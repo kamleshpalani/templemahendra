@@ -128,6 +128,7 @@ $routes = [
     'GET'  => [
         '/announcements'   => 'announcements.php',
         '/deities'         => 'deities.php',
+        '/videos'          => 'videos.php',
         '/search'          => 'search.php',
         '/sevas'           => 'sevas.php',
         '/events'          => 'events.php',

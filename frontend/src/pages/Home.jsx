@@ -359,6 +359,9 @@ function NriContent({ t, payOnline = false }) {
           <Button to="/gallery" variant="outline" size="sm">
             {t("படங்கள் காண →", "View Gallery →")}
           </Button>
+          <Button to="/videos" variant="ghost" size="sm">
+            {t("காணொளிகள் →", "Videos →")}
+          </Button>
         </Tile>
       </div>
     </div>

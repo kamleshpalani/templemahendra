@@ -81,6 +81,7 @@ node tests/brief-e2e.mjs            # starts its own PHP server; E2E-006…023, 
 node tests/admin-auth.mjs  http://127.0.0.1:8000   # E2E-011…013, 046, 050
 node tests/public-hardening.mjs http://127.0.0.1:8000   # E2E-009/010, 039
 node tests/sponsors.mjs             # starts its own PHP server; sponsors CMS, consent, migration 016, bulk import, RBAC
+node tests/videos.mjs               # starts its own PHP server; videos CMS, categories, /api/videos, search, migration 017, RBAC
 node tests/seo-crawl.mjs   http://127.0.0.1:8000   # E2E-044
 node tests/public-e2e.mjs  http://localhost:5173   # E2E-001…004, 038/039, 041…043 (Vite + PHP)
 node tests/live-ui.mjs && node tests/live-archive.mjs && node tests/admin-live.mjs   # E2E-024…028

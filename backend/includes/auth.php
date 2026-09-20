@@ -72,6 +72,7 @@ function adminPageCapability(string $file): string
         'homepage_widgets.php' => 'content.edit',
         'announcements.php'    => 'content.edit',
         'gallery.php'          => 'content.edit',
+        'videos.php'           => 'content.edit',
         'poojas.php'           => 'content.edit',
         'deities.php'          => 'content.edit',
         'sevas.php'            => 'content.edit',

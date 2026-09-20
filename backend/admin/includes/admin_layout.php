@@ -15,6 +15,7 @@ function adminNavGroups(): array
             'homepage_widgets.php' => ['layers',      'Homepage Widgets', 'Cards shown on the public homepage'],
             'announcements.php'    => ['megaphone',   'Announcements',    'Notices in the homepage ticker'],
             'gallery.php'          => ['image',       'Gallery',          'Photos for the public gallery'],
+            'videos.php'           => ['play',        'Videos',           'YouTube videos by category'],
             'live_streams.php'     => ['tv',          'Live Streaming',   'Live darshan broadcasts and schedule'],
         ],
         'Worship' => [

@@ -40,6 +40,8 @@ export default function Footer() {
     { to: "/sevas", ta: "சேவைகள் & பூஜைகள்", en: "Sevas & Poojas" },
     { to: "/events", ta: "நிகழ்வுகள் & திருவிழா", en: "Events & Festivals" },
     { to: "/live-darshan", ta: "நேரடி தரிசனம்", en: "Live Darshan" },
+    { to: "/gallery", ta: "படத் தொகுப்பு", en: "Gallery" },
+    { to: "/videos", ta: "காணொளிகள்", en: "Videos" },
     { to: "/panchangam", ta: "பஞ்சாங்கம்", en: "Panchangam" },
     { to: "/donations", ta: "நன்கொடை", en: "Donate" },
     { to: "/register", ta: "குடும்பப் பதிவு", en: "Family registration" },
