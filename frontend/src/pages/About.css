@@ -224,6 +224,25 @@
   font-size: var(--text-sm);
   color: var(--text-3);
 }
+/* Any other count than the built-in three: wrap by column width instead. */
+.about-deities--flow {
+  grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
+  align-items: start;
+}
+.about-deities__image {
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  object-fit: cover;
+  border-radius: var(--radius-md, 12px);
+  margin-bottom: var(--space-2);
+}
+.about-deities__desc {
+  margin: var(--space-2) 0 0;
+  font-size: var(--text-sm);
+  color: var(--text-2);
+  line-height: var(--leading-relaxed, 1.6);
+  overflow-wrap: anywhere;
+}
 .about-prose .about-link {
   margin: 0;
 }

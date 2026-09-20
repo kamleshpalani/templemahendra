@@ -78,7 +78,13 @@ $liveAdminMethod = strtoupper((string) ($_SERVER['REQUEST_METHOD'] ?? 'GET'));
 
 // ── Who is asking ───────────────────────────────────────────────────────────
 adminRevalidateSession();
-if (empty($_SESSION['admin_logged_in'])) liveAdminJson(['error' => 'Sign in to the admin first', 'code' => 'unauthenticated'], 401);
+if (empty($_SESSION['admin_logged_in'])) {
+    // A stale cookie makes strict-mode sessions mint a fresh id; a 401 must
+    // not hand that out, so the empty session is dropped and its cookie withheld.
+    session_abort();
+    header_remove('Set-Cookie');
+    liveAdminJson(['error' => 'Sign in to the admin first', 'code' => 'unauthenticated'], 401);
+}
 if (!empty($_SESSION['admin_must_change'])) liveAdminJson(['error' => 'Choose a new password on your profile page first.', 'code' => 'password_change'], 403);
 
 $liveAdminMe    = currentAdmin() ?? [];
