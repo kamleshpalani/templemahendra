@@ -26,7 +26,7 @@ Each gap has a backlog ID (G-nn); defects found while closing them go in
 | --- | --- | --- | --- | --- |
 | G-01 | §18 | No idle-session expiry; no account lockout after repeated failures (only per-minute rate limit) | P1 | done — `ADMIN_IDLE_MINUTES` (30 default), lock after 10 failures for 15 min, secure/httponly/SameSite cookies, `tests/admin-auth.mjs` |
 | G-02 | §17, §30 E2E-013/046 | Three roles (viewer/editor/owner); brief needs Super Admin, Temple Admin, Content Editor, Finance Admin with server-side checks | P1 | done — `backend/includes/roles.php` capability matrix; stored roles `owner/admin/editor/finance/viewer` = Super Admin/Temple Admin/Content Editor/Finance Admin/Viewer; migration 015 |
-| G-03 | §22 | No `sitemap.xml`, no `robots.txt`; 404 route exists but crawler status for unknown URLs is 200 (SPA) | P1 | open |
+| G-03 | §22 | No `sitemap.xml`, no `robots.txt`; 404 route exists but crawler status for unknown URLs is 200 (SPA) | P1 | done — `api/robots.php`, `api/sitemap.php` (pages + public broadcasts), `api/spa.php` SPA fallback returns 404 + `X-Robots-Tag` for unknown routes; `tests/seo-crawl.mjs` |
 | G-04 | §41, §40 | Missing `TESTING.md`, `DEPLOYMENT.md`, `DATABASE.md`, `CCAvenue-INTEGRATION.md`, `LIVE-STREAMING.md`, backup/restore procedure | P1 | open |
 | G-05 | §30 | No traceability from E2E-001…050 to the existing suites; some cases (SQLi/XSS/CSRF/404/tablet) need explicit checks | P1 | open |
 | G-06 | §6 Deities | `deities` table exists (live phase 1) but no CMS page and no public page; About page deity content is static | P2 | open |

@@ -4,10 +4,15 @@
 
 $uri = parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH);
 
-if ($uri === '/api/og.php') {
-    require __DIR__ . '/api/og.php';
+// The crawler-facing endpoints Hostinger serves as plain files under api/.
+if (in_array($uri, ['/api/og.php', '/api/spa.php', '/api/robots.php', '/api/sitemap.php'], true)) {
+    require __DIR__ . $uri;
     return true;
 }
+
+// Crawler files, generated exactly as public_html/.htaccess routes them.
+if ($uri === '/robots.txt') { require __DIR__ . '/api/robots.php'; return true; }
+if ($uri === '/sitemap.xml') { require __DIR__ . '/api/sitemap.php'; return true; }
 
 // Route all /api/* requests through the front-controller
 if (str_starts_with($uri, '/api')) {
@@ -87,6 +92,18 @@ if ($publicAsset && $publicRoot && str_starts_with($publicAsset, $publicRoot) &&
     $ext = strtolower(pathinfo($publicAsset, PATHINFO_EXTENSION));
     header('Content-Type: ' . ($types[$ext] ?? 'application/octet-stream'));
     readfile($publicAsset);
+    return true;
+}
+
+// A page address (no file extension) is answered like Hostinger's SPA fallback:
+// the React shell via api/spa.php, 200 for a route the app has, 404 otherwise.
+if (
+    in_array($_SERVER['REQUEST_METHOD'], ['GET', 'HEAD'], true)
+    && !preg_match('#^/(admin|uploads)(/|$)#', $uri)
+    && pathinfo($uri, PATHINFO_EXTENSION) === ''
+) {
+    $_GET['path'] = $uri;
+    require __DIR__ . '/api/spa.php';
     return true;
 }
 
