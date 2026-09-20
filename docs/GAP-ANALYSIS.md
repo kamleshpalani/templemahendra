@@ -28,7 +28,7 @@ Each gap has a backlog ID (G-nn); defects found while closing them go in
 | G-02 | §17, §30 E2E-013/046 | Three roles (viewer/editor/owner); brief needs Super Admin, Temple Admin, Content Editor, Finance Admin with server-side checks | P1 | done — `backend/includes/roles.php` capability matrix; stored roles `owner/admin/editor/finance/viewer` = Super Admin/Temple Admin/Content Editor/Finance Admin/Viewer; migration 015 |
 | G-03 | §22 | No `sitemap.xml`, no `robots.txt`; 404 route exists but crawler status for unknown URLs is 200 (SPA) | P1 | done — `api/robots.php`, `api/sitemap.php` (pages + public broadcasts), `api/spa.php` SPA fallback returns 404 + `X-Robots-Tag` for unknown routes; `tests/seo-crawl.mjs` |
 | G-04 | §41, §40 | Missing `TESTING.md`, `DEPLOYMENT.md`, `DATABASE.md`, `CCAvenue-INTEGRATION.md`, `LIVE-STREAMING.md`, backup/restore procedure | P1 | open |
-| G-05 | §30 | No traceability from E2E-001…050 to the existing suites; some cases (SQLi/XSS/CSRF/404/tablet) need explicit checks | P1 | open |
+| G-05 | §30 | No traceability from E2E-001…050 to the existing suites; some cases (SQLi/XSS/CSRF/404/tablet) need explicit checks | P1 | done — `docs/TESTING.md` matrix (48 covered, 1 partial, 1 gap); `tests/brief-e2e.mjs` adds E2E-006…023, 045, 047…049 in their own words |
 | G-06 | §6 Deities | `deities` table exists (live phase 1) but no CMS page and no public page; About page deity content is static | P2 | open |
 | G-07 | §6 Videos | No videos module (YouTube videos, categories) beyond the live archive | P2 | open |
 | G-08 | §11 | `sponsors` lacks family name, email, amount, payment status, publish consent; nothing enforces consent before publication | P2 | open |
@@ -41,6 +41,7 @@ Each gap has a backlog ID (G-nn); defects found while closing them go in
 | G-15 | §2 Tailwind | Frontend uses its own CSS design system (tokens synced to the admin). Switching to Tailwind would be a rewrite with no functional gain | — | deviation, documented |
 | G-16 | §2 PHPMailer | `includes/mailer.php` is a dependency-free SMTP client with `mail_log`; behaviour matches the PHPMailer requirement (authenticated SMTP via env vars) without Composer, which Hostinger shared hosting does not need | — | deviation, documented |
 | G-18 | §29 | `tests/admin-notifications.mjs` still exercises the retired `inapp`/`push` channels (`NOTIFY_CHANNELS` is email/whatsapp/sms) and crashes mid-run on master; 39/47 pass | P3 | open |
+| G-19 | §20, §30 E2E-040 | Contact form stores the message but raises no admin notification (no `contact.*` event in `includes/notify/events.php`) | P2 | open |
 | G-17 | §12 statuses | Live statuses are `DRAFT/SCHEDULED/STARTING/LIVE/COMPLETED/CANCELLED/OFFLINE/ERROR`; the brief's `UPCOMING/LIVE/ENDED/CANCELLED` map to `SCHEDULED/LIVE/COMPLETED/CANCELLED` | — | deviation, documented |
 
 ## Execution order
