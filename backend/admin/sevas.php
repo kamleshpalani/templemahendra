@@ -77,10 +77,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if ($id > 0) {
                 $db->prepare('UPDATE sevas SET name_ta=:ta,name_en=:en,description=:d,amount=:a,sort_order=:s,is_featured=:f,is_active=:act WHERE id=:id')
                    ->execute([':ta' => $name_ta, ':en' => $name_en, ':d' => $desc, ':a' => $amount, ':s' => $sort, ':f' => $featured, ':act' => $active, ':id' => $id]);
+                adminAudit('seva_updated', 'seva:' . $id, $name_en . ' · ₹' . $amount);
                 $_SESSION['flash'] = '<p class="alert alert--success">Updated.</p>';
             } else {
                 $db->prepare('INSERT INTO sevas (name_ta,name_en,description,amount,sort_order,is_featured,is_active) VALUES (:ta,:en,:d,:a,:s,:f,:act)')
                    ->execute([':ta' => $name_ta, ':en' => $name_en, ':d' => $desc, ':a' => $amount, ':s' => $sort, ':f' => $featured, ':act' => $active]);
+                adminAudit('seva_created', 'seva:' . (int) $db->lastInsertId(), $name_en . ' · ₹' . $amount);
                 $_SESSION['flash'] = '<p class="alert alert--success">Created.</p>';
             }
             header('Location: ' . $back, true, 303);
@@ -89,7 +91,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     } elseif ($msg === '' && $action === 'delete') {
         $id = (int) $str($_POST, 'id');
         if ($id > 0) {
+            $gone = $db->prepare('SELECT name_en FROM sevas WHERE id=:id');
+            $gone->execute([':id' => $id]);
+            $goneName = $gone->fetchColumn();
             $db->prepare('DELETE FROM sevas WHERE id=:id')->execute([':id' => $id]);
+            if ($goneName !== false) adminAudit('seva_deleted', 'seva:' . $id, (string) $goneName);
             $_SESSION['flash'] = '<p class="alert alert--success">Deleted.</p>';
         }
         header('Location: ' . $back, true, 303);

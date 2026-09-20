@@ -87,20 +87,27 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                               pooja_date=:dt,pooja_time=:tm,pooja_type=:typ,is_active=:a WHERE id=:id')
                    ->execute([':ta' => $name_ta, ':en' => $name_en, ':dta' => $desc_ta, ':den' => $desc_en,
                               ':dt' => $date, ':tm' => $time, ':typ' => $ptype, ':a' => $is_active, ':id' => $id]);
+                adminAudit('pooja_updated', 'pooja:' . $id, $name_en . ' · ' . $date);
                 $redirect($alert('success', 'Pooja updated.'));
             } else {
                 $db->prepare('INSERT INTO poojas (name_ta,name_en,description_ta,description_en,
                               pooja_date,pooja_time,pooja_type,is_active) VALUES (:ta,:en,:dta,:den,:dt,:tm,:typ,:a)')
                    ->execute([':ta' => $name_ta, ':en' => $name_en, ':dta' => $desc_ta, ':den' => $desc_en,
                               ':dt' => $date, ':tm' => $time, ':typ' => $ptype, ':a' => $is_active]);
+                adminAudit('pooja_created', 'pooja:' . (int) $db->lastInsertId(), $name_en . ' · ' . $date);
                 $redirect($alert('success', 'Pooja created.'));
             }
         } elseif ($action === 'delete') {
             $id = (int) ($_POST['id'] ?? 0);
             if ($id > 0) {
+                $gone = $db->prepare('SELECT name_en FROM poojas WHERE id=:id');
+                $gone->execute([':id' => $id]);
+                $goneName = $gone->fetchColumn();
                 $stmt = $db->prepare('DELETE FROM poojas WHERE id=:id');
                 $stmt->execute([':id' => $id]);
-                $redirect($stmt->rowCount()
+                $deleted = $stmt->rowCount() > 0;
+                if ($deleted) adminAudit('pooja_deleted', 'pooja:' . $id, $goneName !== false ? (string) $goneName : null);
+                $redirect($deleted
                     ? $alert('success', 'Pooja deleted.')
                     : $alert('warning', 'That pooja no longer exists.'));
             }
@@ -112,6 +119,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $stmt->execute([':id' => $id]);
                 $state = $stmt->fetchColumn();
                 if ($state !== false) {
+                    adminAudit('pooja_toggled', 'pooja:' . $id, (int) $state ? 'shown' : 'hidden');
                     $redirect($alert('success', (int) $state ? 'Pooja is now visible on the website.' : 'Pooja hidden from the website.'));
                 } else {
                     $redirect($alert('warning', 'That pooja no longer exists.'));

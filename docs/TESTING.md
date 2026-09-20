@@ -31,7 +31,7 @@ not prove settlement, delivery or real playback. Those are G-14 (staging) work.
 | E2E-010 | Sponsor hidden without consent | Covered | `sponsors.mjs` — `/api/donors omits an active sponsor without consent`, `hidden sponsor with consent leaves /api/donors`, `withdrawn consent removes the sponsor from /api/donors`, `phone, email, amount, reference and status never reach /api/donors`; `public-hardening.mjs` — `donors does not list the pledge with <consent off>`, `does not list a row that never gave consent`, `no phone digits or phone key anywhere in the body` |
 | E2E-011 | Admin login succeeds | Covered | `admin-auth.mjs`, `admin-roles.mjs`, `admin-smoke.mjs` (sign-in → dashboard); `brief-e2e.mjs` `admin signed in` |
 | E2E-012 | Invalid admin login rejected | Covered | `admin-auth.mjs` — `E2E-012 wrong password is rejected`, lockout after ten failures (`10th failure reports the account is locked`, `correct password is refused while locked`) |
-| E2E-013 | Unauthorized role rejected | Covered | `admin-auth.mjs` — `E2E-013 <page> → admin/editor/finance/viewer 200/403…` for every admin page; `admin-roles.mjs` — `editor is refused the users page with an explanation` |
+| E2E-013 | Unauthorized role rejected | Covered | `admin-auth.mjs` — `E2E-013 <page> → admin/editor/finance/viewer 200/403…` for every admin page; `admin-roles.mjs` — `editor is refused the users page with an explanation`; `audit-log.mjs` — `E2E-013 <role> gets 403 on the audit page`, `E2E-046 <role> cannot export the CSV` |
 | E2E-014 | Admin creates pooja | Covered | `brief-e2e.mjs` — `E2E-014 …` (validation of missing fields and impossible dates, create, list in both languages) |
 | E2E-015 | Admin edits pooja | Covered | `brief-e2e.mjs` — `E2E-015 edit persisted; other columns kept`, `edit did not create a duplicate` |
 | E2E-016 | Admin archives pooja | Covered | `brief-e2e.mjs` — `E2E-016 toggle hides the pooja`, `a hidden pooja leaves the public feed`, `the list marks it Hidden` (the product archives by hiding: `is_active = 0`) |
@@ -63,7 +63,7 @@ not prove settlement, delivery or real playback. Those are G-14 (staging) work.
 | E2E-042 | Tablet layout works | Covered | `public-e2e.mjs` — every route `@768` and `@1024`: one h1, no overflow, no console errors, axe; header fit guard; `live-ui.mjs` `/live-darshan @768/@1024`; `payments-ui.mjs`, `notifications-ui.mjs` at 768 |
 | E2E-043 | Desktop layout works | Covered | `public-e2e.mjs` — every route `@1440`, header fit at 1920; `live-ui.mjs` @1440 |
 | E2E-044 | Invalid URL returns correct 404 | Covered | `seo-crawl.mjs` — unknown SPA route → HTTP 404 + React shell + `X-Robots-Tag: noindex, nofollow`, `an unfurler still gets the 404 preview`, `API 404 stays JSON`; `public-e2e.mjs` — `/admin/ does not render the SPA shell` |
-| E2E-045 | Protected API rejects unauthenticated user | Covered | `brief-e2e.mjs` — `E2E-045 admin API answers 401 without a session`, `admin page redirects to sign-in`; `live-api.mjs`, `notifications-api.mjs` 401 paths |
+| E2E-045 | Protected API rejects unauthenticated user | Covered | `brief-e2e.mjs` — `E2E-045 admin API answers 401 without a session`, `admin page redirects to sign-in`; `audit-log.mjs` — `E2E-045 audit page redirects to sign-in`, `anonymous CSV export is refused`; `live-api.mjs`, `notifications-api.mjs` 401 paths |
 | E2E-046 | RBAC endpoint rejects unauthorized role | Covered | `admin-auth.mjs` — `E2E-046 finance POST to a content page is refused`, `editor POST to settings is refused`, `viewer POST to payments is refused`; `admin-roles.mjs` |
 | E2E-047 | SQL injection payload does not execute | Covered | `brief-e2e.mjs` — `E2E-047 …` (search, contact, admin save; payload stored verbatim, `the poojas table is intact`); `search-api.mjs` — `an injection attempt is just a search term`; `admin-hostile-input.mjs` |
 | E2E-048 | XSS payload does not execute | Covered | `brief-e2e.mjs` — `E2E-048 admin inbox renders the payload inert`, `admin list escapes it`, `edit form escapes it`, public responses stay JSON; `admin-hostile-input.mjs` reflected-script checks; `og.mjs` / `live-og.mjs` escaped metadata |
@@ -83,6 +83,7 @@ node tests/public-hardening.mjs http://127.0.0.1:8000   # E2E-009/010, 039
 node tests/sponsors.mjs             # starts its own PHP server; sponsors CMS, consent, migration 016, bulk import, RBAC
 node tests/videos.mjs               # starts its own PHP server; videos CMS, categories, /api/videos, search, migration 017, RBAC
 node tests/calendar-entries.mjs     # starts its own PHP server; Temple Calendar CMS, merge into /api/calendar (add + suppress), migration 018, RBAC
+node tests/audit-log.mjs            # starts its own PHP server; Audit Logs page (§28), coverage across modules, filters, CSV, RBAC, proxy IP
 node tests/seo-crawl.mjs   http://127.0.0.1:8000   # E2E-044
 node tests/public-e2e.mjs  http://localhost:5173   # E2E-001…004, 038/039, 041…043 (Vite + PHP)
 node tests/live-ui.mjs && node tests/live-archive.mjs && node tests/admin-live.mjs   # E2E-024…028

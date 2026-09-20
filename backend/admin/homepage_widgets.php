@@ -153,6 +153,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             is_active=:act
                         WHERE id=:id')
                            ->execute(array_merge($fields, [':id' => $id]));
+                        adminAudit('widget_updated', 'widget:' . $id, $content_type . ' · ' . $title_en);
                         $redirect('success', 'Widget updated.', $back);
                     } else {
                         $db->prepare('INSERT INTO homepage_widgets
@@ -164,6 +165,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             VALUES
                             (:ct,:src,:tta,:ten,:dta,:den,:pid,:sid,:ss,:sn,:sd,:ed,:pr,:pin,:act)')
                            ->execute($fields);
+                        adminAudit('widget_created', 'widget:' . (int) $db->lastInsertId(), $content_type . ' · ' . $title_en);
                         $redirect('success', 'Widget created.', $back);
                     }
                 } catch (PDOException $e) {
@@ -178,12 +180,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if ($id > 0) {
                 $db->prepare('UPDATE homepage_widgets SET is_active=:v WHERE id=:id')
                    ->execute([':v' => $val ? 0 : 1, ':id' => $id]);
+                adminAudit('widget_toggled', 'widget:' . $id, $val ? 'off' : 'on');
                 $redirect('success', $val ? 'Widget turned off — it is no longer shown on the homepage.' : 'Widget activated — it is now live on the homepage.', $back);
             }
         } elseif ($action === 'delete') {
             $id = (int) ($_POST['id'] ?? 0);
             if ($id > 0) {
+                $gone = $db->prepare('SELECT title_en FROM homepage_widgets WHERE id=:id');
+                $gone->execute([':id' => $id]);
+                $goneTitle = $gone->fetchColumn();
                 $db->prepare('DELETE FROM homepage_widgets WHERE id=:id')->execute([':id' => $id]);
+                if ($goneTitle !== false) adminAudit('widget_deleted', 'widget:' . $id, (string) $goneTitle);
                 $redirect('success', 'Deleted.', $back);
             }
         }

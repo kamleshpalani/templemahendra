@@ -2043,3 +2043,20 @@ code.cols {
   min-width: 0;
   min-height: 36px;
 }
+
+/* Audit log */
+.table code.audit-subject {
+  font-size: var(--text-xs);
+  padding: 0.1rem 0.4rem;
+  border-radius: var(--radius-sm);
+  background: rgba(153, 27, 27, 0.05);
+  border: 1px solid var(--glass-border);
+  word-break: break-all;
+}
+.table .audit-detail {
+  max-width: 360px;
+  color: var(--text-2);
+}
+.table td .badge {
+  cursor: pointer;
+}

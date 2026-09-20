@@ -69,6 +69,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     if (move_uploaded_file($file['tmp_name'], $dest)) {
                         $db->prepare('INSERT INTO gallery (filename, caption, is_active, created_at) VALUES (:f,:c,1,CURRENT_TIMESTAMP)')
                            ->execute([':f' => $filename, ':c' => $caption]);
+                        adminAudit('gallery_uploaded', 'gallery:' . (int) $db->lastInsertId(), $filename . ($caption !== '' ? ' · ' . $caption : ''));
                         $_SESSION['admin_flash'] = ['type' => 'success', 'text' => 'Image uploaded.'];
                         header('Location: /admin/gallery.php', true, 303);
                         exit;
@@ -89,6 +90,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if ($row) {
                 @unlink(UPLOAD_DIR . $row['filename']);
                 $db->prepare('DELETE FROM gallery WHERE id=:id')->execute([':id' => $id]);
+                adminAudit('gallery_deleted', 'gallery:' . $id, (string) $row['filename']);
             }
             $_SESSION['admin_flash'] = ['type' => 'success', 'text' => 'Deleted.'];
             header('Location: /admin/gallery.php', true, 303);

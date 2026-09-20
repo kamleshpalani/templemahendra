@@ -49,6 +49,7 @@ function adminNavGroups(): array
         'People' => [
             'users.php'            => ['users',       'Committee Accounts', 'Sign-ins and roles'],
             'profile.php'          => ['user',        'My Profile',         'Your details and password'],
+            'audit_log.php'        => ['history',     'Audit Logs',         'Who changed what, and when'],
         ],
     ];
 }
