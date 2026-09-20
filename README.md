@@ -222,6 +222,7 @@ Upload via Hostinger File Manager or FTP:
 | `012_live_automation.sql` | YouTube automation settings and stream synchronization fields for the scheduled poller. |
 | `013_live_subscriptions.sql` | Per-stream email subscriptions and the live-reminder notification category. |
 | `014_live_donations.sql` | `donations.live_stream_id` and its index and foreign key for stream-linked checkout and totals. |
+| `016_sponsors_consent.sql` | Sponsor management (brief §11): `family_name`, `email`, `event_id` (FK, `ON DELETE SET NULL`), `amount`, `payment_ref`, `payment_status`, `publish_consent` (defaults to 0 — existing sponsors stay private until an admin grants consent) and `updated_at`. Public APIs only ever show `is_active = 1 AND publish_consent = 1` rows, under the family name when one is set. |
 
 ```bash
 for f in database/migrations/*.sql; do mysql -u <user> -p <db> < "$f"; done

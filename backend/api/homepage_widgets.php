@@ -12,11 +12,14 @@
 //   8. If no widgets exist at all, fall back to auto-selected upcoming pooja
 //
 // Privacy: this is a public endpoint, so a sponsor appears by name and
-// dedication note only. Their phone number is for the committee to call and is
-// never selected here, so no card type or fallback path can leak it.
+// dedication note only, and only when active and they agreed to be named
+// (sponsors.publish_consent, migration 016). Phone, email, amount and payment
+// details are for the committee and are never selected here, so no card type
+// or fallback path can leak them.
 
 require_once __DIR__ . '/../includes/db.php';
 require_once __DIR__ . '/../includes/helpers.php';
+require_once __DIR__ . '/../includes/public_guard.php';
 
 setCorsHeaders();
 
@@ -37,6 +40,7 @@ const NALLA_NERAM = [
 ];
 
 $db = getDB();
+$sp = sponsorPublicSql('s');
 
 // ── Step 1: Fetch active widgets within their date window ───────────────────
 $stmt = $db->prepare("
@@ -51,11 +55,11 @@ $stmt = $db->prepare("
         p.description_ta AS pooja_desc_ta,
         p.description_en AS pooja_desc_en,
         p.pooja_date, p.pooja_time, p.pooja_type,
-        s.name  AS sponsor_name,
+        {$sp['name']} AS sponsor_name,
         s.note  AS sponsor_note
     FROM   homepage_widgets w
     LEFT   JOIN poojas   p ON p.id = w.linked_pooja_id
-    LEFT   JOIN sponsors s ON s.id = w.linked_sponsor_id
+    LEFT   JOIN sponsors s ON s.id = w.linked_sponsor_id AND {$sp['where']}
     WHERE  w.is_active = 1
       AND  (w.start_date IS NULL OR w.start_date <= :today_start)
       AND  (w.end_date   IS NULL OR w.end_date   >= :today_end)
@@ -86,10 +90,10 @@ if ($needAutoPooja) {
     // Prefer Pournami first, then any upcoming active pooja
     $stmtAuto = $db->prepare("
         SELECT p.*,
-               s.name  AS sponsor_name,
+               {$sp['name']} AS sponsor_name,
                s.note  AS sponsor_note
         FROM   poojas p
-        LEFT   JOIN sponsors s ON s.pooja_id = p.id AND s.is_active = 1
+        LEFT   JOIN sponsors s ON s.pooja_id = p.id AND {$sp['where']}
         WHERE  p.is_active = 1
           AND  p.pooja_date >= :today
         ORDER  BY $typeOrderExpr ASC, p.pooja_date ASC
@@ -191,10 +195,10 @@ if (empty($widgets)) {
     if (!$autoPooja) {
         $stmtFb = $db->prepare("
             SELECT p.*,
-                   s.name  AS sponsor_name,
+                   {$sp['name']} AS sponsor_name,
                    s.note  AS sponsor_note
             FROM   poojas p
-            LEFT   JOIN sponsors s ON s.pooja_id = p.id AND s.is_active = 1
+            LEFT   JOIN sponsors s ON s.pooja_id = p.id AND {$sp['where']}
             WHERE  p.is_active = 1
               AND  p.pooja_date >= :today
             ORDER  BY $typeOrderExpr ASC, p.pooja_date ASC
