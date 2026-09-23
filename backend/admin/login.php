@@ -31,7 +31,11 @@ if ($reason === 'signed_out') $notice = 'You have been signed out. Nandri.';
 if ($reason === 'expired')    $notice = 'Your session expired. Please sign in again.';
 if ($reason === 'revoked')    $notice = 'Your account was disabled or changed. Please sign in again.';
 
-// Simple per-session throttle: 5 failures -> 60s cool-down
+// Three independent limits guard sign-in. This one is per browser session:
+// 5 failures -> 60s cool-down. The other two are in includes/auth.php: ten
+// failures lock the account name for 15 minutes (the environment account only
+// for the address that caused it), and thirty failures from one address in
+// 15 minutes refuse that address whatever names it tries.
 $fails   = (int) ($_SESSION['login_fails'] ?? 0);
 $lockedU = (int) ($_SESSION['login_locked_until'] ?? 0);
 $locked  = $lockedU > time();
@@ -43,12 +47,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     if (!csrfValid()) {
         $error = 'Your session expired. Please try again.';
+    } elseif (($ipLeft = adminIpThrottledFor()) > 0) {
+        // Per-address throttle (brief §18): checked before the credentials so a
+        // throttled address learns nothing, and counted only on failures so a
+        // committee member who signs in often is never held up.
+        adminAudit('login_failed', $username, 'address throttled', $username);
+        $error = 'Too many failed sign-ins from your network. Try again in ' . max(1, (int) ceil($ipLeft / 60)) . ' minute' . ($ipLeft > 60 ? 's' : '') . '.';
     } elseif ($locked) {
         $error = 'Too many attempts. Please wait a minute and try again.';
     } elseif ($username === '' || $password === '') {
         $error = 'Please enter both username and password.';
     } elseif (($lockLeft = adminAccountLockedFor($username)) > 0) {
         adminAudit('login_failed', $username, 'account locked', $username);
+        adminRecordFailedLoginIp($username);
         $error = 'This account is temporarily locked after too many failed sign-ins. Try again in ' . max(1, (int) ceil($lockLeft / 60)) . ' minute' . ($lockLeft > 60 ? 's' : '') . '.';
     } elseif ($user = adminLogin($username, $password)) {
         adminStartSession($user);
@@ -56,20 +67,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         // A freshly issued password must be changed before anything else.
         header('Location: ' . ($user['must_change'] ? '/admin/profile.php?must_change=1' : $next));
         exit;
-    } elseif (($lockLeft = adminAccountLockedFor($username)) > 0) {
-        $error = 'This account is now temporarily locked after too many failed sign-ins. Try again in ' . max(1, (int) ceil($lockLeft / 60)) . ' minute' . ($lockLeft > 60 ? 's' : '') . '.';
     } else {
-        $fails++;
-        $_SESSION['login_fails'] = $fails;
-        if ($fails >= 5) {
-            $_SESSION['login_locked_until'] = time() + 60;
-            $_SESSION['login_fails'] = 0;
-            $locked  = true;
-            $lockSec = 60;
-            $error = 'Too many attempts. Please wait a minute and try again.';
+        adminRecordFailedLoginIp($username);
+        if (($lockLeft = adminAccountLockedFor($username)) > 0) {
+            $error = 'This account is now temporarily locked after too many failed sign-ins. Try again in ' . max(1, (int) ceil($lockLeft / 60)) . ' minute' . ($lockLeft > 60 ? 's' : '') . '.';
         } else {
-            $left  = 5 - $fails;
-            $error = 'Invalid username or password.' . ($left <= 2 ? " $left attempt" . ($left === 1 ? '' : 's') . ' left before a short lock.' : '');
+            $fails++;
+            $_SESSION['login_fails'] = $fails;
+            if ($fails >= 5) {
+                $_SESSION['login_locked_until'] = time() + 60;
+                $_SESSION['login_fails'] = 0;
+                $locked  = true;
+                $lockSec = 60;
+                $error = 'Too many attempts. Please wait a minute and try again.';
+            } else {
+                $left  = 5 - $fails;
+                $error = 'Invalid username or password.' . ($left <= 2 ? " $left attempt" . ($left === 1 ? '' : 's') . ' left before a short lock.' : '');
+            }
         }
     }
 }
