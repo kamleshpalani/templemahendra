@@ -9,6 +9,12 @@ require_once __DIR__ . '/includes/admin_layout.php';
 $db      = getDB();
 $perPage = 20;
 
+// Migration 019 adds the visitor's email and a subject line. The page still
+// works on a database without them.
+require_once __DIR__ . '/../includes/public_guard.php';
+$hasExtra  = publicGuardHasColumn('contact_messages', 'email') && publicGuardHasColumn('contact_messages', 'subject');
+$extraCols = $hasExtra ? ', email, subject' : '';
+
 /** Digits-only number for wa.me (Indian 10-digit numbers get the 91 prefix). */
 function messagesWaNumber(string $phone): string
 {
@@ -44,10 +50,14 @@ $where  = [];
 $params = [];
 if ($q !== '') {
     $like = '%' . addcslashes($q, '%_\\') . '%';
-    $where[] = '(name LIKE :q_name OR phone LIKE :q_phone OR message LIKE :q_msg)';
+    $where[] = '(name LIKE :q_name OR phone LIKE :q_phone OR message LIKE :q_msg' . ($hasExtra ? ' OR email LIKE :q_email OR subject LIKE :q_subject' : '') . ')';
     $params[':q_name'] = $like;
     $params[':q_phone'] = $like;
     $params[':q_msg'] = $like;
+    if ($hasExtra) {
+        $params[':q_email'] = $like;
+        $params[':q_subject'] = $like;
+    }
 }
 if ($from !== '') {
     $where[] = 'created_at >= :from_at';
@@ -119,7 +129,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $msg === '') {
 
 // ── CSV export — respects the active filters and sort ───────────────────────
 if ($str('export') === 'csv') {
-    $stmt = $db->prepare('SELECT id, name, phone, message, created_at FROM contact_messages' . $whereSql . $orderSql);
+    $stmt = $db->prepare('SELECT id, name, phone' . $extraCols . ', message, created_at FROM contact_messages' . $whereSql . $orderSql);
     $stmt->execute($params);
     header('Content-Type: text/csv; charset=utf-8');
     header('Content-Disposition: attachment; filename="contact-messages-' . date('Y-m-d') . '.csv"');
@@ -127,9 +137,11 @@ if ($str('export') === 'csv') {
     fwrite($out, "\xEF\xBB\xBF"); // BOM so Excel reads Tamil correctly
     // Empty escape string = strict RFC 4180 (quotes doubled, no backslash special
     // case) so a message containing \" is not mis-parsed by Excel / pandas.
-    fputcsv($out, ['id', 'name', 'phone', 'message', 'created_at'], ',', '"', '');
+    fputcsv($out, $hasExtra ? ['id', 'name', 'phone', 'email', 'subject', 'message', 'created_at'] : ['id', 'name', 'phone', 'message', 'created_at'], ',', '"', '');
     while ($r = $stmt->fetch()) {
-        fputcsv($out, [$r['id'], $r['name'], $r['phone'], $r['message'], $r['created_at']], ',', '"', '');
+        fputcsv($out, $hasExtra
+            ? [$r['id'], $r['name'], $r['phone'], $r['email'], $r['subject'], $r['message'], $r['created_at']]
+            : [$r['id'], $r['name'], $r['phone'], $r['message'], $r['created_at']], ',', '"', '');
     }
     fclose($out);
     exit;
@@ -138,7 +150,7 @@ if ($str('export') === 'csv') {
 // ── Data ─────────────────────────────────────────────────────────────────────
 $totalAll = (int) $db->query('SELECT COUNT(*) FROM contact_messages')->fetchColumn();
 $week     = (int) $db->query('SELECT COUNT(*) FROM contact_messages WHERE created_at >= DATE_SUB(NOW(), INTERVAL 7 DAY)')->fetchColumn();
-$result   = adminPaginate($db, 'SELECT id, name, phone, message, created_at FROM contact_messages' . $whereSql . $orderSql, $params, $page, $perPage);
+$result   = adminPaginate($db, 'SELECT id, name, phone' . $extraCols . ', message, created_at FROM contact_messages' . $whereSql . $orderSql, $params, $page, $perPage);
 $rows     = $result['rows'];
 
 // Flash from a previous redirect
@@ -180,7 +192,7 @@ echo adminPageIntro(
   <div class="toolbar__search">
     <?= adminIcon('search') ?>
     <label class="sr-only" for="f-q">Search messages</label>
-    <input id="f-q" type="search" name="q" value="<?= h($q) ?>" placeholder="Search name, phone or message…" autocomplete="off" />
+    <input id="f-q" type="search" name="q" value="<?= h($q) ?>" placeholder="<?= $hasExtra ? 'Search name, phone, email, subject or message…' : 'Search name, phone or message…' ?>" autocomplete="off" />
   </div>
   <div class="toolbar__group">
     <label for="f-from">From
@@ -221,9 +233,12 @@ echo adminPageIntro(
         $tel   = preg_replace('/[^\d+]/', '', (string) $row['phone']) ?? '';
         $wa    = messagesWaNumber((string) $row['phone']);
         $greet = 'வணக்கம் ' . $row['name'] . ', உங்கள் செய்திக்கு நன்றி. This is Dhabbalavaar Renuka Devi Temple replying to your enquiry on our website — how can we help?';
+        $email   = trim((string) ($row['email'] ?? ''));
+        $subject = trim((string) ($row['subject'] ?? ''));
         $menu  = [];
         if ($tel !== '') $menu[] = ['label' => 'Call', 'href' => 'tel:' . $tel, 'icon' => 'phone'];
         if ($wa !== '')  $menu[] = ['label' => 'WhatsApp', 'href' => 'https://wa.me/' . $wa . '?text=' . rawurlencode($greet), 'icon' => 'external'];
+        if ($email !== '') $menu[] = ['label' => 'Email', 'href' => 'mailto:' . rawurlencode($email) . '?subject=' . rawurlencode('Re: ' . ($subject !== '' ? $subject : 'your enquiry')), 'icon' => 'mail'];
         if ($canDelete) {
             if ($menu) $menu[] = 'divider';
             $menu[] = ['label' => 'Delete', 'form' => ['action' => 'delete', 'id' => $id], 'icon' => 'trash', 'danger' => true, 'confirm' => 'Delete this message?', 'confirmLabel' => 'Delete'];
@@ -234,8 +249,12 @@ echo adminPageIntro(
         <td>
           <span class="cell-title"><?= h($row['name']) ?></span>
           <?php if ($tel !== ''): ?><a class="cell-sub" href="tel:<?= h($tel) ?>"><?= h($row['phone']) ?></a><?php else: ?><span class="cell-sub"><?= h($row['phone']) ?></span><?php endif; ?>
+          <?php if ($email !== ''): ?><a class="cell-sub" href="mailto:<?= h($email) ?>"><?= h($email) ?></a><?php endif; ?>
         </td>
-        <td><?= nl2br(h($row['message'])) ?></td>
+        <td>
+          <?php if ($subject !== ''): ?><span class="cell-title"><?= h($subject) ?></span><?php endif; ?>
+          <?= nl2br(h($row['message'])) ?>
+        </td>
         <td class="cell-date">
           <time datetime="<?= h($row['created_at']) ?>"><?= adminFmtDate($row['created_at'], true) ?></time>
           <span class="cell-sub"><?= h(adminAgo($row['created_at'])) ?></span>

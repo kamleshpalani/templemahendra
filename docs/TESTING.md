@@ -81,9 +81,9 @@ rehearsal. Full detail per gateway: `docs/CCAvenue-INTEGRATION.md`,
 | E2E-035 | Duplicate response does not duplicate donation | Covered | `payments-api.mjs` — `a replayed response answers the same 303`, one `donation.paid` row with dedupe key, receipt counter advanced once; `payments-unit.php` idempotency |
 | E2E-036 | Successful payment generates receipt | Covered | `payments-api.mjs` — receipt number format, `payment_counters` advanced, receipt endpoint keys/masking; `payments-ui.mjs` — `success: Receipt number…` |
 | E2E-037 | Payment confirmation email triggered | Covered (simulated) | `payments-api.mjs` — `donation.paid` notification queued with `to_email`, `its channels follow the settings: email and whatsapp`; delivery through `notify-worker.mjs` / `notify-providers.mjs` to the local stubs only |
-| E2E-038 | Contact form succeeds | Covered | `public-e2e.mjs` — `contact: success feedback`, `contact: no console errors`; `brief-e2e.mjs` — `/api/contact` 201 |
-| E2E-039 | Invalid contact form rejected | Covered | `public-e2e.mjs` — `contact: validation errors on empty submit`; `public-hardening.mjs` honeypot and `429: contact form shows the friendly message` |
-| E2E-040 | Contact notification generated | **Gap (not built)** | `api/contact.php` stores the message; no notification event exists for it (`includes/notify/events.php` has no contact trigger). Tracked as G-19 in `docs/GAP-ANALYSIS.md` |
+| E2E-038 | Contact form succeeds | Covered | `public-e2e.mjs` — `contact: success feedback`, `contact: no console errors`; `brief-e2e.mjs` — `E2E-038 contact form accepts name, email, phone, subject and message`, `E2E-038 email and Tamil subject are stored intact` |
+| E2E-039 | Invalid contact form rejected | Covered | `public-e2e.mjs` — `contact: validation errors on empty submit`, `429: contact form shows the friendly message`; `public-hardening.mjs` honeypot and flood limits; `brief-e2e.mjs` — `E2E-039 an invalid email is refused and nothing is stored` |
+| E2E-040 | Contact notification generated | Covered (simulated) | `brief-e2e.mjs` — `E2E-040 exactly one office notification is created for the enquiry`, `its email delivery is queued for the worker`, `the alert carries the subject and the message` (server started with `CONTACT_NOTIFY_EMAIL` and the test email driver); wording in `notify-templates-unit.php` (`contact_received …`). Delivery itself goes through `bin/notify_worker.php` like every other email |
 | E2E-041 | Mobile navigation works | Covered | `public-e2e.mjs` — `drawer opens (aria-hidden=false)`, `drawer moves focus inside`, `Escape closes drawer`, `focus returns to hamburger after close`; every route @390 |
 | E2E-042 | Tablet layout works | Covered | `public-e2e.mjs` — every route `@768` and `@1024`: one h1, no overflow, no console errors, axe; header fit guard; `live-ui.mjs` `/live-darshan @768/@1024`; `payments-ui.mjs`, `notifications-ui.mjs` at 768 |
 | E2E-043 | Desktop layout works | Covered | `public-e2e.mjs` — every route `@1440`, header fit at 1920; `live-ui.mjs` @1440 |
@@ -95,8 +95,8 @@ rehearsal. Full detail per gateway: `docs/CCAvenue-INTEGRATION.md`,
 | E2E-049 | CSRF protection rejects invalid request | Covered | `brief-e2e.mjs` — `E2E-049 forged token is refused with a message`, `…and nothing was written`, `a missing token is refused too`; `admin-payments.mjs`, `admin-live.mjs`, `notifications-api.mjs` CSRF cases |
 | E2E-050 | Session logout invalidates admin session | Covered | `admin-auth.mjs` — `E2E-050 old session cookie no longer works after logout`; idle expiry and revocation on disable/delete in the same suite |
 
-Totals: 48 covered (7 of them against local simulators), 1 partial (E2E-020),
-1 gap (E2E-040, feature not built).
+Totals: 49 covered (8 of them against local simulators), 1 partial (E2E-020),
+0 gaps.
 
 ## Running the §30 set
 

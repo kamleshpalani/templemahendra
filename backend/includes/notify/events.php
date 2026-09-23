@@ -69,6 +69,11 @@ function notifyEventCatalogue(): array
         'event.cancelled'        => $e('event_cancelled', 'important', ['email', 'whatsapp', 'sms'], 'event:{entity_id}:cancelled:{recipient}', 'event', 'An event a devotee registered for is cancelled'),
         'volunteer.registered'   => $e('volunteer_registered', 'normal', ['email'], 'volunteer:{entity_id}:{recipient}', 'volunteer', 'A devotee signs up to volunteer'),
         'membership.renewal_due' => $e('membership_renewal', 'important', ['email', 'whatsapp'], 'membership:{entity_id}:renewal:{vars.renewalDate}', 'membership', 'A membership is due for renewal'),
+        // The temple office, not a family: email only, under the transactional
+        // 'office' category (migration 019), so no consent rule can hold it
+        // back. One notification per configured address (contact_notify.php);
+        // the recipient is part of the key so each address gets exactly one.
+        'contact.received'       => $e('contact_received', 'important', ['email'], 'contact:{entity_id}:{recipient}', 'contact_message', 'A visitor sends the contact form; the temple office is told'),
     ];
 }
 

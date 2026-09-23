@@ -50,7 +50,7 @@ const EMAIL = "info@dhabbalavaartemple.in";
 export default function Contact() {
   const { t } = useLang();
   const toast = useToast();
-  const [form, setForm] = useState({ name: "", phone: "", phoneCountry: DEFAULT_COUNTRY, message: "", hp_token: "" });
+  const [form, setForm] = useState({ name: "", phone: "", phoneCountry: DEFAULT_COUNTRY, email: "", subject: "", message: "", hp_token: "" });
   const [errors, setErrors] = useState({});
   const [status, setStatus] = useState(null); // null | sending | success | error | limited
   // Kept as seconds, not as a sentence, so the notice follows a language switch.
@@ -67,6 +67,9 @@ export default function Contact() {
     if (form.name.trim().length < 2) next.name = t("பெயரை உள்ளிடவும்", "Please enter your name");
     const pe = phoneProblem(form.phone, form.phoneCountry, { required: true, t });
     if (pe) next.phone = pe;
+    const email = form.email.trim();
+    if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))
+      next.email = t("சரியான மின்னஞ்சலை உள்ளிடவும், அல்லது காலியாக விடவும்", "Enter a valid email address, or leave it blank");
     if (form.message.trim().length < 5)
       next.message = t("செய்தியை உள்ளிடவும்", "Please write a short message");
     setErrors(next);
@@ -95,7 +98,7 @@ export default function Contact() {
         throw new Error();
       }
       setStatus("success");
-      setForm((f) => ({ name: "", phone: "", phoneCountry: f.phoneCountry, message: "", hp_token: "" }));
+      setForm((f) => ({ name: "", phone: "", phoneCountry: f.phoneCountry, email: "", subject: "", message: "", hp_token: "" }));
       toast.success(
         t("செய்தி அனுப்பப்பட்டது. விரைவில் தொடர்பு கொள்வோம்.", "Message sent. We'll reach out soon."),
         t("நன்றி", "Thank you"),
@@ -367,6 +370,32 @@ export default function Contact() {
                         setForm((f) => ({ ...f, phoneCountry: country, phone: national }));
                         if (errors.phone) setErrors((er) => ({ ...er, phone: undefined }));
                       }}
+                    />
+                  )}
+                </Field>
+                <Field label={t("மின்னஞ்சல்", "Email")} optional error={errors.email}>
+                  {(a11y) => (
+                    <input
+                      {...a11y}
+                      type="email"
+                      name="email"
+                      value={form.email}
+                      onChange={handleChange}
+                      autoComplete="email"
+                      inputMode="email"
+                    />
+                  )}
+                </Field>
+                <Field label={t("பொருள்", "Subject")} optional error={errors.subject}>
+                  {(a11y) => (
+                    <input
+                      {...a11y}
+                      type="text"
+                      name="subject"
+                      maxLength={200}
+                      value={form.subject}
+                      onChange={handleChange}
+                      autoComplete="off"
                     />
                   )}
                 </Field>

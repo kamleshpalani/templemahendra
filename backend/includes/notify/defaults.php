@@ -1143,5 +1143,51 @@ function notifyTemplateBuiltIn(): array
         ],
     ];
 
+    /* ── Temple office ───────────────────────────────────────────────────── */
+
+    // Sent to the address(es) in CONTACT_NOTIFY_EMAIL when the public contact
+    // form is submitted (brief §20 and §21, test case E2E-040). The reader is
+    // the committee, so this is a briefing rather than a greeting to a devotee;
+    // senderEmail and subject read "not given" / "Website enquiry" when the
+    // visitor left them blank (contact_notify.php).
+    $t['contact_received'] = [
+        'category'    => 'office',
+        'description' => 'Sent to the temple office when a visitor submits the contact form. senderEmail and subject read "not given" / "Website enquiry" when the visitor left them blank.',
+        'variables'   => ['devoteeName', 'senderName', 'senderPhone', 'senderEmail', 'subject', 'message', 'receivedAt', 'ctaUrl'],
+        'cta_path'    => '/admin/contact_messages.php',
+        'langs' => [
+            'ta' => [
+                'any' => [
+                    'title'     => 'இணையதள விசாரணை: {{subject}}',
+                    'body'      => "வணக்கம்,\n\n{{templeName}} இணையதளத்தின் தொடர்பு படிவம் மூலம் ஒரு புதிய செய்தி வந்துள்ளது.\n\nபெயர்: {{senderName}}\nதொலைபேசி: {{senderPhone}}\nமின்னஞ்சல்: {{senderEmail}}\nபொருள்: {{subject}}\nபெறப்பட்ட நேரம்: {{receivedAt}}\n\nசெய்தி:\n{{message}}\n\nபதிலளிக்க அவர்களை அழைக்கவும், அல்லது நிர்வாகப் பக்கத்தில் செய்திகளைத் திறக்கவும்.",
+                    'cta_label' => 'செய்திகளைத் திற',
+                ],
+                'sms' => [
+                    'title' => '',
+                    'body'  => '{{templeShortName}}: விசாரணை {{senderName}} ({{senderPhone}}): {{subject}}',
+                ],
+                'whatsapp' => [
+                    'title' => '',
+                    'body'  => "*இணையதள விசாரணை*\n\n*பெயர்:* {{senderName}}\n*தொலைபேசி:* {{senderPhone}}\n*பொருள்:* {{subject}}\n\n{{message}}",
+                ],
+            ],
+            'en' => [
+                'any' => [
+                    'title'     => 'Website enquiry: {{subject}}',
+                    'body'      => "Vanakkam,\n\nA new message has arrived through the contact form on the {{templeName}} website.\n\nName: {{senderName}}\nPhone: {{senderPhone}}\nEmail: {{senderEmail}}\nSubject: {{subject}}\nReceived: {{receivedAt}}\n\nMessage:\n{{message}}\n\nCall them back, or open Messages in the admin to reply and file it.",
+                    'cta_label' => 'Open Messages',
+                ],
+                'sms' => [
+                    'title' => '',
+                    'body'  => '{{templeShortName}}: website enquiry from {{senderName}} ({{senderPhone}}): {{subject}}. See Messages in the admin.',
+                ],
+                'whatsapp' => [
+                    'title' => '',
+                    'body'  => "*Website enquiry*\n\n*Name:* {{senderName}}\n*Phone:* {{senderPhone}}\n*Subject:* {{subject}}\n\n{{message}}",
+                ],
+            ],
+        ],
+    ];
+
     return $t;
 }

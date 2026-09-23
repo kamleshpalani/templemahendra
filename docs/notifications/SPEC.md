@@ -272,6 +272,13 @@ override where WhatsApp formatting helps):
 | announcement | announcement | headline, message |
 | emergency | emergency | headline, message |
 | campaign_generic | (campaign's) | title, message — the wrapper for free-text campaigns |
+| contact_received | office | senderName, senderPhone, senderEmail, subject, message, receivedAt — the office alert for a contact-form enquiry (brief §20/§21); recipient is `CONTACT_NOTIFY_EMAIL` |
+
+The eight account templates (welcome, email_verification, email_verified,
+password_reset, password_changed, profile_updated, phone_otp, phone_verified)
+were retired with devotee sign-in (docs/registration/SPEC.md §1); `registration_received`
+took welcome's place. `office` is a transactional category (migration 019), so
+no consent rule applies to messages sent to the temple itself.
 
 `templeName`, `templeAddress`, `mapsUrl`, `supportPhone` are filled automatically
 (from `data/temple.js` facts copied into PHP once, in `defaults.php`).
@@ -413,6 +420,7 @@ channels, fallbacks, cta and `dedupe_key` from the catalogue; `$ctx` may overrid
 | event.cancelled | event_cancelled | important | inapp, email, whatsapp, sms, push | — | no | `event:{entity_id}:cancelled:{recipient}` |
 | volunteer.registered | volunteer_registered | normal | inapp, email | — | no | `volunteer:{entity_id}:{recipient}` |
 | membership.renewal_due | membership_renewal | important | inapp, email, whatsapp | — | no | `membership:{entity_id}:renewal:{vars.renewalDate}` |
+| contact.received | contact_received | important | email | — | no | `contact:{entity_id}:{recipient}` — raised by `api/contact.php` through `includes/contact_notify.php`, one per address in `CONTACT_NOTIFY_EMAIL` |
 
 `{recipient}` is `d{devotee_id}` or `p{sha1(phone) first 12}` for a guest.
 `payment.*`, `event.registered`, `event.cancelled`, `volunteer.registered` and

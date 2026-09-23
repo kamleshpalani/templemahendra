@@ -36,6 +36,9 @@ const php = process.env.PHP_BIN || "php";
 const RUN = Date.now().toString(36);
 const P = `E2E-BRIEF-${RUN}`;
 const ADMIN = { username: process.env.ADMIN_USERNAME || "admin", password: process.env.ADMIN_PASSWORD || "Admin@Test123" };
+// The temple office address the server is started with, so E2E-040 can look
+// for exactly the notification the contact form raised (test email driver).
+const OFFICE = `e2e-brief-office-${RUN}@example.test`;
 const FATAL = /(<b>Fatal error<\/b>|Uncaught|Stack trace|SQLSTATE|<b>Warning<\/b>|<b>Notice<\/b>|<b>Deprecated<\/b>)/;
 const SQLI = `${P}'); DROP TABLE poojas;-- ' OR '1'='1`;
 const XSS = `${P}"><script>alert(1)</script><img src=x onerror=alert(2)>`;
@@ -103,7 +106,10 @@ try {
     || spawnSync(php, ["-r", "echo password_hash($argv[1], PASSWORD_DEFAULT);", ADMIN.password], { encoding: "utf8" }).stdout.trim();
   server = spawn(php, ["-S", `127.0.0.1:${port}`, "router.php"], {
     cwd: resolve(root, "backend"),
-    env: { ...process.env, TRUSTED_PROXIES: "127.0.0.1", ADMIN_USERNAME: ADMIN.username, ADMIN_PASS_HASH: passHash },
+    env: {
+      ...process.env, TRUSTED_PROXIES: "127.0.0.1", ADMIN_USERNAME: ADMIN.username, ADMIN_PASS_HASH: passHash,
+      NOTIFY_ALLOW_TEST_DRIVER: "1", NOTIFY_EMAIL_DRIVER: "test", CONTACT_NOTIFY_EMAIL: OFFICE,
+    },
     stdio: ["ignore", "pipe", "pipe"],
   });
   server.stdout.on("data", (d) => { log += d; });
@@ -252,6 +258,22 @@ try {
   check((r.status === 302 || r.status === 303) && sqlPooja && sqlPooja.name_ta === SQLI, "E2E-047 admin save stores the payload verbatim");
   if (sqlPooja) created.poojas.push(sqlPooja.id);
 
+  /* ── E2E-038 / 039 / 040: a full enquiry, a bad one, and the office alert */
+  const visitorEmail = `${P.toLowerCase()}@example.test`;
+  r = await api("/api/contact", { name: `${P} Visitor`, phone: "+91 90000 44444", phoneCountry: "IN", email: visitorEmail, subject: `${P} சேவை பதிவு`, message: `${P} Can I book an abhishekam on Pournami?`, hp_token: "" });
+  check(r.status === 201 && r.json?.success === true, "E2E-038 contact form accepts name, email, phone, subject and message", `${r.status} ${r.text.slice(0, 100)}`);
+  const enquiry = sql("SELECT id, email, subject FROM contact_messages WHERE name = ? ORDER BY id DESC LIMIT 1", [`${P} Visitor`]).rows[0];
+  check(enquiry && enquiry.email === visitorEmail && enquiry.subject === `${P} சேவை பதிவு`, "E2E-038 email and Tamil subject are stored intact", JSON.stringify(enquiry));
+  r = await api("/api/contact", { name: `${P} Bad Email`, phone: "+91 90000 55555", phoneCountry: "IN", email: "not-an-address", message: `${P} hello there`, hp_token: "" });
+  check(r.status === 400 && sql("SELECT COUNT(*) AS n FROM contact_messages WHERE name = ?", [`${P} Bad Email`]).rows[0].n === 0, "E2E-039 an invalid email is refused and nothing is stored", `${r.status}`);
+  const alerts = sql(
+    "SELECT n.to_email, n.category, n.recipient_type, n.title, n.vars, d.channel, d.status FROM notifications n LEFT JOIN notification_deliveries d ON d.notification_id = n.id WHERE n.event = 'contact.received' AND n.entity_id = ? ORDER BY n.id DESC",
+    [enquiry?.id ?? 0],
+  ).rows;
+  check(alerts.length === 1 && alerts[0].to_email === OFFICE && alerts[0].category === "office" && alerts[0].recipient_type === "guest", "E2E-040 exactly one office notification is created for the enquiry", JSON.stringify(alerts).slice(0, 300));
+  check(alerts[0]?.channel === "email" && alerts[0]?.status === "queued", "E2E-040 its email delivery is queued for the worker", JSON.stringify(alerts[0] ?? null).slice(0, 300));
+  check(/சேவை பதிவு/.test(alerts[0]?.title ?? "") && /Can I book/.test(alerts[0]?.vars ?? ""), "E2E-040 the alert carries the subject and the message", (alerts[0]?.title ?? "") + " " + (alerts[0]?.vars ?? "").slice(0, 120));
+
   /* ── E2E-048: script payloads never come back executable ───────────── */
   r = await api("/api/contact", { name: XSS, phone: "+91 90000 33333", phoneCountry: "IN", message: `${P} ${XSS}`, hp_token: "" });
   check(r.status === 201, "E2E-048 contact form accepts the text");
@@ -279,6 +301,7 @@ try {
   }
   sql("DELETE FROM homepage_widgets WHERE title_en LIKE ?", [`${P}%`]);
   sql("DELETE FROM gallery WHERE caption LIKE ?", [`${P}%`]);
+  try { sql("DELETE FROM notifications WHERE to_email = ?", [OFFICE]); } catch { /* notification tables absent */ }
   sql("DELETE FROM contact_messages WHERE name LIKE ?", [`${P}%`]);
   sql("DELETE FROM announcements WHERE title LIKE ? OR body LIKE ?", [`${P}%`, `${P}%`]);
   sql("DELETE FROM events WHERE title_en LIKE ?", [`${P}%`]);

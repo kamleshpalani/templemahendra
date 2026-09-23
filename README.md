@@ -269,11 +269,16 @@ Values needed:
 | `ADMIN_USERNAME`  | Admin panel login                                        |
 | `ADMIN_PASS_HASH` | bcrypt hash of the admin password (see Step 5)           |
 | `ADMIN_IDLE_MINUTES` | Optional. Admin sessions end after this many idle minutes (default 30, max 1440) |
+| `ADMIN_IP_LOGIN_ATTEMPTS` | Optional. Failed sign-ins from one client address in 15 minutes, across every username, before that address is refused (default 30) |
 | `CORS_ORIGIN`     | Allowed origin, e.g. `https://www.templemahendra.in`     |
 
 Admin sign-in locks an account for 15 minutes after 10 failed attempts (any
 IP, case-insensitive username). A Super Admin issuing a new password from
-Committee accounts clears the lock. Roles: `owner` = Super Admin, `admin` =
+Committee accounts clears the lock. Thirty failed sign-ins from one client
+address in 15 minutes — whatever usernames they try — refuse that address
+(`ADMIN_IP_LOGIN_ATTEMPTS`), and the `ADMIN_USERNAME` recovery account's lock
+is keyed on the address as well as the name, so a stranger can only ever lock
+it for themselves. Roles: `owner` = Super Admin, `admin` =
 Temple Admin, `editor` = Content Editor, `finance` = Finance Admin, `viewer` =
 read-only; the capability matrix lives in `backend/includes/roles.php`.
 
@@ -286,6 +291,7 @@ been applied; see `backend/.env.example` for the annotated version.
 | `MAIL_TRANSPORT`  | `smtp` on Hostinger. `mail` hands off to PHP's `mail()`. Left blank, messages are written to `backend/logs/mail.log` and the site tells the caller that email is unavailable — fine locally, never in production. |
 | `SMTP_HOST` `SMTP_PORT` `SMTP_USER` `SMTP_PASS` `SMTP_SECURE` | Mailbox for outgoing mail. `SMTP_SECURE` is `tls` on port 587 or `ssl` on 465. |
 | `MAIL_FROM` `MAIL_FROM_NAME` | Sender address and display name. Use a mailbox on your own domain, or the messages will be filed as spam. |
+| `CONTACT_NOTIFY_EMAIL` `CONTACT_NOTIFY_LANG` | Where contact-form enquiries are emailed (one address or a comma-separated list) and in which language (`en` default, `ta`). Every enquiry is saved to Admin → Messages regardless; without an address nobody is emailed. Sent through the notification worker like every other email. |
 
 ### Paths that belong to PHP, not to React
 
@@ -767,7 +773,7 @@ past broadcasts, per-stream share previews and other providers (the
 | GET    | `/api/events`        | List events            |
 | GET    | `/api/gallery`       | List gallery images    |
 | POST   | `/api/donations`     | Submit donation record |
-| POST   | `/api/contact`       | Submit contact message |
+| POST   | `/api/contact`       | Submit a contact message: name, phone and message, optional email and subject. The office is emailed (`CONTACT_NOTIFY_EMAIL`). |
 | GET    | `/api/search`        | Search sevas, events, poojas, announcements, gallery captions and the static pages. `?q=` and an optional `?limit=`. Answers in both languages. |
 | GET    | `/api/og.php`        | The share preview for a path: `?path=/sevas&seva=3`. Returns HTML, not JSON — it is what link unfurlers read. See *Shared links and rich previews*. |
 | GET    | `/api/live-streams`  | Live and upcoming YouTube Live broadcasts (`/live`, `/upcoming`, `/schedule?filter=`, `/<id>`, `/<slug>`). See *Live Darshan (YouTube Live)*. |
@@ -863,8 +869,10 @@ See `docs/live/SPEC-PHASE7.md`.
   reading a page and posting to it, so `viewer` accounts are genuinely read-only
 - Every admin form carries a per-session CSRF token, checked by `adminCsrfGuard()`
 - Sign-ins, failures and account changes are written to `admin_activity`
-- Sign-in locks the account for 15 minutes after 10 failures; sessions end after
-  `ADMIN_IDLE_MINUTES` idle; `?next=` redirects are restricted to `/admin/`
+- Sign-in locks the account for 15 minutes after 10 failures, and refuses a client
+  address after 30 failures in 15 minutes across any usernames (the recovery
+  account's lock is per address, so it cannot be locked remotely); sessions end
+  after `ADMIN_IDLE_MINUTES` idle; `?next=` redirects are restricted to `/admin/`
 - All user input is sanitised with `strip_tags` + length limits before DB inserts
 - All DB queries use PDO prepared statements — no SQL injection risk
 - `config/` and `includes/` folders have `.htaccess` denying direct HTTP access
