@@ -76,8 +76,8 @@ function bulkEntities(): array
             'required' => ['name_ta', 'name_en', 'pooja_date'],
             'rules' => [
                 'pooja_date' => [$isDate, 'must be YYYY-MM-DD'],
-                'pooja_type' => [fn($v) => $v === '' || in_array($v, ['pournami', 'amavasai', 'ekadasi', 'sashti', 'special', 'monthly', 'daily'], true),
-                                 'must be one of pournami, amavasai, ekadasi, sashti, special, monthly, daily'],
+                'pooja_type' => [fn($v) => $v === '' || in_array($v, ['pournami', 'amavasai', 'ekadasi', 'sashti', 'pradosham', 'chaturthi', 'abhishekam', 'archana', 'festival', 'special', 'monthly', 'daily'], true),
+                                 'must be one of pournami, amavasai, ekadasi, sashti, pradosham, chaturthi, abhishekam, archana, festival, special, monthly, daily'],
                 'is_active'  => [$isBool, 'must be yes/no'],
             ],
             'dupKey' => ['name_en', 'pooja_date'],

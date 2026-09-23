@@ -9,6 +9,7 @@
 
 require_once __DIR__ . '/../includes/helpers.php';
 require_once __DIR__ . '/../includes/calendar_entries.php';
+require_once __DIR__ . '/../includes/panchangam.php';
 
 setCorsHeaders();
 
@@ -137,16 +138,8 @@ const GULIKA_KALAM = [
     ['07:30','09:00'], // Friday
     ['06:00','07:30'], // Saturday
 ];
-// Nalla Neram (auspicious periods) by weekday — two windows per day
-const NALLA_NERAM = [
-    [['07:30','09:00'],['22:30','24:00']], // Sunday
-    [['06:00','07:30'],['15:00','16:30']], // Monday
-    [['07:30','09:00'],['22:30','24:00']], // Tuesday
-    [['07:30','09:00'],['12:00','13:30']], // Wednesday
-    [['10:30','12:00'],['19:30','21:00']], // Thursday
-    [['10:30','12:00'],['16:30','18:00']], // Friday
-    [['06:00','07:30'],['19:30','21:00']], // Saturday
-];
+// Nalla Neram (auspicious periods) by weekday: panchNallaNeram() in
+// includes/panchangam.php, the one table the homepage engine reads too.
 
 // ── Special-day classifier ────────────────────────────────────────────────────
 
@@ -171,6 +164,10 @@ function specialDays(int $tithi, int $wd, int $m, int $d): array
     }
     if ($tithi === 3) {
         $out[] = ['type'=>'chaturthi', 'ta'=>'சதுர்த்தி',  'en'=>'Vinayagar Chaturthi'];
+    }
+    // The brief's monthly observance: the Chaturthi of the waning fortnight.
+    if ($tithi === 18) {
+        $out[] = ['type'=>'sankatahara_chaturthi', 'ta'=>'சங்கடஹர சதுர்த்தி', 'en'=>'Sankatahara Chaturthi'];
     }
     if ($tithi === 0 || $tithi === 15) {
         $out[] = ['type'=>'pratipada', 'ta'=>'பிரதிபதை',   'en'=>'Pratipada'];
@@ -222,7 +219,7 @@ for ($d = 1; $d <= $daysInMonth; $d++) {
         'timings'     => [
             'abhijit_muhurtham' => ['06:00','07:30'],  // ~ sunrise muhurtham slot
             'brahma_muhurtham'  => ['04:30','06:00'],
-            'nalla_neram'       => NALLA_NERAM[$wd],
+            'nalla_neram'       => panchNallaNeram($wd),
             'rahu_kalam'        => RAHU_KALAM[$wd],
             'yamagandam'        => YAMAGANDAM[$wd],
             'gulika_kalam'      => GULIKA_KALAM[$wd],

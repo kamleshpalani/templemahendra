@@ -124,6 +124,9 @@ if ($path === '/live-subscriptions' || $path === '/live-subscriptions/unsubscrib
 if (preg_match('#^/admin/live-streams(?:/([0-9]{1,10}))?$#', $path, $liveAdminMatch)) { $liveAdminId = isset($liveAdminMatch[1]) ? (int) $liveAdminMatch[1] : null; require __DIR__ . '/admin_live_streams.php'; exit; }
 if (str_starts_with($path, '/admin/')) sendError('Not found', 404);
 
+// One event by id (brief §6): events.php answers the row, or 404 when it is hidden or absent.
+if ($method === 'GET' && preg_match('#^/events/([0-9]{1,10})$#', $path, $eventMatch)) { $eventId = (int) $eventMatch[1]; require __DIR__ . '/events.php'; exit; }
+
 $routes = [
     'GET'  => [
         '/announcements'   => 'announcements.php',
@@ -133,11 +136,13 @@ $routes = [
         '/sevas'           => 'sevas.php',
         '/events'          => 'events.php',
         '/gallery'         => 'gallery.php',
+        '/gallery/albums'  => 'gallery.php',
         '/pulse'           => 'pulse.php',
         '/donors'          => 'donors.php',
         '/reviews'         => 'reviews.php',
         '/calendar'        => 'calendar.php',
         '/pournamis'       => 'pournamis.php',
+        '/poojas'          => 'poojas.php',
         '/homepage_widgets'=> 'homepage_widgets.php',
         '/settings'        => 'settings.php',
     ],

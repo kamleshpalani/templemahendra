@@ -52,6 +52,7 @@ const TYPE_ICONS = {
   pradosham: "🔥",
   festival: "🎊",
   chaturthi: "🐘",
+  sankatahara_chaturthi: "🐘",
   pratipada: "🌙",
   pooja: "🙏",
   holiday: "🏛️",
@@ -70,6 +71,7 @@ const TYPE_TONE = {
   pradosham: "warning",
   festival: "danger",
   chaturthi: "info",
+  sankatahara_chaturthi: "info",
   pratipada: "moon",
   pooja: "gold",
   holiday: "muted",
@@ -228,6 +230,8 @@ function buildFallback(year, month) {
       special.push({ type: "pradosham", ta: "பிரதோஷம்", en: "Pradosham" });
     if (tithi === 3)
       special.push({ type: "chaturthi", ta: "சதுர்த்தி", en: "Chaturthi" });
+    if (tithi === 18)
+      special.push({ type: "sankatahara_chaturthi", ta: "சங்கடஹர சதுர்த்தி", en: "Sankatahara Chaturthi" });
     if (FIXED_FESTIVALS[md])
       special.push({
         type: "festival",
@@ -651,6 +655,7 @@ export default function PanchangCalendar() {
     ["sashti", "🪔", t("சஷ்டி", "Sashti")],
     ["pradosham", "🔥", t("பிரதோஷம்", "Pradosham")],
     ["chaturthi", "🐘", t("சதுர்த்தி", "Chaturthi")],
+    ["sankatahara_chaturthi", "🐘", t("சங்கடஹர சதுர்த்தி", "Sankatahara Chaturthi")],
     ["festival", "🎊", t("திருவிழா", "Festival")],
     ["pooja", "🙏", t("பூஜை", "Pooja")],
   ];

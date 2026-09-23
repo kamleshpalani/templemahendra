@@ -162,12 +162,12 @@ const BLESSING_KEY = "temple_blessing_hidden";
 
 function DevoteeContent({ t, pulseData, nallaTime, pournami }) {
   const [blessingHidden, setBlessingHidden] = useState(() => {
-    const today = new Date().toISOString().slice(0, 10);
+    const today = todayIST();
     return store.get(BLESSING_KEY) === today;
   });
 
   const hideBlessing = () => {
-    const today = new Date().toISOString().slice(0, 10);
+    const today = todayIST();
     store.set(BLESSING_KEY, today);
     setBlessingHidden(true);
   };
@@ -580,7 +580,9 @@ export default function Home() {
       .catch(() => {});
 
     // Find next 3 Pournami dates across 3 months from calendar
-    const todayStr = new Date().toISOString().slice(0, 10);
+    // The temple's own day (IST): between midnight and 05:30 IST the UTC date is
+    // still yesterday, which used to keep an expired Pournami on the page.
+    const todayStr = todayIST();
     const now = new Date();
     const monthsToFetch = [0, 1, 2].map((offset) => {
       const d = new Date(now.getFullYear(), now.getMonth() + offset, 1);

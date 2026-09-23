@@ -187,8 +187,47 @@ try {
   check(!poojaBlocks.some((p) => p.id === past.id) && !r.text.includes(`${P} Past Pournami`), "E2E-007 the expired Pournami is not shown as upcoming");
   check(poojaBlocks.length > 0 && poojaBlocks.every((p) => p.date >= today), "E2E-006 an upcoming pooja is shown and every date is today or later", JSON.stringify(poojaBlocks.map((p) => p.date)));
   const ours = r.json.find((w) => w.title_en === `${P} widget`);
-  const expected = sql("SELECT id FROM poojas WHERE is_active = 1 AND pooja_date >= CURDATE() ORDER BY FIELD(pooja_type,'pournami','amavasai','ekadasi','special','monthly','sashti','daily') ASC, pooja_date ASC LIMIT 1").rows[0].id;
+  const expected = sql("SELECT id FROM poojas WHERE is_active = 1 AND pooja_date >= CURDATE() ORDER BY FIELD(pooja_type,'pournami','amavasai','pradosham','chaturthi','ekadasi','sashti','abhishekam','archana','festival','special','monthly','daily') ASC, pooja_date ASC, id ASC LIMIT 1").rows[0].id;
   check(ours && ours.pooja && ours.pooja.id === expected && ours.pooja.date >= today, "E2E-008 the stale calendar card was re-pointed at the next valid Pournami-first pooja", JSON.stringify(ours?.pooja));
+
+  /* ── §10 edge cases: a manual pooja card, and a second stale calendar card */
+  sql("INSERT INTO homepage_widgets (content_type, title_ta, title_en, source_type, linked_pooja_id, priority, is_pinned, is_active) VALUES ('upcoming_pooja', ?, ?, 'manual', ?, 2, 0, 1)", [`${P} manual-past`, `${P} manual-past`, past.id]);
+  sql("INSERT INTO homepage_widgets (content_type, title_ta, title_en, source_type, linked_pooja_id, priority, is_pinned, is_active) VALUES ('calendar_pooja', ?, ?, 'calendar', ?, 3, 0, 1)", [`${P} second-calendar`, `${P} second-calendar`, past.id]);
+  r = await api("/api/homepage_widgets");
+  const manualPast = r.json.find((w) => w.title_en === `${P} manual-past`);
+  check(!manualPast?.pooja || (manualPast.pooja.id !== past.id && manualPast.pooja.date >= today), "E2E-007 a manual card linked to a past pooja never publishes it", JSON.stringify(manualPast?.pooja));
+  const secondCal = r.json.find((w) => w.title_en === `${P} second-calendar`);
+  check(secondCal && secondCal.pooja && secondCal.pooja.id === expected, "E2E-008 a second stale calendar card is re-pointed as well (no early break)", JSON.stringify(secondCal?.pooja));
+  check(r.json.every((w) => !w.pooja || w.pooja.date >= today), "E2E-007 no card anywhere carries an expired pooja");
+  check(r.json.every((w) => ["manual", "calendar", "system"].includes(w.source_type)), "§8 every card states its source type");
+
+  /* ── §9 pooja fields (migration 024) and GET /api/poojas ─────────────── */
+  const rich = (fields) => save({ id: String(special.id), name_ta: `${P} அபிஷேகம்`, name_en: `${P} Abhishekam`, pooja_date: soonDate, pooja_time: "", pooja_type: "abhishekam", is_active: "1", ...fields });
+  r = await rich({ start_time: "18:30", end_time: "21:00", sponsorship_amount: "1501", sponsorship_available: "1", is_featured: "1", live_stream_enabled: "1", banner_url: "/uploads/banner.webp" });
+  let richRow = sql("SELECT * FROM poojas WHERE id = ?", [special.id]).rows[0];
+  check((r.status === 302 || r.status === 303) && richRow.start_time === "18:30:00" && richRow.end_time === "21:00:00" && Number(richRow.sponsorship_amount) === 1501 && richRow.is_featured === 1 && richRow.live_stream_enabled === 1 && richRow.pooja_type === "abhishekam" && richRow.banner_url === "/uploads/banner.webp", "§9 typed times, sponsorship amount, featured, live-stream flag and banner are stored", JSON.stringify(richRow));
+  check(richRow.pooja_time === "6:30 PM – 9:00 PM", "§9 the display time is derived from the typed range", String(richRow.pooja_time));
+  r = await rich({ start_time: "21:00", end_time: "18:30" });
+  check(r.status === 200 && /after the start/.test(r.text) && sql("SELECT start_time FROM poojas WHERE id = ?", [special.id]).rows[0].start_time === "18:30:00", "§9 an end time before the start time is refused and nothing changes");
+  r = await rich({ start_time: "18:30", end_time: "21:00", sponsorship_amount: "1501", is_featured: "1", live_stream_enabled: "1", banner_url: "javascript:alert(1)" });
+  check(r.status === 200 && /site path/.test(r.text), "§9 a banner that is not a site path or https address is refused");
+  r = await api("/api/poojas?upcoming=1&limit=200");
+  const apiPooja = r.json.find((p) => p.id === special.id);
+  check(r.status === 200 && apiPooja && apiPooja.start_time === "18:30" && apiPooja.end_time === "21:00" && apiPooja.time === "6:30 PM – 9:00 PM" && apiPooja.sponsorship_amount === 1501 && apiPooja.sponsorship_available === true && apiPooja.is_featured === true && apiPooja.live_stream_enabled === true && apiPooja.name_ta === `${P} அபிஷேகம்`, "GET /api/poojas lists the pooja with times, price, flags and Tamil intact", JSON.stringify(apiPooja));
+  r = await api("/api/poojas?type=abhishekam&featured=1&limit=200");
+  check(r.json.some((p) => p.id === special.id) && r.json.every((p) => p.type === "abhishekam" && p.is_featured === true), "GET /api/poojas filters by type and featured");
+  check(!r.json.some((p) => p.id === past.id) && r.json.every((p) => p.date >= today), "GET /api/poojas never lists an expired pooja as upcoming");
+  r = await api("/api/poojas?past=1&limit=200");
+  check(r.json.some((p) => p.id === past.id && p.is_past === true), "GET /api/poojas?past=1 lists past poojas");
+
+  /* ── §9 recurring poojas: Generate from Panchangam ───────────────────── */
+  r = await post("/admin/poojas.php", { _csrf: csrf, action: "generate", observance: "pradosham", months: "2", g_name_ta: `${P} பிரதோஷம்`, g_name_en: `${P} Pradosham`, g_start_time: "17:30", g_end_time: "19:00", g_amount: "501" });
+  const gen = sql("SELECT pooja_date, pooja_type, recurrence_type, start_time, sponsorship_amount FROM poojas WHERE name_en = ? ORDER BY pooja_date", [`${P} Pradosham`]).rows;
+  check((r.status === 302 || r.status === 303) && gen.length >= 2 && gen.every((g) => g.pooja_type === "pradosham" && g.recurrence_type === "pradosham" && g.start_time === "17:30:00" && Number(g.sponsorship_amount) === 501), "§9 Generate from Panchangam adds one Pradosham per occurrence, marked with its recurrence type", JSON.stringify(gen).slice(0, 240));
+  check(gen.every((g) => g.pooja_date >= today) && new Set(gen.map((g) => g.pooja_date)).size === gen.length, "§9 generated dates are upcoming and distinct");
+  r = await post("/admin/poojas.php", { _csrf: csrf, action: "generate", observance: "pradosham", months: "2", g_name_ta: `${P} பிரதோஷம்`, g_name_en: `${P} Pradosham` });
+  check((r.status === 302 || r.status === 303) && sql("SELECT COUNT(*) AS n FROM poojas WHERE name_en = ?", [`${P} Pradosham`]).rows[0].n === gen.length, "§9 generating again adds nothing (idempotent)");
+  check(sql("SELECT COUNT(*) AS n FROM admin_activity WHERE action = 'pooja_generated' AND detail LIKE ?", [`%${P} Pradosham%`]).rows[0].n >= 1, "§9 the generation is audited");
 
   /* ── E2E-016: archive (hide) ────────────────────────────────────────── */
   r = await post("/admin/poojas.php", { _csrf: csrf, action: "toggle", id: String(next.id) });
@@ -207,6 +246,25 @@ try {
   check(r.status === 200 && r.json.some((e) => e.id === event.id && e.title_ta === `${P} திருவிழா`), "E2E-018 the event is public with Tamil intact");
   r = await post("/admin/events.php", { _csrf: csrf, action: "save", id: "0", title_ta: `${P} x`, title_en: `${P} no date`, description: "", event_date: "", is_active: "1" });
   check(!sql("SELECT id FROM events WHERE title_en = ?", [`${P} no date`]).rows.length, "E2E-017 an event without a date is refused");
+
+  /* ── §8 content types, links, images and display order (migration 024) */
+  sql("INSERT INTO homepage_widgets (content_type, title_ta, title_en, source_type, linked_event_id, image_url, priority, display_order, is_active) VALUES ('upcoming_event', '', '', 'manual', ?, '/uploads/poster.webp', 4, 0, 1)", [event.id]);
+  sql("INSERT INTO homepage_widgets (content_type, title_ta, title_en, description_ta, description_en, source_type, priority, display_order, is_active) VALUES ('custom', ?, ?, 'தனிப்பயன் உரை', 'free text', 'manual', 5, 2, 1)", [`${P} custom`, `${P} custom`]);
+  sql("INSERT INTO homepage_widgets (content_type, title_ta, title_en, source_type, priority, display_order, is_active) VALUES ('custom', ?, ?, 'manual', 5, 1, 1)", [`${P} custom-first`, `${P} custom-first`]);
+  sql("INSERT INTO homepage_widgets (content_type, title_ta, title_en, source_type, priority, is_active) VALUES ('livestream', ?, ?, 'manual', 6, 1)", [`${P} stream-none`, `${P} stream-none`]);
+  r = await api("/api/homepage_widgets");
+  const evCard = r.json.find((w) => w.event && w.event.id === event.id);
+  check(evCard && evCard.content_type === "upcoming_event" && evCard.title_ta === `${P} திருவிழா` && evCard.event_date === event.event_date && evCard.image_url === "/uploads/poster.webp", "§8 an Upcoming Event card takes its title and date from the linked event and carries its image", JSON.stringify(evCard).slice(0, 240));
+  const customIdx = r.json.findIndex((w) => w.title_en === `${P} custom`);
+  const customFirstIdx = r.json.findIndex((w) => w.title_en === `${P} custom-first`);
+  check(customIdx > -1 && r.json[customIdx].content_type === "custom" && r.json[customIdx].description_ta === "தனிப்பயன் உரை", "§8 a custom card is published as written");
+  check(customFirstIdx > -1 && customFirstIdx < customIdx, "§8 display order breaks a priority tie");
+  check(!r.json.some((w) => w.title_en === `${P} stream-none`), "§8 a Live Stream card with no broadcast is not shown");
+  r = await post("/admin/homepage_widgets.php", { _csrf: csrf, action: "save", id: "0", content_type: "announcement", source_type: "manual", title_ta: `${P} படம்`, title_en: `${P} bad image`, image_url: "javascript:alert(1)", priority: "10", is_active: "1" });
+  check(r.status === 200 && /site path/.test(r.text) && !sql("SELECT id FROM homepage_widgets WHERE title_en = ?", [`${P} bad image`]).rows.length, "§8 the admin refuses an image address that is not a site path or https");
+  r = await post("/admin/homepage_widgets.php", { _csrf: csrf, action: "save", id: "0", content_type: "custom", source_type: "manual", title_ta: `${P} சிறப்பு`, title_en: `${P} admin custom`, image_url: "/uploads/deity.webp", display_order: "3", priority: "10", is_active: "1" });
+  const adminCustom = sql("SELECT content_type, image_url, display_order FROM homepage_widgets WHERE title_en = ?", [`${P} admin custom`]).rows[0];
+  check((r.status === 302 || r.status === 303) && adminCustom && adminCustom.content_type === "custom" && adminCustom.image_url === "/uploads/deity.webp" && adminCustom.display_order === 3, "§8 the admin saves a custom card with its image and display order", JSON.stringify(adminCustom));
 
   /* ── E2E-019/020: announcements ─────────────────────────────────────── */
   r = await post("/admin/announcements.php", { _csrf: csrf, action: "save", id: "0", title: `${P} அறிவிப்பு`, body: `${P} announcement body`, is_active: "1" });
@@ -296,8 +354,11 @@ try {
   console.log(`${checks} passed, 0 failed`);
 } finally {
   for (const g of created.gallery) {
-    const f = resolve(root, "backend/uploads", g.filename);
-    if (existsSync(f)) unlinkSync(f);
+    // the original and, since migration 021, its thumb and medium variants
+    for (const name of [g.filename, g.thumb_filename, g.medium_filename]) {
+      const f = name ? resolve(root, "backend/uploads", name) : null;
+      if (f && existsSync(f)) unlinkSync(f);
+    }
   }
   sql("DELETE FROM homepage_widgets WHERE title_en LIKE ?", [`${P}%`]);
   sql("DELETE FROM gallery WHERE caption LIKE ?", [`${P}%`]);

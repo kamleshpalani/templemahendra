@@ -21,6 +21,8 @@ $typeLabels = [
     'calendar_pooja' => ['Calendar Pooja · பௌர்ணமி பூஜை', 'Calendar Pooja', 'moon'],
     'nalla_neram'    => ['Nalla Neram · நல்ல நேரம்',        'Nalla Neram',    'sage'],
     'sponsor'        => ['Sponsor · ஸ்பான்சர்',             'Sponsor',        'gold'],
+    'livestream'     => ['Live Stream · நேரலை',            'Live Stream',    'info'],
+    'custom'         => ['Custom · தனிப்பயன்',              'Custom',         'muted'],
 ];
 $filters = ['active' => 'Active', 'off' => 'Off', 'pinned' => 'Pinned'];
 
@@ -37,6 +39,14 @@ try {
     $dbTypes = null; // unknown → do not restrict
 }
 $typeSupported = static fn(string $t): bool => $dbTypes === null || in_array($t, $dbTypes, true);
+
+// Migration 024: a linked event or live stream, an image and a display order.
+$wV2    = publicGuardHasColumn('homepage_widgets', 'image_url');
+$liveOk = false;
+if ($wV2) {
+    try { $db->query('SELECT 1 FROM live_streams LIMIT 0')->closeCursor(); $liveOk = true; } catch (Throwable) { $liveOk = false; }
+}
+$imageOk = static fn(string $u): bool => $u === '' || preg_match('#^(/(uploads|images|icons)/[A-Za-z0-9._/-]+|https://[^\s"<>]+)$#', $u) === 1;
 
 $str        = static fn($v): string => is_string($v) ? $v : '';
 $pickFilter = static fn($v) => is_string($v) && isset($filters[$v]) ? $v : '';
@@ -92,6 +102,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             $linked_pooja_id   = ((int) ($_POST['linked_pooja_id']   ?? 0)) ?: null;
             $linked_sponsor_id = ((int) ($_POST['linked_sponsor_id'] ?? 0)) ?: null;
+            $linked_event_id   = $wV2 ? (((int) ($_POST['linked_event_id'] ?? 0)) ?: null) : null;
+            $linked_stream_id  = $wV2 && $liveOk ? (((int) ($_POST['linked_stream_id'] ?? 0)) ?: null) : null;
+            $image_url         = $wV2 ? mb_substr(trim($str($_POST['image_url'] ?? '')), 0, 500) : '';
+            $display_order     = $wV2 ? max(-1000, min(1000, (int) ($_POST['display_order'] ?? 0))) : 0;
             $show_sponsor      = isset($_POST['show_sponsor'])     ? 1 : 0;
             $show_nalla_neram  = isset($_POST['show_nalla_neram']) ? 1 : 0;
             $is_pinned         = isset($_POST['is_pinned'])        ? 1 : 0;
@@ -114,6 +128,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if (!$typeSupported($content_type)) {
                 $errors['content_type'] = 'This content type is not enabled in the database yet — apply the latest schema update, or choose another type.';
             }
+            if (!$imageOk($image_url)) {
+                $errors['image_url'] = 'Use a site path such as /uploads/photo.webp or an https:// address.';
+            }
+            if ($linked_event_id !== null) {
+                $chk = $db->prepare('SELECT 1 FROM events WHERE id = :id');
+                $chk->execute([':id' => $linked_event_id]);
+                if (!$chk->fetchColumn()) $errors['linked_event_id'] = 'That event no longer exists.';
+            }
+            if ($linked_stream_id !== null) {
+                $chk = $db->prepare('SELECT 1 FROM live_streams WHERE id = :id AND deleted_at IS NULL');
+                $chk->execute([':id' => $linked_stream_id]);
+                if (!$chk->fetchColumn()) $errors['linked_stream_id'] = 'That live stream no longer exists.';
+            }
 
             $old = [
                 'id'             => $id,               'content_type'      => $content_type,
@@ -124,6 +151,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 'show_nalla_neram'  => $show_nalla_neram,  'start_date'     => $start_date,
                 'end_date'       => $end_date,         'priority'          => $priority,
                 'is_pinned'      => $is_pinned,        'is_active'         => $is_active,
+                'linked_event_id' => $linked_event_id, 'linked_stream_id'  => $linked_stream_id,
+                'image_url'      => $image_url,        'display_order'     => $display_order,
             ];
 
             if ($errors) {
@@ -140,6 +169,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     ':pr'  => $priority,        ':pin' => $is_pinned,
                     ':act' => $is_active,
                 ];
+                $extraSet = $extraCols = $extraVals = '';
+                if ($wV2) {
+                    $fields += [':eid' => $linked_event_id, ':lsid' => $linked_stream_id, ':img' => $image_url !== '' ? $image_url : null, ':ord' => $display_order];
+                    $extraSet  = ', linked_event_id=:eid, linked_stream_id=:lsid, image_url=:img, display_order=:ord';
+                    $extraCols = ',linked_event_id,linked_stream_id,image_url,display_order';
+                    $extraVals = ',:eid,:lsid,:img,:ord';
+                }
                 try {
                     if ($id > 0) {
                         $db->prepare('UPDATE homepage_widgets SET
@@ -150,7 +186,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             show_sponsor=:ss, show_nalla_neram=:sn,
                             start_date=:sd,   end_date=:ed,
                             priority=:pr,     is_pinned=:pin,
-                            is_active=:act
+                            is_active=:act' . $extraSet . '
                         WHERE id=:id')
                            ->execute(array_merge($fields, [':id' => $id]));
                         adminAudit('widget_updated', 'widget:' . $id, $content_type . ' · ' . $title_en);
@@ -161,9 +197,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                              description_ta,description_en,
                              linked_pooja_id,linked_sponsor_id,
                              show_sponsor,show_nalla_neram,
-                             start_date,end_date,priority,is_pinned,is_active)
+                             start_date,end_date,priority,is_pinned,is_active' . $extraCols . ')
                             VALUES
-                            (:ct,:src,:tta,:ten,:dta,:den,:pid,:sid,:ss,:sn,:sd,:ed,:pr,:pin,:act)')
+                            (:ct,:src,:tta,:ten,:dta,:den,:pid,:sid,:ss,:sn,:sd,:ed,:pr,:pin,:act' . $extraVals . ')')
                            ->execute($fields);
                         adminAudit('widget_created', 'widget:' . (int) $db->lastInsertId(), $content_type . ' · ' . $title_en);
                         $redirect('success', 'Widget created.', $back);
@@ -228,12 +264,15 @@ if ($q !== '') {
 $perPage = 50;
 $list = adminPaginate(
     $db,
-    'SELECT w.*, p.name_ta AS pooja_name, s.name AS sponsor_name
+    'SELECT w.*, p.name_ta AS pooja_name, s.name AS sponsor_name'
+    . ($wV2 ? ', e.title_en AS event_title' : '') . ($wV2 && $liveOk ? ', ls.title_en AS stream_title' : '') . '
        FROM homepage_widgets w
        LEFT JOIN poojas   p ON p.id = w.linked_pooja_id
        LEFT JOIN sponsors s ON s.id = w.linked_sponsor_id'
+    . ($wV2 ? ' LEFT JOIN events e ON e.id = w.linked_event_id' : '')
+    . ($wV2 && $liveOk ? ' LEFT JOIN live_streams ls ON ls.id = w.linked_stream_id' : '')
     . ($where ? ' WHERE ' . implode(' AND ', $where) : '')
-    . ' ORDER BY w.is_pinned DESC, w.priority ASC, w.id DESC',
+    . ' ORDER BY w.is_pinned DESC, w.priority ASC' . ($wV2 ? ', w.display_order ASC' : '') . ', w.id DESC',
     $params,
     $page,
     $perPage
@@ -271,6 +310,31 @@ $stmt = $db->prepare(
 );
 $stmt->execute([':cur' => $curSponsor, ':cur2' => $curSponsor]);
 $sponsors = $stmt->fetchAll();
+
+// Events and live streams a card can follow (migration 024): upcoming ones,
+// plus whatever this widget is already linked to so the link is never dropped.
+$events  = [];
+$streams = [];
+if ($wV2) {
+    $curEvent = (int) ($editing['linked_event_id'] ?? 0);
+    $stmt = $db->prepare(
+        'SELECT id, title_ta, title_en, event_date, is_active FROM events
+          WHERE (is_active = 1 AND event_date >= CURDATE()) OR id = :cur
+          ORDER BY (id = :cur2) DESC, event_date ASC LIMIT 51'
+    );
+    $stmt->execute([':cur' => $curEvent, ':cur2' => $curEvent]);
+    $events = $stmt->fetchAll();
+    if ($liveOk) {
+        $curStream = (int) ($editing['linked_stream_id'] ?? 0);
+        $stmt = $db->prepare(
+            "SELECT id, title_ta, title_en, status, scheduled_start_at FROM live_streams
+              WHERE deleted_at IS NULL AND (status IN ('SCHEDULED','STARTING','LIVE') OR id = :cur)
+              ORDER BY (id = :cur2) DESC, scheduled_start_at ASC LIMIT 51"
+        );
+        $stmt->execute([':cur' => $curStream, ':cur2' => $curStream]);
+        $streams = $stmt->fetchAll();
+    }
+}
 
 // ── View helpers ─────────────────────────────────────────────────────────────
 $v   = static fn(string $k, $default = '') => (string) ($editing[$k] ?? $default);
@@ -377,6 +441,43 @@ echo adminPageIntro(
               <?php endforeach; ?>
             </select>
           </div>
+          <?php if ($wV2): ?>
+          <div class="field<?= isset($errors['linked_event_id']) ? ' field--error' : '' ?>">
+            <label class="field__label" for="hw-event">Link to event <span class="field__optional">optional</span></label>
+            <select id="hw-event" name="linked_event_id"<?= $invalid('linked_event_id', 'hw-event-hint', 'hw-event-err') ?>>
+              <option value="">— None —</option>
+              <?php foreach ($events as $ev): ?>
+                <option value="<?= (int) $ev['id'] ?>"<?= $sel($v('linked_event_id'), $ev['id']) ?>><?= h($ev['title_ta'] . ' — ' . $ev['title_en'] . ' · ' . adminFmtDate($ev['event_date']) . ($ev['is_active'] ? '' : ' (hidden)')) ?></option>
+              <?php endforeach; ?>
+            </select>
+            <?= $err('linked_event_id', 'hw-event-err') ?>
+            <span class="field__hint" id="hw-event-hint">An Upcoming Event card takes its title, date and description from the event, and disappears once the event is over.</span>
+          </div>
+          <?php if ($liveOk): ?>
+          <div class="field<?= isset($errors['linked_stream_id']) ? ' field--error' : '' ?>">
+            <label class="field__label" for="hw-stream">Link to live stream <span class="field__optional">optional</span></label>
+            <select id="hw-stream" name="linked_stream_id"<?= $invalid('linked_stream_id', 'hw-stream-hint', 'hw-stream-err') ?>>
+              <option value="">— None —</option>
+              <?php foreach ($streams as $st): ?>
+                <option value="<?= (int) $st['id'] ?>"<?= $sel($v('linked_stream_id'), $st['id']) ?>><?= h($st['title_ta'] . ' — ' . $st['title_en'] . ' · ' . $st['status'] . ($st['scheduled_start_at'] ? ' · ' . adminFmtDate($st['scheduled_start_at'], true) . ' UTC' : '')) ?></option>
+              <?php endforeach; ?>
+            </select>
+            <?= $err('linked_stream_id', 'hw-stream-err') ?>
+            <span class="field__hint" id="hw-stream-hint">A Live Stream card shows the broadcast with a LIVE badge while it is scheduled, starting or on air, and vanishes once it has ended.</span>
+          </div>
+          <?php endif; ?>
+          <div class="field<?= isset($errors['image_url']) ? ' field--error' : '' ?>">
+            <label class="field__label" for="hw-image">Image <span class="field__optional">optional</span></label>
+            <input id="hw-image" name="image_url" maxlength="500" value="<?= h($v('image_url')) ?>" placeholder="/uploads/festival-poster.webp"<?= $invalid('image_url', 'hw-image-hint', 'hw-image-err') ?> />
+            <?= $err('image_url', 'hw-image-err') ?>
+            <span class="field__hint" id="hw-image-hint">A photo already in the Gallery (its /uploads/… address) or an https:// picture, shown at the top of the card.</span>
+          </div>
+          <div class="field">
+            <label class="field__label" for="hw-order">Display order</label>
+            <input id="hw-order" type="number" name="display_order" min="-1000" max="1000" inputmode="numeric" value="<?= (int) $v('display_order', 0) ?>" aria-describedby="hw-order-hint" />
+            <span class="field__hint" id="hw-order-hint">Breaks ties between cards with the same priority; lower comes first.</span>
+          </div>
+          <?php endif; ?>
         </div>
         <span class="field__hint">Active poojas are listed newest first; active sponsors alphabetically. A record this widget is already linked to stays in the list even when it is marked <em>(inactive)</em>, so saving never drops the link. A sponsor marked <em>(no publish consent)</em> can be linked but is not shown on the website until consent is recorded under Worship → Sponsors.</span>
       </fieldset>
@@ -508,6 +609,8 @@ echo adminPageIntro(
               <td>
                 <?php if ($row['pooja_name']): ?><span lang="ta"><?= h($row['pooja_name']) ?></span><?php else: ?><span class="text-muted">—</span><?php endif; ?>
                 <?php if ($row['sponsor_name']): ?><span class="cell-sub">Sponsor: <?= h($row['sponsor_name']) ?></span><?php endif; ?>
+                <?php if (!empty($row['event_title'])): ?><span class="cell-sub">Event: <?= h($row['event_title']) ?></span><?php endif; ?>
+                <?php if (!empty($row['stream_title'])): ?><span class="cell-sub">Stream: <?= h($row['stream_title']) ?></span><?php endif; ?>
               </td>
               <td class="num"><?= (int) $row['priority'] ?></td>
               <td>
@@ -557,7 +660,7 @@ echo adminPageIntro(
 
     <div class="callout mt-4">
       <?= adminIcon('info') ?>
-      <p><strong>Priority rules.</strong> Pinned widgets always come first; the rest are ordered by priority (1 = highest). Use low numbers for Announcements, then Upcoming and Calendar Poojas, then Sponsors and Nalla Neram. Widgets outside their start/end dates are hidden automatically, the homepage shows at most 15 cards, and if no widget is active the next pooja from the calendar is shown instead.</p>
+      <p><strong>Priority rules.</strong> Pinned widgets always come first; the rest are ordered by priority (1 = highest). Use low numbers for Announcements, then Upcoming and Calendar Poojas, then Sponsors and Nalla Neram. Widgets outside their start/end dates are hidden automatically; the API answers up to 15 cards and the homepage renders the first 8 of them (cards with the same priority follow their display order). If no widget is active the next pooja from the calendar is shown instead, and when no pooja is upcoming the newest active announcement takes its place.</p>
     </div>
   </div>
 
