@@ -469,6 +469,7 @@ function payAdminDetail(PDO $db, string $number): ?array
         'audit'      => $audit,
         'refundable' => $refundable,
         'api_refund' => $apiRefund,
+        'sponsor'    => $payable['type'] === 'donation' ? paySponsorForDonation($db, $payable['id']) : null,
         'links'      => [
             'receipt' => $paid ? siteUrl(payReceiptPath($payable['number'])) : null,
             'result'  => siteUrl(payResultPath($payable['number'])),

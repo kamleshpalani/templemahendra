@@ -1205,7 +1205,7 @@ async function countdownAndHomeChecks(made) {
   await emptySwitchWeekdayCheck();
 
   // 2. A broadcast in ten minutes: the homepage's upcoming state and the hero row.
-  F.nextHome = keep(mkStream({ label: "Evening Deeparadhana", status: "SCHEDULED", event_type: "deeparadhana", deity_slug: "renukadevi", starts_in_seconds: 600 }));
+  F.nextHome = keep(mkStream({ label: "Evening Deeparadhana", status: "SCHEDULED", event_type: "deeparadhana", deity_slug: "renukadevi", starts_in_seconds: 600, show_on_homepage: 1 }));
   for (const w of [1440, 390]) {
     const home = await newPage({ width: w, height: w < 700 ? 844 : 900 });
     await home.goto(`${BASE}/`, { waitUntil: "domcontentloaded" });
@@ -1267,7 +1267,7 @@ async function countdownAndHomeChecks(made) {
   setStatus(t0.id, "CANCELLED");
 
   // …and the homepage's hero row flips with them, under the visitor.
-  const t0home = keep(mkStream({ label: "Starting now on the homepage", status: "SCHEDULED", starts_in_seconds: 30 }));
+  const t0home = keep(mkStream({ label: "Starting now on the homepage", status: "SCHEDULED", starts_in_seconds: 30, show_on_homepage: 1 }));
   const h0 = await newPage();
   await h0.goto(`${BASE}/`, { waitUntil: "domcontentloaded" });
   await h0.locator(".home-hero__row--live").waitFor({ timeout: 30000 });
@@ -1392,7 +1392,7 @@ async function countdownAndHomeChecks(made) {
   setStatus(F.next90.id, "COMPLETED");
 
   // 5. A broadcast goes live: the homepage's LIVE NOW state, and the schedule's Live now group.
-  F.morning = keep(mkStream({ label: "Morning Abhishekam", status: "LIVE", event_type: "abhishekam", deity_slug: "lingammal", scheduled_start_local: `${tomorrowIst} 06:00` }));
+  F.morning = keep(mkStream({ label: "Morning Abhishekam", status: "LIVE", event_type: "abhishekam", deity_slug: "lingammal", scheduled_start_local: `${tomorrowIst} 06:00`, show_on_homepage: 1 }));
   for (const w of [1440, 390]) {
     const home = await newPage({ width: w, height: w < 700 ? 844 : 900 });
     await home.goto(`${BASE}/`, { waitUntil: "domcontentloaded" });
@@ -1431,6 +1431,103 @@ async function countdownAndHomeChecks(made) {
   check(/^Live now/.test((first ?? "").trim()) && (await sched.locator(`.live-schedule__day:first-of-type .live-card[href="/live-darshan/${F.morning.slug}"]`).count()) === 1, "the schedule's Today filter leads with the Live now group holding the broadcast", first ?? "");
   await sched.context().close();
   setStatus(F.morning.id, "COMPLETED");
+}
+
+/* ── Brief §12 / §6 / §32: pooja & event links, the sponsor credit, Featured, the homepage switch, an unavailable video ── */
+async function linksAndSwitches() {
+  const poojaName = `${PREFIX} Pournami pooja`;
+  const eventTitle = `${PREFIX} Aadi festival`;
+  const family = `${PREFIX} Kandasamy family`;
+  sql("DELETE FROM sponsors WHERE name LIKE ?", [`${CLEAN_PREFIX}%`]);
+  sql("DELETE FROM poojas WHERE name_en LIKE ?", [`${CLEAN_PREFIX}%`]);
+  sql("DELETE FROM events WHERE title_en LIKE ?", [`${CLEAN_PREFIX}%`]);
+  sql("INSERT INTO poojas (name_ta, name_en, pooja_date, pooja_time, pooja_type, is_active) VALUES (?, ?, ?, ?, 'pournami', 1)", [`${PREFIX} பௌர்ணமி பூஜை`, poojaName, istDate(5), "6:00 AM"]);
+  const poojaId = Number(sql("SELECT id FROM poojas WHERE name_en = ?", [poojaName])[0]?.id ?? 0);
+  sql("INSERT INTO events (title_ta, title_en, description, event_date, is_active) VALUES (?, ?, '', ?, 1)", [`${PREFIX} ஆடித் திருவிழா`, eventTitle, istDate(5)]);
+  const eventId = Number(sql("SELECT id FROM events WHERE title_en = ?", [eventTitle])[0]?.id ?? 0);
+  sql("INSERT INTO sponsors (name, family_name, phone, email, note, pooja_id, amount, payment_status, publish_consent, is_active) VALUES (?, ?, '9876543210', 'private-sponsor@example.test', 'In memory of our elders', ?, 5001, 'PAID', 1, 1)", [`${PREFIX} Kandasamy`, family, poojaId]);
+  check(poojaId > 0 && eventId > 0, "fixtures: a pooja, an event and a consenting sponsor of the pooja", `${poojaId} ${eventId}`);
+  F.linked = mkStream({ label: "Pournami pooja darshan", status: "SCHEDULED", pooja_id: poojaId, event_id: eventId, is_featured: 1, event_type: "abhishekam", scheduled_start_local: `${istDate(5)} 06:00`, scheduled_end_local: `${istDate(5)} 07:00` });
+  try {
+    // /live-darshan: the featured card leads the upcoming grid with its badge; the schedule keeps it first on its day.
+    const page = await newPage();
+    await openLive(page);
+    const hrefs = await page.locator(".live-upcoming .live-card").evaluateAll((els) => els.map((el) => el.getAttribute("href")));
+    const mine = hrefs.indexOf(`/live-darshan/${F.linked.slug}`);
+    const other = hrefs.indexOf(`/live-darshan/${F.sched.slug}`);
+    check(mine >= 0 && (other === -1 || mine < other), "Featured: the featured broadcast is listed before an earlier, unfeatured one in the upcoming grid", hrefs.join(" "));
+    const card = page.locator(`.live-upcoming .live-card[href="/live-darshan/${F.linked.slug}"]`);
+    check((await card.locator(".live-card__featured").count()) === 1 && /Featured/.test(await text(card.locator(".live-card__featured"))) && (await card.getAttribute("data-featured")) === "1", "Featured: the card carries the gold Featured badge", await text(card));
+    check((await page.locator(`.live-upcoming .live-card[href="/live-darshan/${F.sched.slug}"] .live-card__featured`).count()) === 0, "Featured: an unfeatured card carries none");
+    // The broadcast's page: Part of (the pooja → /sevas, the event → /events) and Sponsored by.
+    await openLive(page, `/live-darshan/${F.linked.slug}`);
+    const f = await facts(page);
+    check(new RegExp(`${poojaName}.*${eventTitle}`).test(f["Part of"] ?? ""), 'Part of: names the pooja and the event', f["Part of"]);
+    check((await page.locator('.live-meta [data-part-of="pooja"] a').getAttribute("href")) === "/sevas" && (await page.locator('.live-meta [data-part-of="event"] a').getAttribute("href")) === "/events", "Part of: the pooja links to /sevas and the event to /events");
+    check(new RegExp(`^${family}`).test(f["Sponsored by"] ?? "") && /In memory of our elders/.test(f["Sponsored by"] ?? ""), "Sponsored by: the family name (not the private name) with the note", f["Sponsored by"]);
+    const html = await page.content();
+    check(!html.includes("9876543210") && !html.includes("private-sponsor@example.test") && !/\b5001\b/.test(html) && !html.includes(`${PREFIX} Kandasamy<`), "…and neither the phone, the email, the amount nor the private name reaches the page");
+    check(!(await overflow(page)), "the linked page has no horizontal overflow");
+    const v = await axe(page);
+    check(v.length === 0, "the linked page has no serious or critical axe violations", v.join("\n      "));
+    await shot(page, "links-en");
+    check(page.errors().length === 0, "linked page: no console errors", page.errors().slice(0, 2).join(" | "));
+    await page.context().close();
+    const ta = await newPage({ lang: null });
+    await openLive(ta, `/live-darshan/${F.linked.slug}`);
+    const meta = await text(ta.locator(".live-meta"));
+    check(/இதன் பகுதி/.test(meta) && /பௌர்ணமி பூஜை/.test(meta) && /ஆடித் திருவிழா/.test(meta) && /உபயம்/.test(meta), "Tamil: இதன் பகுதி with the Tamil pooja and event names, and உபயம்", meta);
+    check(/சிறப்பு/.test(await text(ta.locator(".live-card__featured").first()).catch(() => "")) || (await ta.locator(".live-card__featured").count()) === 0, "Tamil: the Featured badge reads சிறப்பு where a card shows one");
+    await ta.context().close();
+    // Consent off: the credit disappears; the page keeps Part of.
+    sql("UPDATE sponsors SET publish_consent = 0 WHERE pooja_id = ?", [poojaId]);
+    const quiet = await newPage();
+    await openLive(quiet, `/live-darshan/${F.linked.slug}`);
+    const fq = await facts(quiet);
+    check(!("Sponsored by" in fq) && (await quiet.locator("[data-sponsor]").count()) === 0 && /Pournami pooja/.test(fq["Part of"] ?? ""), "a sponsor who withdrew consent is no longer named; Part of stays", JSON.stringify(fq));
+    await quiet.context().close();
+
+    // Show on homepage off (the default): the live broadcast is on /live-darshan but not on the homepage.
+    const home = await newPage();
+    await home.goto(`${BASE}/`, { waitUntil: "networkidle" });
+    await home.waitForTimeout(600);
+    check((await home.locator(".home-live .live-now").count()) === 0 && (await home.locator(".home-hero__row--live-on").count()) === 0, "Show on homepage off: no LIVE NOW card and no live hero row on the homepage");
+    await openLive(home);
+    check((await home.locator(".live-player__iframe").count()) === 1 && (await home.locator(".live-stream__head h2").textContent()) === F.live.title_en, "…while /live-darshan still plays it");
+    sql("UPDATE live_streams SET show_on_homepage = 1 WHERE id = ?", [F.live.id]);
+    await home.goto(`${BASE}/`, { waitUntil: "domcontentloaded" });
+    await home.locator(".home-live .live-now").waitFor({ timeout: 30000 });
+    check((await text(home.locator(".home-live .live-now__title"))) === F.live.title_en, "Show on homepage on: the LIVE NOW card appears with the broadcast");
+    sql("UPDATE live_streams SET show_on_homepage = 0 WHERE id = ?", [F.live.id]);
+    await home.context().close();
+
+    // §32: the video is gone or private — the poster with the reason and Try again, never a blank frame.
+    sql("UPDATE live_streams SET sync_state = 'missing' WHERE id = ?", [F.live.id]);
+    const gone = await newPage();
+    await openLive(gone, `/live-darshan/${F.live.slug}`);
+    check((await gone.locator(".live-player__iframe").count()) === 0 && (await gone.locator('.live-player__poster[data-unavailable="missing"]').count()) === 1, "unavailable (missing): no iframe, the poster marked missing");
+    check((await text(gone.locator(".live-player__state-text"))) === "The broadcast video is not available on YouTube right now. Please try again shortly.", "unavailable (missing): the sentence names the reason", await text(gone.locator(".live-player__state-text")));
+    check(/Unavailable/.test(await text(gone.locator(".live-player__state .badge"))), "unavailable: the poster badge reads Unavailable", await text(gone.locator(".live-player__state .badge")));
+    const again = gone.locator(".live-player__state button", { hasText: "Try again" });
+    check((await again.count()) === 1 && ((await again.boundingBox())?.height ?? 0) >= 44, "unavailable: Try again is offered (44 px)");
+    sql("UPDATE live_streams SET sync_state = 'restricted' WHERE id = ?", [F.live.id]);
+    await again.click();
+    await gone.locator('.live-player__poster[data-unavailable="restricted"]').waitFor({ timeout: 15000 });
+    check(/private or cannot be shown here/.test(await text(gone.locator(".live-player__state-text"))), "unavailable (restricted): Try again fetched afresh and the sentence changed", await text(gone.locator(".live-player__state-text")));
+    sql("UPDATE live_streams SET sync_state = NULL WHERE id = ?", [F.live.id]);
+    await gone.locator(".live-player__state button", { hasText: "Try again" }).click();
+    await gone.locator(".live-player__iframe").waitFor({ timeout: 15000 });
+    check((await gone.locator(".live-player__iframe").count()) === 1, "once the video is back, Try again mounts the player again");
+    check(gone.errors().length === 0, "unavailable: no console errors", gone.errors().slice(0, 2).join(" | "));
+    await shot(gone, "links-unavailable");
+    await gone.context().close();
+  } finally {
+    sql("UPDATE live_streams SET sync_state = NULL, show_on_homepage = 0 WHERE id = ?", [F.live.id]);
+    sql("UPDATE live_streams SET deleted_at = UTC_TIMESTAMP() WHERE id = ?", [F.linked.id]);
+    sql("DELETE FROM sponsors WHERE pooja_id = ?", [poojaId]);
+    sql("DELETE FROM poojas WHERE id = ?", [poojaId]);
+    sql("DELETE FROM events WHERE id = ?", [eventId]);
+  }
 }
 
 /* ── Main ───────────────────────────────────────────────────────────────── */
@@ -1492,6 +1589,7 @@ try {
   await scenario("polling", "Polling and the live region", liveRegionAndPolling);
   await scenario("schedule", "The schedule page: filters, address, counts, day groups, empty state (Phase 2)", schedulePage);
   await scenario("phase4", "The premium player page: viewer count, actions, Notify me, the recording, Try again, About this pooja (Phase 4)", premiumPage);
+  await scenario("links", "Pooja / event links, the sponsor credit, Featured, the homepage switch and an unavailable video (brief §12, §6, §32)", linksAndSwitches);
   await scenario("scheduled", "After the live broadcast ends: SCHEDULED, then the empty state", scheduledThenEmpty);
   await scenario("phase2", "The countdown, the server offset and the homepage's three states (Phase 2)", countdownAndHome);
 

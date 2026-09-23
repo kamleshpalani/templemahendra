@@ -325,11 +325,13 @@ function livePollDecide(array $row, array $fact, array $cfg, string $now): array
  * The one call site of every status move the poller makes, the catch-up's
  * two steps included. $row carries the status the step starts from. Checks
  * G7 against LIVE_AUTO_TRANSITIONS, then calls liveSetStatus(). Throws what
- * liveSetStatus() throws; never catches.
+ * liveSetStatus() throws; never catches. $opts goes to liveSetStatus() as it
+ * is: `recording` false tells a COMPLETED move that YouTube reported no
+ * recording, so the video is not kept as one (livePollRecordingEvidence()).
  *
  * Its first statement is the fenced test door of §10.1.
  */
-function livePollApplyMove(PDO $db, array $row, string $to, ?string $at): void
+function livePollApplyMove(PDO $db, array $row, string $to, ?string $at, array $opts = []): void
 {
     if (liveSimulatorAllowed() && $to === 'COMPLETED' && (string) ($row['id'] ?? '') === envValue('LIVE_SIM_FAIL_AFTER_LIVE')) {
         throw new RuntimeException('simulated failure after LIVE');
@@ -338,7 +340,18 @@ function livePollApplyMove(PDO $db, array $row, string $to, ?string $at): void
     if (!in_array($to, LIVE_AUTO_TRANSITIONS[$from] ?? [], true)) {
         throw new LiveTransitionException('The job may not move a stream ' . $from . ' → ' . $to . '.');
     }
-    liveSetStatus($db, (int) $row['id'], $to, (string) ($row['_poll_actor'] ?? 'cron'), $at);
+    liveSetStatus($db, (int) $row['id'], $to, (string) ($row['_poll_actor'] ?? 'cron'), $at, $opts);
+}
+
+/**
+ * Whether a fact says the broadcast may be kept as its own recording: true
+ * unless Tier 2's recordingStatus says it was not recorded (a Tier 1 answer
+ * has no recordingStatus and is trusted). The same rule the sweep applies
+ * when it writes recording_url itself.
+ */
+function livePollRecordingEvidence(array $fact): bool
+{
+    return ($fact['recording_status'] ?? null) === null || $fact['recording_status'] === 'recorded';
 }
 
 /** Internal: the provider-owned columns a usable answer writes (§5.5 "facts"). */
@@ -408,14 +421,15 @@ function livePollStream(PDO $db, array $row, array $fact, array $cfg, string $ac
             $d = livePollDecide($locked, $fact, $cfg, $now);
             $status = (string) $locked['status'];
             $changed = false;
+            $moveOpts = ['recording' => livePollRecordingEvidence($fact)];
             if ($d['to'] !== null) {
-                livePollApplyMove($db, $locked, $d['to'], $d['at']);
+                livePollApplyMove($db, $locked, $d['to'], $d['at'], $moveOpts);
                 $status = $d['to'];
                 $changed = true;
                 if ($d['then'] !== null) {
                     $second = $locked;
                     $second['status'] = $d['to'];
-                    livePollApplyMove($db, $second, $d['then'], $d['then_at']);
+                    livePollApplyMove($db, $second, $d['then'], $d['then_at'], $moveOpts);
                     $status = $d['then'];
                 }
             }
@@ -424,7 +438,7 @@ function livePollStream(PDO $db, array $row, array $fact, array $cfg, string $ac
             if (
                 $changed && $status === 'COMPLETED' && ($locked['recording_url'] ?? null) === null
                 && !empty($locked['archive_enabled'])
-                && (($fact['recording_status'] ?? null) === null || $fact['recording_status'] === 'recorded')
+                && $moveOpts['recording']
                 && is_string($locked['provider_broadcast_id'] ?? null)
             ) {
                 $rec['recording_url'] = liveYoutubeWatchUrl((string) $locked['provider_broadcast_id']);

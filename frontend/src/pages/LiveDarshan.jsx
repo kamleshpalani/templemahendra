@@ -108,10 +108,11 @@ export default function LiveDarshan() {
   const overview = useLiveOverview({ poll: !slug });
   const single = useStream(slug ?? null);
 
-  // The list route features `now` (live), else `next` (the first upcoming
-  // one, with its countdown), as the index route names them (SPEC-PHASE2
-  // §1.1); the two lists stand in for an answer without them.
-  const stream = slug ? single.stream : (overview.now ?? overview.next ?? pickStream(overview.live, overview.upcoming));
+  // The list route features the live broadcast, else the upcoming one that
+  // starts first (with its countdown), read from the two lists: `now` and
+  // `next` are the homepage's and leave out a broadcast whose "Show on
+  // homepage" switch is off, while this page shows every public one.
+  const stream = slug ? single.stream : pickStream(overview.live, overview.upcoming);
   const serverOffset = slug ? single.serverOffset : overview.serverOffset;
   const loading = slug ? single.loading : overview.loading;
   const error = slug ? single.error : overview.error;

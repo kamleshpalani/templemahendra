@@ -181,6 +181,20 @@ function sitePathStatus(string $path): int
 {
     if (isset(sitePages()[$path])) return 200;
     if (in_array($path, SITE_REDIRECT_PATHS, true) || in_array($path, SITE_PRIVATE_PATHS, true)) return 200;
+    // One event's page (/events/<id>, brief §6): 200 while the event is shown,
+    // 404 once it is hidden or deleted. Same rule as a broadcast when the
+    // database cannot answer: assume the page exists.
+    if (preg_match('#^/events/([0-9]{1,10})$#', $path, $m)) {
+        try {
+            require_once __DIR__ . '/db.php';
+            $stmt = getDB()->prepare('SELECT 1 FROM events WHERE id = :id AND is_active = 1');
+            $stmt->execute([':id' => (int) $m[1]]);
+            return $stmt->fetchColumn() ? 200 : 404;
+        } catch (Throwable $e) {
+            error_log('[spa] ' . get_class($e) . ': ' . $e->getMessage());
+            return 200;
+        }
+    }
     if (preg_match('#^/live-darshan/([0-9]{1,10}|[a-z0-9][a-z0-9-]{1,118})$#i', $path, $m)) {
         try {
             require_once __DIR__ . '/db.php';

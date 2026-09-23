@@ -42,6 +42,25 @@ try {
     error_log('[sitemap] ' . get_class($e) . ': ' . $e->getMessage());
 }
 
+// One entry per shown event that is still to come or on now (brief §6):
+// /events/<id>. Past events stay reachable but are not worth a crawler's
+// visit. Works before migration 020 too (no end_date, no lastmod).
+try {
+    require_once __DIR__ . '/../includes/public_guard.php';
+    $span = publicGuardHasColumn('events', 'end_date') ? 'COALESCE(end_date, event_date)' : 'event_date';
+    $mod  = publicGuardHasColumn('events', 'updated_at') ? 'updated_at' : 'NULL AS updated_at';
+    $stmt = getDB()->query("SELECT id, $mod FROM events WHERE is_active = 1 AND $span >= CURRENT_DATE ORDER BY event_date ASC, id ASC LIMIT 500");
+    foreach ($stmt->fetchAll() as $row) {
+        $entries[] = [
+            'loc'        => siteUrl('/events/' . (int) $row['id']),
+            'lastmod'    => $row['updated_at'] ? gmdate('Y-m-d', strtotime((string) $row['updated_at'])) : null,
+            'changefreq' => 'weekly',
+        ];
+    }
+} catch (Throwable $e) {
+    error_log('[sitemap] events: ' . get_class($e) . ': ' . $e->getMessage());
+}
+
 header('Content-Type: application/xml; charset=utf-8');
 header('Cache-Control: public, max-age=3600');
 

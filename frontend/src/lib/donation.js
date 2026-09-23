@@ -60,7 +60,9 @@ export const PAN_RE = /^[A-Z]{5}[0-9]{4}[A-Z]$/;
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
 const COUNTRY_CODES = new Set(COUNTRIES.map((c) => c.iso2));
 
-const PURPOSE_KEYS = new Set(["category", "amount", "currency"]);
+// pooja_id comes from the URL (?pooja=), not a field, but the server may still
+// refuse it (a pooja that is over), and that belongs with the purpose.
+const PURPOSE_KEYS = new Set(["category", "amount", "currency", "pooja_id"]);
 const DETAILS_KEYS = new Set([
   "name",
   "phone",
@@ -261,6 +263,7 @@ export function fieldIdFor(errorKey) {
       category: "don-category",
       amount: "don-amount",
       currency: "don-currency",
+      pooja_id: "don-pooja",
       name: "don-name",
       phone: "don-phone",
       country: "don-country",
@@ -286,6 +289,8 @@ export function fieldLabel(errorKey, form, t) {
       return t("தொகை", "Amount");
     case "currency":
       return t("நாணயம்", "Currency");
+    case "pooja_id":
+      return t("பூஜை", "Pooja");
     case "name":
       return t("முழுப் பெயர்", "Full name");
     case "phone":

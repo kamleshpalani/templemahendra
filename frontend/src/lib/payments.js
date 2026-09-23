@@ -104,6 +104,52 @@ export async function getJson(path) {
   }
 }
 
+/* ── The pooja a donation is for (brief §13) ─────────────────────────────── */
+
+/**
+ * `/donate?pooja=<id>`: the pooja the donor came to sponsor, looked up among
+ * the homepage widgets — the cards that carry such a link. Returns
+ * `{ pooja, loading }`; `pooja` is `{ id, name: {ta, en}, date, time, type }`
+ * or null when the id is not among them. The server validates the id itself
+ * (an active pooja on today or a later date), so a miss here only loses the
+ * name on the page, never the link on the payment.
+ */
+export function useSponsoredPooja(id) {
+  const wanted = Number.isInteger(id) && id > 0 ? id : null;
+  const [state, setState] = useState({ pooja: null, loading: Boolean(wanted) });
+
+  useEffect(() => {
+    let alive = true;
+    if (!wanted) {
+      setState({ pooja: null, loading: false });
+      return undefined;
+    }
+    setState({ pooja: null, loading: true });
+    getJson("/api/homepage_widgets").then(({ body }) => {
+      if (!alive) return;
+      const blocks = (Array.isArray(body) ? body : []).map((w) => w?.pooja).filter(Boolean);
+      const found = blocks.find((p) => Number(p.id) === wanted) ?? null;
+      setState({
+        loading: false,
+        pooja: found
+          ? {
+              id: wanted,
+              name: { ta: found.name?.ta ?? found.name_ta ?? "", en: found.name?.en ?? found.name_en ?? "" },
+              date: found.date ?? found.pooja_date ?? null,
+              time: found.time ?? found.pooja_time ?? null,
+              type: found.type ?? found.pooja_type ?? null,
+            }
+          : null,
+      });
+    });
+    return () => {
+      alive = false;
+    };
+  }, [wanted]);
+
+  return state;
+}
+
 /* ── The hand-off to CCAvenue ────────────────────────────────────────────── */
 
 /**

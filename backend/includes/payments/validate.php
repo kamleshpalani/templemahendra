@@ -403,6 +403,27 @@ function payValidateDonation(array $body, array $cfg): array
         if ($category === null) $fields['category'] = 'Choose one of the donation purposes listed.';
     }
 
+    // Pooja (optional, brief §13): the pooja this donation sponsors, from
+    // /donate?pooja=<id>. Only an active pooja on today or a later IST date is
+    // accepted; anything else is refused rather than dropped, so a donor never
+    // pays believing they sponsored a pooja that is over.
+    $pooja = null;
+    $rawPooja = $body['pooja_id'] ?? null;
+    if ($rawPooja !== null && $rawPooja !== '') {
+        $isId = is_int($rawPooja) || (is_string($rawPooja) && preg_match('/^\d{1,10}$/D', $rawPooja) === 1);
+        if (!payPoojaLinksReady()) {
+            $fields['pooja_id'] = 'Pooja sponsorships are not available right now.';
+        } elseif (!$isId || (int) $rawPooja <= 0) {
+            $fields['pooja_id'] = 'Choose a pooja from the temple calendar.';
+        } else {
+            $pooja = payPoojaLoad(getDB(), (int) $rawPooja);
+            if ($pooja === null || !$pooja['open']) {
+                $fields['pooja_id'] = 'This pooja is not open for sponsorship.';
+                $pooja = null;
+            }
+        }
+    }
+
     // Currency
     $currency = payFieldText($body, 'currency');
     if ($currency === null) {
@@ -509,6 +530,8 @@ function payValidateDonation(array $body, array $cfg): array
         'category'           => $category['slug'] ?? null,
         'category_id'        => $category['id'] ?? null,
         'category_name'      => $category['name'] ?? null,
+        'pooja_id'           => $pooja['id'] ?? null,
+        'pooja_name'         => $pooja['name'] ?? null,
         'stream'             => $stream,
         'amount'             => $amount,
         'currency'           => $currency,

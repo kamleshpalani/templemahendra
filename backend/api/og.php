@@ -90,6 +90,29 @@ function ogLang(): string
     return 'ta';
 }
 
+/**
+ * An event's date, or span of dates, the way the Events page prints it:
+ * "24 Jan 2026", "24–26 Jan 2026", "30 Jan – 2 Feb 2026". Month names are
+ * spelled out in the reader's language.
+ */
+function ogEventDate(string $from, ?string $until, string $lang): string
+{
+    $months = $lang === 'en'
+        ? ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+        : ['ஜன', 'பிப்', 'மார்', 'ஏப்', 'மே', 'ஜூன்', 'ஜூலை', 'ஆக', 'செப்', 'அக்', 'நவ', 'டிச'];
+    $one = static function (string $d) use ($months): ?array {
+        if (!preg_match('/^(\d{4})-(\d{2})-(\d{2})$/', $d, $m)) return null;
+        return ['d' => (int) $m[3], 'm' => $months[(int) $m[2] - 1] ?? $m[2], 'y' => (int) $m[1], 'ym' => $m[1] . $m[2]];
+    };
+    $a = $one($from);
+    if ($a === null) return $from;
+    $b = $until !== null && $until !== $from ? $one($until) : null;
+    if ($b === null) return "{$a['d']} {$a['m']} {$a['y']}";
+    if ($a['ym'] === $b['ym']) return "{$a['d']}–{$b['d']} {$a['m']} {$a['y']}";
+    if ($a['y'] === $b['y']) return "{$a['d']} {$a['m']} – {$b['d']} {$b['m']} {$a['y']}";
+    return "{$a['d']} {$a['m']} {$a['y']} – {$b['d']} {$b['m']} {$b['y']}";
+}
+
 /** One line, short enough for a preview card, cut on a word where possible. */
 function ogTrim(?string $value, int $max = 200): string
 {
@@ -196,6 +219,35 @@ try {
             $description = $lang === 'en' ? $descEn : $descTa;
         }
         $type = 'article';
+    } elseif (preg_match('#^/events/([0-9]{1,10})$#', $path, $m)) {
+        // One event's own page (brief §6, migration 020): its title and
+        // programme in the reader's language, its date, and its picture when
+        // the committee gave it one. A hidden or deleted event is a 404 that
+        // says so, never a preview of the events list under a wrong address.
+        require_once __DIR__ . '/../includes/public_guard.php';
+        $bi   = publicGuardHasColumn('events', 'description_ta') && publicGuardHasColumn('events', 'end_date') && publicGuardHasColumn('events', 'image_url');
+        $stmt = getDB()->prepare('SELECT title_ta, title_en, description, event_date'
+            . ($bi ? ', description_ta, description_en, end_date, image_url' : '')
+            . ' FROM events WHERE id = :id AND is_active = 1');
+        $stmt->execute([':id' => (int) $m[1]]);
+        $event = $stmt->fetch();
+        [, , $descTa, $descEn] = $pages['/events'];
+        if ($event) {
+            $other = $lang === 'en' ? 'ta' : 'en';
+            $title = trim((string) $event['title_' . $lang]) ?: trim((string) $event['title_' . $other]);
+            $text  = $bi ? (trim((string) $event['description_' . $lang]) ?: trim((string) $event['description_' . $other])) : '';
+            $text  = ogTrim($text ?: (string) $event['description'], 160) ?: ($lang === 'en' ? $descEn : $descTa);
+            $description = ogEventDate((string) $event['event_date'], $bi ? $event['end_date'] : null, $lang) . ' · ' . $text;
+            if ($bi && !empty($event['image_url'])) {
+                $image    = (string) $event['image_url'];
+                $imageAlt = $title;
+            }
+            $type = 'article';
+        } else {
+            $title  = $lang === 'en' ? 'Event not found' : 'நிகழ்வு கிடைக்கவில்லை';
+            $robots = 'noindex, nofollow';
+            $status = 404;
+        }
     } elseif ($streamPath) {
         $key = substr($path, strlen('/live-darshan/'));
         $db = getDB();

@@ -1,10 +1,18 @@
 <?php
-// backend/api/settings.php
-// Returns public homepage display settings (section visibility toggles).
-// Only boolean-like values (0/1) are exposed — no sensitive data.
+// backend/api/settings.php — GET /api/settings
+//
+// What the public site needs to know about itself, in one call:
+//   the homepage section switches (top-level booleans, as they always were),
+//   `site`      the committee's own facts and copy (site_settings, migration 025;
+//               only public keys — the office address never leaves the server),
+//   `seo`       per-address title / description / image / robots overrides,
+//   `languages` the languages offered and the default for a first visit.
+// A database without migration 025 answers the switches and the built-in
+// defaults, so nothing on the site changes until the committee edits.
 
 require_once __DIR__ . '/../includes/db.php';
 require_once __DIR__ . '/../includes/helpers.php';
+require_once __DIR__ . '/../includes/site_settings.php';
 
 setCorsHeaders();
 
@@ -12,40 +20,19 @@ if ($_SERVER['REQUEST_METHOD'] !== 'GET') {
     sendError('Method not allowed', 405);
 }
 
-$db = getDB();
-
-// Ensure table exists (safety net if database/schema.sql was not imported)
+$out = ['show_pournami_section' => true, 'show_nalla_strip' => true, 'show_donor_ticker' => true];
 try {
-    $db->exec("CREATE TABLE IF NOT EXISTS `homepage_settings` (
-      `key_name` VARCHAR(80)  NOT NULL,
-      `val`      VARCHAR(10)  NOT NULL DEFAULT '1',
-      `label`    VARCHAR(300) NULL,
-      PRIMARY KEY (`key_name`)
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
-} catch (PDOException $e) {
-    // Table already exists or DB user lacks CREATE privilege — schema.sql is the source of truth
+    foreach (getDB()->query('SELECT key_name, val FROM homepage_settings')->fetchAll(PDO::FETCH_KEY_PAIR) as $k => $v) {
+        $out[$k] = (bool) (int) $v;
+    }
+} catch (Throwable $e) {
+    // homepage_settings comes with schema.sql; without it the defaults above stand
+    error_log('[settings] homepage_settings unavailable: ' . $e->getMessage());
 }
 
-// Seed defaults if missing
-$defaults = [
-    ['show_pournami_section', '1', 'Show Pournami Poojai section on homepage'],
-    ['show_nalla_strip',      '1', 'Show Nalla Neram strip on homepage'],
-    ['show_donor_ticker',     '1', 'Show donor scroll ticker'],
-];
-$ins = $db->prepare(
-    "INSERT IGNORE INTO homepage_settings (key_name, val, label) VALUES (?,?,?)"
-);
-foreach ($defaults as $d) {
-    try { $ins->execute($d); } catch (Exception $e) { /* already seeded */ }
-}
+$out['site']      = siteSettingsPublic();
+$out['seo']       = siteSeoOverrides();
+$out['languages'] = siteLanguages();
 
-$rows = $db->query("SELECT key_name, val FROM homepage_settings")->fetchAll(PDO::FETCH_KEY_PAIR);
-
-// Cast to booleans for frontend
-$out = [];
-foreach ($rows as $k => $v) {
-    $out[$k] = (bool)(int)$v;
-}
-
+header('Cache-Control: public, max-age=60');
 sendJson($out);
-

@@ -20,6 +20,10 @@
  * liveSetStatus(), which takes the provider's own instant as $at.
  */
 
+// sponsorPublicSql() / publicGuardHasColumn(): the sponsor credit a pooja-linked
+// stream shows follows the same consent gate as the Poojas and Donors pages.
+require_once __DIR__ . '/../public_guard.php';
+
 /** Thrown by liveSetStatus() for a jump LIVE_TRANSITIONS does not allow. */
 class LiveTransitionException extends RuntimeException
 {
@@ -89,16 +93,42 @@ function liveTransaction(PDO $db, callable $work): mixed
     }
 }
 
-/** The SELECT every read uses: the stream (alias s) with its temple (t) and deity (d). */
+/**
+ * The SELECT every read uses: the stream (alias s) with its temple (t) and
+ * deity (d) and — once migration 022 is applied — its pooja (p), its event
+ * (e) and the pooja's published sponsor (sp): the first active sponsor of
+ * that pooja who agreed to be named (sponsorPublicSql(); without the consent
+ * column nobody is published). Name and note only — never the phone, the
+ * email or the amount.
+ */
 function liveSelectSql(): string
 {
-    return 'SELECT s.*,
+    $sql = 'SELECT s.*,
                    t.slug AS temple_slug, t.name_ta AS temple_name_ta, t.name_en AS temple_name_en,
                    t.short_name_ta AS temple_short_name_ta, t.short_name_en AS temple_short_name_en,
-                   d.slug AS deity_slug, d.name_ta AS deity_name_ta, d.name_en AS deity_name_en
+                   d.slug AS deity_slug, d.name_ta AS deity_name_ta, d.name_en AS deity_name_en';
+    $links = liveLinksInstalled();
+    if ($links) {
+        $public = sponsorPublicSql('sp2');
+        $name   = sponsorPublicSql('sp')['name'];
+        $sql .= ',
+                   p.name_ta AS pooja_name_ta, p.name_en AS pooja_name_en, p.pooja_date AS pooja_date, p.pooja_time AS pooja_time,
+                   e.title_ta AS event_title_ta, e.title_en AS event_title_en, e.event_date AS event_date,
+                   ' . $name . ' AS sponsor_name, sp.note AS sponsor_note';
+    }
+    $sql .= '
               FROM live_streams s
               JOIN temples t ON t.id = s.temple_id
               LEFT JOIN deities d ON d.id = s.deity_id';
+    if ($links) {
+        $sql .= '
+              LEFT JOIN poojas p ON p.id = s.pooja_id
+              LEFT JOIN events e ON e.id = s.event_id
+              LEFT JOIN sponsors sp ON sp.id = (SELECT sp2.id FROM sponsors sp2
+                                                 WHERE sp2.pooja_id = s.pooja_id AND ' . $public['where'] . '
+                                                 ORDER BY sp2.created_at ASC, sp2.id ASC LIMIT 1)';
+    }
+    return $sql;
 }
 
 /** Completed recordings, newest first; month boundaries are UTC instants. */
@@ -192,32 +222,73 @@ function liveFeatured(PDO $db): ?array
  */
 const LIVE_UPCOMING_GRACE_HOURS = 3;
 
+/** The WHERE of the upcoming list (the §1 "upcoming" rule), on alias s with :now. */
+function liveUpcomingWhereSql(): string
+{
+    return "s.deleted_at IS NULL AND s.status = 'SCHEDULED'
+          AND (s.scheduled_start_at IS NULL
+               OR COALESCE(s.scheduled_end_at, s.scheduled_start_at + INTERVAL " . LIVE_UPCOMING_GRACE_HOURS . " HOUR) >= :now)";
+}
+
 /**
  * SCHEDULED streams that have not ended: the end time when one was given,
  * else the start plus LIVE_UPCOMING_GRACE_HOURS, is still ahead of now (a NULL
  * start is listed last). Soonest start first, so one that is running late
- * leads the list.
+ * leads the list — except that a featured broadcast (is_featured, brief §12)
+ * is listed before the others, whatever its date; $featuredFirst false gives
+ * the plain chronological order (the "next" broadcast is the next in time).
  */
-function liveListUpcoming(PDO $db, int $limit): array
+function liveListUpcoming(PDO $db, int $limit, bool $featuredFirst = true): array
 {
     $limit = max(1, min(50, $limit));
-    $stmt = $db->prepare(liveSelectSql() . "
-        WHERE s.deleted_at IS NULL AND s.status = 'SCHEDULED'
-          AND (s.scheduled_start_at IS NULL
-               OR COALESCE(s.scheduled_end_at, s.scheduled_start_at + INTERVAL " . LIVE_UPCOMING_GRACE_HOURS . " HOUR) >= :now)
-        ORDER BY (s.scheduled_start_at IS NULL), s.scheduled_start_at ASC, s.id ASC
-        LIMIT " . $limit);
+    $stmt = $db->prepare(liveSelectSql() . '
+        WHERE ' . liveUpcomingWhereSql() . '
+        ORDER BY ' . ($featuredFirst ? 's.is_featured DESC, ' : '') . '(s.scheduled_start_at IS NULL), s.scheduled_start_at ASC, s.id ASC
+        LIMIT ' . $limit);
     $stmt->execute([':now' => liveUtcNow()]);
     return $stmt->fetchAll();
 }
 
 /**
  * The first upcoming broadcast (the §1 "upcoming" rule: SCHEDULED and not
- * over, soonest start first), or null. The index route answers it as `next`.
+ * over, soonest start first — a featured one takes no precedence here: "next"
+ * is the next in time), or null. The Live Darshan page shows it as the poster.
  */
 function liveNextUpcoming(PDO $db): ?array
 {
-    return liveListUpcoming($db, 1)[0] ?? null;
+    return liveListUpcoming($db, 1, false)[0] ?? null;
+}
+
+/**
+ * The homepage's live broadcast: liveFeatured() among the rows whose
+ * show_on_homepage switch is on (brief §6), or null. A stream with the switch
+ * off is still live on /live-darshan and the schedule; only the homepage's
+ * block and hero row leave it out. The index route answers it as `now`.
+ */
+function liveHomeNow(PDO $db): ?array
+{
+    $stmt = $db->query(liveSelectSql() . "
+        WHERE s.deleted_at IS NULL AND s.status IN ('LIVE', 'STARTING') AND s.show_on_homepage = 1
+        ORDER BY " . liveLiveOrderSql() . '
+        LIMIT 1');
+    $row = $stmt->fetch();
+    return $row ?: null;
+}
+
+/**
+ * The homepage's next broadcast: liveNextUpcoming() among the rows whose
+ * show_on_homepage switch is on, or null. The index route answers it as `next`.
+ */
+function liveHomeNext(PDO $db): ?array
+{
+    $stmt = $db->prepare(liveSelectSql() . '
+        WHERE ' . liveUpcomingWhereSql() . '
+          AND s.show_on_homepage = 1
+        ORDER BY (s.scheduled_start_at IS NULL), s.scheduled_start_at ASC, s.id ASC
+        LIMIT 1');
+    $stmt->execute([':now' => liveUtcNow()]);
+    $row = $stmt->fetch();
+    return $row ?: null;
 }
 
 /* ── The public schedule (docs/live/SPEC-PHASE2.md §1.2) ──────────────── */
@@ -296,8 +367,9 @@ function liveScheduleWhereSql(array $window, string $suffix = ''): array
 /**
  * The public schedule for one filter: the rows in the window (live first —
  * the live list's own order — then by start ascending, an undated row last,
- * and a COMPLETED broadcast after the others of its day), the window, and the
- * row count of every filter for the page's tabs.
+ * a featured broadcast before the others of its day and a COMPLETED one
+ * after them), the window, and the row count of every filter for the page's
+ * tabs.
  *
  * @return array{rows: array, window: array, counts: array<string, int>}
  */
@@ -333,6 +405,10 @@ function liveListSchedule(PDO $db, string $filter, int $limit, string $tz): arra
         $ea = (string) $a['status'] === 'COMPLETED';
         $eb = (string) $b['status'] === 'COMPLETED';
         if ($ea !== $eb) return $ea ? 1 : -1;
+        // A featured broadcast leads its day (brief §12); the day order itself is kept.
+        $fa = !empty($a['is_featured']);
+        $fb = !empty($b['is_featured']);
+        if ($fa !== $fb) return $fa ? -1 : 1;
         return [(string) ($a['scheduled_start_at'] ?? '9999'), (int) $a['id']] <=> [(string) ($b['scheduled_start_at'] ?? '9999'), (int) $b['id']];
     });
 
@@ -477,13 +553,20 @@ function liveAdminCounts(PDO $db): array
     return $out;
 }
 
-/** The writable columns, in the order the INSERT/UPDATE names them. */
+/** The writable columns, in the order the INSERT/UPDATE names them (pooja_id and event_id need migration 022: liveWriteColumns()). */
 const LIVE_WRITE_COLUMNS = [
-    'temple_id', 'deity_id', 'title_ta', 'title_en', 'slug', 'description_ta', 'description_en',
+    'temple_id', 'deity_id', 'pooja_id', 'event_id', 'title_ta', 'title_en', 'slug', 'description_ta', 'description_en',
     'event_type', 'provider', 'provider_broadcast_id', 'playback_url', 'recording_url', 'thumbnail_url', 'banner_url',
     'scheduled_start_at', 'scheduled_end_at', 'timezone',
     'is_featured', 'show_on_homepage', 'donations_enabled', 'notifications_enabled', 'sharing_enabled', 'archive_enabled',
 ];
+
+/** The columns this database can take: LIVE_WRITE_COLUMNS without pooja_id / event_id until migration 022 is applied. */
+function liveWriteColumns(): array
+{
+    if (liveLinksInstalled()) return LIVE_WRITE_COLUMNS;
+    return array_values(array_diff(LIVE_WRITE_COLUMNS, ['pooja_id', 'event_id']));
+}
 
 /** Audit detail text: the title and a list, clipped to the column. */
 function liveAuditDetail(string $lead, array $row, array $extra = []): string
@@ -502,7 +585,7 @@ function liveInsert(PDO $db, array $values, string $actor): int
 {
     return liveTransaction($db, function (PDO $db) use ($values, $actor): int {
         $now = liveUtcNow();
-        $cols = LIVE_WRITE_COLUMNS;
+        $cols = liveWriteColumns();
         $params = [];
         foreach ($cols as $c) $params[':' . $c] = $values[$c] ?? null;
         $status = liveIsStatus($values['status'] ?? null) && in_array($values['status'], LIVE_CREATE_STATUSES, true) ? $values['status'] : 'DRAFT';
@@ -534,7 +617,7 @@ function liveUpdate(PDO $db, int $id, array $values, string $actor): void
         $changed = [];
         $sets = [];
         $params = [':id' => $id, ':by' => mb_substr($actor, 0, 60), ':now' => $now];
-        foreach (LIVE_WRITE_COLUMNS as $c) {
+        foreach (liveWriteColumns() as $c) {
             if (!array_key_exists($c, $values)) continue;
             $new = $values[$c];
             $old = $existing[$c] ?? null;
@@ -625,15 +708,24 @@ function liveRestore(PDO $db, int $id, string $actor): bool
  *   provider sent a strange string, and the column is public
  *   (store.php:647-648).
  *
+ * @param array $opts  `recording` (bool, default true): on COMPLETED, when
+ *   the provider is YouTube, the archive switch is on and recording_url is
+ *   still NULL, the broadcast's own video becomes the recording in the same
+ *   UPDATE (brief §12: "after completion the video remains available") — the
+ *   same address the poller writes on an automatic completion. The poller
+ *   passes false when YouTube reports the broadcast was not recorded; a hand
+ *   end (the End stream button, the API, the form) has no such evidence and
+ *   keeps the video. A recording_url already set is never overwritten.
+ *
  * @return array{changed: bool, from: string, to: string}
  * @throws LiveTransitionException when the jump is not allowed
  * @throws LiveValidationException when the row is not ready for the target status
  * @throws RuntimeException when the stream does not exist (or is deleted)
  */
-function liveSetStatus(PDO $db, int $id, string $to, string $actor, ?string $at = null): array
+function liveSetStatus(PDO $db, int $id, string $to, string $actor, ?string $at = null, array $opts = []): array
 {
     $to = strtoupper(trim($to));
-    return liveTransaction($db, function (PDO $db) use ($id, $to, $actor, $at): array {
+    return liveTransaction($db, function (PDO $db) use ($id, $to, $actor, $at, $opts): array {
         $row = liveLoad($db, $id, false, true);
         if ($row === null) throw new RuntimeException('That stream no longer exists.');
         $from = (string) $row['status'];
@@ -660,6 +752,15 @@ function liveSetStatus(PDO $db, int $id, string $to, string $actor, ?string $at 
         if ($to === 'COMPLETED' && $row['actual_end_at'] === null) {
             $sets[] = 'actual_end_at = :ended';
             $params[':ended'] = $stamp;
+        }
+        if ($to === 'COMPLETED' && ($opts['recording'] ?? true) !== false
+            && ($row['recording_url'] ?? null) === null && !empty($row['archive_enabled'])
+            && (string) ($row['provider'] ?? '') === 'youtube') {
+            $video = (string) ($row['provider_broadcast_id'] ?? '');
+            if (preg_match(LIVE_YT_ID_RE, $video) && $video !== 'live_stream') {
+                $sets[] = 'recording_url = :recording';
+                $params[':recording'] = liveYoutubeWatchUrl($video);
+            }
         }
         $db->prepare('UPDATE live_streams SET ' . implode(', ', $sets) . ' WHERE id = :id')->execute($params);
         liveAudit('live_stream_status', 'Stream #' . $id, mb_substr($from . ' → ' . $to . ' by ' . $actor . ' — “' . mb_substr((string) $row['title_en'], 0, 120) . '”', 0, 500), $actor);
@@ -848,8 +949,23 @@ function liveSetSyncEnabled(PDO $db, int $id, bool $on, string $actor, string $w
 /* ── Shapes ──────────────────────────────────────────────────────────────── */
 
 /**
+ * The provider states under which a LIVE / STARTING YouTube broadcast cannot
+ * be shown in a frame (brief §32 "unavailable video"): the video is gone,
+ * private or not embeddable, as the last check recorded in sync_state
+ * (poll.php, health.php). The public shape marks playback.unavailable so the
+ * page shows a poster and "Try again" instead of a blank frame.
+ */
+const LIVE_PLAYBACK_UNAVAILABLE_STATES = ['missing', 'restricted'];
+
+/**
  * What the public API answers for one stream. Never provider_stream_id,
  * created_by/updated_by, deleted_at or the temple's and deity's ids.
+ *
+ * `pooja`, `event` and `sponsor` (migration 022) are the pooja / event this
+ * broadcast belongs to and the pooja's published sponsor — name and note
+ * only, consent-gated by sponsorPublicSql() — or null. `playback` carries
+ * `unavailable` (bool) and `reason` (missing | restricted | null) on top of
+ * the provider's descriptor.
  */
 function liveShapePublic(array $row): array
 {
@@ -860,6 +976,16 @@ function liveShapePublic(array $row): array
     $type  = (string) ($row['event_type'] ?? 'other');
     $label = LIVE_EVENT_TYPES[$type] ?? LIVE_EVENT_TYPES['other'];
     $status = (string) ($row['status'] ?? 'DRAFT');
+    $playback = $provider->playback($row);
+    $reason = null;
+    if (in_array($status, LIVE_LIVE_STATUSES, true) && (string) ($row['provider'] ?? '') === 'youtube'
+        && isset($row['sync_state']) && in_array((string) $row['sync_state'], LIVE_PLAYBACK_UNAVAILABLE_STATES, true)) {
+        $reason = (string) $row['sync_state'];
+    }
+    $playback['unavailable'] = $reason !== null;
+    $playback['reason'] = $reason;
+    $sponsorName = trim((string) ($row['sponsor_name'] ?? ''));
+    $sponsorNote = trim((string) ($row['sponsor_note'] ?? ''));
     return [
         'id'               => (int) $row['id'],
         'slug'             => (string) $row['slug'],
@@ -884,6 +1010,20 @@ function liveShapePublic(array $row): array
             'name_ta' => (string) ($row['deity_name_ta'] ?? ''),
             'name_en' => (string) ($row['deity_name_en'] ?? ''),
         ] : null,
+        'pooja'            => !empty($row['pooja_id']) && isset($row['pooja_name_en']) ? [
+            'id'      => (int) $row['pooja_id'],
+            'name_ta' => (string) ($row['pooja_name_ta'] ?? ''),
+            'name_en' => (string) $row['pooja_name_en'],
+            'date'    => isset($row['pooja_date']) && $row['pooja_date'] !== '' ? (string) $row['pooja_date'] : null,
+            'time'    => isset($row['pooja_time']) && $row['pooja_time'] !== '' ? (string) $row['pooja_time'] : null,
+        ] : null,
+        'event'            => !empty($row['event_id']) && isset($row['event_title_en']) ? [
+            'id'       => (int) $row['event_id'],
+            'title_ta' => (string) ($row['event_title_ta'] ?? ''),
+            'title_en' => (string) $row['event_title_en'],
+            'date'     => isset($row['event_date']) && $row['event_date'] !== '' ? (string) $row['event_date'] : null,
+        ] : null,
+        'sponsor'          => $sponsorName !== '' ? ['name' => $sponsorName, 'note' => $sponsorNote !== '' ? $sponsorNote : null] : null,
         'scheduled_start_at' => liveIso($row['scheduled_start_at'] ?? null),
         'scheduled_end_at'   => liveIso($row['scheduled_end_at'] ?? null),
         'actual_start_at'    => liveIso($row['actual_start_at'] ?? null),
@@ -897,7 +1037,7 @@ function liveShapePublic(array $row): array
         ],
         'thumbnail_url'    => $provider->thumbnailUrl($row),
         'banner_url'       => liveSafeUrl($row['banner_url'] ?? null),
-        'playback'         => $provider->playback($row),
+        'playback'         => $playback,
         // The only 012 column the public sees (SPEC-PHASE4 Decision 2): YouTube's
         // figure as returned, while LIVE and while the last good check is recent.
         'viewers'          => $status === 'LIVE' && isset($row['viewer_count']) && liveFresh($row['last_sync_ok_at'] ?? null, LIVE_VIEWERS_FRESH_SECONDS)
@@ -927,10 +1067,51 @@ function liveShapeAdmin(array $row): array
         'thumbnail_url_raw'     => $row['thumbnail_url'] ?? null,
         'temple_id'             => (int) $row['temple_id'],
         'deity_id'              => isset($row['deity_id']) ? (int) $row['deity_id'] : null,
+        'pooja_id'              => isset($row['pooja_id']) ? (int) $row['pooja_id'] : null,
+        'event_id'              => isset($row['event_id']) ? (int) $row['event_id'] : null,
     ];
 }
 
 /* ── Select options ──────────────────────────────────────────────────────── */
+
+/**
+ * The poojas the admin form offers (migration 022): the latest 50 active
+ * ones, newest date first, plus the one currently linked when it is not
+ * among them (inactive, or older) — as admin/sponsors.php does. [] without
+ * the migration.
+ * @return list<array{id:int, name_ta:string, name_en:string, pooja_date:?string, pooja_time:?string}>
+ */
+function livePoojaOptions(PDO $db, ?int $selected = null): array
+{
+    if (!liveLinksInstalled()) return [];
+    $rows = $db->query('SELECT id, name_ta, name_en, pooja_date, pooja_time FROM poojas WHERE is_active = 1 ORDER BY pooja_date DESC, id DESC LIMIT 50')->fetchAll();
+    if ($selected !== null && $selected > 0 && !in_array($selected, array_map(static fn(array $r): int => (int) $r['id'], $rows), true)) {
+        $stmt = $db->prepare('SELECT id, name_ta, name_en, pooja_date, pooja_time FROM poojas WHERE id = :id');
+        $stmt->execute([':id' => $selected]);
+        if ($extra = $stmt->fetch()) array_unshift($rows, $extra);
+    }
+    return array_map(static fn(array $r): array => ['id' => (int) $r['id'], 'name_ta' => (string) $r['name_ta'], 'name_en' => (string) $r['name_en'],
+        'pooja_date' => $r['pooja_date'] ?? null, 'pooja_time' => $r['pooja_time'] ?? null], $rows);
+}
+
+/**
+ * The events the admin form offers (migration 022): the latest 50 active
+ * ones, newest date first, plus the one currently linked when it is not
+ * among them. [] without the migration.
+ * @return list<array{id:int, title_ta:string, title_en:string, event_date:?string}>
+ */
+function liveEventOptions(PDO $db, ?int $selected = null): array
+{
+    if (!liveLinksInstalled()) return [];
+    $rows = $db->query('SELECT id, title_ta, title_en, event_date FROM events WHERE is_active = 1 ORDER BY event_date DESC, id DESC LIMIT 50')->fetchAll();
+    if ($selected !== null && $selected > 0 && !in_array($selected, array_map(static fn(array $r): int => (int) $r['id'], $rows), true)) {
+        $stmt = $db->prepare('SELECT id, title_ta, title_en, event_date FROM events WHERE id = :id');
+        $stmt->execute([':id' => $selected]);
+        if ($extra = $stmt->fetch()) array_unshift($rows, $extra);
+    }
+    return array_map(static fn(array $r): array => ['id' => (int) $r['id'], 'title_ta' => (string) $r['title_ta'], 'title_en' => (string) $r['title_en'],
+        'event_date' => $r['event_date'] ?? null], $rows);
+}
 
 /** Active temples for a select: [id => ['id','slug','name_ta','name_en','short_name_ta','short_name_en','timezone']]. */
 function liveTempleOptions(PDO $db): array

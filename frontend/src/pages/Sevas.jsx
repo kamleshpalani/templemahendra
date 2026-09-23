@@ -4,6 +4,7 @@ import {
   LuBookOpen,
   LuCircleCheck,
   LuCircleDot,
+  LuClock,
   LuDroplets,
   LuFlame,
   LuFlower2,
@@ -73,6 +74,14 @@ const sevaDescription = (seva, lang) => {
   if (!seva.description_ta && !seva.description_en && !seva.description) return null;
   return (lang === "ta" ? (seva.description_ta ?? seva.description) : (seva.description_en ?? seva.description)) || null;
 };
+/* When the seva is performed ("Daily 7–9 am"), in the reading language. */
+const sevaTiming = (seva, lang) => (lang === "ta" ? seva.timing_ta || seva.timing_en : seva.timing_en || seva.timing_ta) || null;
+/*
+ * Only an explicit "no" from the API makes a seva unbookable (migration 020's
+ * is_bookable). The standard list and older APIs carry no such flag, and a
+ * missing flag must not lock every card.
+ */
+const sevaBookable = (seva) => !(seva.is_bookable === false || seva.is_bookable === 0 || seva.is_bookable === "0");
 
 /* Standard list shown whenever the API returns nothing (or fails). */
 const FALLBACK_SEVAS = [
@@ -649,7 +658,9 @@ export default function Sevas() {
     if (deepLinkDone.current || sevas.length === 0) return;
     deepLinkDone.current = true;
     const match = sevas.find((s) => String(s.id) === wantedSeva.current);
-    if (match) setSelectedSeva(match);
+    // A shared link to a seva the office arranges by hand lands on its card,
+    // not on a form the office would have to refuse.
+    if (match && sevaBookable(match)) setSelectedSeva(match);
   }, [sevas]);
 
   /*
@@ -684,6 +695,7 @@ export default function Sevas() {
   // Focus that card's Book button first so the dialog has a real opener to
   // return focus to on close (a click on the <li> leaves focus on <body>).
   function openFromCard(seva, e) {
+    if (!sevaBookable(seva)) return;
     if (typeof window !== "undefined" && window.getSelection?.()?.toString()) return;
     e?.currentTarget?.querySelector?.(".seva-card__book")?.focus?.({ preventScroll: true });
     setSelectedSeva(seva);
@@ -770,10 +782,13 @@ export default function Sevas() {
                 const primaryName = sevaName(s, lang);
                 const altName = lang === "ta" ? s.name_en : s.name_ta;
                 const description = sevaDescription(s, lang);
+                const timing = sevaTiming(s, lang);
+                const bookable = sevaBookable(s);
+                const noteId = `seva-note-${s.id}`;
                 return (
                   <li
                     key={s.id}
-                    className="card card--interactive seva-card rise"
+                    className={`card ${bookable ? "card--interactive" : "card--static"} seva-card${bookable ? "" : " seva-card--locked"} rise`}
                     style={{ "--i": i }}
                     onClick={(e) => openFromCard(s, e)}
                   >
@@ -792,19 +807,30 @@ export default function Sevas() {
                     </div>
 
                     {description ? <p className="seva-card__desc">{description}</p> : null}
+                    {timing ? (
+                      <p className="seva-card__timing">
+                        <LuClock aria-hidden="true" /> {timing}
+                      </p>
+                    ) : null}
 
                     <div className="seva-card__foot">
                       <p className="seva-card__price">
                         <span className="seva-card__amount text-gradient">₹{s.amount}</span>
                         <span className="seva-card__unit">{t("சமர்ப்பணம்", "offering")}</span>
                       </p>
+                      {/* A seva the office arranges by hand keeps its Book
+                          control, disabled, with the note below explaining
+                          why — a missing button would read as a broken card. */}
                       <Button
                         type="button"
                         variant="primary"
                         className="seva-card__book"
+                        disabled={!bookable}
+                        aria-disabled={!bookable || undefined}
+                        aria-describedby={bookable ? undefined : noteId}
                         onClick={(e) => {
                           e.stopPropagation();
-                          setSelectedSeva(s);
+                          if (bookable) setSelectedSeva(s);
                         }}
                         aria-label={`${t("பதிவு செய்", "Book")} — ${primaryName}`}
                       >
@@ -822,6 +848,15 @@ export default function Sevas() {
                         to={`/sevas?seva=${s.id}`}
                       />
                     </div>
+                    {!bookable && (
+                      <p id={noteId} className="seva-card__note" role="note">
+                        <LuPhone aria-hidden="true" />
+                        {t(
+                          "இணையவழிப் பதிவு இல்லை — கோயில் அலுவலகத்தை நேரிலோ தொலைபேசியிலோ அணுகவும்.",
+                          "Not bookable online — please contact the temple office by phone or in person.",
+                        )}
+                      </p>
+                    )}
                   </li>
                 );
               })}

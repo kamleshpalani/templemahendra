@@ -377,7 +377,37 @@ try {
   check(checkedFlag(p.html, "is_featured") && !checkedFlag(p.html, "show_on_homepage") && checkedFlag(p.html, "donations_enabled") && !checkedFlag(p.html, "notifications_enabled") && checkedFlag(p.html, "sharing_enabled") && checkedFlag(p.html, "archive_enabled"), "…and every flag as stored");
   check(p.html.includes('<img class="thumb" src="https://example.test/thumb.jpg" alt="Current thumbnail"'), "…with a preview of the current thumbnail");
 
+  // Migration 022: the pooja and event selects, a link stored and shown again, a vanished pooja refused.
+  sql("INSERT INTO poojas (name_ta, name_en, pooja_date, pooja_time, pooja_type, is_active) VALUES (?, ?, ?, ?, 'special', 1)", [`${PREFIX} பௌர்ணமி பூஜை`, `${PREFIX} Pournami pooja`, tomorrow, "6:00 PM"]);
+  const poojaId = Number(one("SELECT id FROM poojas WHERE name_en = ?", [`${PREFIX} Pournami pooja`])?.id ?? 0);
+  sql("INSERT INTO events (title_ta, title_en, description, event_date, is_active) VALUES (?, ?, '', ?, 1)", [`${PREFIX} திருவிழா`, `${PREFIX} Festival`, tomorrow]);
+  const eventId = Number(one("SELECT id FROM events WHERE title_en = ?", [`${PREFIX} Festival`])?.id ?? 0);
+  p = await owner.html(`${PAGE}?edit=${F.a?.id}`);
+  check(poojaId > 0 && eventId > 0 && new RegExp(`<select id="pooja_id" name="pooja_id"[^>]*>[\\s\\S]*?<option value="${poojaId}"[^>]*>${PREFIX} Pournami pooja · ${PREFIX} பௌர்ணமி பூஜை — ${tomorrow}</option>`).test(p.html) && new RegExp(`<select id="event_id" name="event_id"[^>]*>[\\s\\S]*?<option value="${eventId}"`).test(p.html),
+    "the form offers a Pooja select and an Event select naming the rows bilingually with their dates", `pooja ${poojaId} event ${eventId}`);
+  res = await act(owner, PAGE, formPairs(csrfOf(p.html), {
+    id: String(F.a.id), title_ta: TITLE_TA, slug: F.a.slug, temple_id: TEMPLE_ID, deity_id: String(DEITY.id), status: "SCHEDULED", is_featured: "1", notifications_enabled: null,
+    playback_url: `https://www.youtube.com/live/${YT}`, thumbnail_url: "https://example.test/thumb.jpg", pooja_id: String(poojaId), event_id: String(eventId),
+  }));
+  check(res.flash === "Updated." && Number(streamRow(F.a.id).pooja_id) === poojaId && Number(streamRow(F.a.id).event_id) === eventId, "saving with a pooja and an event stores both links", `${res.flash} ${streamRow(F.a.id).pooja_id} ${streamRow(F.a.id).event_id}`);
+  p = await owner.html(`${PAGE}?edit=${F.a?.id}`);
+  check(selected(p.html, "pooja_id") === String(poojaId) && selected(p.html, "event_id") === String(eventId), "…and the edit view shows them selected");
+  const gone = await owner.post(PAGE, formPairs(csrfOf(p.html), { id: String(F.a.id), title_ta: TITLE_TA, slug: F.a.slug, temple_id: TEMPLE_ID, status: "SCHEDULED", pooja_id: "999999999", event_id: String(eventId) }));
+  const goneHtml = await gone.text();
+  check(gone.status === 200 && /no longer exists/.test(fieldError(goneHtml, "pooja_id")) && Number(streamRow(F.a.id).pooja_id) === poojaId, "a pooja that no longer exists is a field error and changes nothing", fieldError(goneHtml, "pooja_id"));
+  res = await act(owner, PAGE, formPairs(csrfOf(p.html), {
+    id: String(F.a.id), title_ta: TITLE_TA, slug: F.a.slug, temple_id: TEMPLE_ID, deity_id: String(DEITY.id), status: "SCHEDULED", is_featured: "1", notifications_enabled: null,
+    playback_url: `https://www.youtube.com/live/${YT}`, thumbnail_url: "https://example.test/thumb.jpg", pooja_id: "", event_id: "",
+  }));
+  check(res.flash === "Updated." && streamRow(F.a.id).pooja_id === null && streamRow(F.a.id).event_id === null, "choosing None clears both links");
+  sql("DELETE FROM events WHERE id = ?", [eventId]);
+  sql("DELETE FROM poojas WHERE id = ?", [poojaId]);
+
   const before = streamRow(F.a?.id);
+  // updated_at is a DATETIME (whole seconds): an update within the same second
+  // as the create leaves it byte-identical, so the check below waits for the
+  // clock to tick over before saving (D-014).
+  await sleep(1100 - (Date.now() % 1000));
   res = await act(owner, PAGE, formPairs(csrfOf(p.html), {
     id: String(F.a.id), title_ta: TITLE_TA, slug: F.a.slug, temple_id: TEMPLE_ID, deity_id: String(DEITY.id), status: "SCHEDULED", is_featured: "1", notifications_enabled: null,
     playback_url: `https://www.youtube.com/live/${YT}`, thumbnail_url: "https://example.test/thumb.jpg",
@@ -530,7 +560,9 @@ try {
   const uploadCount = countTitled(`${PREFIX} Upload%`);
   for (const [label, file] of [
     ["a text file named .png", { field: "thumbnail", body: Buffer.from("this is not an image at all, whatever the name says"), name: "fake.png", type: "image/png" }],
-    ["an oversize file", { field: "thumbnail", body: Buffer.concat([PNG_1x1, Buffer.alloc(3 * 1024 * 1024, 0)]), name: "big.png", type: "image/png" }],
+    // Larger than UPLOAD_MAX_MB (5 MB, backend/config/config.php): refused by the
+    // module's own limit whatever php.ini's upload_max_filesize is.
+    ["an oversize file", { field: "thumbnail", body: Buffer.concat([PNG_1x1, Buffer.alloc(5 * 1024 * 1024 + 1024, 0)]), name: "big.png", type: "image/png" }],
     ["a .php file", { field: "thumbnail", body: Buffer.from("<?php echo 'pwned'; ?>"), name: "shell.php", type: "application/x-php" }],
     ["a PHP file disguised as a PNG", { field: "banner", body: Buffer.from("<?php echo 'pwned'; ?>"), name: "shell.png", type: "image/png" }],
   ]) {
@@ -733,6 +765,8 @@ try {
   try {
     await deleteAccounts(owner);
     const removed = cleanup();
+    sql("DELETE FROM events WHERE title_en LIKE ?", [`${CLEAN_PREFIX}%`]);
+    sql("DELETE FROM poojas WHERE name_en LIKE ?", [`${CLEAN_PREFIX}%`]);
     console.log(`  cleanup at end: ${JSON.stringify(removed)}`);
     const left = one("SELECT (SELECT COUNT(*) FROM live_streams WHERE title_en LIKE ?) + (SELECT COUNT(*) FROM admin_users WHERE username LIKE ?) + (SELECT COUNT(*) FROM admin_activity WHERE actor LIKE ?) AS c", [`${CLEAN_PREFIX}%`, `${ADMIN_PREFIX}%`, `${ADMIN_PREFIX}%`]);
     check(Number(left?.c) === 0, "every stream, upload and account this suite created is removed", `left ${left?.c}`);

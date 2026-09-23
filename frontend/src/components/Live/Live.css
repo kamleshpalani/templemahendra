@@ -215,6 +215,24 @@
   line-height: 1.5;
   overflow-wrap: anywhere;
 }
+/* "Part of": the pooja / event link with its date under it. */
+.live-meta__link-line {
+  display: block;
+}
+.live-meta__link-line + .live-meta__link-line {
+  margin-top: var(--space-2);
+}
+.live-meta__link {
+  color: var(--maroon-600);
+  font-weight: var(--weight-semibold);
+  text-decoration: underline;
+  text-decoration-color: color-mix(in srgb, var(--maroon-600) 40%, transparent);
+  text-underline-offset: 0.15em;
+}
+.live-meta__link:hover,
+.live-meta__link:focus-visible {
+  text-decoration-color: currentColor;
+}
 .live-meta__sub {
   display: block;
   margin-top: 0.15rem;
@@ -285,6 +303,18 @@
   top: var(--space-3);
   left: var(--space-3);
   z-index: 1;
+}
+/* The committee's Featured switch: a gold badge opposite the status badge. */
+.live-card__featured {
+  position: absolute;
+  top: var(--space-3);
+  right: var(--space-3);
+  z-index: 1;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.live-card--featured {
+  border-color: color-mix(in srgb, var(--gold-500) 55%, var(--border-soft));
 }
 .live-card__body {
   display: grid;

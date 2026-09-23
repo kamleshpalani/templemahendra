@@ -10,6 +10,7 @@ import useReveal from "./hooks/useReveal";
 const About = lazy(() => import("./pages/About"));
 const Sevas = lazy(() => import("./pages/Sevas"));
 const Events = lazy(() => import("./pages/Events"));
+const EventDetail = lazy(() => import("./pages/EventDetail"));
 const Gallery = lazy(() => import("./pages/Gallery"));
 const Videos = lazy(() => import("./pages/Videos"));
 const Donations = lazy(() => import("./pages/Donations"));
@@ -88,6 +89,7 @@ function App() {
             <Route path="about" element={<About />} />
             <Route path="sevas" element={<Sevas />} />
             <Route path="events" element={<Events />} />
+            <Route path="events/:id" element={<EventDetail />} />
             <Route path="gallery" element={<Gallery />} />
             <Route path="videos" element={<Videos />} />
             <Route path="donations" element={<Donations />} />

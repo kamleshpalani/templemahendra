@@ -29,6 +29,12 @@ import "./Live.css";
  * archive keeps its poster until the visitor presses "Watch the recording",
  * which mounts the same iframe in the same 16:9 box; OFFLINE and ERROR offer
  * "Try again", which asks the page to fetch the broadcast afresh.
+ *
+ * Brief §32 (unavailable video): a LIVE / STARTING broadcast whose video the
+ * last YouTube check found missing, private or not embeddable arrives with
+ * `playback.unavailable` set. No frame is mounted — YouTube would only show
+ * its own blank "Video unavailable" — but the same poster, the Unavailable
+ * badge, a sentence naming the reason and "Try again".
  */
 
 // The permissions YouTube's own embed snippet asks for. `autoplay` is not a
@@ -68,6 +74,18 @@ function stateText(stream, lang, t, serverOffset, started) {
       return t("இந்த தரிசனம் ரத்து செய்யப்பட்டது.", "This darshan was cancelled.");
     case "LIVE":
     case "STARTING":
+      // The video is gone, private or not embeddable (brief §32).
+      if (stream.playback?.unavailable) {
+        return stream.playback.reason === "restricted"
+          ? t(
+            "ஒளிபரப்பு வீடியோ தனிப்பட்டதாக உள்ளது அல்லது இங்கே காட்ட முடியவில்லை. சிறிது நேரம் கழித்து மீண்டும் முயற்சிக்கவும்.",
+            "The broadcast video is private or cannot be shown here. Please try again shortly.",
+          )
+          : t(
+            "ஒளிபரப்பு வீடியோ YouTube-ல் இப்போது கிடைக்கவில்லை. சிறிது நேரம் கழித்து மீண்டும் முயற்சிக்கவும்.",
+            "The broadcast video is not available on YouTube right now. Please try again shortly.",
+          );
+      }
       // Live, but not something this page can frame (a provider that only
       // offers a link, or none at all).
       return stream.playback?.kind === "link"
@@ -81,11 +99,12 @@ function stateText(stream, lang, t, serverOffset, started) {
 export default function LivePlayer({ stream, lang, t, serverOffset = 0, started = false, onRetry = null }) {
   const title = streamTitle(stream, lang);
   const live = isLiveStatus(stream?.status);
+  const unavailable = live && Boolean(stream?.playback?.unavailable);
   const recording = stream?.status === "COMPLETED" && Boolean(stream?.flags?.archive) && stream?.playback?.kind === "iframe"
     ? stream.playback.embedUrl : null;
   const [playRecording, setPlayRecording] = useState(false);
-  const src = live || (playRecording && recording) ? embedSrc(stream, lang) : null;
-  const retry = (stream?.status === "OFFLINE" || stream?.status === "ERROR") && typeof onRetry === "function";
+  const src = (live && !unavailable) || (playRecording && recording) ? embedSrc(stream, lang) : null;
+  const retry = (stream?.status === "OFFLINE" || stream?.status === "ERROR" || unavailable) && typeof onRetry === "function";
   const poster = stream?.banner_url || stream?.thumbnail_url || null;
   const [posterBroken, setPosterBroken] = useState(false);
   const url = watchUrlOf(stream);
@@ -117,7 +136,7 @@ export default function LivePlayer({ stream, lang, t, serverOffset = 0, started 
           />
         </div>
       ) : (
-        <div className="live-player__frame live-player__poster">
+        <div className="live-player__frame live-player__poster" data-unavailable={unavailable ? String(stream.playback?.reason || "missing") : undefined}>
           {showPoster ? (
             <img
               className="live-player__poster-img"
@@ -132,7 +151,7 @@ export default function LivePlayer({ stream, lang, t, serverOffset = 0, started 
           )}
           <div className="live-player__poster-veil" aria-hidden="true" />
           <div className="live-player__state">
-            <LiveStatusBadge status={stream.status} size="lg" onDark />
+            <LiveStatusBadge status={unavailable ? "ERROR" : stream.status} size="lg" onDark />
             <p className="live-player__state-text">{stateText(stream, lang, t, serverOffset, started)}</p>
             {stream.status === "SCHEDULED" && (
               <p className="live-player__state-sub">
