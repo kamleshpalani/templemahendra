@@ -157,7 +157,7 @@ $hasError = $error !== '';
       <summary><?= adminIcon('key', 'ico--sm') ?> Trouble signing in? <?= adminIcon('chevron-down', 'ico--xs') ?></summary>
       <p>Access is limited to the temple committee. There is no self-service reset by design: the site sends no email,
          so a reset link could not be delivered safely.</p>
-      <p>If you have a committee account, ask any <strong>owner</strong> to open <em>Committee accounts</em> in the admin
+      <p>If you have a committee account, ask any <strong>owner</strong> to open <em>Users</em> in the admin
          and issue you a new password — you will be asked to change it the moment you sign in.</p>
       <p>If nobody can sign in at all, the person who set the site up can restore access by updating the
          <code>ADMIN_PASS_HASH</code> environment variable in the hosting panel.</p>

@@ -56,6 +56,15 @@ const IGNORE = /fonts\.gstatic|googleapis|google\.com\/maps|wa\.me|favicon|ERR_A
 
 async function newPage(width = 1440, height = 900) {
   const ctx = await browser.newContext({ viewport: { width, height }, locale: "en-IN" });
+  // Third parties (Google Fonts, the Maps embed, YouTube) are not under test and
+  // can take ten seconds or more from this network, so a page waiting for them
+  // would never reach "networkidle" in time. They are answered with an empty
+  // 200 (the fallback fonts render, the embeds stay blank) so every wait, and
+  // every console check, is about the site itself.
+  await ctx.route(
+    (url) => /^https:\/\/(fonts\.(googleapis|gstatic)\.com|www\.google\.com\/maps|maps\.google\.com|(www\.)?youtube(-nocookie)?\.com|i\.ytimg\.com|[a-z0-9.-]*googlevideo\.com)\//.test(url.href),
+    (route) => route.fulfill({ status: 200, contentType: /fonts\.googleapis/.test(route.request().url()) ? "text/css" : "text/html", body: "" }),
+  );
   const page = await ctx.newPage();
   const errors = [];
   page.on("console", (m) => { if (m.type() === "error") errors.push(`[console] ${m.text()}`); });

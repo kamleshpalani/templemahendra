@@ -574,11 +574,17 @@ function payValidateSevaBooking(array $body, array $cfg): array
     if ($sevaId < 1) {
         $fields['seva_id'] = 'Choose a seva.';
     } else {
-        $stmt = getDB()->prepare('SELECT id, name_ta, name_en, amount, is_active FROM sevas WHERE id = :id');
+        if (!function_exists('publicGuardHasColumn')) require_once __DIR__ . '/../public_guard.php';
+        $bookable = publicGuardHasColumn('sevas', 'is_bookable') ? ', is_bookable' : ', 1 AS is_bookable';
+        $stmt = getDB()->prepare('SELECT id, name_ta, name_en, amount, is_active' . $bookable . ' FROM sevas WHERE id = :id');
         $stmt->execute([':id' => $sevaId]);
         $seva = $stmt->fetch(PDO::FETCH_ASSOC) ?: null;
         if ($seva === null || (int) $seva['is_active'] !== 1) {
             $fields['seva_id'] = 'That seva is not available for booking.';
+            $seva = null;
+        } elseif ((int) $seva['is_bookable'] !== 1) {
+            // Listed for information only (Admin → Temple → Sevas, "bookable" off).
+            $fields['seva_id'] = 'This seva is not booked online. Please contact the temple office.';
             $seva = null;
         } elseif (payAmountCents((string) $seva['amount']) <= 0) {
             $fields['seva_id'] = 'This seva cannot be paid for online. Send a booking request instead.';

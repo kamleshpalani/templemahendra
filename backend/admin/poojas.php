@@ -293,7 +293,7 @@ $fieldAttrs = fn(string $k): string => isset($errors[$k]) ? ' aria-invalid="true
 $fieldError = fn(string $k): string => isset($errors[$k]) ? '<span class="field__error" id="p-' . $k . '-err">' . adminIcon('alert-circle') . h($errors[$k]) . '</span>' : '';
 
 // ── Page ─────────────────────────────────────────────────────────────────────
-adminHeader('Poojas', 'Worship', [
+adminHeader('Poojas', 'Temple', [
     'actions' => '<a href="/admin/sponsors.php" class="btn btn-ghost btn--sm">' . adminIcon('heart-hands') . 'Sponsors</a>',
 ]);
 echo $msg;

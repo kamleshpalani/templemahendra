@@ -97,6 +97,12 @@ function notifyAudit(?int $campaignId, string $action, array $actor, array $deta
             ':actor' => notifyActorName($actor), ':role' => in_array($role, ADMIN_ROLES, true) ? $role : null,
             ':d' => $json, ':ip' => $ip !== null ? mb_substr($ip, 0, 45) : null, ':now' => notifyNow(),
         ]);
+        // The same row in the admin audit log (brief §17), so Audit Logs shows
+        // campaigns beside every other change; the actor is the committee
+        // account, or the system when a cron or the service acted alone.
+        if (function_exists('adminAudit')) {
+            adminAudit('notification_' . mb_substr($action, 0, 46), $campaignId !== null ? 'campaign:' . $campaignId : 'notifications', $name !== null ? mb_substr((string) $name, 0, 500) : null, notifyActorName($actor));
+        }
     } catch (Throwable $e) {
         error_log('[notify] audit failed: ' . $e->getMessage());
     }

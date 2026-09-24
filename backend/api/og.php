@@ -32,6 +32,7 @@
 require_once __DIR__ . '/../includes/helpers.php';
 require_once __DIR__ . '/../includes/db.php';
 require_once __DIR__ . '/../includes/site_pages.php';
+require_once __DIR__ . '/../includes/site_settings.php';
 require_once __DIR__ . '/../includes/live.php';
 
 ini_set('display_errors', '0');
@@ -299,6 +300,26 @@ try {
     if ($title === '' && isset($pages[$path])) {
         [$titleTa, $titleEn] = $pages[$path];
         $title = $lang === 'en' ? $titleEn : $titleTa;
+    }
+}
+
+// Committee overrides (Admin → System → SEO, migration 025) for this exact
+// address: each of title, description and image replaces the built-in value
+// only when given, and "keep out of search engines" adds the robots directive.
+if ($status === 200) {
+    try {
+        $seo = siteSeoOverrides()[$path] ?? null;
+        if ($seo !== null) {
+            $other = $lang === 'en' ? 'ta' : 'en';
+            $ovTitle = trim((string) ($seo['title_' . $lang] ?? '')) ?: trim((string) ($seo['title_' . $other] ?? ''));
+            $ovDesc  = trim((string) ($seo['description_' . $lang] ?? '')) ?: trim((string) ($seo['description_' . $other] ?? ''));
+            if ($ovTitle !== '') $title = $ovTitle;
+            if ($ovDesc !== '') $description = $ovDesc;
+            if (!empty($seo['og_image'])) { $image = (string) $seo['og_image']; $imageAlt = $title; }
+            if (!empty($seo['noindex'])) $robots = 'noindex, nofollow';
+        }
+    } catch (Throwable) {
+        // an override is never worth failing the preview for
     }
 }
 

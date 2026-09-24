@@ -35,6 +35,9 @@ const root = fileURLToPath(new URL("../", import.meta.url));
 const php = process.env.PHP_BIN || "php";
 const RUN = Date.now().toString(36);
 const P = `E2E-BRIEF-${RUN}`;
+// The linked-event card has no title of its own (it takes the event's), so it is
+// found for cleanup by this run-unique picture address.
+const POSTER = `/uploads/${P.toLowerCase()}-poster.webp`;
 const ADMIN = { username: process.env.ADMIN_USERNAME || "admin", password: process.env.ADMIN_PASSWORD || "Admin@Test123" };
 // The temple office address the server is started with, so E2E-040 can look
 // for exactly the notification the contact form raised (test email driver).
@@ -248,13 +251,13 @@ try {
   check(!sql("SELECT id FROM events WHERE title_en = ?", [`${P} no date`]).rows.length, "E2E-017 an event without a date is refused");
 
   /* ── §8 content types, links, images and display order (migration 024) */
-  sql("INSERT INTO homepage_widgets (content_type, title_ta, title_en, source_type, linked_event_id, image_url, priority, display_order, is_active) VALUES ('upcoming_event', '', '', 'manual', ?, '/uploads/poster.webp', 4, 0, 1)", [event.id]);
+  sql("INSERT INTO homepage_widgets (content_type, title_ta, title_en, source_type, linked_event_id, image_url, priority, display_order, is_active) VALUES ('upcoming_event', '', '', 'manual', ?, ?, 4, 0, 1)", [event.id, POSTER]);
   sql("INSERT INTO homepage_widgets (content_type, title_ta, title_en, description_ta, description_en, source_type, priority, display_order, is_active) VALUES ('custom', ?, ?, 'தனிப்பயன் உரை', 'free text', 'manual', 5, 2, 1)", [`${P} custom`, `${P} custom`]);
   sql("INSERT INTO homepage_widgets (content_type, title_ta, title_en, source_type, priority, display_order, is_active) VALUES ('custom', ?, ?, 'manual', 5, 1, 1)", [`${P} custom-first`, `${P} custom-first`]);
   sql("INSERT INTO homepage_widgets (content_type, title_ta, title_en, source_type, priority, is_active) VALUES ('livestream', ?, ?, 'manual', 6, 1)", [`${P} stream-none`, `${P} stream-none`]);
   r = await api("/api/homepage_widgets");
   const evCard = r.json.find((w) => w.event && w.event.id === event.id);
-  check(evCard && evCard.content_type === "upcoming_event" && evCard.title_ta === `${P} திருவிழா` && evCard.event_date === event.event_date && evCard.image_url === "/uploads/poster.webp", "§8 an Upcoming Event card takes its title and date from the linked event and carries its image", JSON.stringify(evCard).slice(0, 240));
+  check(evCard && evCard.content_type === "upcoming_event" && evCard.title_ta === `${P} திருவிழா` && evCard.event_date === event.event_date && evCard.image_url === POSTER, "§8 an Upcoming Event card takes its title and date from the linked event and carries its image", JSON.stringify(evCard).slice(0, 240));
   const customIdx = r.json.findIndex((w) => w.title_en === `${P} custom`);
   const customFirstIdx = r.json.findIndex((w) => w.title_en === `${P} custom-first`);
   check(customIdx > -1 && r.json[customIdx].content_type === "custom" && r.json[customIdx].description_ta === "தனிப்பயன் உரை", "§8 a custom card is published as written");
@@ -360,7 +363,7 @@ try {
       if (f && existsSync(f)) unlinkSync(f);
     }
   }
-  sql("DELETE FROM homepage_widgets WHERE title_en LIKE ?", [`${P}%`]);
+  sql("DELETE FROM homepage_widgets WHERE title_en LIKE ? OR image_url = ?", [`${P}%`, POSTER]);
   sql("DELETE FROM gallery WHERE caption LIKE ?", [`${P}%`]);
   try { sql("DELETE FROM notifications WHERE to_email = ?", [OFFICE]); } catch { /* notification tables absent */ }
   sql("DELETE FROM contact_messages WHERE name LIKE ?", [`${P}%`]);

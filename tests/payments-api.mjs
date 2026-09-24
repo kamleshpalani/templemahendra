@@ -810,20 +810,24 @@ try {
   check(sponsorsOf(dPJ?.id).length === 1 && sponsorsOf(don(N2.number)?.id).length === 1, "two paid donations for one pooja are two sponsor rows, one each");
   const G = await pay("pooja general", "success");
   check(sponsorsOf(don(G.number)?.id).length === 0 && don(G.number)?.pooja_id === null && (await status(G.number, G.token)).data?.pooja === null, "a general donation creates no sponsor and shows no pooja");
+  // What the public sees: a sponsor who ticked the thank-you list is named on /api/donors
+  // (sponsorPublicSql), by name only and with the pooja as the label — never the
+  // receipt note; the one who did not tick is not there at all.
+  const donorsNow = (await http("GET", "/api/donors", { ip: IP.legacy })).data ?? [];
+  const publicSponsor = donorsNow.find((x) => x.type === "sponsor" && x.name === `${NAME} pooja paid`); // the SUCCESS donation is listed as a donor too
+  check(publicSponsor?.type === "sponsor" && !("phone" in publicSponsor) && !("email" in publicSponsor) && !("amount" in publicSponsor), "a consented online sponsor is listed on /api/donors by name only", show(publicSponsor));
+  check(publicSponsor && publicSponsor.label !== `Online donation ${PJ.number}` && publicSponsor.pooja?.en === `${NAME} Pournami open`, "the public label is the pooja, never the receipt note", show(publicSponsor));
+  check(!donorsNow.some((x) => x.name === `${NAME} pooja anonymous`), "a sponsor without publish consent is never listed");
   const refundP = fixture("refund", { order_id: PJ.number, kind: "full", method: "manual", reason: "E2E pooja refund" });
   check(refundP.refund?.ok === true && don(PJ.number)?.status === "REFUNDED", "a full manual refund makes the donation REFUNDED", show(refundP.refund));
   sp = sponsorsOf(dPJ?.id);
   check(sp.length === 1 && sp[0].payment_status === "REFUNDED" && Number(sp[0].pooja_id) === poojaOpen, "its sponsor is marked REFUNDED, never deleted", show(sp));
   check(payableAudits("donation", dPJ?.id).includes("sponsor_refunded"), "audit: sponsor_refunded");
+  const donorsAfterRefund = (await http("GET", "/api/donors", { ip: IP.legacy })).data ?? [];
+  check(!donorsAfterRefund.some((x) => x.type === "sponsor" && x.name === `${NAME} pooja paid`), "a refunded sponsorship is no longer thanked on /api/donors (the row stays for the office)");
   sql("DELETE FROM poojas WHERE id = ?", [poojaOpen]);
   check(don(PJ.number)?.pooja_id === null && sponsorsOf(dPJ?.id).length === 1 && sponsorsOf(dPJ?.id)[0].pooja_id === null && don(PJ.number)?.status === "REFUNDED" && (await status(PJ.number, PJ.token)).data?.pooja === null,
     "deleting the pooja nulls the links on the donation and the sponsor and keeps both rows");
-  // What the public sees: a sponsor who ticked the thank-you list is named on /api/donors
-  // (sponsorPublicSql), by name only; the one who did not tick is not there at all.
-  const donorsNow = (await http("GET", "/api/donors", { ip: IP.legacy })).data ?? [];
-  const publicSponsor = donorsNow.find((x) => x.name === `${NAME} pooja paid`);
-  check(publicSponsor?.type === "sponsor" && !("phone" in publicSponsor) && !("email" in publicSponsor) && !("amount" in publicSponsor), "a consented online sponsor is listed on /api/donors by name only", show(publicSponsor));
-  check(!donorsNow.some((x) => x.name === `${NAME} pooja anonymous`), "a sponsor without publish consent is never listed");
   // These two sponsor rows are this section's; they go now so section 7's donors check keeps proving what it always did.
   sql("DELETE FROM sponsors WHERE donation_id IN (?, ?)", [dPJ?.id ?? 0, don(N2.number)?.id ?? 0]);
 

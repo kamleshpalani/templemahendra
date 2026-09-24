@@ -440,7 +440,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
 // ── Not installed yet ────────────────────────────────────────────────────────
 if (!$tables) {
-    adminHeader('Live Streaming', 'Content');
+    adminHeader('Live Streaming', 'Media');
     echo $msg;
     echo adminPageIntro('Live darshan broadcasts are not set up on this database yet.');
     echo '<section class="card card--static"><div class="card__body">'
@@ -506,7 +506,7 @@ $poojaOptions   = $linksInstalled ? livePoojaOptions($db, (int) $val('pooja_id',
 $eventOptions   = $linksInstalled ? liveEventOptions($db, (int) $val('event_id', '0') ?: null) : [];
 
 // ── Page ─────────────────────────────────────────────────────────────────────
-adminHeader('Live Streaming', 'Content', [
+adminHeader('Live Streaming', 'Media', [
     'actions' => '<a href="/live-darshan" target="_blank" rel="noopener" class="btn btn-ghost btn--sm">' . adminIcon('external') . 'Open /live-darshan</a>',
 ]);
 echo $msg;

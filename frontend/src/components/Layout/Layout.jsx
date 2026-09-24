@@ -47,7 +47,7 @@ export default function Layout() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
-  const { lang, setLang, t } = useLang();
+  const { lang, setLang, t, langs = ["ta", "en"] } = useLang();
   const { pathname } = useLocation();
   const toggleRef = useRef(null);
   const drawerRef = useRef(null);
@@ -300,7 +300,9 @@ export default function Layout() {
             </span>
           </NavLink>
 
+          {langs.length > 1 && (
           <div className="drawer__lang" role="group" aria-label={t("மொழி", "Language")}>
+            {langs.includes("ta") && (
             <button
               type="button"
               className={`chip${lang === "ta" ? " chip--active" : ""}`}
@@ -311,6 +313,8 @@ export default function Layout() {
             >
               தமிழ்
             </button>
+            )}
+            {langs.includes("en") && (
             <button
               type="button"
               className={`chip${lang === "en" ? " chip--active" : ""}`}
@@ -321,7 +325,9 @@ export default function Layout() {
             >
               English
             </button>
+            )}
           </div>
+          )}
           <a
             href={telHref(PRIMARY_CONTACT.phone)}
             className="btn btn-outline btn--block"

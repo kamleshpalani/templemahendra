@@ -20,7 +20,7 @@ require_once __DIR__ . '/includes/admin_layout.php';
 $db = getDB();
 
 if (!publicGuardHasColumn('sevas', 'is_bookable') || !publicGuardHasColumn('sevas', 'description_ta')) {
-    adminHeader('Sevas', 'Worship');
+    adminHeader('Sevas', 'Temple');
     echo '<p class="alert alert--warning" role="alert">Bilingual sevas are not installed on this site yet: apply database migration <code>020_bilingual_content_events.sql</code> and reload.</p>';
     adminFooter();
     exit;
@@ -201,7 +201,7 @@ $invalid    = static fn(string $f): string => isset($errors[$f]) ? ' aria-invali
 $fieldError = static fn(string $f, string $text): string => isset($errors[$f]) ? '<span class="field__error" id="err-' . $f . '">' . adminIcon('alert-circle') . h($text) . '</span>' : '';
 
 // ── Page ─────────────────────────────────────────────────────────────────────
-adminHeader('Sevas', 'Worship', [
+adminHeader('Sevas', 'Temple', [
     'actions' => '<a href="/sevas" target="_blank" rel="noopener" class="btn btn-ghost btn--sm">' . adminIcon('external') . 'View on site</a>',
 ]);
 echo $msg;

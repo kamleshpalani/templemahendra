@@ -10,17 +10,18 @@ site embeds it with the privacy-enhanced `youtube-nocookie.com` player.
 
 Needs migrations `011_live_streams.sql` (streams), `012_live_automation.sql`
 (poller), `013_live_subscriptions.sql` (reminders), `014_live_donations.sql`
-(stream-linked donations).
+(stream-linked donations), `022_live_links.sql` (pooja / event links and the
+sponsor credit).
 
 ## What the public sees
 
 | Route | Content |
 | --- | --- |
-| `/live-darshan` | the broadcast that matters now: LIVE player with 🔴 indicator, viewer pill while live and fresh (≤ 5 min), or the next scheduled darshan as a poster with countdown in the temple's zone; Donate / Notify me / Share row; "About this pooja" |
+| `/live-darshan` | the broadcast that matters now: LIVE player with 🔴 indicator, viewer pill while live and fresh (≤ 5 min), or the next scheduled darshan as a poster with countdown in the temple's zone; Donate / Notify me / Share row; "About this pooja"; Part of the pooja (→ `/sevas`) or event (→ `/events/<id>`) it belongs to and Sponsored by the pooja's sponsor when the family agreed to be named (never phone, email or amount); a gold Featured badge on a featured broadcast's card, listed first among the upcoming ones and first on its day of the schedule |
 | `/live-darshan/schedule` | upcoming broadcasts, temple time and the visitor's own |
 | `/live-darshan/archive` | COMPLETED broadcasts that kept their recording |
 | `/live-darshan/<slug>` | one broadcast, with per-stream Open Graph / share preview for crawlers |
-| homepage | LIVE indicator + CTA while a stream is LIVE / STARTING; otherwise the next scheduled darshan block |
+| homepage | LIVE indicator + CTA while a stream with Show on homepage on is LIVE / STARTING; otherwise the next such scheduled darshan. A stream with the switch off stays on `/live-darshan` and the schedule; the index route's `now` / `next` are these homepage rows, `live` / `upcoming` list every public broadcast |
 
 Public APIs (no cookies, cache headers set): `GET /api/live-streams`,
 `/api/live-streams/live`, `/upcoming`, `/schedule`, `/archive`,
@@ -28,6 +29,14 @@ Public APIs (no cookies, cache headers set): `GET /api/live-streams`,
 `POST /api/live-subscriptions` and `/live-subscriptions/unsubscribe` (email
 reminders with a per-subscription unsubscribe link). Admin JSON:
 `/api/admin/live-streams[/<id>]`.
+
+Since migration 022 every public item carries `pooja {id, name_ta, name_en,
+date, time} | null`, `event {id, title_ta, title_en, date} | null`, `sponsor
+{name, note} | null` (consent-gated by `sponsorPublicSql()`), and
+`playback.unavailable` (bool) + `playback.reason` (`missing` | `restricted` |
+`null`) for a LIVE / STARTING YouTube row whose last check found the video
+deleted / private / not embeddable — the page shows a poster with *Try again*
+instead of the player (brief §32).
 
 ## Statuses
 
@@ -37,7 +46,10 @@ gone / private / invalid). The brief's `UPCOMING` is `SCHEDULED` and `ENDED`
 is `COMPLETED`. Allowed transitions are enforced in
 `backend/includes/live/validate.php`; the admin shows only the buttons that
 apply. A COMPLETED row with `archive_enabled` on becomes an archive entry
-with `recording_url`; without it the recording is not listed.
+with `recording_url`; without it the recording is not listed. Ending a
+YouTube stream by hand fills `recording_url` with the broadcast's own video
+in the same write, as the poller does — unless Tier 2 reported it was not
+recorded; a pasted recording is never overwritten (D-030).
 
 Times are stored in UTC with the row's `timezone` (default `LIVE_TEMPLE_TZ`,
 else `NOTIFY_TEMPLE_TZ`, else `Asia/Kolkata`).
@@ -45,9 +57,12 @@ else `NOTIFY_TEMPLE_TZ`, else `Asia/Kolkata`).
 ## Admin
 
 Media → **Live Streaming** (`/admin/live_streams.php`): create a stream by
-pasting a YouTube URL or video id, pick the pooja / event / deity it belongs
-to, the schedule, the Tamil and English titles, and whether donations and the
-archive are offered; filters for Draft / Scheduled / Live / Completed /
+pasting a YouTube URL or video id, pick the pooja / event it belongs to (the
+latest 50 active ones, newest first; the linked one is always offered) and
+the deity, the schedule, the Tamil and English titles, and whether donations
+and the archive are offered. *Featured* lists the stream first with a badge;
+*Show on homepage* (off by default — the committee must tick it) decides the
+homepage block and the hero row. Filters for Draft / Scheduled / Live / Completed /
 Cancelled / Deleted; per-row status buttons offered from the current status
 (**Publish**, **Starting soon**, **Go live**, **End stream**, **Mark
 offline**, **Cancel**, **Back live**) plus **Check now**. Owner-only **YouTube Automation**
@@ -161,13 +176,18 @@ php tests/live-unit.php
 node tests/live-api.mjs && node tests/live-sync.mjs && node tests/live-health.mjs
 node tests/live-ui.mjs           # browser: player states at 390/768/1024/1366
 node tests/live-og.mjs && node tests/live-archive.mjs && node tests/live-subscriptions.mjs && node tests/live-donations.mjs
+node tests/live-links.mjs        # migration 022: pooja / event links, sponsor credit, hand-ended recording, featured / homepage switches, unavailable video
 ```
 
 All of these run against the built-in simulator (`LIVE_ALLOW_SIMULATOR=1`,
 mode *simulator*, `YOUTUBE_API_BASE_URL` pointed at the local stub) — they
 cover the brief's §32 cases (no stream, upcoming, live, ended, cancelled,
 invalid URL, unavailable video, pooja- and event-linked streams, mobile and
-desktop players, homepage indicator).
+desktop players, homepage indicator). `live-links.mjs` (53 checks) covers
+the pooja / event-linked streams, the sponsor credit, the recording after a
+manual end, Featured / Show on homepage and the unavailable-video poster;
+`admin-live.mjs` (240) the Pooja / Event selects; `live-ui.mjs` (431) the
+links scenario in the browser.
 
 ## Not yet verified against the real provider
 

@@ -167,6 +167,12 @@ const CASES = [
   ["live_streams.php",     { action: XSS, id: "0" }],
 ];
 
+// The settings probe posts only one switch, which would leave the other two off
+// for every visitor: remember how the homepage switches stood and put them back.
+const SWITCHES = ["show_pournami_section", "show_nalla_strip", "show_donor_ticker"];
+const settingsBefore = await (await get("/admin/settings.php")).text();
+const switchesOn = SWITCHES.filter((k) => new RegExp(`name="${k}"[^>]*\\bchecked`).test(settingsBefore));
+
 for (const [page, body] of CASES) {
   const html = await (await get("/admin/" + page)).text();
   const csrf = csrfOf(html);
@@ -179,6 +185,15 @@ for (const [page, body] of CASES) {
   if (bad) {
     const m = out.match(/(SQLSTATE\[[^\]]+\][^<]{0,140}|Uncaught[^<]{0,140})/);
     if (m) console.log("     →", m[0].replace(/\s+/g, " ").slice(0, 170));
+  }
+}
+{
+  const html = await (await get("/admin/settings.php")).text();
+  const csrf = csrfOf(html);
+  if (csrf) {
+    const r = await post("/admin/settings.php", { _csrf: csrf, ...Object.fromEntries(switchesOn.map((k) => [k, "1"])) });
+    const after = await (await get("/admin/settings.php")).text();
+    ok((r.status === 303 || r.status === 302) && SWITCHES.every((k) => new RegExp(`name="${k}"[^>]*\\bchecked`).test(after) === switchesOn.includes(k)), "homepage switches are back as they were", `status ${r.status}`);
   }
 }
 

@@ -297,7 +297,7 @@ $headerActions = '';
 if ($tables && adminCan('payments.settings')) {
     $headerActions .= '<a href="/admin/payment_settings.php" class="btn btn-ghost btn--sm">' . adminIcon('shield') . 'Payment Gateway</a>';
 }
-adminHeader('Online Payments', 'Devotees', ['actions' => $headerActions, 'wide' => true]);
+adminHeader('Online Payments', 'Finance', ['actions' => $headerActions, 'wide' => true]);
 echo $msg;
 
 if (!$tables) {

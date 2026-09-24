@@ -65,7 +65,13 @@ Do this on staging first, then repeat on production.
    into the *production* database *before* uploading the PHP that needs them
    — every migration is idempotent (`CREATE TABLE IF NOT EXISTS`, guarded
    `ALTER`s), and the app tells the admin which one is missing rather than
-   crashing. See `DATABASE.md` → *Migrations*.
+   crashing. See `DATABASE.md` → *Migrations*. This release needs
+   `020_bilingual_content_events.sql` through `025_cms_pages_settings.sql`,
+   applied in that order with a `utf8mb4` client (`mysql
+   --default-character-set=utf8mb4`, or phpMyAdmin, which does the same) —
+   a `latin1` client stores the Tamil literals as `?`. `025` seeds the About
+   page's `mission` and `history` pages with empty bodies, so the built-in
+   text stays until the committee writes its own.
 5. **Upload** in this order so a half-finished upload degrades gracefully:
    `includes/`, `config/`, `bin/`, `api/`, `admin/`, then the contents of
    `frontend/dist/`. Never upload `uploads/` from a machine — it is the site's

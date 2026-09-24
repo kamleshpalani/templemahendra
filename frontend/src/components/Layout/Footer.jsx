@@ -1,7 +1,9 @@
 import { NavLink } from "react-router-dom";
-import { LuArrowUp, LuClock, LuMail, LuMapPin, LuPhone, LuShieldCheck } from "react-icons/lu";
+import { LuArrowUp, LuClock, LuGlobe, LuMail, LuMapPin, LuPhone, LuShieldCheck } from "react-icons/lu";
 import { FaWhatsapp } from "react-icons/fa";
 import { useLang } from "../../context/LangContext";
+import { siteHours, siteText, siteValue, useSiteSettings } from "../../lib/siteSettings";
+import { to12h } from "../../lib/templeTime";
 import {
   TEMPLE,
   ADDRESS,
@@ -31,7 +33,7 @@ const LEGAL_LINKS = [
 export default function Footer() {
   // No language switch here: the status strip at the top of every page (and the
   // mobile drawer) carries it, and a second copy was repetition, not reach.
-  const { t } = useLang();
+  const { lang, t } = useLang();
 
   const quickLinks = [
     { to: "/about#history", ta: "கோவில் வரலாறு", en: "History" },
@@ -50,6 +52,22 @@ export default function Footer() {
 
   const contacts = [PRIMARY_CONTACT, SECONDARY_CONTACT];
   const scrollTop = () => window.scrollTo({ top: 0, behavior: "smooth" });
+  // The committee's details (Admin → System → Settings) where typed; the
+  // booklet facts in data/temple.js otherwise.
+  const { site } = useSiteSettings();
+  const templeName = siteText(site, "temple_name", lang) || t(TEMPLE.name.ta, TEMPLE.name.en);
+  const templeDescriptor = siteText(site, "temple_descriptor", lang) || t(TEMPLE.descriptor.ta, TEMPLE.descriptor.en);
+  const addressLine = siteText(site, "temple_address", lang) || t(ADDRESS.oneLine.ta, ADDRESS.oneLine.en);
+  const mapsQuery = siteValue(site, "maps_query");
+  const mapsUrl = mapsQuery ? `https://maps.google.com/maps?q=${encodeURIComponent(mapsQuery)}` : MAPS_URL;
+  const email = siteValue(site, "email") || TEMPLE_EMAIL;
+  const hours = siteHours(site);
+  const whatsapp = siteValue(site, "social_whatsapp") || `https://wa.me/91${PRIMARY_CONTACT.phone}`;
+  const social = [
+    ["youtube", siteValue(site, "social_youtube") || TEMPLE.youtube.channelUrl, "YouTube"],
+    ["facebook", siteValue(site, "social_facebook"), "Facebook"],
+    ["instagram", siteValue(site, "social_instagram"), "Instagram"],
+  ].filter(([, href]) => href);
 
   return (
     <footer className="footer">
@@ -59,9 +77,9 @@ export default function Footer() {
             <span className="footer__logo-ring" aria-hidden="true">
               <img src="/logo.svg" alt="" width="44" height="44" />
             </span>
-            <h2 className="footer__title">{t(TEMPLE.name.ta, TEMPLE.name.en)}</h2>
+            <h2 className="footer__title">{templeName}</h2>
           </div>
-          <p className="footer__desc">{t(TEMPLE.descriptor.ta, TEMPLE.descriptor.en)}</p>
+          <p className="footer__desc">{templeDescriptor}</p>
           <p className="footer__invocation">
             <em>{t(TEMPLE.invocation.ta, TEMPLE.invocation.en)}</em>
           </p>
@@ -93,8 +111,8 @@ export default function Footer() {
             <li>
               <LuMapPin aria-hidden="true" />
               <address className="footer__address">
-                {t(ADDRESS.oneLine.ta, ADDRESS.oneLine.en)}
-                <a href={MAPS_URL} target="_blank" rel="noopener noreferrer" className="footer__map">
+                {addressLine}
+                <a href={mapsUrl} target="_blank" rel="noopener noreferrer" className="footer__map">
                   {t("வழி அறிய ↗", "Get directions ↗")}
                 </a>
               </address>
@@ -102,9 +120,20 @@ export default function Footer() {
             <li>
               <LuClock aria-hidden="true" />
               <span>
-                {t("காலை 6:00 – மதியம் 12:30", "6:00 AM – 12:30 PM")}
-                <br />
-                {t("மாலை 4:00 – இரவு 9:00", "4:00 PM – 9:00 PM")}
+                {hours ? (
+                  hours.map((w, i) => (
+                    <span key={w.open}>
+                      {i > 0 && <br />}
+                      {to12h(w.open)} – {to12h(w.close)}
+                    </span>
+                  ))
+                ) : (
+                  <>
+                    {t("காலை 6:00 – மதியம் 12:30", "6:00 AM – 12:30 PM")}
+                    <br />
+                    {t("மாலை 4:00 – இரவு 9:00", "4:00 PM – 9:00 PM")}
+                  </>
+                )}
               </span>
             </li>
           </ul>
@@ -131,14 +160,27 @@ export default function Footer() {
             ))}
             <li>
               <FaWhatsapp aria-hidden="true" />
-              <a href={`https://wa.me/91${PRIMARY_CONTACT.phone}`} target="_blank" rel="noopener noreferrer">
+              <a href={whatsapp} target="_blank" rel="noopener noreferrer">
                 {t("வாட்ஸ்அப்பில் பேசுங்கள்", "Chat on WhatsApp")}
               </a>
             </li>
             <li>
               <LuMail aria-hidden="true" />
-              <a href={`mailto:${TEMPLE_EMAIL}`}>{TEMPLE_EMAIL}</a>
+              <a href={`mailto:${email}`}>{email}</a>
             </li>
+            {social.length > 0 && (
+              <li className="footer__social" data-testid="footer-social">
+                <LuGlobe aria-hidden="true" />
+                <span>
+                  {social.map(([key, href, label], i) => (
+                    <span key={key}>
+                      {i > 0 && " · "}
+                      <a href={href} target="_blank" rel="noopener noreferrer">{label}</a>
+                    </span>
+                  ))}
+                </span>
+              </li>
+            )}
           </ul>
         </div>
       </div>

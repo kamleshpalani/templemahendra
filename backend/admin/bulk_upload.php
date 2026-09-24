@@ -652,7 +652,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $result['processed'] = $end;
         $_SESSION['bulk']['result'] = $result;
         $_SESSION['bulk']['at']     = time();
-        if ($end >= $total) $_SESSION['bulk']['stage'] = 'done';
+        if ($end >= $total) {
+            $_SESSION['bulk']['stage'] = 'done';
+            adminAudit('bulk_import', 'bulk:' . $entity, sprintf('%s · %d inserted, %d failed, %d duplicates skipped, %d invalid skipped', (string) ($state['file'] ?? ''), $result['ok'], $result['fail'], $result['dup'], $result['skipped']));
+        }
         sendJson(['processed' => $end - $offset, 'ok' => $c['ok'], 'fail' => $c['fail'], 'dup' => $c['dup'], 'skipped' => $c['skipped'], 'total' => $total]);
     }
 
@@ -761,6 +764,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $skipDup = isset($_POST['skip_duplicates']) && (string) $_POST['skip_duplicates'] !== '0';
             try {
                 $c = bulkImportRows($db, $def, $state['rows'], $skipDup);
+                adminAudit('bulk_import', 'bulk:' . $entity, sprintf('%s · %d inserted, %d failed, %d duplicates skipped, %d invalid skipped', (string) ($state['file'] ?? ''), $c['ok'], $c['fail'], $c['dup'], $c['skipped']));
                 $_SESSION['bulk']['result'] = $c + ['processed' => count($state['rows']), 'total' => count($state['rows']), 'file' => $state['file']];
                 $_SESSION['bulk']['stage']  = 'done';
                 $state = $_SESSION['bulk'];
@@ -831,7 +835,7 @@ $intro = match ($step) {
     default => ['Summary of the import into ' . $def['label'] . '.', $reportBtn . $changeBtn],
 };
 
-adminHeader('Bulk Upload', 'Data & System', ['actions' => $viewBtn, 'wide' => $step === 4]);
+adminHeader('Bulk Upload', 'Devotees', ['actions' => $viewBtn, 'wide' => $step === 4]);
 echo $msg;
 echo adminPageIntro($intro[0], $intro[1]);
 ?>

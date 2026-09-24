@@ -20,7 +20,7 @@ $db = getDB();
 $str = static fn(array $src, string $key): string => is_scalar($src[$key] ?? null) ? (string) $src[$key] : '';
 
 if (!liveTablesExist()) {
-    adminHeader('Deities', 'Worship');
+    adminHeader('Deities', 'Temple');
     echo '<p class="alert alert--warning" role="alert">Deities are not installed on this site yet: apply database migration <code>011_live_streams.sql</code> and reload.</p>';
     adminFooter();
     exit;
@@ -227,7 +227,7 @@ $countLabel = $filter !== $defaultFilter ? "$shown of {$chipCounts['all']} deiti
 $invalid    = static fn(string $f): string => isset($errors[$f]) ? ' aria-invalid="true" aria-describedby="err-' . $f . '"' : '';
 $fieldError = static fn(string $f, string $text): string => isset($errors[$f]) ? '<span class="field__error" id="err-' . $f . '">' . adminIcon('alert-circle') . h($text) . '</span>' : '';
 
-adminHeader('Deities', 'Worship', [
+adminHeader('Deities', 'Temple', [
     'actions' => '<a href="/about#deities" target="_blank" rel="noopener" class="btn btn-ghost btn--sm">' . adminIcon('external') . 'View on site</a>',
 ]);
 echo $msg;

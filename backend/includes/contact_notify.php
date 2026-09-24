@@ -23,7 +23,13 @@ require_once __DIR__ . '/devotee_notify.php';
 function contactNotifyEmails(): array
 {
     $out = [];
-    foreach (explode(',', envValue('CONTACT_NOTIFY_EMAIL', '')) as $raw) {
+    $list = envValue('CONTACT_NOTIFY_EMAIL', '');
+    if (trim($list) === '') {
+        // No environment value: the address saved under Admin → System → Settings.
+        if (!function_exists('siteSetting')) require_once __DIR__ . '/site_settings.php';
+        try { $list = (string) (siteSetting('contact_notify_email') ?? ''); } catch (Throwable) { $list = ''; }
+    }
+    foreach (explode(',', $list) as $raw) {
         $e = trim($raw);
         if ($e === '' || !filter_var($e, FILTER_VALIDATE_EMAIL)) continue;
         $out[mb_strtolower($e)] = $e;
@@ -34,7 +40,12 @@ function contactNotifyEmails(): array
 /** The language the office alert is written in: CONTACT_NOTIFY_LANG, 'en' unless it says 'ta'. */
 function contactNotifyLang(): string
 {
-    return envValue('CONTACT_NOTIFY_LANG', 'en') === 'ta' ? 'ta' : 'en';
+    $lang = envValue('CONTACT_NOTIFY_LANG', '');
+    if ($lang === '') {
+        if (!function_exists('siteSetting')) require_once __DIR__ . '/site_settings.php';
+        try { $lang = (string) (siteSetting('contact_notify_lang') ?? ''); } catch (Throwable) { $lang = ''; }
+    }
+    return $lang === 'ta' ? 'ta' : 'en';
 }
 
 /** A stored E.164 number ("919876543210") as the office reads it: "+91 98765 43210" for India, "+…" elsewhere. */

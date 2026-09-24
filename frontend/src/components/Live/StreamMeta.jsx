@@ -90,7 +90,7 @@ export default function StreamMeta({ stream, lang, t }) {
             )}
             {eventTitle && (
               <span className="live-meta__link-line" data-part-of="event">
-                <Link to="/events" className="live-meta__link">{eventTitle}</Link>
+                <Link to={event && event.id ? `/events/${event.id}` : "/events"} className="live-meta__link">{eventTitle}</Link>
                 {eventDate && <span className="live-meta__sub">{eventDate}</span>}
               </span>
             )}

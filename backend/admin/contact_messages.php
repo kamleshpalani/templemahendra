@@ -177,7 +177,7 @@ $ranges = [
 ];
 
 // ── Page ─────────────────────────────────────────────────────────────────────
-adminHeader('Contact Messages', 'Devotees', [
+adminHeader('Contact Messages', 'Communication', [
     'actions' => '<a href="/contact" target="_blank" rel="noopener" class="btn btn--sm">' . adminIcon('external') . 'Contact page</a>',
 ]);
 echo $msg;

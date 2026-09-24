@@ -189,7 +189,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 }
 
 // ── Page ─────────────────────────────────────────────────────────────────────
-adminHeader('Donation Categories', 'Worship', [
+adminHeader('Donation Categories', 'Finance', [
     'actions' => '<a href="/donate" target="_blank" rel="noopener" class="btn btn-ghost btn--sm">' . adminIcon('external') . 'View on site</a>',
 ]);
 echo $msg;

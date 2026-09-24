@@ -35,6 +35,7 @@ import {
 import api from "../services/api";
 import { useLang } from "../context/LangContext";
 import { paymentsUsable, usePaymentsConfig } from "../lib/payments";
+import { paragraphs, siteHours, siteNallaNeram, siteText, siteValue, useSiteSettings } from "../lib/siteSettings";
 import {
   TEMPLE,
   ADDRESS,
@@ -82,10 +83,17 @@ function nextDarshanLine(stream, lang, t, serverOffset) {
 }
 
 /* ─── Derived temple facts (never invented — see data/temple.js, lib/templeTime.js) ─── */
-/** "6:00 AM – 12:30 PM", "4:00 PM – 9:00 PM" from the shared TEMPLE_HOURS table. */
-const HOURS = TEMPLE_HOURS.map(
+/**
+ * "6:00 AM – 12:30 PM", "4:00 PM – 9:00 PM": the committee's opening hours
+ * (Admin → System → Settings) when set, else the shared TEMPLE_HOURS table.
+ */
+const HOURS_BUILTIN = TEMPLE_HOURS.map(
   ({ open, close }) => `${to12h(`${open[0]}:${open[1]}`)} – ${to12h(`${close[0]}:${close[1]}`)}`,
 );
+const hoursLabels = (site) => {
+  const own = siteHours(site);
+  return own ? own.map((w) => `${to12h(w.open)} – ${to12h(w.close)}`) : HOURS_BUILTIN;
+};
 
 /** Tiny proof chips under the hero actions — every line is a booklet fact. */
 const PROOF = [
@@ -160,7 +168,7 @@ function Tile({ icon, tone, label, index = 0, className = "", children, ...rest 
 /* ─── Mode content blocks ─────────────────────────────────── */
 const BLESSING_KEY = "temple_blessing_hidden";
 
-function DevoteeContent({ t, pulseData, nallaTime, pournami }) {
+function DevoteeContent({ t, pulseData, nallaTime, pournami, HOURS = HOURS_BUILTIN }) {
   const [blessingHidden, setBlessingHidden] = useState(() => {
     const today = todayIST();
     return store.get(BLESSING_KEY) === today;
@@ -187,8 +195,7 @@ function DevoteeContent({ t, pulseData, nallaTime, pournami }) {
           <p className="home-tile__value">{nextPoojaName}</p>
         </Tile>
         <Tile index={1} icon={<LuClock />} label={t("கோயில் நேரம்", "Temple Hours")}>
-          <p className="home-tile__value">{HOURS[0]}</p>
-          <p className="home-tile__value">{HOURS[1]}</p>
+          {HOURS.map((h) => <p key={h} className="home-tile__value">{h}</p>)}
         </Tile>
         {nextEvent && (
           <Tile index={2} icon={<LuPartyPopper />} label={t("அடுத்த திருவிழா", "Next Festival")}>
@@ -252,7 +259,7 @@ function DevoteeContent({ t, pulseData, nallaTime, pournami }) {
   );
 }
 
-function FirstVisitContent({ t }) {
+function FirstVisitContent({ t, HOURS = HOURS_BUILTIN }) {
   const steps = [
     { num: "01", title: t("கோயிலை பற்றி", "About the Temple"), body: t(HISTORY.summary.ta, HISTORY.summary.en) },
     {
@@ -263,7 +270,7 @@ function FirstVisitContent({ t }) {
         "Wear clean attire. Silence your phone. Remove footwear at the entrance.",
       ),
     },
-    { num: "03", title: t("வருகை நேரம்", "Visiting Hours"), body: `${HOURS[0]}  |  ${HOURS[1]}` },
+    { num: "03", title: t("வருகை நேரம்", "Visiting Hours"), body: HOURS.join("  |  ") },
     {
       num: "04",
       title: t("உடை விதிமுறை", "Dress Code"),
@@ -300,7 +307,7 @@ function FirstVisitContent({ t }) {
   );
 }
 
-function NriContent({ t, payOnline = false }) {
+function NriContent({ t, payOnline = false, youtubeUrl = TEMPLE.youtube.channelUrl }) {
   return (
     <div className="home-visit__block">
       <div className="home-visit__grid">
@@ -313,7 +320,7 @@ function NriContent({ t, payOnline = false }) {
             {t("நேரடி தரிசனம் பார்க்க", "Watch live darshan")}
           </Button>
           <Button
-            href={TEMPLE.youtube.channelUrl}
+            href={youtubeUrl}
             target="_blank"
             rel="noopener noreferrer"
             variant="ghost"
@@ -368,7 +375,7 @@ function NriContent({ t, payOnline = false }) {
   );
 }
 
-function ElderContent({ t, pulseData }) {
+function ElderContent({ t, pulseData, HOURS = HOURS_BUILTIN, phone = PRIMARY_CONTACT.phone }) {
   const isOpen = pulseData?.open ?? null;
   return (
     <div className="home-visit__block">
@@ -391,16 +398,15 @@ function ElderContent({ t, pulseData }) {
           label={`${t("தொடர்பு கொள்ள", "Call Temple")} — ${t(PRIMARY_CONTACT.role.ta, PRIMARY_CONTACT.role.en)}`}
         >
           <a
-            href={telHref(PRIMARY_CONTACT.phone)}
+            href={telHref(phone)}
             className="home-tile__value home-tile__value--link"
-            aria-label={`${formatPhone(PRIMARY_CONTACT.phone)} — ${t(PRIMARY_CONTACT.name.ta, PRIMARY_CONTACT.name.en)}, ${t(PRIMARY_CONTACT.role.ta, PRIMARY_CONTACT.role.en)}`}
+            aria-label={`${formatPhone(phone)} — ${t(PRIMARY_CONTACT.name.ta, PRIMARY_CONTACT.name.en)}, ${t(PRIMARY_CONTACT.role.ta, PRIMARY_CONTACT.role.en)}`}
           >
-            {formatPhone(PRIMARY_CONTACT.phone)}
+            {formatPhone(phone)}
           </a>
         </Tile>
         <Tile index={2} icon={<LuClock />} label={t("கோயில் நேரம்", "Temple Hours")}>
-          <p className="home-tile__value">{HOURS[0]}</p>
-          <p className="home-tile__value">{HOURS[1]}</p>
+          {HOURS.map((h) => <p key={h} className="home-tile__value">{h}</p>)}
         </Tile>
         <Tile index={3} icon={<LuConstruction />} label={t(FACILITIES.label.ta, FACILITIES.label.en)}>
           <p className="home-tile__value">{t(FACILITIES.status.ta, FACILITIES.status.en)}</p>
@@ -519,6 +525,24 @@ export default function Home() {
   });
   const { lang, t } = useLang();
   const [mode, setMode] = useState(() => detectInitialMode(lang));
+  // The committee's words and figures (Admin → System → Settings): each one
+  // replaces the built-in value only when it has been typed.
+  const { site } = useSiteSettings();
+  const HOURS = hoursLabels(site);
+  const youtubeUrl = siteValue(site, "social_youtube") || TEMPLE.youtube.channelUrl;
+  const officePhone = siteValue(site, "phone_primary").replace(/^\+91/, "") || PRIMARY_CONTACT.phone;
+  const templeName = siteText(site, "temple_name", lang) || t(TEMPLE.name.ta, TEMPLE.name.en);
+  const templeDescriptor = siteText(site, "temple_descriptor", lang) || t(TEMPLE.descriptor.ta, TEMPLE.descriptor.en);
+  const templeAddress = siteText(site, "temple_address", lang) || t(ADDRESS.printed.ta, ADDRESS.printed.en);
+  const heroTitle = siteText(site, "hero_title", lang) || templeName;
+  const intro = paragraphs(siteText(site, "intro", lang));
+  // The committee's Nalla Neram table (Admin → Temple → Nalla Neram) replaces
+  // the built-in one; keyed on its text so the effect runs once per change.
+  const ownNallaKey = JSON.stringify(siteNallaNeram(site, istWeekday) ?? null);
+  useEffect(() => {
+    const own = JSON.parse(ownNallaKey);
+    if (own) setNallaTime(own);
+  }, [ownNallaKey]);
   // The "Online Donation" tile only says "online" once online giving really
   // works; until then it points at the bank details (docs/payments/SPEC.md §7.8).
   const { config: paymentsConfig } = usePaymentsConfig();
@@ -646,7 +670,7 @@ export default function Home() {
 
   // The hero's one-line description of the temple, and the sentence a shared
   // link to the site shows.
-  const heroLead = t(
+  const heroLead = siteText(site, "hero_lead", lang) || t(
     "பக்தி, பாரம்பரியம் மற்றும் சமூகம் — ஒரு புனிதத் தலம்",
     "A sacred place of devotion, tradition, and community",
   );
@@ -671,10 +695,10 @@ export default function Home() {
               <span>{t(TEMPLE.invocation.ta, TEMPLE.invocation.en)}</span>
             </p>
             <h1 id="home-hero-title" className="home-hero__title">
-              {t(TEMPLE.name.ta, TEMPLE.name.en)}
+              {heroTitle}
             </h1>
             <p className="home-hero__meta">
-              {t(TEMPLE.descriptor.ta, TEMPLE.descriptor.en)} · {t(ADDRESS.printed.ta, ADDRESS.printed.en)}
+              {templeDescriptor} · {templeAddress}
             </p>
             <p className="home-hero__lead">{heroLead}</p>
             <div className="home-hero__actions">
@@ -693,7 +717,7 @@ export default function Home() {
               <ShareButton
                 variant="outline-light"
                 size="lg"
-                title={t(TEMPLE.name.ta, TEMPLE.name.en)}
+                title={templeName}
                 text={heroLead}
                 to="/"
               />
@@ -781,6 +805,16 @@ export default function Home() {
         </div>
       </section>
 
+      {/* ── Temple introduction (Admin → System → Settings → Homepage words) ── */}
+      {intro.length > 0 && (
+        <section className="section section--tight home-intro reveal" aria-labelledby="home-intro-title" data-source="cms">
+          <div className="container page-prose home-intro__prose">
+            <h2 id="home-intro-title" className="sr-only">{t("அறிமுகம்", "Introduction")}</h2>
+            {intro.map((p) => <p key={p}>{p}</p>)}
+          </div>
+        </section>
+      )}
+
       {/* ── Live band: notices · nalla neram · donors ── */}
       {(showNotices || showNalla || showDonors) && (
         <div className="live-band" role="region" aria-label={t("நேரலை தகவல்", "Live updates")}>
@@ -807,7 +841,7 @@ export default function Home() {
                           className={`live-band__item${dup ? " live-band__item--dup" : ""}`}
                           aria-hidden={dup || undefined}
                         >
-                          {a.title}
+                          {t(a.title_ta, a.title_en) || a.title}
                         </span>
                       );
                     })}
@@ -939,11 +973,12 @@ export default function Home() {
                 pulseData={pulseData}
                 nallaTime={nallaTime}
                 pournami={pournami}
+                HOURS={HOURS}
               />
             )}
-            {mode === "first-visit" && <FirstVisitContent t={t} />}
-            {mode === "nri" && <NriContent t={t} payOnline={payOnline} />}
-            {mode === "elder" && <ElderContent t={t} pulseData={pulseData} />}
+            {mode === "first-visit" && <FirstVisitContent t={t} HOURS={HOURS} />}
+            {mode === "nri" && <NriContent t={t} payOnline={payOnline} youtubeUrl={youtubeUrl} />}
+            {mode === "elder" && <ElderContent t={t} pulseData={pulseData} HOURS={HOURS} phone={officePhone} />}
             {mode === "volunteer" && <VolunteerContent t={t} />}
             {mode === "sponsor" && <SponsorContent t={t} />}
           </div>
@@ -1040,8 +1075,15 @@ export default function Home() {
                         </span>
                       </time>
                       <div className="home-event__body">
-                        <h3>{lang === "ta" ? e.title_ta : e.title_en}</h3>
-                        {e.description && <p>{e.description}</p>}
+                        <h3>
+                          <Link to={`/events/${e.id}`} className="home-event__link">
+                            {t(e.title_ta, e.title_en) || e.title_en || e.title_ta}
+                          </Link>
+                          {e.is_featured ? <Badge tone="gold" className="home-event__badge">{t("சிறப்பு", "Featured")}</Badge> : null}
+                        </h3>
+                        {(t(e.description_ta, e.description_en) || e.description) && (
+                          <p>{t(e.description_ta, e.description_en) || e.description}</p>
+                        )}
                       </div>
                     </article>
                   );

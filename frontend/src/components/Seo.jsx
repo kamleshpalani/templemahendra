@@ -4,6 +4,7 @@ import { useLocation } from "react-router-dom";
 import { useLang } from "../context/LangContext";
 import { TEMPLE } from "../data/temple";
 import { absoluteUrl, siteOrigin } from "../lib/share";
+import { seoOverrideFor, siteText, useSiteSettings } from "../lib/siteSettings";
 
 /**
  * Seo — the one place the site's document head is written.
@@ -60,9 +61,9 @@ function usePreviewImage(image) {
 }
 
 export default function Seo({
-  title,
-  description,
-  image,
+  title: pageTitle,
+  description: pageDescription,
+  image: pageImage,
   imageAlt,
   type = "website",
   /**
@@ -72,14 +73,28 @@ export default function Seo({
    * every public page wants, the family registration form included, since the
    * committee shares that link.
    */
-  robots,
+  robots: pageRobots,
   canonicalPath,
   children,
 }) {
   const { lang, t } = useLang();
   const { pathname, search } = useLocation();
 
-  const siteName = t(TEMPLE.name.ta, TEMPLE.name.en);
+  // Admin → System → SEO: the committee's title, description, preview image
+  // and "keep out of search engines" for this exact address win over the
+  // page's own values, field by field. The same table feeds api/og.php, so
+  // a crawler and a browser read the same words.
+  const { site, seo } = useSiteSettings();
+  const override = seoOverrideFor(seo, pathname);
+  const other = lang === "ta" ? "en" : "ta";
+  const ovTitle = override ? override[`title_${lang}`] || override[`title_${other}`] || "" : "";
+  const ovDescription = override ? override[`description_${lang}`] || override[`description_${other}`] || "" : "";
+  const title = ovTitle || pageTitle;
+  const description = ovDescription || pageDescription;
+  const image = (override && override.og_image) || pageImage;
+  const robots = override && override.noindex ? "noindex, nofollow" : pageRobots;
+
+  const siteName = siteText(site, "temple_name", lang) || t(TEMPLE.name.ta, TEMPLE.name.en);
   // The site name is the title on the home page and the suffix everywhere else.
   const docTitle = title ? `${title} — ${siteName}` : siteName;
   // The query string stays in: on /search it is what is on screen, and it is

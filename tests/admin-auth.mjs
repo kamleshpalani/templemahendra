@@ -114,6 +114,12 @@ const matrix = [
   ["/admin/live_streams.php",       200,   200,    200,     200],
   ["/admin/live_settings.php",      403,   403,    403,     403],
   ["/admin/notification_templates.php", 200, 200,  200,     200],
+  // Brief §15 pages (migration 025): content pages for editors, system pages for admins, the roles matrix for everyone.
+  ["/admin/pages.php",              200,   200,    403,     403],
+  ["/admin/nalla_neram.php",        200,   200,    403,     403],
+  ["/admin/seo.php",                200,   403,    403,     403],
+  ["/admin/languages.php",          200,   403,    403,     403],
+  ["/admin/roles.php",              200,   200,    200,     200],
 ];
 for (const [page, ...want] of matrix) {
   const got = [];

@@ -126,6 +126,8 @@ if (str_starts_with($path, '/admin/')) sendError('Not found', 404);
 
 // One event by id (brief §6): events.php answers the row, or 404 when it is hidden or absent.
 if ($method === 'GET' && preg_match('#^/events/([0-9]{1,10})$#', $path, $eventMatch)) { $eventId = (int) $eventMatch[1]; require __DIR__ . '/events.php'; exit; }
+// One CMS page by slug (brief §6, §15): pages.php answers the row, or 404 when it is hidden or absent.
+if ($method === 'GET' && preg_match('#^/pages/([a-z0-9][a-z0-9-]{0,118})$#', $path, $pageMatch)) { $pageSlug = $pageMatch[1]; require __DIR__ . '/pages.php'; exit; }
 
 $routes = [
     'GET'  => [
@@ -145,6 +147,7 @@ $routes = [
         '/poojas'          => 'poojas.php',
         '/homepage_widgets'=> 'homepage_widgets.php',
         '/settings'        => 'settings.php',
+        '/pages'           => 'pages.php',
     ],
     'POST' => [
         '/donations'      => 'donations.php',

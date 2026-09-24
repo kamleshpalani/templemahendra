@@ -418,7 +418,8 @@ async function liveFacts() {
   check((await hero.count()) === 1 && /Live now/.test(await text(hero)) && /Started \d{1,2}:\d{2} (am|pm) IST/.test(await text(hero)), "the hero shows the Live now badge and when it started", await text(hero));
   check((await hero.locator(".badge").getAttribute("class"))?.includes("badge--live"), "the hero badge carries the live dot");
   check((await text(page.locator(".live-stream__title"))) === F.live.title_en, "the stream title is shown", await text(page.locator(".live-stream__title")));
-  check(/Test live darshan created by the test suite/.test(await text(page.locator(".live-stream__desc"))), "the description is shown");
+  // Scoped to the About section: the Donations block (Phase 7) shares the .live-about / .live-stream__desc classes.
+  check(/Test live darshan created by the test suite/.test(await text(page.locator('.live-about[aria-labelledby="live-about-title"] .live-stream__desc'))), "the description is shown", await text(page.locator('.live-about[aria-labelledby="live-about-title"]')));
   const f = await facts(page);
   check(/Sri Lingammal/.test(f.Temple ?? ""), "details: Temple", JSON.stringify(f));
   check(/Sri Lingammal/.test(f.Deity ?? ""), "details: Deity", f.Deity);
@@ -800,7 +801,7 @@ async function premiumPage() {
     const row = await actionRow(page);
     check(Array.isArray(row) && row.length === 2 && row.some((b) => /^Donate$/.test(b.text) && b.href === `/donate?stream=${F.live.slug}`) && row.some((b) => /^Share$/.test(b.text)) && !row.some((b) => /Notify/.test(b.text)), `@${w}: LIVE offers Donate (to /donate?stream=<slug>) and Share, not Notify me`, JSON.stringify(row));
     check(Array.isArray(row) && row.every((b) => b.h >= 44 && b.fits), `@${w}: every action is 44 px tall and inside the viewport`, JSON.stringify(row));
-    const about = page.locator(".live-about");
+    const about = page.locator('.live-about[aria-labelledby="live-about-title"]'); // not the Donations block, which shares the class
     check((await text(about.locator("h3"))) === "About this pooja" && /Test live darshan created by the test suite/.test(await text(about)), `@${w}: About this pooja carries the description`, await text(about));
     if (w === 390) {
       const order = await page.evaluate(() => {
@@ -819,7 +820,7 @@ async function premiumPage() {
   // Tamil: the heading, the pill's sentence and the Tamil description.
   const ta = await newPage({ lang: null });
   await openLive(ta);
-  check((await text(ta.locator(".live-about h3"))) === "இந்த பூஜை பற்றி" && /சோதனை நேரடி தரிசனம்/.test(await text(ta.locator(".live-about"))), "Tamil: இந்த பூஜை பற்றி with the Tamil description", await text(ta.locator(".live-about")));
+  check((await text(ta.locator('.live-about[aria-labelledby="live-about-title"] h3'))) === "இந்த பூஜை பற்றி" && /சோதனை நேரடி தரிசனம்/.test(await text(ta.locator('.live-about[aria-labelledby="live-about-title"]'))), "Tamil: இந்த பூஜை பற்றி with the Tamil description", await text(ta.locator('.live-about[aria-labelledby="live-about-title"]')));
   check(/42 பேர் பார்க்கிறார்கள்/.test(await text(ta.locator(".live-header__viewers"))), "Tamil: the pill's sentence", await text(ta.locator(".live-header__viewers")));
   check(/நன்கொடை/.test(await text(ta.locator(".live-actions"))) && /பங்கிடு/.test(await text(ta.locator(".live-actions"))), "Tamil: Donate and Share labels", await text(ta.locator(".live-actions")));
   await ta.context().close();
@@ -853,8 +854,9 @@ async function premiumPage() {
   await notify.click();
   const dialog = sched.locator('[role="dialog"]');
   await dialog.waitFor();
-  check((await dialog.count()) === 1 && /Reminders are coming soon/.test(await text(dialog)) && /the schedule has every upcoming time/.test(await text(dialog)), "Notify me opens the reminders-are-coming note", await text(dialog));
-  check((await dialog.locator('a[href="/live-darshan/schedule"]').count()) === 1 && (await dialog.locator("input, textarea").count()) === 0, "…with the schedule as the way out and no email field (Phase 6 owns reminders)");
+  // Phase 6 shipped the email reminder (docs/LIVE-STREAMING.md "Notify me"): the dialog carries the form, not the "coming soon" note.
+  check((await dialog.count()) === 1 && /Remind me/.test(await text(dialog)) && /Save reminder/.test(await text(dialog)) && /Unsubscribe using the link in the email/.test(await text(dialog)), "Notify me opens the email-reminder dialog (Phase 6)", await text(dialog));
+  check((await dialog.locator('a[href="/live-darshan/schedule"]').count()) === 1 && (await dialog.locator('input[type="email"][name="email"]').count()) === 1 && (await dialog.locator('input[type="checkbox"][required]').count()) === 1, "…with the schedule as the way out, one email field and the consent box");
   await sched.waitForTimeout(200);
   check((await dialog.getAttribute("aria-modal")) === "true" && (await sched.evaluate(() => document.activeElement?.closest('[role="dialog"]') !== null)), "…focus moved into the dialog");
   for (let i = 0; i < 8; i += 1) await sched.keyboard.press("Tab");
@@ -1463,7 +1465,7 @@ async function linksAndSwitches() {
     await openLive(page, `/live-darshan/${F.linked.slug}`);
     const f = await facts(page);
     check(new RegExp(`${poojaName}.*${eventTitle}`).test(f["Part of"] ?? ""), 'Part of: names the pooja and the event', f["Part of"]);
-    check((await page.locator('.live-meta [data-part-of="pooja"] a').getAttribute("href")) === "/sevas" && (await page.locator('.live-meta [data-part-of="event"] a').getAttribute("href")) === "/events", "Part of: the pooja links to /sevas and the event to /events");
+    check((await page.locator('.live-meta [data-part-of="pooja"] a').getAttribute("href")) === "/sevas" && (await page.locator('.live-meta [data-part-of="event"] a').getAttribute("href")) === `/events/${eventId}`, "Part of: the pooja links to /sevas and the event to its own page /events/<id>");
     check(new RegExp(`^${family}`).test(f["Sponsored by"] ?? "") && /In memory of our elders/.test(f["Sponsored by"] ?? ""), "Sponsored by: the family name (not the private name) with the note", f["Sponsored by"]);
     const html = await page.content();
     check(!html.includes("9876543210") && !html.includes("private-sponsor@example.test") && !/\b5001\b/.test(html) && !html.includes(`${PREFIX} Kandasamy<`), "…and neither the phone, the email, the amount nor the private name reaches the page");

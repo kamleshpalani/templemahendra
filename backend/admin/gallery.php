@@ -379,7 +379,7 @@ $albumOptions = static function (int $selected) use ($albums): string {
 };
 
 $headerActions = '<a href="/gallery" target="_blank" rel="noopener" class="btn btn-ghost btn--sm">' . adminIcon('external') . 'View on site</a>';
-adminHeader('Gallery', 'Content', ['actions' => $headerActions]);
+adminHeader('Gallery', 'Media', ['actions' => $headerActions]);
 echo $msg;
 if (!$hasAlbums) {
     echo '<p class="alert alert--warning" role="alert">Albums and alternative text are not installed on this site yet: apply database migration <code>021_gallery_albums.sql</code> and reload. Photos can still be uploaded and deleted.</p>';

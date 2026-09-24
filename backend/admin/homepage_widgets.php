@@ -352,7 +352,7 @@ $invalid = static function (string $field, ?string $hintId, string $errId) use (
 };
 
 $actions = '<a href="/" target="_blank" rel="noopener" class="btn btn--sm">' . adminIcon('external') . 'Preview homepage</a>';
-adminHeader('Homepage Widgets', 'Content', ['actions' => $actions]);
+adminHeader('Homepage', 'Content', ['actions' => $actions]);
 echo $msg;
 echo adminPageIntro(
     'Compose the cards shown on the public homepage — announcements, the next pooja, sponsors and Nalla Neram — and control their order, visibility and schedule.',

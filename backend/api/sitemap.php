@@ -11,12 +11,15 @@
 require_once __DIR__ . '/../includes/helpers.php';
 require_once __DIR__ . '/../includes/db.php';
 require_once __DIR__ . '/../includes/site_pages.php';
+require_once __DIR__ . '/../includes/site_settings.php';
 require_once __DIR__ . '/../includes/live.php';
 
 const SITEMAP_STREAM_STATUSES = ['SCHEDULED', 'STARTING', 'LIVE', 'COMPLETED'];
 
 $entries = [];
+$seo = siteSeoOverrides(); // a page the committee keeps out of search engines is not listed
 foreach (siteIndexablePaths() as $p) {
+    if (!empty($seo[$p]['noindex'])) continue;
     $entries[] = ['loc' => siteUrl($p), 'lastmod' => null, 'changefreq' => $p === '/' ? 'daily' : 'weekly'];
 }
 

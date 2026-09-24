@@ -305,7 +305,7 @@ $fieldError = fn(string $k): string => isset($errors[$k]) ? '<span class="field_
 $telHref = fn(string $phone): string => 'tel:' . (str_starts_with(trim($phone), '+') ? '+' : '') . preg_replace('/\D/', '', $phone);
 
 // ── Page ─────────────────────────────────────────────────────────────────────
-adminHeader('Sponsors', 'Worship', [
+adminHeader('Sponsors', 'Finance', [
     'actions' => '<a href="/admin/poojas.php" class="btn btn-ghost btn--sm">' . adminIcon('flame') . 'Poojas</a>',
 ]);
 echo $msg;

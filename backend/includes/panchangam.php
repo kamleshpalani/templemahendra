@@ -76,6 +76,22 @@ function panchObservanceDates(string $type, string $fromYmd, int $months): array
 /** Nalla Neram (auspicious periods) by weekday, 0 = Sunday: two [from, to] windows. */
 function panchNallaNeram(int $wd): array
 {
+    $wd = (($wd % 7) + 7) % 7;
+    // The committee's table (Admin → Temple → Nalla Neram, migration 025) when
+    // it is complete; the built-in one otherwise.
+    if (!function_exists('siteSettingJson')) require_once __DIR__ . '/site_settings.php';
+    try {
+        $own = siteSettingJson('nalla_neram');
+        $ok  = count($own) === 7;
+        for ($d = 0; $ok && $d < 7; $d++) {
+            $ok = isset($own[$d]) && is_array($own[$d]) && count($own[$d]) === 2
+               && is_array($own[$d][0]) && is_array($own[$d][1])
+               && isset($own[$d][0][0], $own[$d][0][1], $own[$d][1][0], $own[$d][1][1]);
+        }
+        if ($ok) return [[(string) $own[$wd][0][0], (string) $own[$wd][0][1]], [(string) $own[$wd][1][0], (string) $own[$wd][1][1]]];
+    } catch (Throwable) {
+        // fall through to the built-in table
+    }
     static $table = [
         [['07:30', '09:00'], ['22:30', '24:00']], // Sun
         [['06:00', '07:30'], ['15:00', '16:30']], // Mon
@@ -85,7 +101,7 @@ function panchNallaNeram(int $wd): array
         [['10:30', '12:00'], ['16:30', '18:00']], // Fri
         [['06:00', '07:30'], ['19:30', '21:00']], // Sat
     ];
-    return $table[(($wd % 7) + 7) % 7];
+    return $table[$wd];
 }
 
 /** "18:30:00" → "6:30 PM"; null/blank → ''. */

@@ -171,8 +171,11 @@ function sponsorPublicSql(string $s = 's'): array
     if (!publicGuardHasColumn('sponsors', 'publish_consent')) {
         return ['where' => '0', 'name' => $s . '.name'];
     }
+    // A sponsorship whose online payment was refunded in full (migration 023
+    // keeps the row, status REFUNDED) is no longer a sponsorship to thank.
+    $refunded = publicGuardHasColumn('sponsors', 'payment_status') ? ' AND COALESCE(' . $s . '.payment_status, \'\') <> \'REFUNDED\'' : '';
     return [
-        'where' => $s . '.is_active = 1 AND ' . $s . '.publish_consent = 1',
+        'where' => $s . '.is_active = 1 AND ' . $s . '.publish_consent = 1' . $refunded,
         'name'  => 'COALESCE(NULLIF(' . $s . '.family_name, \'\'), ' . $s . '.name)',
     ];
 }

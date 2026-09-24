@@ -29,6 +29,7 @@ import {
   telHref,
 } from "../data/temple";
 import CommitteeGrid from "../components/CommitteeGrid/CommitteeGrid";
+import { siteText, siteValue, useSiteSettings } from "../lib/siteSettings";
 import PageHero from "../components/ui/PageHero";
 import Seo from "../components/Seo";
 import ShareButton from "../components/Share/ShareButton";
@@ -48,7 +49,7 @@ const WHATSAPP_HREF = `https://wa.me/91${PRIMARY_CONTACT.phone}?text=${encodeURI
 const EMAIL = "info@dhabbalavaartemple.in";
 
 export default function Contact() {
-  const { t } = useLang();
+  const { lang, t } = useLang();
   const toast = useToast();
   const [form, setForm] = useState({ name: "", phone: "", phoneCountry: DEFAULT_COUNTRY, email: "", subject: "", message: "", hp_token: "" });
   const [errors, setErrors] = useState({});
@@ -111,25 +112,31 @@ export default function Contact() {
 
   const phoneContacts = [PRIMARY_CONTACT, SECONDARY_CONTACT];
   const sending = status === "sending";
+  // Admin → System → Settings: the printed address and the office phone when
+  // the committee typed them; the booklet facts otherwise.
+  const { site } = useSiteSettings();
+  const printedAddress = siteText(site, "temple_address", lang) || t(ADDRESS.printed.ta, ADDRESS.printed.en);
+  const officePhone = siteValue(site, "phone_primary").replace(/^\+91/, "") || PRIMARY_CONTACT.phone;
+  const officeEmail = siteValue(site, "email");
 
   return (
     <>
-      <Seo title={t("தொடர்பு", "Contact")} description={t(ADDRESS.printed.ta, ADDRESS.printed.en)} />
+      <Seo title={t("தொடர்பு", "Contact")} description={printedAddress} />
 
       <PageHero
         variant="contact"
         eyebrow={t("வரவேற்கிறோம்", "We'd love to hear from you")}
         title={t("தொடர்பு கொள்ளுங்கள்", "Contact Us")}
-        lead={t(ADDRESS.printed.ta, ADDRESS.printed.en)}
+        lead={printedAddress}
         crumbs={[{ label: t("தொடர்பு", "Contact") }]}
         actions={
           <>
             <Button
-              href={telHref(PRIMARY_CONTACT.phone)}
+              href={telHref(officePhone)}
               variant="primary"
               className="contact-hero__btn"
               icon={<LuPhone aria-hidden="true" />}
-              aria-label={`${t("அழைக்கவும்", "Call")} — ${formatPhone(PRIMARY_CONTACT.phone)}`}
+              aria-label={`${t("அழைக்கவும்", "Call")} — ${formatPhone(officePhone)}`}
             >
               {t("அழைக்கவும்", "Call")}
             </Button>
@@ -182,7 +189,8 @@ export default function Contact() {
                 <div className="contact-card__body">
                   <h3 className="contact-card__title">{t("முகவரி", "Address")}</h3>
                   <address className="contact-address">
-                    <span className="contact-address__name">{t(TEMPLE.fullName.ta, TEMPLE.fullName.en)}</span>
+                    <span className="contact-address__name">{siteText(site, "temple_name", lang) || t(TEMPLE.fullName.ta, TEMPLE.fullName.en)}</span>
+                    {officeEmail && <span><a href={`mailto:${officeEmail}`}>{officeEmail}</a></span>}
                     <span>
                       {t(ADDRESS.street.ta, ADDRESS.street.en)},{" "}
                       {t(ADDRESS.village.ta, ADDRESS.village.en)}

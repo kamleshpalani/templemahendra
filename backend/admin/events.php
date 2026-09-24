@@ -19,7 +19,7 @@ require_once __DIR__ . '/includes/admin_layout.php';
 $db = getDB();
 
 if (!publicGuardHasColumn('events', 'event_type') || !publicGuardHasColumn('events', 'description_ta')) {
-    adminHeader('Events', 'Worship');
+    adminHeader('Events', 'Temple');
     echo '<p class="alert alert--warning" role="alert">Bilingual events are not installed on this site yet: apply database migration <code>020_bilingual_content_events.sql</code> and reload.</p>';
     adminFooter();
     exit;
@@ -267,7 +267,7 @@ $fieldError = static fn(string $f, string $text): string => isset($errors[$f]) ?
 $hhmm       = static fn(?string $t): string => $t === null || $t === '' ? '' : substr($t, 0, 5);
 
 // ── Page ─────────────────────────────────────────────────────────────────────
-adminHeader('Events', 'Worship', [
+adminHeader('Events', 'Temple', [
     'actions' => '<a href="/events" target="_blank" rel="noopener" class="btn btn-ghost btn--sm">' . adminIcon('external') . 'View on site</a>',
 ]);
 echo $msg;

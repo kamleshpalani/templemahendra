@@ -335,6 +335,14 @@ const shot = (page, name) => page.screenshot({ path: resolve(SHOTS, `${name}.png
 const overflow = (page) => page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth + 1);
 async function axe(page) {
   await page.addScriptTag({ content: axeSource });
+  // Alerts and cards fade in (opacity 0 → 1): a contrast check taken mid-fade
+  // reads a colour nobody ever sees, so wait for every running animation first.
+  // Only finite animations are awaited (a pulsing dot never finishes), and never
+  // for longer than a second and a half.
+  await page.evaluate(() => Promise.race([
+    Promise.all(document.getAnimations().filter((a) => Number.isFinite(a.effect?.getTiming?.().iterations ?? 1)).map((a) => a.finished.catch(() => {}))),
+    new Promise((resolve) => setTimeout(resolve, 1500)),
+  ])).catch(() => {});
   return page.evaluate(async () => {
     const res = await window.axe.run(document, {
       runOnly: { type: "tag", values: ["wcag2a", "wcag2aa", "best-practice"] },
@@ -1025,6 +1033,8 @@ async function poojaSponsor() {
   check(page.errors().length === 0, "pooja donation: no console errors", page.errors().slice(0, 3).join(" | "));
 
   // The pooja is over by the time the donor pays: the server refuses it and the page says so on the purpose step.
+  // The 422 is the expected answer; Chromium logs every non-2xx fetch as a console error (as with the 404 above).
+  page.allowErrors(/status of 422/);
   sql("UPDATE poojas SET pooja_date = DATE_SUB(CURDATE(), INTERVAL 2 DAY) WHERE id = ?", [poojaId]);
   await page.goto(`${BASE}/donate?pooja=${poojaId}`, { waitUntil: "domcontentloaded" });
   await page.locator(".form-stepper").waitFor();

@@ -106,6 +106,11 @@ export default function ReceiptDocument({ data }) {
             {!isDonation && data.preferredDate ? ` · ${formatPlainDate(data.preferredDate, lang)}` : ""}
           </Row>
         )}
+        {data.pooja && (
+          <Row label={t("இதற்காக", "For")}>
+            {t(data.pooja.ta, data.pooja.en)} · {formatPlainDate(data.pooja.date, lang)}
+          </Row>
+        )}
         <Row label={t("தொகை", "Amount")}>
           {formatMoney(data.amount, data.currency, lang)} ({data.currency})
         </Row>
