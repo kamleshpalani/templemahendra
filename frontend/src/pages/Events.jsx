@@ -25,7 +25,7 @@ import SectionHeader from "../components/ui/SectionHeader";
 import SegmentedControl from "../components/ui/Tabs";
 import { EmptyState, SkeletonCards, SkeletonText } from "../components/ui/Feedback";
 import { OBSERVANCES } from "../data/temple";
-import { to12h } from "../lib/templeTime";
+import { to12h, todayIST } from "../lib/templeTime";
 import "./Events.css";
 
 // Badge tone per event kind (Badge primitive tones — no raw colours). The
@@ -337,7 +337,15 @@ export default function Events() {
       .finally(() => setPastLoading(false));
   }, [filter, pastEvents, pastLoading]);
 
-  const todayStr = new Date().toISOString().slice(0, 10);
+  // The temple's own day (IST), not the UTC date: between midnight and 05:30
+  // IST toISOString() still names yesterday, which kept an expired Pournami
+  // as "next" and flagged the wrong tile "Today" (D-026).
+  const todayStr = todayIST();
+
+  // The Pournamis still ahead of the temple's day. The server already answers
+  // from its own IST today, but a page left open past midnight (or a cached
+  // answer) must not keep offering a full moon that has gone (brief §10).
+  const upcomingPournamis = useMemo(() => pournamis.filter((p) => p.date >= todayStr), [pournamis, todayStr]);
 
   // Static fallback for temple events (used when API returns nothing). These
   // have no row behind them, so they never link to an event page.
@@ -386,7 +394,7 @@ export default function Events() {
   // Convert pournamis API data to event-row format for the merged list
   const pournamiEvents = useMemo(
     () =>
-      pournamis.map((p) => ({
+      upcomingPournamis.map((p) => ({
         id: `pournami-${p.date}`,
         title_ta: p.title_ta,
         title_en: p.title_en,
@@ -397,16 +405,19 @@ export default function Events() {
         badge: "pournami",
         isCalendar: true,
       })),
-    [pournamis],
+    [upcomingPournamis],
   );
 
-  // Merged + sorted list, today onwards only (an event still running counts)
+  // Merged + sorted list, today onwards only (an event still running counts).
+  // The committee's featured events lead (brief §6 Events: "featured event"),
+  // then everything in date order.
   const merged = useMemo(() => {
     const all = [
       ...templeSource.filter((e) => (e.end_date || e.event_date) >= todayStr),
       ...pournamiEvents,
     ];
     const seen = new Set();
+    const lead = (e) => (!e.isCalendar && e.is_featured ? 0 : 1);
     return all
       .filter((e) => {
         const key = `${e.event_date}-${e.badge}-${e.id}`;
@@ -414,7 +425,7 @@ export default function Events() {
         seen.add(key);
         return true;
       })
-      .sort((a, b) => a.event_date.localeCompare(b.event_date));
+      .sort((a, b) => lead(a) - lead(b) || a.event_date.localeCompare(b.event_date));
   }, [templeSource, pournamiEvents, todayStr]);
 
   // The archive rows carry the same shape as the merged list.
@@ -452,10 +463,9 @@ export default function Events() {
 
   // First Pournami on/after today — drives the hero aside and the "Next" tile flag
   const nextPournami = useMemo(() => {
-    const upcoming = pournamis.filter((p) => p.date >= todayStr);
-    if (upcoming.length === 0) return null;
-    return upcoming.reduce((a, b) => (b.date < a.date ? b : a));
-  }, [pournamis, todayStr]);
+    if (upcomingPournamis.length === 0) return null;
+    return upcomingPournamis.reduce((a, b) => (b.date < a.date ? b : a));
+  }, [upcomingPournamis]);
 
   // Named once: the hero shows them, <Seo> puts them in the page's description
   // and its preview card, and the share sheet passes them to WhatsApp.
@@ -522,7 +532,7 @@ export default function Events() {
             <SkeletonCards count={1} className="events-moon-skeleton" />
           ) : (
             <PournamiStrip
-              pournamis={pournamis}
+              pournamis={upcomingPournamis}
               lang={lang}
               t={t}
               todayStr={todayStr}
@@ -540,8 +550,8 @@ export default function Events() {
               showingPast
                 ? t("சமீபத்தில் நடந்த கோயில் நிகழ்வுகள் — புதியது முதலில்.", "Recent temple events, newest first.")
                 : t(
-                    "பௌர்ணமி பூஜைகளும் கோயில் திருவிழாக்களும் — தேதி வரிசையில்.",
-                    "Pournami poojas and temple festivals, in date order.",
+                    "பௌர்ணமி பூஜைகளும் கோயில் திருவிழாக்களும் — சிறப்பு நிகழ்வுகள் முதலில், பிறகு தேதி வரிசையில்.",
+                    "Pournami poojas and temple festivals — featured events first, then in date order.",
                   )
             }
             actions={
@@ -592,15 +602,16 @@ export default function Events() {
                   {filtered.map((ev, i) => {
                     const d = new Date(ev.event_date + "T00:00:00");
                     const day = String(d.getDate()).padStart(2, "0");
-                    const month = d.toLocaleDateString("en-IN", {
+                    // The month in the reading language, as every other date on
+                    // the page is (it was always English, even in Tamil).
+                    const month = d.toLocaleDateString(lang === "ta" ? "ta-IN" : "en-IN", {
                       month: "short",
                     });
                     const year = d.getFullYear();
-                    const title = lang === "ta" ? ev.title_ta : ev.title_en;
-                    const desc =
-                      lang === "ta"
-                        ? (ev.description_ta ?? ev.description)
-                        : (ev.description_en ?? ev.description);
+                    // Either language when the reading one is blank, so a
+                    // card is never an empty heading.
+                    const title = eventText(ev, "title", lang);
+                    const desc = eventText(ev, "description", lang);
                     const venue = ev.isCalendar ? "" : eventText(ev, "venue", lang);
                     const time = ev.time || (ev.isCalendar ? "" : eventTimeLabel(ev));
                     const span = ev.end_date && ev.end_date !== ev.event_date ? eventDateLabel(ev.event_date, ev.end_date, lang) : "";

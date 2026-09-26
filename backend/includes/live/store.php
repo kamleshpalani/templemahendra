@@ -111,10 +111,11 @@ function liveSelectSql(): string
     if ($links) {
         $public = sponsorPublicSql('sp2');
         $name   = sponsorPublicSql('sp')['name'];
+        $note   = sponsorPublicSql('sp')['note'];
         $sql .= ',
                    p.name_ta AS pooja_name_ta, p.name_en AS pooja_name_en, p.pooja_date AS pooja_date, p.pooja_time AS pooja_time,
                    e.title_ta AS event_title_ta, e.title_en AS event_title_en, e.event_date AS event_date,
-                   ' . $name . ' AS sponsor_name, sp.note AS sponsor_note';
+                   ' . $name . ' AS sponsor_name, ' . $note . ' AS sponsor_note';
     }
     $sql .= '
               FROM live_streams s

@@ -35,7 +35,7 @@ import {
 import api from "../services/api";
 import { useLang } from "../context/LangContext";
 import { paymentsUsable, usePaymentsConfig } from "../lib/payments";
-import { paragraphs, siteHours, siteNallaNeram, siteText, siteValue, useSiteSettings } from "../lib/siteSettings";
+import { paragraphs, siteHours, siteNallaNeram, siteOfficeDigits, siteText, siteValue, useSiteSettings } from "../lib/siteSettings";
 import {
   TEMPLE,
   ADDRESS,
@@ -512,6 +512,9 @@ export default function Home() {
   const [pournami, setPournami] = useState(null);
   const [pournamis, setPournamis] = useState([]);
   const [donors, setDonors] = useState([]);
+  // The gallery preview strip (brief §6 Home): the newest shown photos, or
+  // nothing at all until the committee has uploaded some.
+  const [gallery, setGallery] = useState([]);
   // Nalla Neram by IST weekday (0=Sun … 6=Sat) — same table as backend (lib/templeTime)
   const istWeekday = new Date(
     new Date().toLocaleString("en-US", { timeZone: "Asia/Kolkata" }),
@@ -530,7 +533,7 @@ export default function Home() {
   const { site } = useSiteSettings();
   const HOURS = hoursLabels(site);
   const youtubeUrl = siteValue(site, "social_youtube") || TEMPLE.youtube.channelUrl;
-  const officePhone = siteValue(site, "phone_primary").replace(/^\+91/, "") || PRIMARY_CONTACT.phone;
+  const officePhone = siteOfficeDigits(site, PRIMARY_CONTACT.phone);
   const templeName = siteText(site, "temple_name", lang) || t(TEMPLE.name.ta, TEMPLE.name.en);
   const templeDescriptor = siteText(site, "temple_descriptor", lang) || t(TEMPLE.descriptor.ta, TEMPLE.descriptor.en);
   const templeAddress = siteText(site, "temple_address", lang) || t(ADDRESS.printed.ta, ADDRESS.printed.en);
@@ -559,6 +562,11 @@ export default function Home() {
     liveOverview.serverOffset,
   );
   const liveStarting = !liveIsOn && Boolean(liveStream) && (liveStartPassed || startHasPassed(liveStream, liveOverview.serverOffset));
+  // The pooja the broadcast belongs to (migration 022), in the reading
+  // language or the other one; "" when the stream is not linked to a pooja.
+  const livePoojaName = liveStream?.pooja
+    ? (lang === "ta" ? liveStream.pooja.name_ta || liveStream.pooja.name_en : liveStream.pooja.name_en || liveStream.pooja.name_ta) || ""
+    : "";
 
   // Live IST clock — ticks every second
   useEffect(() => {
@@ -580,6 +588,10 @@ export default function Home() {
       .then((r) => setSevas(Array.isArray(r.data) ? r.data : []))
       .catch(() => {})
       .finally(() => setSevasLoading(false));
+    api
+      .get("/gallery?limit=6")
+      .then((r) => setGallery(Array.isArray(r.data) ? r.data.filter((g) => g && g.id && (g.thumb_url || g.url)) : []))
+      .catch(() => {});
     api
       .get("/pulse")
       .then((r) =>
@@ -607,7 +619,9 @@ export default function Home() {
     // The temple's own day (IST): between midnight and 05:30 IST the UTC date is
     // still yesterday, which used to keep an expired Pournami on the page.
     const todayStr = todayIST();
-    const now = new Date();
+    // The months counted from the temple's month too, not the browser's: on
+    // the 1st before 05:30 IST a visitor abroad is still in last month.
+    const now = getISTNow();
     const monthsToFetch = [0, 1, 2].map((offset) => {
       const d = new Date(now.getFullYear(), now.getMonth() + offset, 1);
       return { year: d.getFullYear(), month: d.getMonth() + 1 };
@@ -772,7 +786,18 @@ export default function Home() {
                             ? t("விரைவில் தொடங்கும்", "Starting shortly")
                             : nextDarshanLine(liveStream, lang, t, liveOverview.serverOffset)}
                       </span>
-                      <small>{streamTitle(liveStream, lang)}</small>
+                      {/* The pooja the broadcast belongs to and its consented
+                          sponsor (migration 022; brief §12): named when the
+                          stream carries them, silent otherwise. */}
+                      <small>
+                        {[
+                          streamTitle(liveStream, lang),
+                          livePoojaName && livePoojaName !== streamTitle(liveStream, lang) ? livePoojaName : "",
+                          liveStream.sponsor?.name ? `${t("ஸ்பான்சர்", "Sponsor")}: ${liveStream.sponsor.name}` : "",
+                        ]
+                          .filter(Boolean)
+                          .join(" · ")}
+                      </small>
                     </Link>
                   </dd>
                 </div>
@@ -1010,18 +1035,38 @@ export default function Home() {
               {sevas.length > 0
                 ? sevas.map((s, i) => {
                     const Icon = SEVA_ICONS[i % SEVA_ICONS.length];
+                    // Only an explicit "no" from the API locks a seva (migration
+                    // 020 is_bookable); a bookable one links straight to its
+                    // booking form, an office-only one to the list and its note.
+                    const bookable = !(s.is_bookable === false || s.is_bookable === 0 || s.is_bookable === "0");
+                    const desc = t(s.description_ta, s.description_en) || s.description_en || s.description_ta || s.description || "";
+                    const timing = t(s.timing_ta, s.timing_en) || s.timing_en || s.timing_ta || "";
+                    const Card = bookable ? Link : "a";
+                    const target = bookable ? { to: `/sevas?seva=${s.id}` } : { href: telHref(officePhone), "aria-label": `${(lang === "ta" ? s.name_ta : s.name_en) || s.name_en || s.name_ta} — ${t("அலுவலகத்தை அழைக்க", "Call the temple office")} ${formatPhone(officePhone)}` };
                     return (
-                      <Link to="/sevas" key={s.id} className="home-seva card card--interactive rise" style={{ "--i": i }}>
+                      <Card
+                        {...target}
+                        key={s.id}
+                        className={`home-seva card card--interactive rise${bookable ? "" : " home-seva--office"}`}
+                        style={{ "--i": i }}
+                        data-seva-id={s.id}
+                      >
                         <span className="card__icon" aria-hidden="true">
                           <Icon />
                         </span>
-                        <h3 className="home-seva__name">{lang === "ta" ? s.name_ta : s.name_en}</h3>
+                        <h3 className="home-seva__name">{(lang === "ta" ? s.name_ta : s.name_en) || s.name_en || s.name_ta}</h3>
+                        {desc && <p className="home-seva__desc">{desc}</p>}
+                        {timing && (
+                          <p className="home-seva__timing">
+                            <LuClock aria-hidden="true" /> {timing}
+                          </p>
+                        )}
                         {s.amount != null && <p className="home-seva__price text-gradient">₹{s.amount}</p>}
                         <span className="home-seva__cta">
-                          {t("பதிவு", "Book")}
-                          <LuArrowRight aria-hidden="true" />
+                          {bookable ? t("பதிவு", "Book") : t("அலுவலகத்தை அணுக", "Contact the office")}
+                          {bookable ? <LuArrowRight aria-hidden="true" /> : <LuPhone aria-hidden="true" />}
                         </span>
-                      </Link>
+                      </Card>
                     );
                   })
                 : FALLBACK_SEVAS.map(([ta, en], i) => {
@@ -1105,6 +1150,51 @@ export default function Home() {
           </div>
         </div>
       </section>
+
+      {/* ── Gallery preview (brief §6 Home) — the newest photographs, lazily
+          loaded; no section at all until the committee has uploaded some ── */}
+      {gallery.length > 0 && (
+        <section className="section home-section home-gallery reveal" aria-labelledby="home-gallery-title">
+          <div className="container">
+            <SectionHeader
+              id="home-gallery-title"
+              align="split"
+              eyebrow={t("படத் தொகுப்பு", "Gallery")}
+              title={t("கோயில் புகைப்படங்கள்", "Temple photographs")}
+              subtitle={t("சமீபத்திய திருவிழாக்களும் நிகழ்வுகளும்", "Recent festivals and events")}
+              actions={
+                <Button to="/gallery" variant="outline" size="sm" icon={<LuImages aria-hidden="true" />}>
+                  {t("அனைத்து படங்களும் →", "View gallery →")}
+                </Button>
+              }
+            />
+            <ul className="home-gallery__strip" role="list">
+              {gallery.map((img, i) => {
+                // The committee's alt text (migration 021) in the reading
+                // language, the caption when there is none, a plain label last.
+                const alt = t(img.alt_ta, img.alt_en) || img.alt_en || img.alt_ta || img.caption || t("கோயில் புகைப்படம்", "Temple photo");
+                const w = img.thumb_width || img.width || null;
+                const h = w && img.width && img.height ? Math.round((w * img.height) / img.width) : null;
+                return (
+                  <li key={img.id} className="home-gallery__item rise" style={{ "--i": i }}>
+                    {/* ?photo=<id> opens this photograph in the gallery's lightbox */}
+                    <Link to={`/gallery?photo=${img.id}`} className="home-gallery__link" aria-label={`${alt} — ${t("பெரிதாக்கு", "Enlarge")}`}>
+                      <img
+                        src={img.thumb_url || img.url}
+                        alt={alt}
+                        width={w || undefined}
+                        height={h || undefined}
+                        loading="lazy"
+                        decoding="async"
+                      />
+                    </Link>
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
+        </section>
+      )}
 
       {/* ── Quick actions ── */}
       <section className="section home-section reveal" aria-label={t("விரைவு இணைப்புகள்", "Quick links")}>

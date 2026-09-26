@@ -51,10 +51,9 @@ if ($donations && publicGuardHasColumn('donations', 'category_id')) {
 // Amount, phone, email and payment details stay in the admin.
 $sp       = sponsorPublicSql('s');
 // A sponsor the payment module created (migration 023) carries a receipt
-// reference as its note; the public list names the pooja instead.
-$online   = publicGuardHasColumn('sponsors', 'donation_id') ? 's.donation_id IS NOT NULL' : '0';
+// reference as its note; $sp['note'] drops it and the list names the pooja instead.
 $sponsors = $db->query(
-    "SELECT {$sp['name']} AS name, CASE WHEN {$online} THEN NULL ELSE s.note END AS note,
+    "SELECT {$sp['name']} AS name, {$sp['note']} AS note,
             p.name_ta AS pooja_ta, p.name_en AS pooja_en, p.pooja_type
        FROM sponsors s
        LEFT JOIN poojas p ON p.id = s.pooja_id

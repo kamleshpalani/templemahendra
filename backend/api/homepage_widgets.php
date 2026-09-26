@@ -101,7 +101,7 @@ $stmt = $db->prepare("
     SELECT {$widgetCols},
            {$poojaCols},
            {$sp['name']} AS sponsor_name,
-           s.note AS sponsor_note
+           {$sp['note']} AS sponsor_note
     FROM   homepage_widgets w
     LEFT   JOIN poojas   p ON p.id = w.linked_pooja_id AND p.is_active = 1
     LEFT   JOIN sponsors s ON s.id = w.linked_sponsor_id AND {$sp['where']}
@@ -129,7 +129,7 @@ foreach ($rows as $row) {
 function nextPooja(PDO $db, array $sp, string $today, bool $pV2): ?array
 {
     $stmt = $db->prepare("
-        SELECT p.*, {$sp['name']} AS sponsor_name, s.note AS sponsor_note
+        SELECT p.*, {$sp['name']} AS sponsor_name, {$sp['note']} AS sponsor_note
         FROM   poojas p
         LEFT   JOIN sponsors s ON s.pooja_id = p.id AND {$sp['where']}
         WHERE  p.is_active = 1 AND p.pooja_date >= :today

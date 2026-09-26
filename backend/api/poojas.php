@@ -72,7 +72,7 @@ $extra = $v2
 // One consented sponsor per pooja (the earliest), as correlated subqueries so
 // the row stays one-per-pooja under ONLY_FULL_GROUP_BY.
 $sponsorName = "(SELECT {$sp['name']} FROM sponsors s WHERE s.pooja_id = p.id AND {$sp['where']} ORDER BY s.id ASC LIMIT 1)";
-$sponsorNote = "(SELECT s.note FROM sponsors s WHERE s.pooja_id = p.id AND {$sp['where']} ORDER BY s.id ASC LIMIT 1)";
+$sponsorNote = "(SELECT {$sp['note']} FROM sponsors s WHERE s.pooja_id = p.id AND {$sp['where']} ORDER BY s.id ASC LIMIT 1)";
 $sql = "SELECT p.id, p.name_ta, p.name_en, p.description_ta, p.description_en, p.pooja_date, p.pooja_time, p.pooja_type{$extra},
                {$sponsorName} AS sponsor_name, {$sponsorNote} AS sponsor_note
           FROM poojas p

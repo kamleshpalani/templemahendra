@@ -466,6 +466,10 @@
   text-transform: uppercase;
   color: var(--gold-200);
 }
+/* Tamil month abbreviations (செப்., அக்.) are joined script: no tracking */
+:lang(ta) .events-item__month {
+  letter-spacing: 0;
+}
 .events-item__year {
   font-size: var(--text-2xs);
   color: var(--text-on-dark-3);

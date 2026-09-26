@@ -106,13 +106,35 @@ export async function getJson(path) {
 
 /* ── The pooja a donation is for (brief §13) ─────────────────────────────── */
 
+const POOJA_PAGE = 200; // the API's largest page
+const POOJA_PAGES_MAX = 5; // a thousand poojas: years of a temple's calendar
+
 /**
- * `/donate?pooja=<id>`: the pooja the donor came to sponsor, looked up among
- * the homepage widgets — the cards that carry such a link. Returns
- * `{ pooja, loading }`; `pooja` is `{ id, name: {ta, en}, date, time, type }`
- * or null when the id is not among them. The server validates the id itself
- * (an active pooja on today or a later date), so a miss here only loses the
- * name on the page, never the link on the payment.
+ * One pooja of GET /api/poojas?all=1 by id, or null when absent. The list runs
+ * newest date first, so an upcoming pooja is on the first page; the pages after
+ * it are read only while they are full and the id has not turned up.
+ */
+async function findPooja(id) {
+  for (let page = 1; page <= POOJA_PAGES_MAX; page += 1) {
+    const { body } = await getJson(`/api/poojas?all=1&limit=${POOJA_PAGE}&page=${page}`);
+    const list = Array.isArray(body) ? body : [];
+    const found = list.find((p) => Number(p?.id) === id);
+    if (found) return found;
+    if (list.length < POOJA_PAGE) return null;
+  }
+  return null;
+}
+
+/**
+ * `/donate?pooja=<id>`: the pooja the donor came to sponsor, looked up in the
+ * pooja list itself (GET /api/poojas?all=1 — every active pooja, past ones
+ * included, so a link shared a day late still names what it was for; the
+ * homepage widgets only ever carried the few poojas with a card). Returns
+ * `{ pooja, loading }`; `pooja` is `{ id, name: {ta, en}, date, time, type,
+ * sponsorshipAmount, sponsorshipAvailable, isPast }` or null when the id is
+ * not among them. The server validates the id itself (an active pooja on
+ * today or a later date), so a miss here only loses the name on the page,
+ * never the link on the payment.
  */
 export function useSponsoredPooja(id) {
   const wanted = Number.isInteger(id) && id > 0 ? id : null;
@@ -125,19 +147,20 @@ export function useSponsoredPooja(id) {
       return undefined;
     }
     setState({ pooja: null, loading: true });
-    getJson("/api/homepage_widgets").then(({ body }) => {
+    findPooja(wanted).then((found) => {
       if (!alive) return;
-      const blocks = (Array.isArray(body) ? body : []).map((w) => w?.pooja).filter(Boolean);
-      const found = blocks.find((p) => Number(p.id) === wanted) ?? null;
       setState({
         loading: false,
         pooja: found
           ? {
               id: wanted,
-              name: { ta: found.name?.ta ?? found.name_ta ?? "", en: found.name?.en ?? found.name_en ?? "" },
-              date: found.date ?? found.pooja_date ?? null,
-              time: found.time ?? found.pooja_time ?? null,
-              type: found.type ?? found.pooja_type ?? null,
+              name: { ta: found.name_ta ?? "", en: found.name_en ?? "" },
+              date: found.date ?? null,
+              time: found.time || null,
+              type: found.type ?? null,
+              sponsorshipAmount: found.sponsorship_amount ?? null,
+              sponsorshipAvailable: found.sponsorship_available !== false,
+              isPast: Boolean(found.is_past),
             }
           : null,
       });

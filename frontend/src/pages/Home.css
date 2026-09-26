@@ -1184,3 +1184,110 @@ a.home-tile__value--link:hover {
     padding: var(--space-3);
   }
 }
+
+/* ── Introduction (Admin → System → Settings → Homepage words) ───── */
+.home-intro {
+  padding-bottom: 0;
+}
+.home-intro__prose {
+  max-width: 72ch;
+  text-align: center;
+}
+
+/* ── Event card: the title link and the featured chip ────────────── */
+.home-event__link {
+  color: inherit;
+  text-decoration: none;
+}
+.home-event__link:hover {
+  color: var(--maroon-600);
+  text-decoration: underline;
+  text-underline-offset: 0.15em;
+}
+.home-event__badge {
+  margin-left: var(--space-2);
+  vertical-align: middle;
+}
+
+/* ── Featured seva: description, timing, office-only card ────────── */
+.home-seva__desc {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  margin: 0 0 var(--space-2);
+  font-size: var(--text-xs);
+  color: var(--text-3);
+  line-height: var(--leading-normal);
+}
+.home-seva__timing {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  margin: 0 0 var(--space-2);
+  font-size: var(--text-2xs);
+  font-weight: var(--weight-semibold);
+  letter-spacing: 0.02em;
+  color: var(--text-3);
+}
+.home-seva__timing > svg {
+  width: 0.8rem;
+  height: 0.8rem;
+  color: var(--accent-ink);
+}
+/* A seva the office arranges by hand keeps the card, with a quieter call */
+.home-seva--office .home-seva__cta {
+  color: var(--text-2);
+}
+
+/* ── Gallery preview strip ───────────────────────────────────────── */
+.home-gallery__strip {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: var(--space-3);
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.home-gallery__link {
+  display: block;
+  aspect-ratio: 4 / 3;
+  overflow: hidden;
+  border-radius: var(--radius);
+  background: var(--ink-1);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow-sm);
+  transition: transform var(--transition), box-shadow var(--transition);
+}
+.home-gallery__link > img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transition: transform var(--transition-slow);
+}
+.home-gallery__link:hover {
+  transform: translateY(-3px);
+  box-shadow: var(--shadow-md);
+}
+.home-gallery__link:hover > img {
+  transform: scale(1.05);
+}
+@media (max-width: 1024px) {
+  .home-gallery__strip {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+@media (max-width: 480px) {
+  .home-gallery__strip {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--space-2);
+  }
+}
+/* The strip's section and its tiles (the `rise` stagger reads --i) */
+.home-gallery {
+  scroll-margin-top: var(--header-h);
+}
+.home-gallery__item {
+  min-width: 0;
+}

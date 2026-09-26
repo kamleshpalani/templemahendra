@@ -29,7 +29,7 @@ import {
   telHref,
 } from "../data/temple";
 import CommitteeGrid from "../components/CommitteeGrid/CommitteeGrid";
-import { siteText, siteValue, useSiteSettings } from "../lib/siteSettings";
+import { siteOfficeDigits, siteText, siteValue, useSiteSettings } from "../lib/siteSettings";
 import PageHero from "../components/ui/PageHero";
 import Seo from "../components/Seo";
 import ShareButton from "../components/Share/ShareButton";
@@ -116,7 +116,7 @@ export default function Contact() {
   // the committee typed them; the booklet facts otherwise.
   const { site } = useSiteSettings();
   const printedAddress = siteText(site, "temple_address", lang) || t(ADDRESS.printed.ta, ADDRESS.printed.en);
-  const officePhone = siteValue(site, "phone_primary").replace(/^\+91/, "") || PRIMARY_CONTACT.phone;
+  const officePhone = siteOfficeDigits(site, PRIMARY_CONTACT.phone);
   const officeEmail = siteValue(site, "email");
 
   return (

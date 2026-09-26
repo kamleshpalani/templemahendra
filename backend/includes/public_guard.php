@@ -163,19 +163,25 @@ function publicGuardHasColumn(string $table, string $column): bool
  *             `0` and no sponsor is published at all.
  *   'name'  — expression for the published name: the family name when given,
  *             otherwise the sponsor's own name.
+ *   'note'  — expression for the published note: the committee's note, but
+ *             never on a row the payment module created (migration 023,
+ *             donation_id set), whose note is internal bookkeeping — the
+ *             donation number and, for a foreign currency, the amount.
  *
- * @return array{where: string, name: string}
+ * @return array{where: string, name: string, note: string}
  */
 function sponsorPublicSql(string $s = 's'): array
 {
     if (!publicGuardHasColumn('sponsors', 'publish_consent')) {
-        return ['where' => '0', 'name' => $s . '.name'];
+        return ['where' => '0', 'name' => $s . '.name', 'note' => 'NULL'];
     }
     // A sponsorship whose online payment was refunded in full (migration 023
     // keeps the row, status REFUNDED) is no longer a sponsorship to thank.
     $refunded = publicGuardHasColumn('sponsors', 'payment_status') ? ' AND COALESCE(' . $s . '.payment_status, \'\') <> \'REFUNDED\'' : '';
+    $online = publicGuardHasColumn('sponsors', 'donation_id') ? $s . '.donation_id IS NOT NULL' : '0';
     return [
         'where' => $s . '.is_active = 1 AND ' . $s . '.publish_consent = 1' . $refunded,
         'name'  => 'COALESCE(NULLIF(' . $s . '.family_name, \'\'), ' . $s . '.name)',
+        'note'  => 'CASE WHEN ' . $online . ' THEN NULL ELSE NULLIF(' . $s . '.note, \'\') END',
     ];
 }

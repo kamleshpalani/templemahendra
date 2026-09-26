@@ -817,6 +817,12 @@ try {
   const publicSponsor = donorsNow.find((x) => x.type === "sponsor" && x.name === `${NAME} pooja paid`); // the SUCCESS donation is listed as a donor too
   check(publicSponsor?.type === "sponsor" && !("phone" in publicSponsor) && !("email" in publicSponsor) && !("amount" in publicSponsor), "a consented online sponsor is listed on /api/donors by name only", show(publicSponsor));
   check(publicSponsor && publicSponsor.label !== `Online donation ${PJ.number}` && publicSponsor.pooja?.en === `${NAME} Pournami open`, "the public label is the pooja, never the receipt note", show(publicSponsor));
+  // The same row seen through the pooja feed the Sevas and Sponsorship pages
+  // read: named, but its bookkeeping note (donation number, foreign amount)
+  // never leaves the server.
+  const poojaFeed = (await http("GET", "/api/poojas?all=1&limit=100", { ip: IP.legacy })).data ?? [];
+  const openItem = (Array.isArray(poojaFeed) ? poojaFeed : []).find((p) => Number(p.id) === Number(poojaOpen));
+  check(openItem && !JSON.stringify(openItem).includes(PJ.number) && (openItem.sponsor == null || openItem.sponsor.note == null), "/api/poojas never publishes an online sponsor's note (the donation number)", show(openItem?.sponsor));
   check(!donorsNow.some((x) => x.name === `${NAME} pooja anonymous`), "a sponsor without publish consent is never listed");
   const refundP = fixture("refund", { order_id: PJ.number, kind: "full", method: "manual", reason: "E2E pooja refund" });
   check(refundP.refund?.ok === true && don(PJ.number)?.status === "REFUNDED", "a full manual refund makes the donation REFUNDED", show(refundP.refund));

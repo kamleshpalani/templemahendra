@@ -79,6 +79,18 @@ export function siteValue(site, key) {
   return typeof v === "string" ? v : typeof v === "number" ? String(v) : "";
 }
 
+/**
+ * The office phone as ten national digits, from the committee's setting when it
+ * reads as an Indian number however it was typed (+91 94430 02296, 094430…,
+ * 9443002296), else `fallback`. What telHref()/formatPhone() expect.
+ */
+export function siteOfficeDigits(site, fallback) {
+  const digits = siteValue(site, "phone_primary").replace(/\D/g, "");
+  const national =
+    digits.length === 12 && digits.startsWith("91") ? digits.slice(2) : digits.length === 11 && digits.startsWith("0") ? digits.slice(1) : digits;
+  return /^[1-9]\d{9}$/.test(national) ? national : fallback;
+}
+
 /** Paragraphs from a textarea setting or a CMS page body: blank lines separate them. */
 export function paragraphs(text) {
   return String(text || "")
