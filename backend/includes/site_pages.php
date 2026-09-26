@@ -62,6 +62,18 @@ function sitePages(): array
             'பூஜைகள், திருவிழாக்கள், தரிசனப் பதிவுகள் மற்றும் சொற்பொழிவுகளின் காணொளிகள்.',
             'Videos of poojas, festivals, darshan recordings and discourses.',
         ],
+        // pages/Deities.jsx (brief §6 Deities) carries these exact strings.
+        '/deities' => [
+            'குலதெய்வங்கள்', 'Deities',
+            'கோயிலில் அருள்பாலிக்கும் தெய்வங்கள் — ஒவ்வொருவரின் பெயர், விவரம் மற்றும் திருவுருவப் படம்.',
+            'The deities worshipped at the temple — the name, description and image of each.',
+        ],
+        // pages/Sponsorship.jsx (brief §6 Sponsorship, §11) carries these exact strings.
+        '/sponsorship' => [
+            'பூஜை உபயம்', 'Sponsorship',
+            'வரவிருக்கும் பூஜைகளில் உபயம் அளித்து ஆசி பெறுங்கள்; பெயர் வெளியிட அனுமதி அளித்த உபயதாரர்களுக்கு இங்கே நன்றி.',
+            'Sponsor an upcoming pooja and receive the blessings; sponsors who agreed to be named are thanked here.',
+        ],
         // TRUST.name — the registered trust, in its own deity order.
         '/donations' => [
             'நன்கொடை', 'Donations',

@@ -10,6 +10,8 @@
 //   ?all=1       everything, newest first
 //   ?type=       one pooja_type
 //   ?featured=1  featured only
+//   ?sponsorship=1  open for sponsorship only (sponsorship_available = 1): the
+//                "available sponsorships" of the Sponsorship page (brief §6)
 //   ?limit=      1–200 (default 50)   ?page=  1-based
 //
 // Every item carries both languages, the typed start/end times (migration 024)
@@ -56,6 +58,12 @@ if ($type !== '') {
 }
 if (boolParam('featured') && $v2) {
     $where[] = 'p.is_featured = 1';
+}
+// Composes with the other filters. Before migration 024 the column does not
+// exist and every item already says `sponsorship_available: true`, so the
+// filter is a no-op there, as ?featured is.
+if (boolParam('sponsorship') && $v2) {
+    $where[] = 'p.sponsorship_available = 1';
 }
 
 $extra = $v2

@@ -12,11 +12,24 @@
  * synchronously. A blank CSV template (?template=1) and an error report
  * (?errors=1) are downloadable per entity; the error report stays available
  * until the results page has been shown once.
+ *
+ * The importers accept every column the admin forms do and apply the same
+ * rules (backend/admin/events.php, sevas.php, poojas.php): events take a type,
+ * a last day, programme times, a venue and a picture in both languages
+ * (migration 020); sevas a bilingual description and timing and is_bookable
+ * (020); poojas typed times, a sponsorship price and availability, a banner
+ * and the featured / live-stream flags (024). The old single-language
+ * `description` column is still accepted for events and sevas and fills both
+ * languages when description_ta / description_en are blank, as the migration
+ * backfilled. Each set of columns is offered only when publicGuardHasColumn()
+ * finds it, so a database without the migration imports the old columns only.
  */
 require_once __DIR__ . '/../includes/auth.php';
 requireAdminAuth();
 require_once __DIR__ . '/../includes/db.php';
 require_once __DIR__ . '/../includes/helpers.php';
+require_once __DIR__ . '/../includes/public_guard.php';
+require_once __DIR__ . '/../includes/panchangam.php';
 require_once __DIR__ . '/includes/admin_layout.php';
 
 const BULK_MAX_ROWS = 2000;
@@ -26,69 +39,270 @@ const BULK_TTL      = 1800;          // seconds a pending upload survives
 const BULK_PREVIEW  = 300;           // rows shown on the preview screen
 const BULK_XML_MAX  = 64 * 1024 * 1024; // uncompressed size guard for xlsx parts
 
-/** Entity definitions: columns, validation rules, duplicate key, insert SQL. */
+/**
+ * True when $url can be an event picture — the rule of eventImageUrlOk() in
+ * backend/admin/events.php, repeated here because that page cannot be
+ * included: an https address, or a path on this site under /uploads/ or
+ * /images/. Nothing else, because it ends up in an <img> and a share preview.
+ */
+function bulkImageUrlOk(string $url): bool
+{
+    if ($url === '' || strlen($url) > 500 || preg_match('/[\x00-\x20\x7F\\\\]/', $url)) return false;
+    if ($url[0] === '/') {
+        return preg_match('#^/(uploads|images)/[A-Za-z0-9][A-Za-z0-9._/-]*\.(jpe?g|png|webp|gif|avif)$#i', $url) === 1 && !str_contains($url, '..') && !str_contains($url, '//');
+    }
+    if (stripos($url, 'https://') !== 0) return false;
+    $p = parse_url($url);
+    if (!is_array($p) || strtolower((string) ($p['scheme'] ?? '')) !== 'https' || empty($p['host'])) return false;
+    if (isset($p['user']) || isset($p['pass'])) return false;
+    return preg_match('/^[A-Za-z0-9.-]+$/', (string) $p['host']) === 1;
+}
+
+/** Whether this database has the columns each importer can fill (migrations 020 and 024). */
+function bulkHasColumns(string $table, array $columns): bool
+{
+    foreach ($columns as $c) {
+        if (!publicGuardHasColumn($table, $c)) return false;
+    }
+    return true;
+}
+
+/**
+ * Entity definitions: columns, validation rules, duplicate key, insert SQL.
+ *
+ *   columns   what a file can supply, in template order
+ *   required  must be mapped and non-blank
+ *   rules     [column => [fn(string): bool, message]] for a non-blank cell (a
+ *             required column is checked even when blank)
+ *   check     fn(array $data): string[] — rules across columns (a last day
+ *             before the first, an end time before the start), run once every
+ *             single cell passed
+ *   maxlen    per-column cap; cells are clamped like the admin forms clamp
+ *             them (sanitizeText), default 2000
+ *   help      column notes shown on the upload screen
+ *   map       validated row → bound values for `insert`
+ */
 function bulkEntities(): array
 {
-    $isDate = fn(string $v) => (bool) preg_match('/^\d{4}-\d{2}-\d{2}$/', $v) && strtotime($v) !== false;
+    static $entities = null;
+    if ($entities !== null) return $entities;
+
+    // A real calendar day, as the admin forms check it (isValidDate: checkdate,
+    // so 2027-02-30 is refused here instead of failing at the INSERT).
+    $isDate = fn(string $v) => isValidDate($v);
     $isBool = fn(string $v) => in_array(strtolower($v), ['', '0', '1', 'yes', 'no', 'true', 'false'], true);
     $toBool = fn(string $v) => in_array(strtolower($v), ['1', 'yes', 'true'], true) ? 1 : (($v === '') ? 1 : 0);
+    $yes    = fn(string $v) => in_array(strtolower($v), ['1', 'yes', 'true'], true) ? 1 : 0; // opt-in flags: blank is no
     $isNum  = fn(string $v) => $v === '' || is_numeric($v);
+    // sort_order is an INT: clamped to its range as sevas.php clamps it, so a
+    // stray 1e12 in a spreadsheet is saved as the largest order, not refused by MySQL.
+    $sortOf = fn(string $v): int => (int) max(-2147483648, min(2147483647, (float) ($v !== '' ? $v : 0)));
     // DECIMAL(10,2): 0 … 99,999,999.99. Blank is left to the "required" check.
     $isMoney = fn(string $v) => $v === '' || (is_numeric($v) && (float) $v >= 0 && (float) $v <= 99999999.99);
+    // Programme times, after bulkNormalizeValue() turned "7:00 pm" or an Excel
+    // time cell into 24-hour HH:MM — the same shape the admin forms accept.
+    $isClock  = fn(string $v) => $v === '' || preg_match('/^([01]\d|2[0-3]):[0-5]\d$/', $v) === 1;
+    $isImage  = fn(string $v) => $v === '' || bulkImageUrlOk($v);
+    // poojas.php's $imageOk: a site path under /uploads, /images or /icons, or any https address.
+    $isBanner = fn(string $v) => $v === '' || preg_match('#^(/(uploads|images|icons)/[A-Za-z0-9._/-]+|https://[^\s"<>]+)$#', $v) === 1;
+    $clockMsg = 'must be a time as HH:MM (24-hour), e.g. 18:30';
 
-    return [
-        'sevas' => [
-            'icon' => 'sparkles', 'label' => 'Sevas', 'table' => 'sevas',
-            'columns' => ['name_ta', 'name_en', 'description', 'amount', 'sort_order', 'is_featured', 'is_active'],
+    $eventsV2 = bulkHasColumns('events', ['description_ta', 'description_en', 'event_type', 'end_date', 'start_time', 'end_time', 'venue_ta', 'venue_en', 'image_url', 'is_featured']);
+    $sevasV2  = bulkHasColumns('sevas', ['description_ta', 'description_en', 'timing_ta', 'timing_en', 'is_bookable']);
+    $poojasV2 = bulkHasColumns('poojas', ['start_time', 'end_time', 'sponsorship_amount', 'sponsorship_available', 'banner_url', 'is_featured', 'live_stream_enabled']);
+    $poojaTypes = $poojasV2
+        ? ['pournami', 'amavasai', 'ekadasi', 'sashti', 'pradosham', 'chaturthi', 'abhishekam', 'archana', 'festival', 'special', 'monthly', 'daily']
+        : ['pournami', 'amavasai', 'ekadasi', 'sashti', 'special', 'monthly', 'daily'];
+    $isPoojaType = fn(string $v) => $v === '' || in_array(strtolower($v), $poojaTypes, true);
+
+    // A seva price is money the public site charges, so the import holds it
+    // to the column's own range (DECIMAL(10,2), never negative) — a "-251"
+    // in a spreadsheet must not become a seva that pays the devotee.
+    $sevaRules = ['amount' => [$isMoney, 'must be between 0 and 99,999,999.99'], 'sort_order' => [$isNum, 'must be a number'],
+                  'is_featured' => [$isBool, 'must be yes/no'], 'is_active' => [$isBool, 'must be yes/no']];
+    $sevas = $sevasV2
+        ? [
+            'columns'  => ['name_ta', 'name_en', 'description_ta', 'description_en', 'description', 'timing_ta', 'timing_en', 'amount', 'sort_order', 'is_featured', 'is_bookable', 'is_active'],
             'required' => ['name_ta', 'name_en', 'amount'],
-            // A seva price is money the public site charges, so the import holds it
-            // to the column's own range (DECIMAL(10,2), never negative) — a "-251"
-            // in a spreadsheet must not become a seva that pays the devotee.
-            'rules' => ['amount' => [$isMoney, 'must be between 0 and 99,999,999.99'], 'sort_order' => [$isNum, 'must be a number'],
-                        'is_featured' => [$isBool, 'must be yes/no'], 'is_active' => [$isBool, 'must be yes/no']],
-            'dupKey' => ['name_en'],
-            'dupSql' => 'SELECT name_en FROM sevas',
+            'rules'    => $sevaRules + ['is_bookable' => [$isBool, 'must be yes/no']],
+            'maxlen'   => ['name_ta' => 200, 'name_en' => 200, 'description_ta' => 1000, 'description_en' => 1000, 'description' => 1000, 'timing_ta' => 200, 'timing_en' => 200],
+            'help'     => [
+                'description_ta / description_en' => 'What the seva is, in each language.',
+                'description' => 'Old single-language column: fills both languages when description_ta / description_en are blank.',
+                'timing_ta / timing_en' => 'When it is performed, e.g. "Daily 7–9 am" (free text).',
+                'is_bookable' => 'yes (default) lets devotees book online; no lists the seva without a Book button.',
+                'is_featured' => 'yes highlights the seva; blank means no.',
+                'is_active'   => 'no hides the seva from the site; blank means yes.',
+            ],
+            'map' => function (array $r) use ($toBool, $yes, $sortOf) {
+                $ta = $r['description_ta'] !== '' ? $r['description_ta'] : $r['description'];
+                $en = $r['description_en'] !== '' ? $r['description_en'] : $r['description'];
+                return [
+                    ':ta' => $r['name_ta'], ':en' => $r['name_en'],
+                    ':d'   => $en !== '' ? $en : ($ta !== '' ? $ta : null), // legacy column: English, else Tamil
+                    ':dta' => $ta !== '' ? $ta : null, ':den' => $en !== '' ? $en : null,
+                    ':tta' => $r['timing_ta'] !== '' ? $r['timing_ta'] : null, ':ten' => $r['timing_en'] !== '' ? $r['timing_en'] : null,
+                    ':amt' => (float) $r['amount'], ':so' => $sortOf($r['sort_order']),
+                    ':f' => $yes($r['is_featured']), ':bk' => $toBool($r['is_bookable']), ':act' => $toBool($r['is_active']),
+                ];
+            },
+            'insert' => 'INSERT INTO sevas (name_ta,name_en,description,description_ta,description_en,timing_ta,timing_en,amount,sort_order,is_featured,is_bookable,is_active)
+                         VALUES (:ta,:en,:d,:dta,:den,:tta,:ten,:amt,:so,:f,:bk,:act)',
+            'sample' => ['அபிஷேகம்', 'Abhishekam', 'சுவாமிக்கு புனித நீராட்டு', 'Sacred bathing of the deity', '', 'தினமும் காலை 7–9', 'Daily 7–9 am', '251', '1', 'yes', 'yes', 'yes'],
+        ]
+        : [
+            'columns'  => ['name_ta', 'name_en', 'description', 'amount', 'sort_order', 'is_featured', 'is_active'],
+            'required' => ['name_ta', 'name_en', 'amount'],
+            'rules'    => $sevaRules,
+            'maxlen'   => ['name_ta' => 200, 'name_en' => 200, 'description' => 1000],
+            'help'     => ['description' => 'What the seva is (one language until migration 020 is applied).'],
             'map' => fn(array $r) => [
                 ':a' => $r['name_ta'], ':b' => $r['name_en'], ':c' => $r['description'] ?: null,
-                ':d' => (float) $r['amount'], ':e' => (int) ($r['sort_order'] ?: 0),
-                ':f' => in_array(strtolower($r['is_featured']), ['1', 'yes', 'true'], true) ? 1 : 0, ':g' => $toBool($r['is_active']),
+                ':d' => (float) $r['amount'], ':e' => $sortOf($r['sort_order']),
+                ':f' => $yes($r['is_featured']), ':g' => $toBool($r['is_active']),
             ],
             'insert' => 'INSERT INTO sevas (name_ta,name_en,description,amount,sort_order,is_featured,is_active) VALUES (:a,:b,:c,:d,:e,:f,:g)',
             'sample' => ['அபிஷேகம்', 'Abhishekam', 'Sacred bathing of the deity', '251', '1', 'yes', 'yes'],
-        ],
-        'events' => [
-            'icon' => 'calendar', 'label' => 'Events', 'table' => 'events',
-            'columns' => ['title_ta', 'title_en', 'event_date', 'description', 'is_active'],
+        ];
+
+    $events = $eventsV2
+        ? [
+            'columns'  => ['title_ta', 'title_en', 'event_type', 'event_date', 'end_date', 'start_time', 'end_time', 'venue_ta', 'venue_en', 'description_ta', 'description_en', 'description', 'image_url', 'is_featured', 'is_active'],
             'required' => ['title_ta', 'title_en', 'event_date'],
-            'rules' => ['event_date' => [$isDate, 'must be YYYY-MM-DD'], 'is_active' => [$isBool, 'must be yes/no']],
-            'dupKey' => ['title_en', 'event_date'],
-            'dupSql' => 'SELECT title_en, event_date FROM events',
+            'rules'    => [
+                'event_type' => [fn($v) => $v === '' || in_array(strtolower($v), ['festival', 'pooja', 'special', 'other'], true), 'must be festival, pooja, special or other'],
+                'event_date' => [$isDate, 'must be YYYY-MM-DD'],
+                'end_date'   => [$isDate, 'must be YYYY-MM-DD'],
+                'start_time' => [$isClock, $clockMsg],
+                'end_time'   => [$isClock, $clockMsg],
+                'image_url'  => [$isImage, 'must be an https address or a picture under /uploads/ or /images/ on this site'],
+                'is_featured' => [$isBool, 'must be yes/no'], 'is_active' => [$isBool, 'must be yes/no'],
+            ],
+            // events.php: the last day is on or after the first; on a one-day event the programme cannot end before it starts.
+            'check' => function (array $r): array {
+                $errors = [];
+                if ($r['end_date'] !== '' && $r['end_date'] < $r['event_date']) $errors[] = 'end_date must be on or after event_date';
+                if ($r['start_time'] !== '' && $r['end_time'] !== '' && ($r['end_date'] === '' || $r['end_date'] === $r['event_date']) && $r['end_time'] < $r['start_time']) {
+                    $errors[] = 'end_time must not be before start_time on a one-day event';
+                }
+                return $errors;
+            },
+            'maxlen' => ['title_ta' => 300, 'title_en' => 300, 'venue_ta' => 300, 'venue_en' => 300, 'description_ta' => 5000, 'description_en' => 5000, 'description' => 5000, 'image_url' => 500],
+            'help'   => [
+                'event_type' => 'festival, pooja, special or other; blank means other.',
+                'end_date'   => 'Last day of a multi-day event, on or after event_date; blank for a one-day event.',
+                'start_time / end_time' => '24-hour HH:MM (Excel time cells and "6:30 pm" are understood); the end is not before the start on a one-day event.',
+                'venue_ta / venue_en' => 'Where it takes place, in each language.',
+                'description_ta / description_en' => 'The programme, in each language.',
+                'description' => 'Old single-language column: fills both languages when description_ta / description_en are blank.',
+                'image_url'  => 'An https address, or a picture under /uploads/ or /images/ on this site.',
+                'is_featured' => 'yes highlights the event on the Events page; blank means no.',
+                'is_active'   => 'no hides the event from the site; blank means yes.',
+            ],
+            'map' => function (array $r) use ($toBool, $yes) {
+                $ta = $r['description_ta'] !== '' ? $r['description_ta'] : $r['description'];
+                $en = $r['description_en'] !== '' ? $r['description_en'] : $r['description'];
+                return [
+                    ':ta' => $r['title_ta'], ':en' => $r['title_en'], ':ty' => $r['event_type'] !== '' ? strtolower($r['event_type']) : 'other',
+                    ':d'   => $en !== '' ? $en : ($ta !== '' ? $ta : null), // legacy column: English, else Tamil
+                    ':dta' => $ta !== '' ? $ta : null, ':den' => $en !== '' ? $en : null,
+                    ':dt'  => $r['event_date'], ':ed' => $r['end_date'] !== '' ? $r['end_date'] : null,
+                    ':st'  => $r['start_time'] !== '' ? $r['start_time'] . ':00' : null, ':et' => $r['end_time'] !== '' ? $r['end_time'] . ':00' : null,
+                    ':vta' => $r['venue_ta'] !== '' ? $r['venue_ta'] : null, ':ven' => $r['venue_en'] !== '' ? $r['venue_en'] : null,
+                    ':img' => $r['image_url'] !== '' ? $r['image_url'] : null,
+                    ':fe'  => $yes($r['is_featured']), ':a' => $toBool($r['is_active']),
+                ];
+            },
+            'insert' => 'INSERT INTO events (title_ta,title_en,event_type,description,description_ta,description_en,event_date,end_date,start_time,end_time,venue_ta,venue_en,image_url,is_featured,is_active)
+                         VALUES (:ta,:en,:ty,:d,:dta,:den,:dt,:ed,:st,:et,:vta,:ven,:img,:fe,:a)',
+            'sample' => ['தைப்பூசம்', 'Thai Poosam', 'festival', '2027-01-24', '2027-01-25', '06:00', '21:00', 'கோயில் மண்டபம்', 'Temple mandapam', 'காவடி திருவிழா', 'Grand kavadi festival', '', '', 'yes', 'yes'],
+        ]
+        : [
+            'columns'  => ['title_ta', 'title_en', 'event_date', 'description', 'is_active'],
+            'required' => ['title_ta', 'title_en', 'event_date'],
+            'rules'    => ['event_date' => [$isDate, 'must be YYYY-MM-DD'], 'is_active' => [$isBool, 'must be yes/no']],
+            'maxlen'   => ['title_ta' => 300, 'title_en' => 300, 'description' => 5000],
+            'help'     => ['description' => 'The programme (one language until migration 020 is applied).'],
             'map' => fn(array $r) => [
                 ':a' => $r['title_ta'], ':b' => $r['title_en'], ':c' => $r['description'] ?: null,
                 ':d' => $r['event_date'], ':e' => $toBool($r['is_active']),
             ],
             'insert' => 'INSERT INTO events (title_ta,title_en,description,event_date,is_active) VALUES (:a,:b,:c,:d,:e)',
             'sample' => ['தைப்பூசம்', 'Thai Poosam', '2027-01-24', 'Grand kavadi festival', 'yes'],
-        ],
-        'poojas' => [
-            'icon' => 'flame', 'label' => 'Poojas', 'table' => 'poojas',
-            'columns' => ['name_ta', 'name_en', 'pooja_date', 'pooja_time', 'pooja_type', 'description_ta', 'description_en', 'is_active'],
+        ];
+
+    $poojaRules = [
+        'pooja_date' => [$isDate, 'must be YYYY-MM-DD'],
+        'pooja_type' => [$isPoojaType, 'must be one of ' . implode(', ', $poojaTypes)],
+        'is_active'  => [$isBool, 'must be yes/no'],
+    ];
+    $poojas = $poojasV2
+        ? [
+            'columns'  => ['name_ta', 'name_en', 'pooja_date', 'pooja_time', 'start_time', 'end_time', 'pooja_type', 'description_ta', 'description_en', 'sponsorship_amount', 'sponsorship_available', 'banner_url', 'is_featured', 'live_stream_enabled', 'is_active'],
             'required' => ['name_ta', 'name_en', 'pooja_date'],
-            'rules' => [
-                'pooja_date' => [$isDate, 'must be YYYY-MM-DD'],
-                'pooja_type' => [fn($v) => $v === '' || in_array($v, ['pournami', 'amavasai', 'ekadasi', 'sashti', 'pradosham', 'chaturthi', 'abhishekam', 'archana', 'festival', 'special', 'monthly', 'daily'], true),
-                                 'must be one of pournami, amavasai, ekadasi, sashti, pradosham, chaturthi, abhishekam, archana, festival, special, monthly, daily'],
-                'is_active'  => [$isBool, 'must be yes/no'],
+            'rules'    => $poojaRules + [
+                'start_time' => [$isClock, $clockMsg],
+                'end_time'   => [$isClock, $clockMsg],
+                'sponsorship_amount'    => [fn($v) => $v === '' || (is_numeric($v) && (float) $v >= 0 && (float) $v <= 99999999), 'must be the sponsorship amount in rupees, 0 or more'],
+                'sponsorship_available' => [$isBool, 'must be yes/no'],
+                'banner_url'  => [$isBanner, 'must be a site path such as /uploads/banner.webp or an https:// address'],
+                'is_featured' => [$isBool, 'must be yes/no'],
+                'live_stream_enabled' => [$isBool, 'must be yes/no'],
             ],
-            'dupKey' => ['name_en', 'pooja_date'],
-            'dupSql' => 'SELECT name_en, pooja_date FROM poojas',
+            // poojas.php: the end time must be after the start time.
+            'check' => function (array $r): array {
+                return ($r['start_time'] !== '' && $r['end_time'] !== '' && $r['end_time'] <= $r['start_time']) ? ['end_time must be after start_time'] : [];
+            },
+            'maxlen' => ['name_ta' => 200, 'name_en' => 200, 'description_ta' => 2000, 'description_en' => 2000, 'pooja_time' => 20, 'banner_url' => 500],
+            'help'   => [
+                'pooja_time' => 'Free text shown as the time ("07:00 AM"); left blank it is written from start_time / end_time.',
+                'start_time / end_time' => '24-hour HH:MM (Excel time cells and "6:30 pm" are understood); the end is after the start.',
+                'pooja_type' => implode(', ', $poojaTypes) . '; blank means special.',
+                'sponsorship_amount' => 'Rupees, 0 or more; blank when the pooja is not sponsored.',
+                'sponsorship_available' => 'yes (default) offers the sponsorship on the site; no marks it taken.',
+                'banner_url'  => 'A picture under /uploads/, /images/ or /icons/ on this site, or an https address.',
+                'is_featured' => 'yes highlights the pooja; blank means no.',
+                'live_stream_enabled' => 'yes marks the pooja as streamed live; blank means no.',
+                'is_active'   => 'no hides the pooja from the site; blank means yes.',
+            ],
+            'map' => function (array $r) use ($toBool, $yes) {
+                $start = $r['start_time'] !== '' ? $r['start_time'] : null;
+                $end   = $r['end_time'] !== '' ? $r['end_time'] : null;
+                // A typed range gives the display time when none was typed by hand (poojas.php does the same).
+                $time = $r['pooja_time'] !== '' ? $r['pooja_time'] : ($start !== null ? panchTimeLabel($start, $end, '') : '');
+                return [
+                    ':ta' => $r['name_ta'], ':en' => $r['name_en'],
+                    ':dta' => $r['description_ta'] !== '' ? $r['description_ta'] : null, ':den' => $r['description_en'] !== '' ? $r['description_en'] : null,
+                    ':dt' => $r['pooja_date'], ':tm' => $time !== '' ? $time : null, ':typ' => $r['pooja_type'] !== '' ? strtolower($r['pooja_type']) : 'special',
+                    ':a'  => $toBool($r['is_active']),
+                    ':st' => $start !== null ? $start . ':00' : null, ':et' => $end !== null ? $end . ':00' : null,
+                    ':amt' => $r['sponsorship_amount'] !== '' ? round((float) $r['sponsorship_amount'], 2) : null,
+                    ':av' => $toBool($r['sponsorship_available']), ':bn' => $r['banner_url'] !== '' ? $r['banner_url'] : null,
+                    ':ft' => $yes($r['is_featured']), ':lv' => $yes($r['live_stream_enabled']),
+                ];
+            },
+            'insert' => 'INSERT INTO poojas (name_ta,name_en,description_ta,description_en,pooja_date,pooja_time,pooja_type,is_active,start_time,end_time,sponsorship_amount,sponsorship_available,banner_url,is_featured,live_stream_enabled)
+                         VALUES (:ta,:en,:dta,:den,:dt,:tm,:typ,:a,:st,:et,:amt,:av,:bn,:ft,:lv)',
+            'sample' => ['பௌர்ணமி பூஜை', 'Pournami Pooja', '2027-01-03', '', '18:00', '19:30', 'pournami', 'பௌர்ணமி நாளில் சிறப்பு அபிஷேகம்', 'Special abhishekam on the full-moon day', '2500', 'yes', '', 'yes', 'no', 'yes'],
+        ]
+        : [
+            'columns'  => ['name_ta', 'name_en', 'pooja_date', 'pooja_time', 'pooja_type', 'description_ta', 'description_en', 'is_active'],
+            'required' => ['name_ta', 'name_en', 'pooja_date'],
+            'rules'    => $poojaRules,
+            'maxlen'   => ['name_ta' => 200, 'name_en' => 200, 'description_ta' => 2000, 'description_en' => 2000, 'pooja_time' => 20],
+            'help'     => ['pooja_time' => 'Free text shown as the time, e.g. "07:00 AM".', 'pooja_type' => implode(', ', $poojaTypes) . '; blank means special.'],
             'map' => fn(array $r) => [
                 ':a' => $r['name_ta'], ':b' => $r['name_en'], ':c' => $r['description_ta'] ?: null, ':d' => $r['description_en'] ?: null,
-                ':e' => $r['pooja_date'], ':f' => $r['pooja_time'] ?: null, ':g' => $r['pooja_type'] ?: 'special', ':h' => $toBool($r['is_active']),
+                ':e' => $r['pooja_date'], ':f' => $r['pooja_time'] ?: null, ':g' => $r['pooja_type'] !== '' ? strtolower($r['pooja_type']) : 'special', ':h' => $toBool($r['is_active']),
             ],
             'insert' => 'INSERT INTO poojas (name_ta,name_en,description_ta,description_en,pooja_date,pooja_time,pooja_type,is_active) VALUES (:a,:b,:c,:d,:e,:f,:g,:h)',
             'sample' => ['பௌர்ணமி பூஜை', 'Pournami Pooja', '2027-01-03', '07:00 AM', 'pournami', '', '', 'yes'],
-        ],
+        ];
+
+    return $entities = [
+        'sevas' => ['icon' => 'sparkles', 'label' => 'Sevas', 'table' => 'sevas', 'dupKey' => ['name_en'], 'dupSql' => 'SELECT name_en FROM sevas'] + $sevas,
+        'events' => ['icon' => 'calendar', 'label' => 'Events', 'table' => 'events', 'dupKey' => ['title_en', 'event_date'], 'dupSql' => 'SELECT title_en, event_date FROM events'] + $events,
+        'poojas' => ['icon' => 'flame', 'label' => 'Poojas', 'table' => 'poojas', 'dupKey' => ['name_en', 'pooja_date'], 'dupSql' => 'SELECT name_en, pooja_date FROM poojas'] + $poojas,
         'sponsors' => [
             'icon' => 'heart-hands', 'label' => 'Sponsors', 'table' => 'sponsors',
             // publish_consent is opt-in: blank or anything but yes/1/true imports as "not consented".
@@ -396,8 +610,20 @@ function bulkHeaderCandidates(string $n): array
             'contact' => ['phone'], 'contact_number' => ['phone'], 'contact_no' => ['phone'], 'cell' => ['phone'], 'tel' => ['phone'], 'telephone' => ['phone'], 'whatsapp' => ['phone'], 'ph' => ['phone'],
             'amt' => ['amount'], 'amount_rs' => ['amount'], 'amount_inr' => ['amount'], 'rs' => ['amount'], 'inr' => ['amount'], 'price' => ['amount'], 'cost' => ['amount'],
             'fee' => ['amount'], 'fees' => ['amount'], 'rupees' => ['amount'], 'donation' => ['amount'], 'donation_amount' => ['amount'], 'total' => ['amount'], 'value' => ['amount'],
-            'time' => ['pooja_time'], 'timing' => ['pooja_time'], 'pooja_timing' => ['pooja_time'], 'at' => ['pooja_time'],
-            'type' => ['pooja_type'], 'kind' => ['pooja_type'], 'category' => ['pooja_type', 'purpose'], 'pooja_category' => ['pooja_type'],
+            'time' => ['pooja_time', 'start_time'], 'timing' => ['pooja_time', 'timing_en'], 'timings' => ['timing_en', 'pooja_time'], 'pooja_timing' => ['pooja_time'], 'at' => ['pooja_time'],
+            'timing_tamil' => ['timing_ta'], 'tamil_timing' => ['timing_ta'], 'timing_english' => ['timing_en'], 'english_timing' => ['timing_en'],
+            'type' => ['pooja_type', 'event_type'], 'kind' => ['pooja_type', 'event_type'], 'category' => ['pooja_type', 'event_type', 'purpose'], 'pooja_category' => ['pooja_type'], 'event_category' => ['event_type'],
+            // Migration 020 / 024 columns (events, sevas, poojas)
+            'start' => ['start_time'], 'starts' => ['start_time'], 'starts_at' => ['start_time'], 'from_time' => ['start_time'], 'start_at' => ['start_time'],
+            'end' => ['end_date', 'end_time'], 'ends' => ['end_time'], 'ends_at' => ['end_time'], 'to_time' => ['end_time'], 'end_at' => ['end_time'],
+            'to' => ['end_date'], 'until' => ['end_date'], 'till' => ['end_date'], 'last_day' => ['end_date'], 'ends_on' => ['end_date'], 'to_date' => ['end_date'], 'end_on' => ['end_date'],
+            'venue' => ['venue_en'], 'place' => ['venue_en'], 'location' => ['venue_en'], 'where' => ['venue_en'], 'hall' => ['venue_en'],
+            'image' => ['image_url', 'banner_url'], 'picture' => ['image_url', 'banner_url'], 'photo' => ['image_url', 'banner_url'], 'poster' => ['image_url', 'banner_url'],
+            'banner' => ['banner_url', 'image_url'], 'image_link' => ['image_url', 'banner_url'], 'picture_url' => ['image_url', 'banner_url'],
+            'bookable' => ['is_bookable'], 'online_booking' => ['is_bookable'], 'book_online' => ['is_bookable'], 'booking' => ['is_bookable'], 'can_book' => ['is_bookable'],
+            'sponsorship' => ['sponsorship_amount'], 'sponsor_amount' => ['sponsorship_amount'], 'sponsorship_rs' => ['sponsorship_amount'], 'sponsorship_fee' => ['sponsorship_amount'],
+            'available' => ['sponsorship_available'], 'sponsor_available' => ['sponsorship_available'], 'open_for_sponsorship' => ['sponsorship_available'], 'availability' => ['sponsorship_available'],
+            'live' => ['live_stream_enabled'], 'live_stream' => ['live_stream_enabled'], 'livestream' => ['live_stream_enabled'], 'streamed' => ['live_stream_enabled'], 'stream' => ['live_stream_enabled'],
             'active' => ['is_active'], 'status' => ['is_active'], 'enabled' => ['is_active'], 'visible' => ['is_active'], 'show' => ['is_active'], 'is_enabled' => ['is_active'], 'published' => ['is_active'],
             'featured' => ['is_featured'], 'highlight' => ['is_featured'], 'highlighted' => ['is_featured'], 'is_highlighted' => ['is_featured'], 'star' => ['is_featured'], 'popular' => ['is_featured'],
             'order' => ['sort_order'], 'sort' => ['sort_order'], 'position' => ['sort_order'], 'rank' => ['sort_order'], 'sequence' => ['sort_order'], 'seq' => ['sort_order'],
@@ -417,7 +643,7 @@ function bulkHeaderCandidates(string $n): array
     $tokens = explode('_', $n);
     $lang   = (in_array('tamil', $tokens, true) || in_array('ta', $tokens, true)) ? 'ta'
             : ((in_array('english', $tokens, true) || in_array('en', $tokens, true)) ? 'en' : '');
-    foreach (['name', 'title', 'description', 'desc'] as $base) {
+    foreach (['name', 'title', 'description', 'desc', 'venue', 'timing'] as $base) {
         if (in_array($base, $tokens, true)) {
             $base = $base === 'desc' ? 'description' : $base;
             return $lang ? ["{$base}_{$lang}"] : ["{$base}_en", $base];
@@ -465,15 +691,17 @@ function bulkMapIssues(array $map, array $def): array
 /**
  * Light per-column normalisation before validation:
  *  - Excel date serials (20000–80000) → YYYY-MM-DD (+ time for created_at when fractional)
- *  - Excel time fractions → "07:00 AM" for pooja_time
+ *  - Excel time fractions → "07:00 AM" for pooja_time, "HH:MM" for start_time / end_time
+ *  - "7:00", "07:00:00", "6.30 pm", "7 PM" → 24-hour "HH:MM" for start_time / end_time
  *  - DD/MM/YYYY (Indian convention) → YYYY-MM-DD for date columns
- *  - "₹1,001" / "Rs 1,001" → "1001" for amount
+ *  - "₹1,001" / "Rs 1,001" → "1001" for amount and sponsorship_amount
  */
 function bulkNormalizeValue(string $v, string $col, string $kind): string
 {
     $v = trim($v);
     if ($v === '') return $v;
-    $isDateCol = in_array($col, ['event_date', 'pooja_date', 'created_at'], true);
+    $isDateCol  = in_array($col, ['event_date', 'end_date', 'pooja_date', 'created_at'], true);
+    $isClockCol = in_array($col, ['start_time', 'end_time'], true);
     if ($kind === 'xlsx' && preg_match('/^\d+(\.\d+)?$/', $v)) {
         $n = (float) $v;
         if ($isDateCol && $n >= 20000 && $n <= 80000) {
@@ -483,12 +711,25 @@ function bulkNormalizeValue(string $v, string $col, string $kind): string
         if ($col === 'pooja_time' && $n > 0 && $n < 1) {
             return gmdate('h:i A', (int) round($n * 86400));
         }
+        if ($isClockCol && $n >= 0 && $n < 1) {
+            return gmdate('H:i', (int) round($n * 86400));
+        }
     }
     if ($isDateCol && preg_match('/^(\d{1,2})[\/.\-](\d{1,2})[\/.\-](\d{4})(\s+\d{1,2}:\d{2}(?::\d{2})?(?:\s*[AaPp][Mm])?)?$/', $v, $m)
         && checkdate((int) $m[2], (int) $m[1], (int) $m[3])) {
         $v = sprintf('%04d-%02d-%02d', $m[3], $m[2], $m[1]) . (isset($m[4]) ? ' ' . trim($m[4]) : '');
     }
-    if ($col === 'amount') {
+    if ($isClockCol) {
+        // 24-hour "H:MM[:SS]" or 12-hour "H[:MM] am/pm"; anything else is left for the rule to refuse.
+        if (preg_match('/^(\d{1,2}):(\d{2})(?::\d{2})?$/', $v, $m) && (int) $m[1] < 24) {
+            $v = sprintf('%02d:%s', (int) $m[1], $m[2]);
+        } elseif (preg_match('/^(\d{1,2})(?:[:.](\d{2}))?\s*([AaPp])\.?\s*[Mm]?\.?$/', $v, $m) && (int) $m[1] >= 1 && (int) $m[1] <= 12) {
+            $h = (int) $m[1] % 12 + (strtolower($m[3]) === 'p' ? 12 : 0);
+            // PCRE reports a skipped minutes group as '' (not unset) when a later group matched: "7 PM" is 19:00.
+            $v = sprintf('%02d:%s', $h, ($m[2] ?? '') !== '' ? $m[2] : '00');
+        }
+    }
+    if ($col === 'amount' || $col === 'sponsorship_amount') {
         $clean = preg_replace('/^rs\.?\s*|[₹,\s]/iu', '', $v);
         if ($clean !== '' && is_numeric($clean)) $v = $clean;
     }
@@ -509,7 +750,8 @@ function bulkBuildRows(PDO $db, array $def, array $state, array $map): array
         $data = array_fill_keys($def['columns'], '');
         foreach ($map as $i => $col) {
             if ($col === '' || !isset($data[$col])) continue;
-            $data[$col] = bulkNormalizeValue(sanitizeText((string) ($raw[$i] ?? ''), 2000), $col, $kind);
+            // Clamped to the column's width as the admin forms clamp their fields.
+            $data[$col] = bulkNormalizeValue(sanitizeText((string) ($raw[$i] ?? ''), (int) ($def['maxlen'][$col] ?? 2000)), $col, $kind);
         }
         $errors = [];
         foreach ($def['required'] as $col) {
@@ -519,6 +761,10 @@ function bulkBuildRows(PDO $db, array $def, array $state, array $map): array
             if ($data[$col] !== '' || in_array($col, $def['required'], true)) {
                 if (!$fn($data[$col])) $errors[] = "$col $message";
             }
+        }
+        // Rules across columns only make sense once every single cell is valid.
+        if (!$errors && isset($def['check'])) {
+            foreach (($def['check'])($data) as $e) $errors[] = $e;
         }
         $status = $errors ? 'invalid' : 'ok';
         if (!$errors) {
@@ -909,6 +1155,14 @@ echo adminPageIntro($intro[0], $intro[1]);
         <dt>Yes / no</dt><dd>Accept yes, no, 1, 0, true, false</dd>
         <dt>Headers</dt><dd>Any order and any wording — you will confirm the column mapping in the next step.</dd>
       </dl>
+      <?php if (!empty($def['help'])): ?>
+      <h3 class="subhead mt-4">Column notes</h3>
+      <dl class="dl-grid" data-column-help>
+        <?php foreach ($def['help'] as $col => $note): ?>
+          <dt><code><?= h($col) ?></code></dt><dd><?= h($note) ?></dd>
+        <?php endforeach; ?>
+      </dl>
+      <?php endif; ?>
       <p class="field__hint mt-4">Nothing is saved until you confirm on the preview screen.</p>
     </div>
   </section>

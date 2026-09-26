@@ -3,6 +3,7 @@ import { NavLink, Outlet, useLocation } from "react-router-dom";
 import {
   LuCalendarDays,
   LuFlame,
+  LuHeart,
   LuHeartHandshake,
   LuHouse,
   LuLandmark,
@@ -32,7 +33,14 @@ const SearchDialog = lazy(() => import("../Search/SearchDialog"));
 export const NAV_LINKS = [
   { to: "/", ta: "முகப்பு", en: "Home", Icon: LuHouse },
   { to: "/about", ta: "பற்றி", en: "About", Icon: LuLandmark },
+  // `drawerOnly`: the header row already carries eight labels and has no width
+  // left for more (Layout.css gives Live Darshan up below 1060 px as it is), so
+  // the desktop row never renders these two. Below 1024 px they are in the
+  // drawer with every other page; at every width the footer's quick links
+  // carry them. Brief §6 Deities and §6 Sponsorship; tests/public-pages.mjs.
+  { to: "/deities", ta: "குலதெய்வங்கள்", en: "Deities", Icon: LuSparkles, drawerOnly: true },
   { to: "/sevas", ta: "சேவைகள்", en: "Sevas", Icon: LuFlame },
+  { to: "/sponsorship", ta: "பூஜை உபயம்", en: "Sponsorship", Icon: LuHeart, drawerOnly: true },
   { to: "/events", ta: "நிகழ்வுகள்", en: "Events", Icon: LuCalendarDays },
   // `optional`: the header gives this entry up first when the row is short of
   // width (Layout.css hides it between 1024 and 1059 px, where the eight Tamil
@@ -140,7 +148,7 @@ export default function Layout() {
             </NavLink>
 
             <nav className="navbar__nav" aria-label={t("முதன்மை வழிசெலுத்தல்", "Primary")}>
-              {NAV_LINKS.map((link) => (
+              {NAV_LINKS.filter((link) => !link.drawerOnly).map((link) => (
                 <NavLink
                   key={link.to}
                   to={link.to}
