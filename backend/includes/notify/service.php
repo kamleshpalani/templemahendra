@@ -311,6 +311,15 @@ function notifyCreate(array $n): array
         $title    = notifyInterpolate((string) notifyPickLang($n['title'], $lang), $renderVars);
         $body     = notifyInterpolate((string) notifyPickLang($n['body'], $lang), $renderVars);
         $ctaLabel = notifyInterpolate((string) notifyPickLang($n['cta_label'] ?? null, $lang), $renderVars);
+        // A written message with a secret: the stored copy is masked, so dispatch
+        // needs the words with their {{placeholders}} (never the secret) to put
+        // the value back in the one send that has it (D-052).
+        if ($secretVars) {
+            $vars['_secretText'] = [
+                'title' => mb_substr((string) notifyPickLang($n['title'], $lang), 0, 300),
+                'body'  => mb_substr((string) notifyPickLang($n['body'], $lang), 0, 2000),
+            ];
+        }
     }
     $labelOverride = notifyPickLang($n['cta_label'] ?? null, $lang);
     if ($template !== null && $labelOverride !== null) {

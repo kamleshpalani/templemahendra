@@ -249,6 +249,12 @@ function notifyBuildMessage(array $d, array $notif, array $recipient, array $var
         $title    = trim($prefix . $title);
         $providerTemplate = $r['provider_template'];
         $templateParams   = $r['provider_params'];
+    } elseif ($hasSecret && is_array($vars['_secretText'] ?? null) && $secretVars) {
+        // A written message with a secret, in the request that has it (D-052).
+        $prefix   = (string) ($vars['_titlePrefix'] ?? '');
+        $title    = trim((string) preg_replace('/\s+/u', ' ', $prefix . notifyInterpolate((string) ($vars['_secretText']['title'] ?? ''), $renderVars)));
+        $body     = trim(notifyInterpolate((string) ($vars['_secretText']['body'] ?? ''), $renderVars));
+        $ctaLabel = (string) ($notif['cta_label'] ?? '');
     } else {
         $title    = (string) $notif['title'];
         $body     = (string) $notif['body'];
