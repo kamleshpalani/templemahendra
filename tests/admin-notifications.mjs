@@ -232,6 +232,28 @@ try {
   check(/Test driver - development only/.test(html), "channel card names the email test driver");
   check(/id="nc-audience-fields"/.test(html) && /"booking_status"/.test(html), "rules builder field table is printed as JSON");
 
+  section("announce a broadcast or an event (brief §20)");
+  // "Announce to devotees" opens the composer pre-filled; the committee still
+  // picks the audience and submits, so consent and approval apply as usual.
+  const evDate = new Date(Date.now() + 330 * 60000 + 9 * 86400000).toISOString().slice(0, 10);
+  sql("INSERT INTO events (title_ta, title_en, description, event_date, is_active) VALUES (?, ?, ?, ?, 1)", [`${NAME} ஆடிப் பூரம்`, `${NAME} Aadi Pooram`, "Festival day.", evDate]);
+  const evId = Number(one("SELECT id FROM events WHERE title_en = ?", [`${NAME} Aadi Pooram`]).id);
+  html = await (await editor.get("/admin/events.php")).text();
+  check(html.includes(`/admin/notifications.php?new=1&amp;from=event:${evId}`) && /Announce to devotees/.test(html), "an upcoming event offers Announce to devotees");
+  html = await (await editor.get(`/admin/notifications.php?new=1&from=event:${evId}`)).text();
+  const val = (id) => (new RegExp(`id="${id}"[^>]*value="([^"]*)"`).exec(html)?.[1] ?? "").replace(/&amp;/g, "&");
+  check(val("nc-lang-ta-title").startsWith(`${NAME} ஆடிப் பூரம்`) && val("nc-lang-en-title").startsWith(`${NAME} Aadi Pooram`), "the composer is pre-filled with the event's Tamil and English titles", `${val("nc-lang-ta-title")} | ${val("nc-lang-en-title")}`);
+  check(val("nc-cta") === `/events/${evId}`, "…and links to the event's own page", val("nc-cta"));
+  check(/<option value="event"[^>]*selected/.test(html), "…under the Event category (devotees can switch it off)");
+  const stream = phpJson(["tests/support/live_fixtures.php", "create-stream", arg({ title_prefix: `${NAME}-stream`, label: "announce", status: "SCHEDULED" })]);
+  html = await (await editor.get(`/admin/notifications.php?new=1&from=live:${stream.id}`)).text();
+  check(val("nc-lang-en-title").startsWith("Live darshan: ") && val("nc-cta") === `/live-darshan/${stream.slug}`, "a scheduled broadcast pre-fills a live-darshan announcement linking to its page", `${val("nc-lang-en-title")} | ${val("nc-cta")}`);
+  check(/IST — Join the darshan live/.test(html), "…naming its start time in IST");
+  html = await (await editor.get("/admin/notifications.php?new=1&from=event:999999999")).text();
+  check(/nothing to announce/.test(html) && val("nc-lang-en-title") === "", "an unknown or past record leaves a blank composer with a notice");
+  sql("DELETE FROM events WHERE id = ?", [evId]);
+  phpJson(["tests/support/live_fixtures.php", "cleanup", arg({ title_prefix: `${NAME}-stream` })]);
+
   section("roles on the server");
   let res = await viewer.get("/admin/notifications.php");
   eq(res.status, 200, "viewer can read the list");

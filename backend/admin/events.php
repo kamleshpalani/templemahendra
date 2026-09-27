@@ -470,6 +470,8 @@ echo adminPageIntro(
               <?= adminMenu([
                   ['label' => 'Edit', 'icon' => 'pencil', 'href' => $listUrl(['edit' => $rid])],
                   ['label' => 'View on site', 'icon' => 'external', 'href' => '/events/' . $rid],
+                  ...(adminCan('notifications.compose') && $row['is_active'] && (string) $row['event_date'] >= date('Y-m-d')
+                      ? [['label' => 'Announce to devotees', 'icon' => 'megaphone', 'href' => '/admin/notifications.php?new=1&from=event:' . $rid]] : []),
                   ['label' => $row['is_active'] ? 'Hide' : 'Show', 'icon' => $row['is_active'] ? 'eye-off' : 'eye',
                    'form' => ['action' => 'toggle', 'id' => $rid] + $query],
                   ['label' => $row['is_featured'] ? 'Unfeature' : 'Feature', 'icon' => 'star',

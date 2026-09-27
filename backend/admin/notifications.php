@@ -46,6 +46,7 @@ requireAdminAuth();
 require_once __DIR__ . '/../includes/db.php';
 require_once __DIR__ . '/../includes/helpers.php';
 require_once __DIR__ . '/../includes/notify.php';
+require_once __DIR__ . '/../includes/public_guard.php'; // publicGuardHasColumn() for the announcement prefill
 require_once __DIR__ . '/includes/admin_layout.php';
 require_once __DIR__ . '/includes/notify_audience_form.php';
 
@@ -241,6 +242,82 @@ function ncOrderLangs(array $langs): array
     $set = array_unique(array_merge(['ta', 'en'], array_values(array_filter($langs, static fn($l) => in_array($l, $all, true)))));
     usort($set, static fn($a, $b) => array_search($a, $all, true) <=> array_search($b, $all, true));
     return $set;
+}
+
+/**
+ * A new campaign pre-filled from a broadcast or an event (brief §20: the
+ * livestream announcement and the upcoming-event notification). "Announce"
+ * in Media → Live Streaming and Temple → Events opens ?new=1&from=live:<id>
+ * or from=event:<id>; the committee still chooses the audience and submits,
+ * so consent, unsubscribe and the approval threshold apply as to any
+ * campaign. Null when the record is gone, hidden or past.
+ */
+function ncAnnouncementPrefill(string $kind, int $id): ?array
+{
+    try {
+        $db  = getDB();
+        $ist = static fn(?string $utc): string => $utc ? gmdate('j M Y, g:i a', (int) strtotime($utc . ' UTC') + 19800) . ' IST' : '';
+        if ($kind === 'live') {
+            $st = $db->prepare("SELECT slug, title_ta, title_en, description_ta, description_en, scheduled_start_at, status
+                                  FROM live_streams WHERE id = :id AND deleted_at IS NULL AND status IN ('SCHEDULED','STARTING','LIVE')");
+            $st->execute([':id' => $id]);
+            $s = $st->fetch();
+            if (!$s) return null;
+            $ta = trim((string) $s['title_ta']) ?: trim((string) $s['title_en']);
+            $en = trim((string) $s['title_en']) ?: trim((string) $s['title_ta']);
+            $when = $ist($s['scheduled_start_at']);
+            $live = $s['status'] === 'LIVE';
+            return [
+                'name'     => 'Live darshan: ' . mb_substr($en, 0, 150),
+                'category' => 'special_darshan',
+                'cta_url'  => '/live-darshan/' . $s['slug'],
+                'translations' => [
+                    'ta' => ['title' => ($live ? 'இப்போது நேரலை: ' : 'நேரடி தரிசனம்: ') . $ta,
+                             'body' => trim(($when !== '' && !$live ? $when . ' — ' : '') . 'கோயில் இணையதளத்தில் நேரலையாகக் கண்டு தரிசிக்கலாம்.' . "
+
+" . trim((string) ($s['description_ta'] ?? ''))),
+                             'cta_label' => 'நேரலையைக் காண'],
+                    'en' => ['title' => ($live ? 'Live now: ' : 'Live darshan: ') . $en,
+                             'body' => trim(($when !== '' && !$live ? $when . ' — ' : '') . 'Join the darshan live on the temple website.' . "
+
+" . trim((string) ($s['description_en'] ?? ''))),
+                             'cta_label' => 'Watch live'],
+                ],
+            ];
+        }
+        if ($kind === 'event') {
+            $bi = publicGuardHasColumn('events', 'description_ta') && publicGuardHasColumn('events', 'venue_ta');
+            $st = $db->prepare('SELECT id, title_ta, title_en, event_date' . ($bi ? ', description_ta, description_en, venue_ta, venue_en, event_type' : ", description AS description_ta, description AS description_en, NULL AS venue_ta, NULL AS venue_en, 'other' AS event_type")
+                . ' FROM events WHERE id = :id AND is_active = 1 AND event_date >= CURDATE()');
+            $st->execute([':id' => $id]);
+            $e = $st->fetch();
+            if (!$e) return null;
+            $ta = trim((string) $e['title_ta']) ?: trim((string) $e['title_en']);
+            $en = trim((string) $e['title_en']) ?: trim((string) $e['title_ta']);
+            $date = date('j M Y', (int) strtotime((string) $e['event_date']));
+            $place = static fn(?string $v): string => trim((string) $v) !== '' ? ' · ' . trim((string) $v) : '';
+            return [
+                'name'     => 'Event: ' . mb_substr($en, 0, 150),
+                'category' => ($e['event_type'] ?? '') === 'festival' ? 'festival' : 'event',
+                'cta_url'  => '/events/' . (int) $e['id'],
+                'translations' => [
+                    'ta' => ['title' => $ta . ' — ' . $date,
+                             'body' => trim($date . $place($e['venue_ta'] ?: $e['venue_en']) . "
+
+" . mb_substr(trim((string) ($e['description_ta'] ?: $e['description_en'])), 0, 600)),
+                             'cta_label' => 'விவரங்களைப் பார்க்க'],
+                    'en' => ['title' => $en . ' — ' . $date,
+                             'body' => trim($date . $place($e['venue_en'] ?: $e['venue_ta']) . "
+
+" . mb_substr(trim((string) ($e['description_en'] ?: $e['description_ta'])), 0, 600)),
+                             'cta_label' => 'See the details'],
+                ],
+            ];
+        }
+    } catch (Throwable $e) {
+        error_log('[notifications] announcement prefill failed: ' . $e->getMessage());
+    }
+    return null;
 }
 
 function ncComposerBlank(): array
@@ -625,6 +702,16 @@ if ($composer === null && ($gets('new') !== '' || $gets('edit') !== '')) {
         $composerId = (int) $editing['id'];
     } else {
         $composer = ncComposerBlank();
+        if (preg_match('/^(live|event):([0-9]{1,10})$/', $gets('from'), $fromMatch)) {
+            $prefill = ncAnnouncementPrefill($fromMatch[1], (int) $fromMatch[2]);
+            if ($prefill !== null) {
+                $composer = array_replace($composer, $prefill);
+                $composer['translations'] = array_replace_recursive(ncComposerBlank()['translations'], $prefill['translations']);
+            } else {
+                // Shown on this very page (a flash would only appear on the next one).
+                $msg .= '<p class="alert alert--warning" role="status">That ' . ($fromMatch[1] === 'live' ? 'broadcast' : 'event') . ' is no longer upcoming, so there is nothing to announce. Start a notification from scratch instead.</p>';
+            }
+        }
         $seg = (int) $gets('segment');
         if ($seg > 0) $composer['audience'] = adminAudienceStateFrom($seg, null);
     }

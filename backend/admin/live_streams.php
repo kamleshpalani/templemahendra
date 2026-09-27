@@ -901,6 +901,9 @@ echo adminPageIntro(
               if (!$deleted) {
                   $menu[] = ['label' => 'Edit', 'icon' => 'pencil', 'href' => $listUrl(['edit' => $rid])];
                   $menu[] = ['label' => 'View page', 'icon' => 'external', 'href' => '/live-darshan/' . rawurlencode((string) $row['slug']), 'target' => '_blank'];
+                  if (adminCan('notifications.compose') && in_array($row['status'], ['SCHEDULED', 'STARTING', 'LIVE'], true)) {
+                      $menu[] = ['label' => 'Announce to devotees', 'icon' => 'megaphone', 'href' => '/admin/notifications.php?new=1&from=live:' . $rid];
+                  }
                   if ($canPublish) {
                       $actions = liveAdminActions($row);
                       if ($actions) $menu[] = 'divider';
