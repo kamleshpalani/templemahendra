@@ -83,6 +83,10 @@
 -- A latin1 client stores the Tamil category names garbled.
 
 -- ── donation_categories ─────────────────────────────────────────────────────
+-- The connection's character set, whatever client applies this file: without
+-- it a latin1 client (the Windows mysql default) stores Tamil text as '?'.
+SET NAMES utf8mb4;
+
 CREATE TABLE IF NOT EXISTS `donation_categories` (
   `id`               INT UNSIGNED  NOT NULL AUTO_INCREMENT,
   `slug`             VARCHAR(40)   NOT NULL COMMENT '^[a-z0-9_]{2,40}$; stored in donations.purpose',

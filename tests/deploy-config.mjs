@@ -23,6 +23,9 @@
  *                                development shows them, an unknown value is
  *                                production; APP_DEBUG cannot switch detail on
  *                                outside development
+ *   database/migrations/*.sql    each sets the connection to utf8mb4 before its
+ *                                first statement, so a Tamil seed row survives
+ *                                a client that defaults to latin1 (D-050)
  *
  *   node tests/deploy-config.mjs
  *
@@ -30,7 +33,7 @@
  */
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -127,6 +130,14 @@ check(phpIni({ APP_DEBUG: "1" }, dbg) === "quiet|0", "APP_DEBUG=1 cannot show er
 check(phpIni({ APP_ENV: "development", APP_DEBUG: "1" }, dbg) === "debug|1", "APP_DEBUG=1 shows detail in development", phpIni({ APP_ENV: "development", APP_DEBUG: "1" }, dbg));
 const env = read("backend/.env.example");
 check(/^APP_ENV=production$/m.test(env), "backend/.env.example documents APP_ENV=production");
+
+/* ── database/migrations ───────────────────────────────────────────────── */
+const migrations = readdirSync(resolve(root, "database/migrations")).filter((f) => /^\d{3}_.*\.sql$/.test(f)).sort();
+const unsafe = migrations.filter((f) => {
+  const first = read(`database/migrations/${f}`).split("\n").find((l) => l.trim() !== "" && !l.startsWith("--")) ?? "";
+  return first.trim() !== "SET NAMES utf8mb4;";
+});
+check(migrations.length >= 25 && unsafe.length === 0, `every migration (${migrations.length}) sets utf8mb4 before its first statement`, unsafe.join(", "));
 
 console.log(`\ndeploy-config: ${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);

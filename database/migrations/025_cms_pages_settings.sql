@@ -27,6 +27,10 @@
 --   mysql --default-character-set=utf8mb4 -u <user> -p <db> < database/migrations/025_cms_pages_settings.sql
 -- ============================================================
 
+-- The connection's character set, whatever client applies this file: without
+-- it a latin1 client (the Windows mysql default) stores Tamil text as '?'.
+SET NAMES utf8mb4;
+
 CREATE TABLE IF NOT EXISTS `site_settings` (
   `key_name`   VARCHAR(80)  NOT NULL,
   `value_ta`   TEXT         NULL,

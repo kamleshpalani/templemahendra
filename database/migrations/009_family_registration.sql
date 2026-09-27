@@ -41,6 +41,10 @@
 -- a latin1 client stores Tamil text garbled.
 
 -- ── devotees.email: optional, not unique ────────────────────────────────────
+-- The connection's character set, whatever client applies this file: without
+-- it a latin1 client (the Windows mysql default) stores Tamil text as '?'.
+SET NAMES utf8mb4;
+
 SET @nul := (
   SELECT IS_NULLABLE FROM information_schema.COLUMNS
    WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'devotees' AND COLUMN_NAME = 'email'

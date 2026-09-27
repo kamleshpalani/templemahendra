@@ -90,6 +90,10 @@
 -- ============================================================
 
 -- ── Categories ──────────────────────────────────────────────────────────────
+-- The connection's character set, whatever client applies this file: without
+-- it a latin1 client (the Windows mysql default) stores Tamil text as '?'.
+SET NAMES utf8mb4;
+
 CREATE TABLE IF NOT EXISTS `notification_categories` (
   `key`         VARCHAR(32)  NOT NULL,
   `label_ta`    VARCHAR(120) NOT NULL,

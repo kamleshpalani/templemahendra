@@ -46,6 +46,10 @@
 --   mysql --default-character-set=utf8mb4 -u <user> -p <db> < database/migrations/021_gallery_albums.sql
 -- ============================================================
 
+-- The connection's character set, whatever client applies this file: without
+-- it a latin1 client (the Windows mysql default) stores Tamil text as '?'.
+SET NAMES utf8mb4;
+
 CREATE TABLE IF NOT EXISTS `gallery_albums` (
   `id`             INT UNSIGNED NOT NULL AUTO_INCREMENT,
   `slug`           VARCHAR(60)  NOT NULL COMMENT 'URL key: /gallery?album=<slug>',

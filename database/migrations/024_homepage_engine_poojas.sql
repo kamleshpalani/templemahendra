@@ -42,6 +42,10 @@
 -- ============================================================
 
 -- ── homepage_widgets.content_type ────────────────────────────────────────────
+-- The connection's character set, whatever client applies this file: without
+-- it a latin1 client (the Windows mysql default) stores Tamil text as '?'.
+SET NAMES utf8mb4;
+
 SET @ct := (SELECT COLUMN_TYPE FROM information_schema.COLUMNS
              WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'homepage_widgets' AND COLUMN_NAME = 'content_type');
 SET @sql := IF(@ct IS NOT NULL AND @ct NOT LIKE '%''custom''%',
