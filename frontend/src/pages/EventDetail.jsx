@@ -6,9 +6,11 @@ import { useLang } from "../context/LangContext";
 import Badge from "../components/ui/Badge";
 import Button from "../components/ui/Button";
 import PageHero from "../components/ui/PageHero";
-import Seo from "../components/Seo";
+import Seo, { templePlace } from "../components/Seo";
 import ShareButton from "../components/Share/ShareButton";
 import { EmptyState, ErrorState, SkeletonText } from "../components/ui/Feedback";
+import { absoluteUrl, siteOrigin } from "../lib/share";
+import { useSiteSettings } from "../lib/siteSettings";
 import { EVENT_TYPE_META, eventDateLabel, eventText, eventTimeLabel, eventTypeKey } from "./Events";
 import "./EventDetail.css";
 
@@ -19,11 +21,44 @@ import "./EventDetail.css";
  *
  * The server answers this address honestly too: api/spa.php says 404 once the
  * event is hidden or gone, and api/og.php previews it for WhatsApp with the
- * same words, so the page and its preview cannot disagree.
+ * same words and the same schema.org Event record, so the page and its
+ * preview cannot disagree.
  */
+
+/** The temple's clock: every event date and time on the site is IST. */
+const IST_OFFSET = "+05:30";
+
+/** ISO 8601 for a day, with the time of day when the committee gave one. */
+function eventInstant(date, time) {
+  if (!date) return null;
+  return time ? `${date}T${time}:00${IST_OFFSET}` : date;
+}
+
+/**
+ * The schema.org Event record for one event (brief §22): the words the page
+ * shows, the dates the row holds, the temple as the place. `endDate` is the
+ * last day (with its time when given), or the same day's end time, and is
+ * left out when the committee gave neither. api/og.php writes the same.
+ */
+export function eventJsonLd(event, { name, description, site, lang, url }) {
+  const startDate = eventInstant(event.event_date, event.start_time);
+  const endDate = eventInstant(event.end_date || (event.end_time ? event.event_date : null), event.end_time);
+  const record = { "@context": "https://schema.org", "@type": "Event", name };
+  if (description) record.description = description;
+  if (startDate) record.startDate = startDate;
+  if (endDate) record.endDate = endDate;
+  record.eventStatus = "https://schema.org/EventScheduled";
+  record.eventAttendanceMode = "https://schema.org/OfflineEventAttendanceMode";
+  record.location = templePlace(site, lang);
+  if (event.image_url) record.image = absoluteUrl(event.image_url);
+  record.url = url;
+  return record;
+}
+
 export default function EventDetail() {
   const { id } = useParams();
   const { lang, t } = useLang();
+  const { site } = useSiteSettings();
   const wanted = /^[0-9]{1,10}$/.test(id ?? "") ? id : null;
   const [state, setState] = useState({ event: null, loading: Boolean(wanted), error: false, notFound: !wanted });
   const [attempt, setAttempt] = useState(0);
@@ -67,6 +102,9 @@ export default function EventDetail() {
   const seoTitle = notFound ? t("நிகழ்வு கிடைக்கவில்லை", "Event not found") : title || pageTitle;
   const seoDescription = notFound || !event ? "" : [when, description].filter(Boolean).join(" · ");
   const shareText = [when, venue, description].filter(Boolean).join(" · ");
+  const jsonLd = event
+    ? eventJsonLd(event, { name: title, description, site, lang, url: `${siteOrigin()}/events/${event.id}` })
+    : null;
 
   return (
     <>
@@ -78,6 +116,7 @@ export default function EventDetail() {
         type={event ? "article" : "website"}
         canonicalPath={`/events/${wanted ?? ""}`}
         robots={notFound || error ? "noindex, nofollow" : undefined}
+        jsonLd={jsonLd}
       />
 
       <PageHero

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
 import { LuCalendarDays, LuTv, LuYoutube, LuVideo } from "react-icons/lu";
-import Seo from "../components/Seo";
+import Seo, { templePlace } from "../components/Seo";
 import PageHero from "../components/ui/PageHero";
 import SectionHeader from "../components/ui/SectionHeader";
 import Button from "../components/ui/Button";
@@ -17,6 +17,8 @@ import StreamCard from "../components/Live/StreamCard";
 import StreamMeta from "../components/Live/StreamMeta";
 import { useLang } from "../context/LangContext";
 import { TEMPLE } from "../data/temple";
+import { absoluteUrl, siteOrigin } from "../lib/share";
+import { useSiteSettings } from "../lib/siteSettings";
 import {
   formatStreamDate,
   formatStreamTime,
@@ -71,6 +73,31 @@ const TRANSITIONS = {
   SCHEDULED: ["நேரடி தரிசனம் மீண்டும் திட்டமிடப்பட்டது", "Live darshan has been rescheduled"],
 };
 
+/**
+ * Structured data for one broadcast page (brief §22): a VideoObject whose
+ * publication is a BroadcastEvent — the livestream markup Google reads —
+ * with isLiveBroadcast, the start (the actual one once live), the end when
+ * the committee scheduled one, the embed and the thumbnail. Only a live,
+ * starting or scheduled broadcast is one; a recording or a cancelled
+ * darshan gets nothing. api/og.php writes the same record for crawlers.
+ */
+export function liveJsonLd(stream, { name, description, site, lang, url }) {
+  if (!stream || !["LIVE", "STARTING", "SCHEDULED"].includes(String(stream.status))) return null;
+  const startDate = (isLiveStatus(stream.status) && stream.actual_start_at) || stream.scheduled_start_at || null;
+  const endDate = stream.scheduled_end_at || null;
+  const broadcast = { "@type": "BroadcastEvent", name, isLiveBroadcast: true };
+  if (startDate) broadcast.startDate = startDate;
+  if (endDate) broadcast.endDate = endDate;
+  broadcast.location = templePlace(site, lang);
+  const video = { "@context": "https://schema.org", "@type": "VideoObject", name };
+  if (description) video.description = description;
+  video.url = url;
+  if (stream.thumbnail_url) video.thumbnailUrl = absoluteUrl(stream.thumbnail_url);
+  if (stream.playback?.kind === "iframe" && stream.playback.embedUrl) video.embedUrl = stream.playback.embedUrl;
+  video.publication = broadcast;
+  return video;
+}
+
 /** The hero's aside: the status pill with the one time that matters. */
 function HeroStatus({ stream, lang, t, started = false }) {
   const tz = stream.timezone || "Asia/Kolkata";
@@ -102,6 +129,7 @@ function HeroStatus({ stream, lang, t, started = false }) {
 export default function LiveDarshan() {
   const { slug } = useParams();
   const { lang, t } = useLang();
+  const { site } = useSiteSettings();
 
   // The overview feeds the list route and the "upcoming" grid on both routes;
   // on the slug route it is fetched once and the stream's own hook polls.
@@ -167,6 +195,9 @@ export default function LiveDarshan() {
   const seoDescription = notFound ? "" : Array.from((slug && stream ? streamText || lead : lead).trim().replace(/\s+/gu, " ")).slice(0, 200).join("");
   const sharePath = slug && stream ? `/live-darshan/${stream.slug}` : "/live-darshan";
   const crumbs = slug && stream ? [{ label: title, to: "/live-darshan" }, { label: streamName }] : [{ label: title }];
+  const jsonLd = slug && stream
+    ? liveJsonLd(stream, { name: streamName, description: streamText, site, lang, url: `${siteOrigin()}/live-darshan/${stream.slug}` })
+    : null;
 
   return (
     <>
@@ -178,6 +209,7 @@ export default function LiveDarshan() {
         type={slug && stream ? "video.other" : "website"}
         canonicalPath={slug ? `/live-darshan/${stream?.slug || slug}` : "/live-darshan"}
         robots={notFound || error ? "noindex, nofollow" : undefined}
+        jsonLd={jsonLd}
       />
 
       <PageHero

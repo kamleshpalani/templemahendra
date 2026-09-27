@@ -3,9 +3,11 @@
  * api/sitemap.php — /sitemap.xml.
  *
  * Every indexable page from includes/site_pages.php, plus one entry per public
- * broadcast page (scheduled, live or recorded). Cancelled and failed broadcasts
- * are real pages but not worth a crawler's visit, and one donor's payment pages
- * are never listed. The origin comes from SITE_URL, else the requested host.
+ * broadcast page (scheduled, live or recorded), per event still to come and
+ * per shown gallery album that holds a shown photo. Cancelled and failed
+ * broadcasts are real pages but not worth a crawler's visit, and one donor's
+ * payment pages are never listed. The origin comes from SITE_URL, else the
+ * requested host.
  */
 
 require_once __DIR__ . '/../includes/helpers.php';
@@ -62,6 +64,38 @@ try {
     }
 } catch (Throwable $e) {
     error_log('[sitemap] events: ' . get_class($e) . ': ' . $e->getMessage());
+}
+
+// One entry per shown album that holds at least one shown photo (brief §6,
+// migration 021): /gallery?album=<slug>, the address the Gallery page opens
+// it at. An empty album is not a page worth a visit, a hidden album is not a
+// page at all, and when the committee keeps /gallery out of search engines
+// its albums stay out with it — the same rule the page list applies above.
+// lastmod is the later of the album's own edit and its newest photo's.
+try {
+    require_once __DIR__ . '/../includes/gallery_images.php';
+    if (galleryAlbumsReady() && empty($seo['/gallery']['noindex'])) {
+        $mod  = galleryHasColumn('updated_at') ? 'GREATEST(a.updated_at, MAX(g.updated_at))' : 'a.updated_at';
+        $stmt = getDB()->query(
+            "SELECT a.slug, $mod AS updated_at
+               FROM gallery_albums a
+               JOIN gallery g ON g.album_id = a.id AND g.is_active = 1
+              WHERE a.is_active = 1
+              GROUP BY a.id
+              ORDER BY a.sort_order ASC, a.id ASC
+              LIMIT 200"
+        );
+        foreach ($stmt->fetchAll() as $row) {
+            if (!preg_match(GALLERY_SLUG_RE, (string) $row['slug'])) continue;
+            $entries[] = [
+                'loc'        => siteUrl('/gallery') . '?album=' . rawurlencode((string) $row['slug']),
+                'lastmod'    => $row['updated_at'] ? gmdate('Y-m-d', strtotime((string) $row['updated_at'])) : null,
+                'changefreq' => 'weekly',
+            ];
+        }
+    }
+} catch (Throwable $e) {
+    error_log('[sitemap] albums: ' . get_class($e) . ': ' . $e->getMessage());
 }
 
 header('Content-Type: application/xml; charset=utf-8');
