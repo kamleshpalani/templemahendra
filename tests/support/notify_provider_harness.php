@@ -13,7 +13,11 @@
  *
  *   send        {"channel","driver","env"?,"core"?,"message":{NotifyMessage fields by name}}
  *               → {"provider","class","configured","result":{status,messageId,reason,response,
- *                  retryAfter,deviceResults,recordedOnly}}
+ *                  retryAfter,recordedOnly}}
+ *   retired     {"channel","driver"?,"env"?,"message"?} → the provider the service itself
+ *               returns for that channel (no harness channel check), what a send
+ *               through it does, the provider registry's channels and any retired
+ *               provider class that still loads — proof that in-app and push are gone
  *   webhook     {"channel","driver","env"?,"method","headers"?,"body"?,"query"?,"url"?}
  *               → {"provider","result": handleWebhook()'s array}
  *   configured  {"channel","driver","env"?} → {"provider","class","configured"}
@@ -24,8 +28,7 @@
  * "env" sets environment variables for that one operation; null unsets one.
  * Whatever an operation set is restored before the next, so batched cases
  * never inherit each other's settings. "core": true loads notify.php (when it
- * exists) first, as the worker would — needed where a provider asks the service
- * for something, such as the development VAPID keys.
+ * exists) first, as the worker would.
  *
  * The database environment comes from the caller (PHP_BIN=php.sh in the suites).
  */
@@ -96,8 +99,8 @@ function harnessProvider(array $args): NotifyProvider
 function harnessMessage(array $fields, string $channel): NotifyMessage
 {
     $known = ['deliveryId', 'notificationId', 'channel', 'lang', 'category', 'priority', 'title', 'body', 'attempt', 'html',
-              'ctaUrl', 'ctaLabel', 'imageUrl', 'toEmail', 'toPhone', 'devices', 'providerTemplate', 'templateParams',
-              'buttons', 'headers', 'data', 'idempotencyKey'];
+              'ctaUrl', 'ctaLabel', 'imageUrl', 'toEmail', 'toPhone', 'providerTemplate', 'templateParams',
+              'buttons', 'headers', 'idempotencyKey'];
     $unknown = array_diff(array_keys($fields), $known);
     if ($unknown !== []) throw new InvalidArgumentException('unknown message field(s): ' . implode(', ', $unknown));
     $defaults = ['deliveryId' => 1, 'notificationId' => 1, 'channel' => $channel, 'lang' => 'en',
@@ -113,7 +116,6 @@ function harnessResult(NotifyResult $r): array
         'reason'        => $r->reason,
         'response'      => $r->response,
         'retryAfter'    => $r->retryAfter,
-        'deviceResults' => (object) $r->deviceResults,
         'recordedOnly'  => $r->recordedOnly,
     ];
 }
@@ -145,6 +147,21 @@ function harnessRun(string $command, array $args, HarnessEnv $env): array
             );
             return ['provider' => $provider->name(), 'result' => $result];
 
+        case 'retired':
+            $channel  = (string) ($args['channel'] ?? '');
+            $provider = notifyProviderFor($channel, true);
+            $result   = $provider->send(harnessMessage(is_array($args['message'] ?? null) ? $args['message'] : [], $channel));
+            $gone     = ['NotifyWebPushProvider', 'NotifyFcmProvider', 'NotifyPushProvider', 'NotifyInAppProvider', 'NotifyInappProvider'];
+            return [
+                'provider'       => $provider->name(),
+                'class'          => get_class($provider),
+                'configured'     => $provider->isConfigured(),
+                'result'         => harnessResult($result),
+                'registry'       => array_keys(notifyProviderRegistry()),
+                'channels'       => NOTIFY_CHANNELS,
+                'retiredClasses' => array_values(array_filter($gone, 'class_exists')),
+            ];
+
         case 'configured':
             $provider = harnessProvider($args);
             return ['provider' => $provider->name(), 'class' => get_class($provider), 'configured' => $provider->isConfigured()];
@@ -165,10 +182,9 @@ function harnessRun(string $command, array $args, HarnessEnv $env): array
             return [
                 'notifyPhp'           => is_file(__DIR__ . '/../../backend/includes/notify.php'),
                 'applyProviderUpdate' => function_exists('notifyApplyProviderUpdate'),
-                'vapidPublicKey'      => function_exists('notifyVapidPublicKey'),
             ];
     }
-    throw new InvalidArgumentException('unknown command; use send, webhook, configured, sendmail, core or batch');
+    throw new InvalidArgumentException('unknown command; use send, webhook, retired, configured, sendmail, core or batch');
 }
 
 $command = $argv[1] ?? '';
