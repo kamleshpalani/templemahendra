@@ -14,7 +14,9 @@ if (in_array($uri, ['/api/og.php', '/api/spa.php', '/api/robots.php', '/api/site
 if ($uri === '/robots.txt') { require __DIR__ . '/api/robots.php'; return true; }
 if ($uri === '/sitemap.xml') { require __DIR__ . '/api/sitemap.php'; return true; }
 
-// Route all /api/* requests through the front-controller
+// Route all /api/* requests through the front-controller. /api/v1/* included:
+// the version prefix is stripped in api/index.php, which also switches on the
+// brief §26 envelope for it, exactly as public_html/api/.htaccess sends it there.
 if (str_starts_with($uri, '/api')) {
     require __DIR__ . '/api/index.php';
     return true;

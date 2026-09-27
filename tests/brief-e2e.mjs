@@ -364,6 +364,10 @@ try {
     }
   }
   sql("DELETE FROM homepage_widgets WHERE title_en LIKE ? OR image_url = ?", [`${P}%`, POSTER]);
+  // The flood-limit buckets this run's addresses (10.90.x.y) filled: every run
+  // counts from the same addresses, so a second run inside the window would
+  // otherwise be refused with 429 by its own first run.
+  sql("DELETE FROM rate_limits WHERE bucket REGEXP ?", [":10[.]90[.][0-9]+[.][0-9]+$"]);
   sql("DELETE FROM gallery WHERE caption LIKE ?", [`${P}%`]);
   try { sql("DELETE FROM notifications WHERE to_email = ?", [OFFICE]); } catch { /* notification tables absent */ }
   sql("DELETE FROM contact_messages WHERE name LIKE ?", [`${P}%`]);
