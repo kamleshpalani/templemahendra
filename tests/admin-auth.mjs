@@ -108,6 +108,7 @@ const matrix = [
   ["/admin/sponsors.php",           200,   200,    200,     403],  // sponsor PII: not for read-only viewers
   ["/admin/donation_categories.php",200,   200,    200,     403],
   ["/admin/payments.php",           200,   200,    200,     200],
+  ["/admin/receipts.php",           200,   200,    200,     200],  // payments.view, as Online Payments (which shows the same receipts)
   ["/admin/payment_settings.php",   403,   403,    403,     403],
   ["/admin/settings.php",           200,   403,    403,     403],
   ["/admin/users.php",              403,   403,    403,     403],

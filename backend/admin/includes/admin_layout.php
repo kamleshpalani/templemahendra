@@ -33,6 +33,7 @@ function adminNavGroups(): array
         'Finance' => [
             'donations.php'        => ['banknote',    'Donations',        'Pledges, totals and CSV reports'],
             'payments.php'         => ['landmark',    'Online Payments',  'Transactions, receipts, refunds, reconciliation'],
+            'receipts.php'         => ['clipboard',   'Receipts',         'Every receipt issued for an online payment'],
             'sponsors.php'         => ['heart-hands', 'Sponsors',         'Devotees sponsoring poojas'],
             'donation_categories.php' => ['heart-hands', 'Donation Categories', 'Purposes donors can give to'],
             'payment_settings.php' => ['shield',      'Payment Gateway',  'CCAvenue mode, keys, currencies and limits'],
@@ -81,6 +82,7 @@ function adminQuickActions(): array
         ['label' => 'Export families CSV',    'href' => '/admin/devotees.php?export=csv','icon' => 'download',   'can' => 'export'],
         ['label' => 'Export donations CSV',   'href' => '/admin/donations.php?export=csv','icon' => 'download',   'can' => 'export'],
         ['label' => 'Export payments CSV',    'href' => '/admin/payments.php?export=csv','icon' => 'download',    'can' => 'export'],
+        ['label' => 'Export receipts CSV',    'href' => '/admin/receipts.php?export=csv','icon' => 'download',    'can' => 'export'],
         ['label' => 'Export bookings CSV',    'href' => '/admin/seva_bookings.php?export=csv','icon' => 'download','can' => 'export'],
         ['label' => 'Users',                  'href' => '/admin/users.php',              'icon' => 'users',       'can' => 'users.manage'],
         ['label' => 'New page',               'href' => '/admin/pages.php#new',          'icon' => 'pages',       'can' => 'content.edit'],

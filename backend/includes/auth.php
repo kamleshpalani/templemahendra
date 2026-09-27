@@ -65,13 +65,18 @@ function adminIpLoginAttempts(): int
 // One safety net for every admin page: errors are logged, never printed.
 require_once __DIR__ . '/errors.php';
 
-// Load .env.local for local development if it exists
+// Load .env.local for local development if it exists. It only fills gaps: a
+// variable the server was started with (the hosting panel, a test server on a
+// scratch database or another SITE_URL) always wins, exactly as the public API
+// sees it — otherwise admin pages and the API could read different databases.
 $_envFile = __DIR__ . '/../../.env.local';
 if (file_exists($_envFile)) {
     foreach (file($_envFile, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES) as $_line) {
         if (str_starts_with(trim($_line), '#') || !str_contains($_line, '=')) continue;
         [$_k, $_v] = explode('=', $_line, 2);
-        putenv(trim($_k) . '=' . trim($_v));
+        $_k = trim($_k);
+        if ($_k === '' || getenv($_k) !== false) continue;
+        putenv($_k . '=' . trim($_v));
     }
 }
 unset($_envFile, $_line, $_k, $_v);
@@ -107,6 +112,7 @@ function adminPageCapability(string $file): string
         'notification_templates.php' => 'notifications.view',
         'notification_analytics.php' => 'notifications.view',
         'payments.php'               => 'payments.view',
+        'receipts.php'               => 'payments.view',
         'payment_settings.php'       => 'payments.settings',
         'donation_categories.php'    => 'finance.edit',
         'live_streams.php'           => 'live.view',
@@ -138,6 +144,7 @@ function adminPageWriteCapability(string $file): string
         'notification_analytics.php' => 'notifications.compose', // requeue
         // The refund actions on payments.php additionally require payments.refund.
         'payments.php'               => 'payments.manage',
+        'receipts.php'               => 'payments.manage', // resend a receipt
         'payment_settings.php'       => 'payments.settings',
         'donation_categories.php'    => 'finance.edit',
         // The status buttons on live_streams.php additionally require live.publish.

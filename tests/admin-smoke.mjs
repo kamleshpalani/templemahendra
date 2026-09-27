@@ -15,6 +15,8 @@ const PAGES = only.length
      // Online payments (docs/payments/SPEC.md §10): every tab, the gateway settings and the categories.
      "payments.php", "payments.php?view=transactions", "payments.php?view=refunds", "payments.php?view=reconcile",
      "payments.php?number=DON-20990101-00000001", "payment_settings.php", "donation_categories.php",
+     // Finance → Receipts (brief §14): the list, and every filter with a sort.
+     "receipts.php", "receipts.php?q=TMR&month=2026-01&type=seva_booking&status=REFUNDED&sort=amount&dir=asc",
      // Live Darshan (docs/live/SPEC-PHASE1.md §4.5): the list, the live chip and an unknown stream id.
      "live_streams.php", "live_streams.php?f=live", "live_streams.php?edit=999999999",
      "videos.php", "videos.php?f=featured&q=pournami", "videos.php?edit=999999999", "deities.php",
