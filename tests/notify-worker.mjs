@@ -509,7 +509,7 @@ async function main() {
   check(saved.ok && saved.id, "the owner saves a draft", JSON.stringify(saved));
   const CID = saved.id;
   let tr = harness("campaign-transition", { id: CID, action: "submit", actor: owner });
-  check(tr.ok && tr.status === "review" && tr.message.includes("Reaches 600 families") && tr.message.includes("another owner"), "600 families needs a second approval by another owner", JSON.stringify(tr));
+  check(tr.ok && tr.status === "review" && tr.message.includes("Reaches 600 families") && tr.message.includes("An owner other than you needs to approve it"), "600 families needs a second approval by another owner", JSON.stringify(tr));
   let camp = harness("campaign-get", { id: CID }).campaign;
   eq([camp.requires_approval, camp.estimated_count, camp.approval_reason, camp.submitted_by], [1, 600, "Reaches 600 families", owner.username], "the estimate and reason are stored");
   tr = harness("campaign-transition", { id: CID, action: "approve", actor: editor });
