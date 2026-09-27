@@ -379,7 +379,7 @@ async function main() {
 
   act = await admin.act("/admin/donations.php", { action: "send_receipt", id: donation });
   check(act.status === 303, "Send receipt posts and redirects", `status ${act.status}`);
-  check(new RegExp(`Receipt ${receipt} \\(receipt 1\\)`).test(flashOf(act.page)) && /queued for email/.test(flashOf(act.page)), "…and the flash reports receipt 1 and its channels", flashOf(act.page));
+  check(new RegExp(`Receipt ${receipt} \\(receipt 1\\)`).test(flashOf(act.page)) && flashOf(act.page).includes("queued for WhatsApp. Skipped: email (no email)."), "…and the flash reports receipt 1, the channel it went on and the one skipped with its reason", flashOf(act.page));
   act = await admin.act("/admin/donations.php", { action: "send_receipt", id: donation });
   check(/\(receipt 2\)/.test(flashOf(act.page)), "sending it again is receipt 2", flashOf(act.page));
   check(act.page.includes("Send receipt again (2 sent)"), "…and the row action shows how many were sent");
