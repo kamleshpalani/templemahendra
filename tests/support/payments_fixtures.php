@@ -328,6 +328,13 @@ try {
             // donation link and by name, before the donations go (the FK would
             // only null the link and leave the row behind).
             if (publicGuardHasColumn('sponsors', 'donation_id')) {
+                // Their confirmations first (brief §20 sponsor.confirmed), keyed on the sponsor.
+                if (payFixtureHasTable($db, 'notifications')) {
+                    $n = $db->prepare("DELETE FROM notifications WHERE entity_type = 'sponsor' AND entity_id IN
+                        (SELECT id FROM (SELECT id FROM sponsors WHERE donation_id IN ({$din}) OR transaction_id IN ({$tin}) OR name LIKE :p) s)");
+                    $n->execute([':p' => $like]);
+                    $counts['notifications'] += $n->rowCount();
+                }
                 $stmt = $db->prepare("DELETE FROM sponsors WHERE donation_id IN ({$din}) OR transaction_id IN ({$tin}) OR name LIKE :p");
                 $stmt->execute([':p' => $like]);
                 $counts['sponsors'] = $stmt->rowCount();

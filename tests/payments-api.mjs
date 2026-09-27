@@ -802,6 +802,11 @@ try {
   const replayP = await gatewayPost("response", { encResp: PJ.fields.encResp });
   await gatewayPost("notify", { encResp: PJ.fields.encResp });
   check(replayP.status === 303 && Number(txn(PJ.number)?.response_count) === 3 && sponsorsOf(dPJ?.id).length === 1, "a replayed response and a duplicate DEN notification add no second sponsor", `responses ${txn(PJ.number)?.response_count}, sponsors ${sponsorsOf(dPJ?.id).length}`);
+  // Brief §20 sponsor confirmation: exactly one, to the donor, keyed on the
+  // sponsor — the replayed response and the duplicate DEN above sent no second.
+  const conf = notes("sponsor", Number(s0.id)).filter((n) => n.event === "sponsor.confirmed");
+  check(conf.length >= 1 && new Set(conf.map((n) => n.dedupe_key)).size === conf.length && conf.every((n) => String(n.dedupe_key).startsWith(`sponsor:${s0.id}:confirmed`)), "one sponsor.confirmed per channel, deduplicated on the sponsor", show(conf));
+  check(conf.some((n) => n.to_email === s0.email) && conf.every((n) => !n.to_email || n.to_email === s0.email), "…addressed to the donor, nobody else", show(conf.map((n) => n.to_email)));
   const sweepP = await sweep({ order_ids: [PJ.number] });
   check(sponsorsOf(dPJ?.id).length === 1 && payableAudits("donation", dPJ?.id).filter((e) => e === "sponsor_assigned").length === 1, "a re-run of the sweep adds neither a sponsor nor a second audit row", show(sweepP));
   const N2 = await pay("pooja anonymous", "success", { pooja_id: poojaOpen, showNamePublicly: false });

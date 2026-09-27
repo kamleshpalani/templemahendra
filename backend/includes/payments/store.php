@@ -797,7 +797,7 @@ function paySponsorAssign(PDO $db, int $donationId, string $receipt, int $transa
     $ctx = ['payable_type' => 'donation', 'payable_id' => $donationId, 'transaction_id' => $transactionId, 'actor' => $actor];
     try {
         $stmt = $db->prepare(
-            'SELECT d.donation_number, d.name, d.phone, d.phone_country, d.email, d.amount, d.currency, d.show_name_publicly, d.pooja_id,
+            'SELECT d.donation_number, d.name, d.phone, d.phone_country, d.email, d.amount, d.currency, d.show_name_publicly, d.pooja_id, d.lang,
                     p.name_en AS pooja_en, p.pooja_date
                FROM donations d JOIN poojas p ON p.id = d.pooja_id
               WHERE d.id = :id'
@@ -844,6 +844,11 @@ function paySponsorAssign(PDO $db, int $donationId, string $receipt, int $transa
                 . ($consent ? ', may be named on the website.' : ', not to be named on the website.'),
             'data'   => ['sponsor_id' => $sponsorId, 'pooja_id' => (int) $d['pooja_id'], 'receipt_number' => $receipt, 'publish_consent' => $consent === 1],
         ]);
+        // Brief §20: the sponsor's confirmation, in the donor's language, on
+        // this transaction's connection so it commits with the sponsorship.
+        // Its dedupe key (sponsor:{id}:confirmed) makes a replay a no-op.
+        require_once __DIR__ . '/../sponsor_notify.php';
+        sponsorNotifyConfirmed($sponsorId, (string) ($d['lang'] ?? 'ta'), $db);
         return $sponsorId;
     } catch (Throwable $e) {
         error_log("[payments] sponsor for donation {$donationId} could not be recorded: " . get_class($e) . ': ' . $e->getMessage());

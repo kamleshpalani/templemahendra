@@ -432,6 +432,12 @@ function notifyTemplateSample(string $key, string $lang): array
             'en' => 'Due to heavy rain the temple is closed today. Pooja resumes tomorrow at 6 am as usual.',
         ],
         'title'            => ['ta' => 'மஹா சிவராத்திரி ஏற்பாடுகள்', 'en' => 'Maha Shivaratri arrangements'],
+        // The sponsor's thank-you (sponsor_confirmed).
+        'sponsorAmount'    => 'Rs. 2,001',
+        'creditLine'       => [
+            'ta' => 'நீங்கள் ஒப்புக்கொண்டபடி, உங்கள் குடும்பப் பெயர் கோயில் இணையதளத்தில் உபயதாரராகக் குறிப்பிடப்படும்.',
+            'en' => 'As you agreed, your family name will be shown as the sponsor on the temple website.',
+        ],
         // The office alert for a contact-form enquiry (contact_received).
         'senderName'       => ['ta' => 'கவிதா ராமசாமி', 'en' => 'Kavitha Ramasamy'],
         'senderPhone'      => '+91 98765 43210',

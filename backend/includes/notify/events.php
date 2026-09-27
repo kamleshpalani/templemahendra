@@ -74,6 +74,10 @@ function notifyEventCatalogue(): array
         // back. One notification per configured address (contact_notify.php);
         // the recipient is part of the key so each address gets exactly one.
         'contact.received'       => $e('contact_received', 'important', ['email'], 'contact:{entity_id}:{recipient}', 'contact_message', 'A visitor sends the contact form; the temple office is told'),
+        // Brief §20: sponsor confirmation. Once per sponsorship, when it becomes
+        // PAID — an online pooja donation's first success, or the committee
+        // recording a paid sponsorship in Admin → Sponsors.
+        'sponsor.confirmed'      => $e('sponsor_confirmed', 'important', ['email', 'whatsapp'], 'sponsor:{entity_id}:confirmed', 'sponsor', 'A pooja sponsorship is paid; the sponsor is thanked and told how they will be credited', ['whatsapp' => 'sms']),
     ];
 }
 

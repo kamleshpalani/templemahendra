@@ -69,6 +69,7 @@ $spec = [
     'payment_success'       => ['payment', ['paymentReference', 'paymentAmount', 'paymentFor']],
     'payment_failed'        => ['payment', ['paymentReference', 'paymentAmount', 'paymentFor', 'reason']],
     'payment_refund'        => ['payment', ['refundAmount', 'paymentReference', 'receiptNumber', 'refundReference', 'paymentFor']],
+    'sponsor_confirmed'     => ['donation', ['poojaName', 'poojaDate', 'sponsorAmount', 'paymentReference', 'creditLine']],
     'contact_received'      => ['office', ['senderName', 'senderPhone', 'senderEmail', 'subject', 'message', 'receivedAt']],
     'event_registered'      => ['event', ['eventName', 'eventDate', 'eventLocation']],
     'event_cancelled'       => ['event', ['eventName', 'eventDate', 'reason']],

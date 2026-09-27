@@ -4,6 +4,7 @@ require_once __DIR__ . '/../includes/auth.php';
 requireAdminAuth();
 require_once __DIR__ . '/../includes/db.php';
 require_once __DIR__ . '/../includes/helpers.php';
+require_once __DIR__ . '/../includes/sponsor_notify.php';
 require_once __DIR__ . '/includes/admin_layout.php';
 
 $db = getDB();
@@ -150,11 +151,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         if (!$chk->fetchColumn()) $redirect($alert('warning', 'That sponsor no longer exists.'));
                     }
                     adminAudit('sponsor_updated', 'sponsor:' . $id, $detail);
-                    $redirect($alert('success', 'Sponsor updated.'));
+                    // A sponsorship the committee marks PAID is confirmed to the
+                    // sponsor once (brief §20); saving it again sends nothing.
+                    $told = $hasConsent && $payment_status === 'PAID' && sponsorNotifyConfirmed($id);
+                    $redirect($alert('success', 'Sponsor updated.' . ($told ? ' A confirmation is on its way to the sponsor.' : '')));
                 } else {
                     $db->prepare('INSERT INTO sponsors SET ' . $cols)->execute($params);
-                    adminAudit('sponsor_created', 'sponsor:' . (int) $db->lastInsertId(), $detail);
-                    $redirect($alert('success', 'Sponsor added.'));
+                    $newId = (int) $db->lastInsertId();
+                    adminAudit('sponsor_created', 'sponsor:' . $newId, $detail);
+                    $told = $hasConsent && $payment_status === 'PAID' && sponsorNotifyConfirmed($newId);
+                    $redirect($alert('success', 'Sponsor added.' . ($told ? ' A confirmation is on its way to the sponsor.' : '')));
                 }
             }
         } elseif ($action === 'delete') {
