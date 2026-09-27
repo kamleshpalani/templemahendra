@@ -246,7 +246,7 @@ function ncOrderLangs(array $langs): array
 function ncComposerBlank(): array
 {
     return [
-        'name' => '', 'category' => 'announcement', 'priority' => 'normal', 'channels' => ['inapp'],
+        'name' => '', 'category' => 'announcement', 'priority' => 'normal', 'channels' => ['email'],
         'cta_url' => '', 'image_url' => '', 'template_key' => '', 'template_vars' => '',
         'translations' => ['ta' => ['title' => '', 'body' => '', 'cta_label' => ''], 'en' => ['title' => '', 'body' => '', 'cta_label' => '']],
         'langs' => ['ta', 'en'], 'schedule_mode' => 'manual', 'scheduled_local' => '', 'schedule_tz' => 'temple',
@@ -402,7 +402,7 @@ function ncErrorTarget(string $key): string
 {
     if (preg_match('/^translations\.([a-z0-9-]+)\.(title|body|cta_label)$/', $key, $m)) return 'nc-lang-' . $m[1] . '-' . $m[2];
     if (preg_match('/^translations\.([a-z0-9-]+)$/', $key, $m)) return 'nc-lang-' . $m[1] . '-title';
-    return ['name' => 'nc-name', 'category' => 'nc-category', 'priority' => 'nc-priority', 'channels' => 'nc-ch-inapp',
+    return ['name' => 'nc-name', 'category' => 'nc-category', 'priority' => 'nc-priority', 'channels' => 'nc-ch-email',
             'cta_url' => 'nc-cta', 'image_url' => 'nc-image', 'template_key' => 'nc-template', 'template_vars' => 'nc-template',
             'segment_id' => 'nc-segment', 'audience' => 'nc-audience', 'translations' => 'nc-lang-ta-title',
             'schedule_tz' => 'nc-tz-temple', 'scheduled_local' => 'nc-when', 'recurrence' => 'nc-recurrence',

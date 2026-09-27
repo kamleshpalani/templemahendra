@@ -166,7 +166,7 @@ async function login(s, username, password) {
 }
 
 /** Composer fields for a campaign whose audience is one tag (or a saved segment). */
-function campaignForm(s, { name, action = "save", channels = ["inapp"], priority = "normal", category = "announcement", tag, segmentId, id }) {
+function campaignForm(s, { name, action = "save", channels = ["email"], priority = "normal", category = "announcement", tag, segmentId, id }) {
   const pairs = [
     ["_csrf", s.csrf], ["action", action], ["name", name], ["category", category], ["priority", priority],
     ["template_key", ""], ["template_vars", ""],
@@ -207,8 +207,8 @@ try {
     sql("INSERT INTO admin_users (username, display_name, email, pass_hash, role, is_active, must_change) VALUES (?, ?, ?, ?, ?, 1, 0)",
       [username, `E2E NC ${role}`, `${P}${role}@example.test`, hash, role]);
   }
-  for (let i = 0; i < 2; i++) ids.small.push(fixtures("create-devotee", { email: `${P}s${i}@example.test`, name: `E2E Small ${i}`, verified: true, city: "Madurai" }).id);
-  for (let i = 0; i < 3; i++) ids.large.push(fixtures("create-devotee", { email: `${P}l${i}@example.test`, name: `E2E Large ${i}`, verified: true, city: "Chennai" }).id);
+  for (let i = 0; i < 2; i++) ids.small.push(fixtures("create-devotee", { email: `${P}s${i}@example.test`, name: `E2E Small ${i}`, verified: true, consent: true, city: "Madurai" }).id);
+  for (let i = 0; i < 3; i++) ids.large.push(fixtures("create-devotee", { email: `${P}l${i}@example.test`, name: `E2E Large ${i}`, verified: true, consent: true, city: "Chennai" }).id);
   for (const id of ids.small) sql("INSERT INTO devotee_tags (devotee_id, tag, created_by) VALUES (?, ?, 'e2e')", [id, TAG_SMALL]);
   for (const id of ids.large) sql("INSERT INTO devotee_tags (devotee_id, tag, created_by) VALUES (?, ?, 'e2e')", [id, TAG_LARGE]);
   check(ids.small.length === 2 && ids.large.length === 3, "5 tagged fixture devotees");
@@ -228,7 +228,7 @@ try {
   check(/Communication/.test(html) && /notification_segments\.php/.test(html) && /notification_analytics\.php/.test(html), "sidebar has the Communication group");
   check(/notify-campaigns\.css/.test(html) && /notify-content\.css/.test(html), "both notification stylesheets are linked");
   html = await (await editor.get("/admin/notifications.php?new=1")).text();
-  check(/Recording only - no provider configured/.test(html), "channel card says WhatsApp/SMS/push only record (log driver)");
+  check(/Recording only - no provider configured/.test(html), "channel card says WhatsApp/SMS only record (log driver)");
   check(/Test driver - development only/.test(html), "channel card names the email test driver");
   check(/id="nc-audience-fields"/.test(html) && /"booking_status"/.test(html), "rules builder field table is printed as JSON");
 
@@ -255,16 +255,16 @@ try {
   section("estimate");
   const tagRules = (tag) => ({ mode: "rules", match: "all", rules: [{ field: "tag", op: "in", value: [tag] }] });
   const estimatePairs = (s, tag, extra = []) => [["_csrf", s.csrf], ["action", "estimate"], ["audience_source", "rules"], ["match", "all"],
-    ["rules[0][field]", "tag"], ["rules[0][op]", "in"], ["rules[0][value]", tag], ["priority", "normal"], ["category", "announcement"], ["channels[]", "inapp"], ...extra];
+    ["rules[0][field]", "tag"], ["rules[0][op]", "in"], ["rules[0][value]", tag], ["priority", "normal"], ["category", "announcement"], ["channels[]", "email"], ...extra];
   res = await editor.post("/admin/notifications.php", estimatePairs(editor, TAG_SMALL));
   json = await res.json();
   eq(json.count, audienceCount(tagRules(TAG_SMALL)), "estimate equals notifyAudienceCount (small)");
   eq(json.count, 2, "small audience is 2 devotees");
-  eq(json.approvalReason, null, "small in-app audience needs no approval");
+  eq(json.approvalReason, null, "small email audience needs no approval");
   res = await editor.post("/admin/notifications.php", estimatePairs(editor, TAG_LARGE));
   json = await res.json();
   eq(json.count, audienceCount(tagRules(TAG_LARGE)), "estimate equals notifyAudienceCount (large)");
-  eq(json.approvalReason, "Reaches 3 devotees", "large audience names its approval reason");
+  eq(json.approvalReason, "Reaches 3 families", "large audience names its approval reason");
   const allCount = (await (await editor.post("/admin/notifications.php", [["_csrf", editor.csrf], ["action", "estimate"], ["audience_source", "all"]])).json()).count;
   eq(allCount, audienceCount({ mode: "all_devotees" }), "estimate equals notifyAudienceCount (all devotees)");
   res = await editor.post("/admin/notifications.php", [["_csrf", "wrong"], ["action", "estimate"], ["audience_source", "all"]]);
@@ -279,9 +279,9 @@ try {
   check(res.status === 422 && Boolean(json?.fields?.segment_id), "a saved audience without a choice answers 422 on segment_id");
 
   section("preview");
-  const previewPairs = (s, channel, lang) => [...campaignForm(s, { name: `${NAME}-preview`, action: "preview", tag: TAG_SMALL, channels: ["inapp", "email", "whatsapp", "sms", "push"] }),
+  const previewPairs = (s, channel, lang) => [...campaignForm(s, { name: `${NAME}-preview`, action: "preview", tag: TAG_SMALL, channels: ["email", "whatsapp", "sms"] }),
     ["preview_channel", channel], ["preview_lang", lang]];
-  for (const channel of ["inapp", "email", "whatsapp", "sms", "push"]) {
+  for (const channel of ["email", "whatsapp", "sms"]) {
     res = await editor.post("/admin/notifications.php", previewPairs(editor, channel, "en"));
     json = await res.json().catch(() => null);
     const keys = ["title", "body", "html", "cta_label", "cta_url", "provider_template", "params", "sms", "missing"];
@@ -291,7 +291,7 @@ try {
     if (channel === "sms") check(json?.sms?.segments >= 1 && ["GSM-7", "UCS-2"].includes(json?.sms?.encoding), "sms preview counts characters and parts");
     if (channel !== "email") check(json?.html === null, `${channel} preview has no HTML`);
   }
-  res = await editor.post("/admin/notifications.php", previewPairs(editor, "inapp", "ta"));
+  res = await editor.post("/admin/notifications.php", previewPairs(editor, "email", "ta"));
   json = await res.json();
   check(json.title.includes("சோதனை"), "Tamil preview uses the Tamil translation");
   res = await editor.post("/admin/notifications.php", previewPairs(editor, "fax", "en"));
@@ -308,7 +308,7 @@ try {
 
   section("validation without JavaScript");
   res = await editor.post("/admin/notifications.php", [
-    ["_csrf", editor.csrf], ["action", "save"], ["name", ""], ["category", "announcement"], ["priority", "normal"], ["channels[]", "inapp"],
+    ["_csrf", editor.csrf], ["action", "save"], ["name", ""], ["category", "announcement"], ["priority", "normal"], ["channels[]", "email"],
     ["translations[ta][title]", ""], ["translations[ta][body]", ""], ["translations[en][title]", "Only a title"], ["translations[en][body]", ""],
     ["cta_url", "javascript:alert(1)"], ["audience_source", "rules"], ["match", "all"],
     ["rules[0][field]", "tag"], ["rules[0][op]", "in"], ["rules[0][value]", TAG_SMALL], ["schedule_mode", "manual"],
@@ -340,7 +340,7 @@ try {
   eq(Number(one("SELECT COUNT(*) AS n FROM notification_campaign_translations WHERE campaign_id = ?", [smallId]).n), 2, "Tamil and English translations stored");
   r = await editor.act([["_csrf", editor.csrf], ["action", "submit"], ["id", smallId]]);
   c = campaign(smallId);
-  check(c.status === "approved" && c.approved_by === "system", "submit auto-approves a 2-devotee in-app campaign", JSON.stringify(c && { s: c.status, a: c.approved_by }));
+  check(c.status === "approved" && c.approved_by === "system", "submit auto-approves a 2-family email campaign", JSON.stringify(c && { s: c.status, a: c.approved_by, flash: r.flash?.text }));
   check(/Approved automatically/.test(r.flash?.text || ""), "the page says it was approved automatically");
   const auditApproved = one("SELECT detail FROM notification_audit WHERE campaign_id = ? AND action = 'approved' AND actor = 'system'", [smallId]);
   check(Boolean(auditApproved) && /below approval threshold/.test(auditApproved.detail), "automatic approval is audited by system");
@@ -350,7 +350,7 @@ try {
   if (campaign(smallId).status === "sending") worker(smallId);
   const got = sql("SELECT devotee_id FROM notifications WHERE campaign_id = ? ORDER BY devotee_id", [smallId]).map((x) => Number(x.devotee_id));
   eq(got, [...ids.small].sort((a, b) => a - b), "worker notified exactly the campaign's audience");
-  eq(sql("SELECT status FROM notification_deliveries d JOIN notifications n ON n.id = d.notification_id WHERE n.campaign_id = ? AND d.channel = 'inapp'", [smallId]).map((x) => x.status), ["sent", "sent"], "in-app deliveries are visible");
+  eq(sql("SELECT status FROM notification_deliveries d JOIN notifications n ON n.id = d.notification_id WHERE n.campaign_id = ? AND d.channel = 'email'", [smallId]).map((x) => x.status), ["sent", "sent"], "email deliveries go out through the test driver");
   eq(campaign(smallId).status, "completed", "campaign completes once nothing waits");
   html = await (await editor.get(`/admin/notifications.php?view=${smallId}`)).text();
   check(/Devotees reached/.test(html) && /History/.test(html) && /Sending started/.test(html), "campaign page shows delivery figures and the audit trail");
@@ -358,13 +358,13 @@ try {
   check(html.includes(`${NAME}-small`) && /2 devotees/.test(html) && /2 sent/.test(html), "list row shows recipients and sent from the batched stats");
 
   section("large campaign: review, approvals, schedule, cancel");
-  r = await editor.act(campaignForm(editor, { name: `${NAME}-large`, action: "save_submit", tag: TAG_LARGE, channels: ["inapp", "email"] }));
+  r = await editor.act(campaignForm(editor, { name: `${NAME}-large`, action: "save_submit", tag: TAG_LARGE, channels: ["email", "whatsapp"] }));
   const largeId = idFrom(r.location);
   c = campaign(largeId);
-  check(largeId > 0 && c.status === "review" && c.approval_reason === "Reaches 3 devotees", "3 devotees go to review with the threshold at 2", JSON.stringify(c && { s: c.status, r: c.approval_reason }));
+  check(largeId > 0 && c.status === "review" && c.approval_reason === "Reaches 3 families", "3 devotees go to review with the threshold at 2", JSON.stringify(c && { s: c.status, r: c.approval_reason }));
   check(/Waiting for an owner/.test(r.html) && new RegExp(USERS.editor).test(r.html), "view shows the approval banner naming the author");
   r = await editor.act([["_csrf", editor.csrf], ["action", "approve"], ["id", largeId]]);
-  check(campaign(largeId).status === "review" && /Only an owner/.test(r.flash?.text || ""), "the editor cannot approve", r.flash?.text);
+  check(campaign(largeId).status === "review" && /Only a Super Admin or Temple Admin/.test(r.flash?.text || ""), "the editor cannot approve", r.flash?.text);
 
   r = await admin.act(campaignForm(admin, { name: `${NAME}-admin`, action: "save_submit", priority: "urgent", tag: TAG_SMALL }));
   const adminId = idFrom(r.location);
@@ -416,7 +416,7 @@ try {
   r = await owner.act(campaignForm(owner, { name: `${NAME}-emergency`, priority: "emergency", category: "emergency", tag: TAG_SMALL }));
   const emId = idFrom(r.location);
   r = await editor.act([["_csrf", editor.csrf], ["action", "emergency_send"], ["id", emId], ["reason", "Flooding"]]);
-  check(campaign(emId).status === "draft" && /Only an owner/.test(r.flash?.text || ""), "the editor cannot emergency send");
+  check(campaign(emId).status === "draft" && /Only a Super Admin or Temple Admin/.test(r.flash?.text || ""), "the editor cannot emergency send", r.flash?.text);
   r = await owner.act([["_csrf", owner.csrf], ["action", "emergency_send"], ["id", emId], ["reason", ""]]);
   check(campaign(emId).status === "draft" && /Say why/.test(r.flash?.text || ""), "emergency send without a reason is refused", r.flash?.text);
   r = await owner.act([["_csrf", owner.csrf], ["action", "emergency_send"], ["id", emId], ["reason", "Temple closed: flooding on the approach road"]]);
@@ -522,7 +522,7 @@ try {
     check((await page.textContent("[data-nc-preview-panel]")).includes("Browser preview title"), "live preview shows the typed English title");
     await page.check("#nc-ch-sms");
     await page.waitForSelector("#nc-pv-tab-sms");
-    await page.focus("#nc-pv-tab-inapp");
+    await page.focus("#nc-pv-tab-email");
     await page.keyboard.press("ArrowRight");
     const focused = await page.evaluate(() => document.activeElement?.id);
     check(focused === "nc-pv-tab-sms" && (await page.getAttribute("#nc-pv-tab-sms", "aria-selected")) === "true", "preview tabs move and select with the arrow keys", focused);
