@@ -7,20 +7,22 @@
  *     node tests/notify-triggers.mjs http://127.0.0.1:8002
  *
  * The server runs with its default drivers: email through the mailer into
- * backend/logs/mail.log, WhatsApp, SMS and push through the log driver into
- * backend/logs/notify.log. So the verification link and the one-time code are
- * read back from those logs rather than faked.
+ * backend/logs/mail.log, WhatsApp and SMS through the log driver into
+ * backend/logs/notify.log.
  *
- * It proves: registering creates the in-app welcome and sends the confirmation
- * email (the link on its own line, never stored); confirming creates one
- * "email confirmed" notification and no second welcome email; a profile change
- * names the changed fields and never their values; a new phone number loses its
- * verification; the phone code flow works, counts wrong tries and is limited;
- * bookings and donations are acknowledged for accounts and guests, deduped on
- * replay; admin status changes notify once per booking (single and bulk);
- * "Send receipt" numbers each receipt; an announcement with "Also notify
- * devotees" makes a draft campaign and sends nothing; a password reset or
- * change sends password_changed.
+ * It proves: devotee sign-in is retired (docs/registration/SPEC.md §1) — every
+ * account endpoint answers 404 under /api and /api/v1, creates nothing and
+ * sends nothing, and the account, security and phone-code events no longer
+ * exist; a family that registers with consent is told once
+ * (registration.received, email and WhatsApp, in its language, with the family
+ * count, deduped on replay) and one without consent is told nothing; bookings
+ * and donations are acknowledged to the phone on the form (a booking is not
+ * linked to a registration, SPEC §3), deduped on replay; admin status changes
+ * notify once per booking (single and bulk); "Send receipt" numbers each
+ * receipt; an announcement with "Also notify devotees" makes a draft email and
+ * WhatsApp campaign and sends nothing. contact.received is covered by
+ * brief-e2e.mjs (E2E-040) and sponsor.confirmed by payments-api.mjs and
+ * sponsors.mjs.
  *
  * Every request carries this run's own X-Forwarded-For. Devotees are
  * e2e-trig-<run>-*@example.test; bookings, donations and announcements are named
@@ -38,7 +40,6 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(HERE, "..");
 const PHP_BIN = process.env.PHP_BIN || "php";
 const MAIL_LOG = resolve(ROOT, "backend/logs/mail.log");
-const NOTIFY_LOG = resolve(ROOT, "backend/logs/notify.log");
 
 const RUN = Date.now().toString(36);
 const P = `e2e-trig-${RUN}-`;
@@ -111,22 +112,6 @@ const eventsForEntity = (type, id, event) => notifications("entity_type = ? AND 
 
 const mailBlocks = (email) =>
   (existsSync(MAIL_LOG) ? readFileSync(MAIL_LOG, "utf8") : "").split("\n===== ").filter((b) => b.includes(`To: ${email}\n`));
-function tokenFor(email, path) {
-  for (const b of mailBlocks(email).reverse()) {
-    const m = b.match(new RegExp(`https?://\\S*${path.replace(/[/?]/g, "\\$&")}\\?token=([a-f0-9]{64})`));
-    if (m) return { token: m[1], block: b };
-  }
-  return { token: null, block: "" };
-}
-/** The one-time code the log driver recorded for an SMS delivery. */
-function otpFromNotifyLog(deliveryId) {
-  const text = existsSync(NOTIFY_LOG) ? readFileSync(NOTIFY_LOG, "utf8") : "";
-  const blocks = text.split("===== ").filter((b) => new RegExp(`delivery #${deliveryId}\\s`).test(b));
-  const last = blocks.pop();
-  if (!last) return null;
-  const afterTitle = last.slice(last.indexOf("\nTitle:"));
-  return afterTitle.match(/(?:^|\D)(\d{6})(?:\D|$)/)?.[1] ?? null;
-}
 
 /* ── HTTP: one cookie jar per client, this run's own address ───────────── */
 
@@ -229,10 +214,6 @@ function cleanup(namePrefix, emailPrefix) {
   }
   sql("DELETE FROM announcements WHERE title LIKE ?", [`${namePrefix}%`]);
 
-  const devoteeIds = sql("SELECT id FROM devotees WHERE email LIKE ?", [`${emailPrefix}%`]).map((r) => Number(r.id));
-  for (const id of devoteeIds) {
-    sql("DELETE FROM rate_limits WHERE bucket IN (?, ?, ?)", [`otp-issue-15m:d${id}`, `otp-issue-day:d${id}`, `otp-confirm:d${id}`]);
-  }
   const removed = fixtures("cleanup", { email_prefix: emailPrefix });
   if (removed.error) throw new Error(`fixtures cleanup: ${removed.error}`);
   sql("DELETE FROM mail_log WHERE to_email LIKE ?", [`${emailPrefix}%`]);
@@ -249,193 +230,86 @@ async function main() {
   const tomorrow = new Date(Date.now() + 86400000).toISOString().slice(0, 10);
   const phoneTail = String(Math.floor(Math.random() * 900) + 100);
 
-  /* ── 1. Registration ────────────────────────────────────────────────── */
-  section("Registration: in-app welcome and the confirmation email");
-  const user = {
-    name: `${NAME} Kavitha`,
-    email: `${P}a@example.test`,
-    password: "Kolam99Deep",
-    phone: `919876500${phoneTail}`,
-    phoneCountry: "IN",
-    country: "IN",
-    state: "TN",
-    city: "Pudupatti",
+  /* ── 1. The retired account endpoints ──────────────────────────────── */
+  section("Devotee sign-in is retired: its endpoints answer 404 and do nothing");
+  const ghost = {
+    name: `${NAME} Ghost`, email: `${P}ghost@example.test`, password: "Kolam99Deep", phone: `919876522${phoneTail}`, phoneCountry: "IN",
+    country: "IN", state: "TN", city: "Pudupatti", token: "0".repeat(64), code: "123456", currentPassword: "Kolam99Deep", newPassword: "Nandri88Kolam",
   };
-  const reg = new Client();
-  await reg.get("/api/auth/me");
-  let r = await reg.post("/api/auth/register", user);
-  check(r.status === 201, "registering through the real endpoint answers 201", `status ${r.status} ${r.text.slice(0, 160)}`);
-  check(r.json?.emailDelivery === "unavailable", "with no mail transport the reply says email is unavailable", r.json?.emailDelivery);
+  const anon = new Client();
+  const retiredRoutes = [
+    ["GET", "/auth/me"], ["POST", "/auth/register"], ["POST", "/auth/login"], ["POST", "/auth/verify"], ["POST", "/auth/forgot"],
+    ["POST", "/auth/reset"], ["POST", "/account/profile"], ["POST", "/account/password"], ["POST", "/account/phone-verify-start"],
+    ["POST", "/account/phone-verify-confirm"], ["GET", "/notifications"], ["POST", "/notifications/read-all"],
+  ];
+  const answers = [];
+  for (const [method, path] of retiredRoutes) {
+    for (const prefix of ["/api", "/api/v1"]) {
+      const res = method === "GET" ? await anon.get(prefix + path) : await anon.post(prefix + path, ghost);
+      answers.push({ route: `${method} ${prefix}${path}`, status: res.status, cookie: anon.cookies.size });
+    }
+  }
+  check(answers.every((a) => a.status === 404), `all ${answers.length} account routes answer 404 under /api and /api/v1`, JSON.stringify(answers.filter((a) => a.status !== 404)));
+  check(anon.cookies.size === 0, "none of them starts a session (no cookie)", [...anon.cookies.keys()].join(","));
+  check(Number(one("SELECT COUNT(*) AS c FROM devotees WHERE email = ?", [ghost.email])?.c) === 0, "no registration was created by them");
+  check(mailBlocks(ghost.email).length === 0, "and no email was sent");
+  for (const ev of ["account.registered", "account.email_verification", "account.email_verified", "account.profile_updated", "security.password_reset", "security.password_changed", "phone.otp", "phone.verified"]) {
+    const fired = fixtures("event", { event: ev, ctx: { to_email: ghost.email, to_phone: ghost.phone } });
+    check(fired.result?.id === null && fired.result?.skipped === "unknown event", `${ev} is not an event any more`, JSON.stringify(fired));
+  }
 
-  const devoteeId = Number(one("SELECT id FROM devotees WHERE email = ?", [user.email])?.id ?? 0);
+  /* ── 2. Family registration ─────────────────────────────────────────── */
+  section("Family registration: registration.received");
+  const family = {
+    name: `${NAME} Kavitha`, dateOfBirth: "", phone: `+91 98765 00${phoneTail}`, phoneCountry: "IN", email: `${P}a@example.test`, lang: "en",
+    members: [{ name: `${NAME} Meena`, relationship: "spouse", age: 41 }, { name: `${NAME} Arun`, relationship: "son", age: 12 }],
+    address1: "12 North Street", address2: "", city: "Pudupatti", state: "TN", country: "IN", postcode: "627719", consent: true, hp_token: "",
+  };
+  const fam = new Client();
+  let r = await fam.post("/api/registrations", family);
+  check(r.status === 201, "a family registers through POST /api/registrations", `status ${r.status} ${r.text.slice(0, 160)}`);
+  const devoteeId = Number(one("SELECT id FROM devotees WHERE email = ?", [family.email])?.id ?? 0);
   created.devotees.push(devoteeId);
-  check(devoteeId > 0, "the account exists");
-
-  const welcome = eventsFor(devoteeId, "account.registered");
-  check(welcome.length === 1, "account.registered created one notification", `${welcome.length}`);
+  check(devoteeId > 0 && one("SELECT updates_consent_at FROM devotees WHERE id = ?", [devoteeId])?.updates_consent_at !== null, "the registration is stored with its consent time");
+  const welcome = eventsFor(devoteeId, "registration.received");
+  check(welcome.length === 1, "registration.received created one notification", `${welcome.length}`);
+  check(welcome[0]?.dedupe_key === `devotee:${devoteeId}:registered` && welcome[0]?.lang === "en", "…deduped per family, in the language the form was sent in", `${welcome[0]?.dedupe_key} ${welcome[0]?.lang}`);
+  check(Number(welcome[0]?.vars?.familyCount) === 3 && (welcome[0]?.body ?? "").includes("3"), "…counting the registrant and both members", welcome[0]?.varsRaw);
   const welcomeD = welcome[0] ? deliveries(welcome[0].id) : {};
-  check(welcomeD.inapp?.status === "sent" && Number(welcome[0]?.show_in_app) === 1, "…visible in the bell straight away");
-  check(Object.keys(welcomeD).join(",") === "inapp", "…and in-app only (no second email at sign-up)", Object.keys(welcomeD).join(","));
-  check(welcome[0]?.dedupe_key === `devotee:${devoteeId}:welcome`, "…deduped per devotee", welcome[0]?.dedupe_key);
+  check(Object.keys(welcomeD).sort().join(",") === "email,whatsapp" && welcomeD.email?.status === "queued" && welcomeD.whatsapp?.status === "queued", "…by email and WhatsApp (no in-app, no push)", JSON.stringify(welcomeD));
+  const replayWelcome = fixtures("event", { event: "registration.received", ctx: { devotee_id: devoteeId, vars: welcome[0]?.vars ?? {} } });
+  check(replayWelcome.result?.deduped === true && eventsFor(devoteeId, "registration.received").length === 1, "firing it again is deduped", JSON.stringify(replayWelcome));
 
-  const verification = eventsFor(devoteeId, "account.email_verification");
-  check(verification.length === 1, "account.email_verification created one notification", `${verification.length}`);
-  const verificationD = verification[0] ? deliveries(verification[0].id) : {};
-  check(verificationD.email?.status === "sent" && verificationD.email?.provider === "mailer", "…whose email went out through the mailer inside the request", JSON.stringify(verificationD.email));
-  check(!verificationD.inapp, "…with no in-app copy");
-
-  const { token: verifyToken, block: verifyBlock } = tokenFor(user.email, "/verify-email");
-  check(!!verifyToken, "the confirmation link is in the mail log");
-  check(/\nhttps?:\/\/\S*\/verify-email\?token=[a-f0-9]{64}\n/.test(verifyBlock), "…on a line of its own in the plain-text email");
-  check(
-    !!verifyToken && !verification[0]?.varsRaw.includes(verifyToken) && !verification[0]?.body.includes(verifyToken),
-    "…and the link was never stored in the notification",
-  );
-  check(JSON.stringify(verification[0]?.vars?._secret) === '["verifyUrl"]', "…only the name of the secret is kept", verification[0]?.varsRaw);
-
-  /* ── 2. Confirming the address ──────────────────────────────────────── */
-  section("Confirming the email: one notification, no second welcome email");
-  r = await reg.post("/api/auth/verify", { token: verifyToken });
-  check(r.status === 200 && r.json?.user?.verified === true, "the link confirms the address", `status ${r.status}`);
-  check(r.json?.user?.phoneVerified === false, "devoteePublic carries phoneVerified", JSON.stringify(r.json?.user));
-
-  const verified = eventsFor(devoteeId, "account.email_verified");
-  check(verified.length === 1, "account.email_verified created one notification", `${verified.length}`);
-  const verifiedD = verified[0] ? deliveries(verified[0].id) : {};
-  check(verifiedD.inapp?.status === "sent", "…in the bell");
-  check(verifiedD.email?.status === "queued", "…and one email queued for the worker", JSON.stringify(verifiedD.email));
-  check(!mailBlocks(user.email).some((b) => b.includes("Template: welcome")), "the old separate welcome email was not sent");
-
-  const worker = php(["backend/bin/notify_worker.php", `--notification-ids=${verified[0]?.id ?? 0}`, "--skip-campaigns", "--skip-reminders", "--json"]);
-  if (worker.run_id) created.workerRuns.push(Number(worker.run_id));
-  check(!worker.locked && Number(worker.sent) === 1, "a worker run confined to that notification sends its email", JSON.stringify(worker));
-  check(mailBlocks(user.email).length === 2, "the devotee received exactly two emails: the link and the confirmation", `${mailBlocks(user.email).length}`);
-
-  const replayVerified = fixtures("event", { event: "account.email_verified", ctx: { devotee_id: devoteeId } });
-  check(replayVerified.result?.deduped === true, "firing account.email_verified again is deduped", JSON.stringify(replayVerified));
-
-  /* ── 3. Sign in ─────────────────────────────────────────────────────── */
-  section("Sign in");
-  const dev = new Client();
-  await dev.get("/api/auth/me");
-  r = await dev.post("/api/auth/login", { email: user.email, password: user.password });
-  check(r.status === 200 && r.json?.user?.email === user.email, "the devotee signs in", `status ${r.status}`);
-
-  /* ── 4. Profile ─────────────────────────────────────────────────────── */
-  section("Profile changes name the fields, never the values");
-  r = await dev.post("/api/account/profile", {
-    name: `${NAME} Kavitha Devi`,
-    phone: user.phone,
-    phoneCountry: "IN",
-    country: "IN",
-    state: "TN",
-    city: "Tenkasi",
-  });
-  check(r.status === 200, "the profile saves", `status ${r.status} ${r.text.slice(0, 120)}`);
-  let profile = eventsFor(devoteeId, "account.profile_updated");
-  check(profile.length === 1, "account.profile_updated created one notification", `${profile.length}`);
-  check(profile[0]?.vars?.changedKeys === "name,city", "…naming exactly the changed fields", profile[0]?.vars?.changedKeys);
-  check(typeof profile[0]?.vars?.changedFields === "string" && profile[0].vars.changedFields.length > 0, "…as a readable list", profile[0]?.vars?.changedFields);
-  check(
-    !profile[0]?.varsRaw.includes("Tenkasi") && !profile[0]?.varsRaw.includes("Kavitha Devi") && !profile[0]?.body.includes("Tenkasi"),
-    "…and holding none of the new values",
-    profile[0]?.varsRaw,
-  );
-  const profileD = profile[0] ? deliveries(profile[0].id) : {};
-  check(profileD.inapp?.status === "sent" && profileD.email?.status === "queued", "…in the bell and by email", JSON.stringify(profileD));
-
-  r = await dev.post("/api/account/profile", {
-    name: `${NAME} Kavitha Devi`,
-    phone: user.phone,
-    phoneCountry: "IN",
-    country: "IN",
-    state: "TN",
-    city: "Tenkasi",
-  });
-  check(r.status === 200 && eventsFor(devoteeId, "account.profile_updated").length === 1, "saving without changes notifies nobody");
-
-  /* ── 5. A new phone number loses its verification ───────────────────── */
-  section("Changing the phone number clears its verification");
-  sql("UPDATE devotees SET phone_verified_at = UTC_TIMESTAMP() WHERE id = ?", [devoteeId]);
-  r = await dev.get("/api/auth/me");
-  check(r.json?.user?.phoneVerified === true, "a verified number reads phoneVerified: true");
-  const newPhone = `919876511${phoneTail}`;
-  r = await dev.post("/api/account/profile", {
-    name: `${NAME} Kavitha Devi`,
-    phone: newPhone,
-    phoneCountry: "IN",
-    country: "IN",
-    state: "TN",
-    city: "Tenkasi",
-  });
-  check(r.status === 200 && r.json?.user?.phoneVerified === false, "saving a different number answers phoneVerified: false", JSON.stringify(r.json?.user));
-  check(one("SELECT phone_verified_at FROM devotees WHERE id = ?", [devoteeId])?.phone_verified_at === null, "…and phone_verified_at is cleared");
-  profile = eventsFor(devoteeId, "account.profile_updated");
-  check(profile.length === 2 && profile[1].vars.changedKeys === "phone", "…with a profile notice naming the phone", profile.map((p) => p.vars.changedKeys).join(" / "));
-  check(!profile[1]?.varsRaw.includes(newPhone.slice(-6)), "…that does not repeat the new number");
-
-  /* ── 6. Verifying the phone with a code ─────────────────────────────── */
-  section("Phone verification with a one-time code");
-  r = await dev.post("/api/account/phone-verify-start", {});
-  check(r.status === 200 && r.json?.ok === true, "phone-verify-start answers 200", `status ${r.status} ${r.text.slice(0, 160)}`);
-  check(r.json?.channel === "sms" && r.json?.expiresIn === 600, "…by SMS, valid for ten minutes", JSON.stringify(r.json));
-  check(typeof r.json?.message === "string" && !r.json.message.includes(newPhone), "…with a message that masks the number", r.json?.message);
-
-  const otpDelivery = one(
-    `SELECT d.id FROM notification_deliveries d JOIN notifications n ON n.id = d.notification_id
-      WHERE n.devotee_id = ? AND n.event = 'phone.otp' AND d.channel = 'sms' ORDER BY d.id DESC LIMIT 1`,
-    [devoteeId],
-  );
-  const code = otpDelivery ? otpFromNotifyLog(Number(otpDelivery.id)) : null;
-  check(!!code, "the code appears in backend/logs/notify.log", `delivery ${otpDelivery?.id}`);
-  const otpNotif = eventsFor(devoteeId, "phone.otp").pop();
-  check(!!code && !otpNotif?.varsRaw.includes(code) && !otpNotif?.body.includes(code), "…and never in the stored notification");
-
-  const wrong = code === "000000" ? "111111" : "000000";
-  r = await dev.post("/api/account/phone-verify-confirm", { code: wrong });
-  check(r.status === 422 && r.json?.attemptsLeft === 4 && !!r.json?.fields?.code, "a wrong code is refused with the tries left", `status ${r.status} ${r.text.slice(0, 160)}`);
-
-  r = await dev.post("/api/account/phone-verify-confirm", { code: "12ab" });
-  check(r.status === 422 && r.json?.attemptsLeft === null, "a malformed code is refused without spending a try", r.text.slice(0, 160));
-
-  r = await dev.post("/api/account/phone-verify-confirm", { code });
-  check(r.status === 200 && r.json?.user?.phoneVerified === true, "the right code verifies the number", `status ${r.status} ${r.text.slice(0, 160)}`);
-  check(eventsFor(devoteeId, "phone.verified").length === 1, "…and phone.verified is in the bell");
-
-  r = await dev.post("/api/account/phone-verify-start", {});
-  check(r.status === 200 && r.json?.alreadyVerified === true, "asking again for a verified number sends nothing", r.text.slice(0, 160));
-
-  sql("UPDATE devotees SET phone_verified_at = NULL WHERE id = ?", [devoteeId]);
-  r = await dev.post("/api/account/phone-verify-start", {});
-  const second = r.status;
-  r = await dev.post("/api/account/phone-verify-start", {});
-  const third = r.status;
-  r = await dev.post("/api/account/phone-verify-start", {});
-  check(second === 200 && third === 200, "the second and third codes within 15 minutes are sent", `${second}, ${third}`);
-  check(r.status === 429 && r.json?.code === "rate_limited" && r.json?.retryAfter > 0, "the fourth within 15 minutes is refused (429) with retryAfter", `status ${r.status} ${r.text.slice(0, 160)}`);
+  const declining = { ...family, name: `${NAME} Selvi`, email: `${P}b@example.test`, phone: `+91 98765 11${phoneTail}`, members: [], consent: false };
+  r = await fam.post("/api/registrations", declining);
+  const declineId = Number(one("SELECT id FROM devotees WHERE email = ?", [declining.email])?.id ?? 0);
+  created.devotees.push(declineId);
+  check(r.status === 201 && declineId > 0, "a family that does not tick the box registers too", `status ${r.status}`);
+  check(eventsFor(declineId, "registration.received").length === 0, "…and is told nothing");
 
   /* ── 7. Bookings ────────────────────────────────────────────────────── */
   section("Seva bookings are acknowledged");
+  const dev = new Client();
   r = await dev.post("/api/seva-bookings", {
     devotee_name: `${NAME} Booking`,
     phone: "9876543210",
     seva_name: `${NAME} Abhishekam`,
     preferred_date: tomorrow,
-    message: "E2E-TRIG signed-in booking",
+    message: "E2E-TRIG booking",
   });
   const bookingA = Number(r.json?.id ?? 0);
   created.bookings.push(bookingA);
-  check(r.status === 201 && JSON.stringify(Object.keys(r.json ?? {})) === '["success","id"]', "a signed-in booking answers exactly as before", r.text);
+  check(r.status === 201 && JSON.stringify(Object.keys(r.json ?? {})) === '["success","id"]', "a booking answers exactly {success, id}", r.text);
   let received = eventsForEntity("seva_booking", bookingA, "booking.received");
-  check(received.length === 1 && Number(received[0].devotee_id) === devoteeId, "booking.received went to the account", JSON.stringify(received[0] ?? {}));
+  check(received.length === 1 && received[0].devotee_id === null && received[0].to_phone === "919876543210", "booking.received went to the phone on the booking (a booking is not linked to a registration)", JSON.stringify(received[0] ?? {}));
   check(received[0]?.vars?.bookingNumber === `B-${String(bookingA).padStart(6, "0")}`, "…with the booking number B-000000 style", received[0]?.vars?.bookingNumber);
   check(received[0]?.dedupe_key === `booking:${bookingA}:received`, "…deduped per booking");
   const receivedD = received[0] ? deliveries(received[0].id) : {};
-  check(receivedD.inapp?.status === "sent" && receivedD.email?.status === "queued" && receivedD.whatsapp?.status === "queued", "…in the bell, by email and on WhatsApp", JSON.stringify(receivedD));
+  check(!receivedD.inapp && !receivedD.push && receivedD.whatsapp?.status === "queued" && receivedD.email?.skip_reason === "no email", "…on WhatsApp (the form has no email, so that channel is skipped with its reason)", JSON.stringify(receivedD));
 
   const replay = fixtures("event", {
     event: "booking.received",
-    ctx: { devotee_id: devoteeId, entity_id: bookingA, vars: received[0]?.vars ?? {} },
+    ctx: { to_phone: "919876543210", entity_id: bookingA, vars: received[0]?.vars ?? {} },
   });
   check(replay.result?.deduped === true, "replaying booking.received is deduped", JSON.stringify(replay));
   check(eventsForEntity("seva_booking", bookingA, "booking.received").length === 1, "…and still one notification");
@@ -454,7 +328,7 @@ async function main() {
   check(received.length === 1 && received[0].devotee_id === null, "booking.received went to the guest", JSON.stringify(received[0] ?? {}));
   check(received[0]?.to_phone === "919876543210" && received[0]?.lang === "ta", "…at the phone they gave, in Tamil", `${received[0]?.to_phone} ${received[0]?.lang}`);
   const guestD = received[0] ? deliveries(received[0].id) : {};
-  check(guestD.inapp?.skip_reason === "no account" && guestD.whatsapp?.status === "queued", "…on WhatsApp, with no in-app copy", JSON.stringify(guestD));
+  check(!guestD.inapp && !guestD.push && guestD.whatsapp?.status === "queued", "…on WhatsApp, with no in-app or push copy", JSON.stringify(guestD));
 
   /* ── 8. Admin status changes ────────────────────────────────────────── */
   section("Admin: confirming, re-applying and bulk cancelling bookings");
@@ -465,7 +339,7 @@ async function main() {
   check(act.status === 302, "confirming a booking redirects", `status ${act.status}`);
   check(/Notified 1 devotee\./.test(flashOf(act.page)), "…and the flash says one devotee was notified", flashOf(act.page));
   let confirmed = eventsForEntity("seva_booking", bookingA, "booking.confirmed");
-  check(confirmed.length === 1 && Number(confirmed[0].devotee_id) === devoteeId, "booking.confirmed went to the account");
+  check(confirmed.length === 1 && confirmed[0].devotee_id === null && confirmed[0].to_phone === "919876543210", "booking.confirmed went to the phone on the booking", JSON.stringify(confirmed[0] ?? {}));
   check(confirmed[0]?.vars?.bookingNumber === `B-${String(bookingA).padStart(6, "0")}`, "…with the same booking number");
 
   act = await admin.act("/admin/seva_bookings.php", { action: "set_status", id: bookingA, status: "confirmed" });
@@ -492,7 +366,7 @@ async function main() {
     phone: "9876543210",
     amount: 1001,
     purpose: "annadanam",
-    message: "E2E-TRIG signed-in donation",
+    message: "E2E-TRIG donation",
   });
   const donation = Number(r.json?.id ?? 0);
   created.donations.push(donation);
@@ -500,7 +374,7 @@ async function main() {
   const receipt = `D-${String(donation).padStart(6, "0")}`;
   created.receipts.push(receipt);
   const dReceived = eventsForEntity("donation", donation, "donation.received");
-  check(dReceived.length === 1 && Number(dReceived[0].devotee_id) === devoteeId, "donation.received went to the account");
+  check(dReceived.length === 1 && dReceived[0].devotee_id === null && dReceived[0].to_phone === "919876543210", "donation.received went to the phone the donor gave", JSON.stringify(dReceived[0] ?? {}));
   check(dReceived[0]?.vars?.receiptNumber === receipt && dReceived[0]?.vars?.donationAmount === "Rs. 1,001", "…with the reference and the amount", dReceived[0]?.varsRaw);
 
   act = await admin.act("/admin/donations.php", { action: "send_receipt", id: donation });
@@ -534,7 +408,7 @@ async function main() {
   const campaign = one("SELECT id, status, category, channels, template_key, created_by, name FROM notification_campaigns WHERE id = ?", [draftId]);
   if (campaign) created.campaigns.push(draftId);
   check(campaign?.status === "draft" && campaign?.category === "announcement", "the campaign is a draft in the announcement category", JSON.stringify(campaign));
-  check(campaign?.channels === "inapp,push" && campaign?.template_key === "announcement", "…on in-app and push, from the announcement template");
+  check(campaign?.channels === "email,whatsapp" && campaign?.template_key === "announcement", "…by email and WhatsApp, from the announcement template", JSON.stringify(campaign));
   check(campaign?.created_by === "admin", "…created by the signed-in admin");
   const translations = sql("SELECT lang, title FROM notification_campaign_translations WHERE campaign_id = ? ORDER BY lang", [draftId]);
   check(translations.map((t) => t.lang).join(",") === "en,ta" && translations.every((t) => t.title === `${NAME} Festival notice`), "…with Tamil and English words from the announcement", JSON.stringify(translations));
@@ -546,28 +420,6 @@ async function main() {
     "an announcement without the checkbox makes no campaign",
   );
 
-  /* ── 11. Passwords ──────────────────────────────────────────────────── */
-  section("A password reset or change sends password_changed");
-  const anon = new Client();
-  await anon.get("/api/auth/me");
-  r = await anon.post("/api/auth/forgot", { email: user.email });
-  check(r.status === 200, "forgot-password answers 200", `status ${r.status}`);
-  const resetNotif = eventsFor(devoteeId, "security.password_reset");
-  check(resetNotif.length === 1 && deliveries(resetNotif[0].id).email?.status === "sent", "security.password_reset sent its email inside the request");
-  const { token: resetToken, block: resetBlock } = tokenFor(user.email, "/reset-password");
-  check(!!resetToken && /\nhttps?:\/\/\S*\/reset-password\?token=[a-f0-9]{64}\n/.test(resetBlock), "the reset link is on its own line in the mail log");
-  r = await anon.post("/api/auth/reset", { token: resetToken, password: "Nandri88Kolam" });
-  check(r.status === 200, "the reset sets a new password", `status ${r.status} ${r.text.slice(0, 120)}`);
-  let changed = eventsFor(devoteeId, "security.password_changed");
-  check(changed.length === 1, "security.password_changed created one notification", `${changed.length}`);
-  const changedD = changed[0] ? deliveries(changed[0].id) : {};
-  check(changedD.inapp?.status === "sent" && changedD.email?.status === "sent", "…in the bell and emailed at once", JSON.stringify(changedD));
-  check(typeof changed[0]?.vars?.changedAt === "string" && changed[0].vars.changedAt.length > 5, "…saying when", changed[0]?.vars?.changedAt);
-
-  r = await anon.post("/api/account/password", { currentPassword: "Nandri88Kolam", newPassword: "Maadam77Vilakku" });
-  check(r.status === 200, "changing the password from the account page works", `status ${r.status} ${r.text.slice(0, 120)}`);
-  changed = eventsFor(devoteeId, "security.password_changed");
-  check(changed.length === 2, "…and sends a second password_changed", `${changed.length}`);
 }
 
 let crashed = null;
