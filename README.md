@@ -292,6 +292,7 @@ Values needed:
 | `ADMIN_IDLE_MINUTES` | Optional. Admin sessions end after this many idle minutes (default 30, max 1440) |
 | `ADMIN_IP_LOGIN_ATTEMPTS` | Optional. Failed sign-ins from one client address in 15 minutes, across every username, before that address is refused (default 30) |
 | `CORS_ORIGIN`     | Allowed origin, e.g. `https://www.templemahendra.in`     |
+| `APP_ENV`         | `production` (the default when unset), `staging` or `development`. Outside development no error detail is shown; errors go to the host's PHP log, else `backend/logs/php-error.log`. `APP_DEBUG=1` only works in development. |
 
 Admin sign-in locks an account for 15 minutes after 10 failed attempts (any
 IP, case-insensitive username). A Super Admin issuing a new password from
@@ -828,7 +829,7 @@ past broadcasts, per-stream share previews and other providers (the
 | GET    | `/api/sevas`         | List sevas: bilingual description and timing, `is_bookable` (a seva with `is_bookable = 0` refuses bookings with 422). |
 | GET    | `/api/events`        | Shown events, soonest first — without a parameter every one, past included: `?upcoming=1` (last day today or later), `?past=1` (newest first), `?featured=1`, `?type=festival\|pooja\|special\|other` (422 for junk); bilingual description and venue, `event_type`, `end_date`, `start_time` / `end_time`, `image_url`, `is_featured`. |
 | GET    | `/api/events/{id}`   | One shown event, or 404 when hidden or unknown. Its page is `/events/<id>`, with its own share preview, SPA status and sitemap entry. |
-| GET    | `/api/poojas`        | Active poojas: `?upcoming=1` (default), `?past=1`, `?all=1`, `?type=`, `?featured=1`, `?limit=`, `?page=`; both languages, `start_time`/`end_time` + display `time`, `sponsorship_amount`, `sponsorship_available`, `banner_url`, `is_featured`, `live_stream_enabled`, the consented sponsor only. |
+| GET    | `/api/poojas`        | Active poojas: `?upcoming=1` (default), `?past=1`, `?all=1`, `?type=`, `?featured=1`, `?sponsorship=1` (open for sponsorship — the /sponsorship page), `?limit=`, `?page=`; both languages, `start_time`/`end_time` + display `time`, `sponsorship_amount`, `sponsorship_available`, `banner_url`, `is_featured`, `live_stream_enabled`, the consented sponsor only. |
 | GET    | `/api/homepage_widgets` | The homepage cards (§8/§10): every card carries `source_type` (manual / calendar / system), `image_url`, `display_order`; Upcoming Event cards carry `event {...}`, Live Stream cards `stream {...}` with `is_live`; expired poojas are never published; falls back to the next pooja, then the newest announcement, then events. |
 | GET    | `/api/gallery`       | Shown photos, newest first. Each carries `caption`, `alt_ta` / `alt_en`, `album_id` / `album_slug`, `url`, `thumb_url` (~480 px), `medium_url` (~1280 px), `width` / `height`, `thumb_width` / `medium_width`. `?album=<slug\|id>` filters, `?limit=1..200` caps (the homepage strip). Photos in hidden albums are not listed. |
 | GET    | `/api/gallery/albums` | Shown albums holding at least one shown photo, in display order: `slug`, `title_ta` / `title_en`, `description_ta` / `description_en`, `event_id`, `count`, `cover` (`{id, thumb_url, alt_ta, alt_en, caption, width, height}` — the chosen cover, else the newest photo). |
@@ -838,9 +839,30 @@ past broadcasts, per-stream share previews and other providers (the
 | GET    | `/api/pulse`         | Live temple status: open / closed, the next pooja of the day, today's special, upcoming events. Since migration 025 the opening hours, the daily pooja schedule and the weekday specials come from the site settings (Admin → System → Settings), with the former built-in figures as defaults. |
 | POST   | `/api/donations`     | Submit donation record |
 | POST   | `/api/contact`       | Submit a contact message: name, phone and message, optional email and subject. The office is emailed (`CONTACT_NOTIFY_EMAIL`). |
-| GET    | `/api/search`        | Search sevas, events, poojas, announcements, gallery captions and the static pages. `?q=` and an optional `?limit=`. Answers in both languages. |
+| GET    | `/api/search`        | Site search in Tamil and English: sevas (description, timing), events (description, venue), poojas, current announcements (inside their publish window), gallery captions and alt text, CMS pages and the static pages. `?q=` and an optional `?limit=`. Each hit carries `title_ta` / `title_en`, `snippet_ta` / `snippet_en` (and `snippet`), and its page: `/events/<id>`, `/sevas?seva=<id>` for a bookable seva, `/gallery?photo=<id>`, `/about#mission`. |
 | GET    | `/api/og.php`        | The share preview for a path: `?path=/sevas&seva=3`. Returns HTML, not JSON — it is what link unfurlers read. See *Shared links and rich previews*. |
 | GET    | `/api/live-streams`  | Live and upcoming YouTube Live broadcasts (`/live`, `/upcoming`, `/schedule?filter=`, `/<id>`, `/<slug>`). See *Live Darshan (YouTube Live)*. |
+
+### Versioned API: `/api/v1` (brief §26)
+
+Every route above is also served under `/api/v1/…` (`/api/v1/events`,
+`/api/v1/poojas?upcoming=1`, …), wrapped in the brief's envelope:
+
+```json
+{ "success": true,  "data": <the payload above>, "message": "" }
+{ "success": false, "error": { "code": "VALIDATION_ERROR", "message": "…", "fields": { "email": "…" } } }
+```
+
+Error codes: `VALIDATION_ERROR` (400/409/413/422), `UNAUTHORIZED` (401),
+`FORBIDDEN` (403), `NOT_FOUND` (404), `METHOD_NOT_ALLOWED` (405),
+`RATE_LIMITED` (429), `SERVER_ERROR` (5xx). Under v1 only, the brief's
+resource names are aliases: `/api/v1/home` → `homepage_widgets`,
+`/api/v1/streams…` → `live-streams…`, `/api/v1/sponsors` → `poojas`. The
+unversioned `/api/*` the React app calls is unchanged byte for byte, and
+answers meant for a browser or a provider (CCAvenue return/cancel/notify, the
+payment simulator, notification webhooks, tracked links, og.php, sitemap,
+robots) are never wrapped. `tests/api-v1.mjs` checks every GET route against
+its unversioned twin.
 
 ### Devotee accounts
 
@@ -886,7 +908,7 @@ The sidebar is grouped the way the brief's §15 lists the CMS
 | Content | Homepage (the cards on the public homepage) · **Pages** · Announcements |
 | Temple | Deities · Poojas · Sevas · Events · Temple Calendar · **Nalla Neram** |
 | Media | Gallery · Videos · Live Streaming · YouTube Automation |
-| Finance | Donations · Online Payments · Sponsors · Donation Categories · Payment Gateway |
+| Finance | Donations · Online Payments · **Receipts** · Sponsors · Donation Categories · Payment Gateway |
 | Communication | Notifications · Message Templates · Audiences · Delivery Analytics · Messages |
 | Devotees | Family Registrations · Seva Bookings · Bulk Upload |
 | System | Users · **Roles** · **Settings** · **Languages** · **SEO** · Audit Logs · My Profile |
@@ -924,6 +946,25 @@ The pages in bold arrived with migration 025 (`site_settings`, `pages`,
   built-in default", and the audit row lists only the keys that changed. The
   homepage section switches and the administrator's own account stay on the
   same page.
+
+- **Receipts** (Finance; every role that may read payments) — each receipt
+  issued for an online donation or seva booking: receipt and payment numbers,
+  donor, purpose in both languages, amount, issue date (IST), tracking id,
+  bank reference and mode, status. Search, month / type / status filters,
+  totals of the filtered set, a formula-safe CSV (`export`, audited), open
+  the printable receipt, open the payment, and **Resend receipt**
+  (`payments.manage`, audited) through the payments module.
+- **Announce to devotees** (a row action in Live Streaming and Events, for
+  roles that may compose notifications) — opens the notification composer
+  pre-filled for a scheduled or live broadcast (start time in IST, link to
+  its page) or an upcoming event (date, venue, description, link to
+  /events/<id>), under an announcement category devotees can switch off. The
+  committee chooses the audience and submits, so consent, unsubscribe links
+  and the approval threshold apply as to any campaign.
+- **Sponsors** — marking a sponsorship PAID (or recording a paid one) sends
+  the sponsor one confirmation (`sponsor.confirmed`, e-mail + WhatsApp,
+  saying whether the family will be named); a paid online pooja donation does
+  the same automatically.
 
 The dashboard adds four cards for the brief's §16: **Next poojas**, **Online
 payments · 7 days**, **Latest donations** and **Recent CMS activity**, beside
@@ -993,4 +1034,16 @@ See `docs/live/SPEC-PHASE7.md`.
   attacker-chosen filename or extension can never reach `uploads/`
 - `deploy/htaccess_uploads` additionally turns the PHP handler off inside
   `public_html/uploads/`, so nothing in that folder can execute
-- CORS origin is configurable per environment
+- CORS origin is configurable per environment (set `CORS_ORIGIN` to the site's own origin in production)
+- `deploy/htaccess_public_html`, `htaccess_api` and `htaccess_uploads` force
+  HTTPS (308 for the API so a POST stays a POST), send HSTS over TLS, a strict
+  Content-Security-Policy for the React site (a relaxed one only for `/admin`
+  and og.php), `nosniff`, frame, referrer and permissions headers, and deny
+  `includes/ config/ bin/ logs/ database/ tests/` and dotfiles, dumps, logs and
+  `.env` files; `tests/deploy-config.mjs` checks every rule
+- `APP_ENV` keeps error detail off the page outside development
+- Public outputs never publish a sponsor's private data: `sponsorPublicSql()`
+  requires consent, drops refunded sponsorships and never exposes the payment
+  module's bookkeeping note
+- The full OWASP Top 10 review, with evidence and the production checklist, is
+  in `docs/SECURITY-REVIEW.md`
