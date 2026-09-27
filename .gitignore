@@ -48,3 +48,9 @@ frontend/dist/
 # OS
 .DS_Store
 Thumbs.db
+
+# Lighthouse (tests/lighthouse.mjs): its own build folder, and the 1–3 MB JSON
+# reports. scores.json and summary.md under tests/reports/lighthouse/ are kept.
+.lighthouse-dist/
+tests/reports/lighthouse/*.json
+!tests/reports/lighthouse/scores.json

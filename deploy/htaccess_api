@@ -7,6 +7,23 @@ Options -Indexes
   RewriteEngine On
   RewriteBase /api/
 
+  # ── HTTPS ──────────────────────────────────────────────────
+  # A folder with its own rewrite block does not inherit the root's rules, so
+  # the HTTPS redirect and the TM_HTTPS mark (which switches the root's HSTS
+  # header on) are repeated here, first, before any routing rule can end the
+  # pass. Same conditions as deploy/htaccess_public_html. A 308, not a 301: a
+  # POST to the API (a donation, the contact form, the CCAvenue notification)
+  # must stay a POST when it is re-sent.
+  RewriteCond %{HTTPS} !=on
+  RewriteCond %{HTTP:X-Forwarded-Proto} !=https
+  RewriteCond %{HTTP_HOST} !^$
+  RewriteCond %{HTTP_HOST} !^(localhost|127\.0\.0\.1)(:[0-9]+)?$ [NC]
+  RewriteRule ^ https://%{HTTP_HOST}%{REQUEST_URI} [R=308,L]
+
+  RewriteCond %{HTTPS} =on [OR]
+  RewriteCond %{HTTP:X-Forwarded-Proto} =https
+  RewriteRule ^ - [E=TM_HTTPS:1]
+
   # /api/v1/<anything> is an alias of /api/<anything> (brief §26): index.php
   # strips the version and answers with the envelope. Sent there first, so
   # the alias keeps working even if a v1/ folder or file ever lands here.
