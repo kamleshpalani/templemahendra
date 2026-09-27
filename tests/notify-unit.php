@@ -513,7 +513,25 @@ try {
     /* ── Catalogue and templates ────────────────────────────────────────── */
     section('Event catalogue and templates');
     $catalogue = notifyEventCatalogue();
-    eq(count($catalogue), 17, 'the catalogue has 17 events (15 plus donation.paid and payment.refunded)');
+    eq(count($catalogue), 19, 'the catalogue has 19 events (15, donation.paid, payment.refunded, contact.received and sponsor.confirmed)');
+    // contact.received (migration 019, G-19): the office, e-mail only, one per configured address.
+    $contact = $catalogue['contact.received'] ?? [];
+    eq([$contact['template'] ?? null, $contact['priority'] ?? null, $contact['channels'] ?? null, $contact['fallbacks'] ?? null, $contact['sync'] ?? null, $contact['dedupe'] ?? null, $contact['entity_type'] ?? null],
+        ['contact_received', 'important', ['email'], [], false, 'contact:{entity_id}:{recipient}', 'contact_message'], 'contact.received: template, important, e-mail only, no fallback, queued, one per message and address');
+    eq(notifyEventDedupeKey($contact['dedupe'] ?? '', ['entity_id' => 41, 'to_email' => 'office@temple.example.test']), 'contact:41:e' . substr(sha1('office@temple.example.test'), 0, 12), 'contact.received dedupes per message and per office address');
+    eq(notifyTemplateDefaults()['contact_received']['category'] ?? null, 'office', 'contact_received is in the transactional office category (no consent rule holds it back)');
+    // sponsor.confirmed (brief §20): the sponsor, once per sponsorship, e-mail and WhatsApp with an SMS fallback.
+    $sponsor = $catalogue['sponsor.confirmed'] ?? [];
+    eq([$sponsor['template'] ?? null, $sponsor['priority'] ?? null, $sponsor['channels'] ?? null, $sponsor['fallbacks'] ?? null, $sponsor['sync'] ?? null, $sponsor['dedupe'] ?? null, $sponsor['entity_type'] ?? null],
+        ['sponsor_confirmed', 'important', ['email', 'whatsapp'], ['whatsapp' => 'sms'], false, 'sponsor:{entity_id}:confirmed', 'sponsor'], 'sponsor.confirmed: template, important, e-mail and WhatsApp (SMS fallback), queued, once per sponsorship');
+    eq(notifyEventDedupeKey($sponsor['dedupe'] ?? '', ['entity_id' => 9]), 'sponsor:9:confirmed', 'sponsor.confirmed dedupes on the sponsorship');
+    eq([notifyTemplateDefaults()['sponsor_confirmed']['category'] ?? null, notifyTemplateDefaults()['sponsor_confirmed']['cta_path'] ?? null], ['donation', '/sponsorship'], 'sponsor_confirmed is in category donation and links to /sponsorship');
+    foreach (['contact_received', 'sponsor_confirmed'] as $key) {
+        foreach (['ta', 'en'] as $lang) {
+            $r = notifyRender($key, $lang, 'email', notifyTemplateSample($key, $lang));
+            ok($r['lang'] === $lang && $r['missing'] === [] && !str_contains($r['title'] . $r['body'], '{{') && trim($r['title']) !== '', "{$key} renders its sample in {$lang} with nothing missing", $r['title']);
+        }
+    }
     foreach (['account.registered', 'account.email_verification', 'account.email_verified', 'account.profile_updated', 'security.password_reset',
               'security.password_changed', 'phone.otp', 'phone.verified', 'account.already_registered'] as $gone) {
         ok(!isset($catalogue[$gone]), "{$gone} is not in the catalogue");
