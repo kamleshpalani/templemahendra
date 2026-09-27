@@ -52,6 +52,7 @@ Each gap has a backlog ID (G-nn); defects found while closing them go in
 | G-26 | §24, §34 | Responsive matrix 360/390/768/1024/1366/1920, Firefox/WebKit/Edge and mobile emulation runs, Lighthouse | P3 | done — `tests/public-e2e.mjs` at 360/390/768/1024/1366/1920 with `BROWSER=` chromium, firefox, webkit or msedge and `MOBILE=1` (Pixel 5, iPhone 13); results in `docs/TESTING.md` |
 | G-27 | §27 | HTTPS enforcement, HSTS, CSP and the other security headers; environment-dependent error display; OWASP review | P1 | done — `deploy/htaccess_*`, `APP_ENV` (`config/config.php`), `docs/SECURITY-REVIEW.md`; `tests/deploy-config.mjs` 45 |
 | G-28 | §33, §40 | Backup and restore rehearsal automated | P2 | done — `tests/backup-restore.mjs` (backup, damaged copy refused, restore into a scratch database: same tables, rows, foreign keys, Tamil bytes, uploads by checksum) |
+| G-29 | §29, §30 | Coverage: E2E-020 only partially covered (no browser check of a new announcement on the homepage); four notification suites exercised retired features; the service worker, the simulator's server API and several skipped checks had no passing test; no check that every route and page is exercised | P2 | done — `public-content-ui.mjs` E2E-005/020, `pwa.mjs`, the simulator API in `payments-ui.mjs`, the notification suites rewritten (D-053), `registration-api.mjs` asserts its messages by default, `tests/coverage-audit.mjs` (every API route, admin page and site path requested by a suite; every E2E case Covered) |
 
 ## Execution order
 
