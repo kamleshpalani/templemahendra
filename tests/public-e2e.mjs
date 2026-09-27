@@ -1,13 +1,34 @@
-// End-to-end tests for the public site (Vite dev server + real PHP API + MySQL).
+// End-to-end tests for the public site (Vite on :5173 + real PHP API + MySQL).
 //   PHP_BIN=/path/to/php node public-e2e.mjs [baseUrl]   (default http://127.0.0.1:5173)
-// Covers: every route at 4 widths (console errors, single h1, no horizontal
-// overflow, axe-core serious/critical violations), language toggle, mobile
-// drawer + keyboard, seva booking modal (focus trap, validation, real submit),
-// contact + donation forms, events filter, panchangam navigation, chatbot, 404.
-// Launch fixes: the donor's thank-you-list consent reaching /api/donors, the
-// honeypot field staying out of sight, Tab order and the accessibility tree,
-// no reviews section without a Google key, the remembered language, and the
-// friendly message every form and the chatbot show for HTTP 429.
+//   BROWSER=chromium|firefox|webkit|msedge                (default chromium)
+//   MOBILE=1                                              (device emulation, see below)
+// Covers: every public route at the brief's six widths (§24: 360, 390, 768,
+// 1024, 1366, 1920 — console errors, single h1, no horizontal overflow, and
+// axe-core serious/critical violations at 360 and 1366), language toggle,
+// mobile drawer + keyboard, the header's entry points (Register family, Book
+// Seva, the drawer) at every width, seva booking modal (focus trap, validation,
+// real submit), contact + donation forms, events filter, panchangam navigation,
+// chatbot, 404, sharing, admin routing, and the launch fixes: the donor's
+// thank-you-list consent reaching /api/donors, the honeypot field staying out
+// of sight, Tab order and the accessibility tree, no reviews section without a
+// Google key, the remembered language, and the friendly message every form and
+// the chatbot show for HTTP 429.
+//
+// BROWSER picks the engine: chromium (Playwright's build), firefox and webkit
+// (installed with `npx playwright install firefox|webkit` from frontend/), or
+// msedge — the Microsoft Edge installed on this machine, through Playwright's
+// chromium channel. A browser that cannot be launched fails the run with the
+// launcher's own error rather than passing an empty run.
+//
+// MOBILE=1 runs the route loop and the mobile scenarios (E2E-041…043) under
+// Playwright's device descriptors — Pixel 5 and iPhone 13 (DEVICES overrides):
+// their viewport, scale factor, user agent, touch and mobile emulation, with
+// taps where a phone would tap — instead of plain desktop viewports. The
+// desktop-only scenarios (the 30-width header fit guard, sharing at 1280, the
+// admin routing and the launch fixes) run in the default mode only.
+//
+// Every run prints the browser and version, the viewports or device it used,
+// and ends with "N passed, M failed".
 //
 // PHP_BIN (php, or a .sh wrapper that exports the DB environment) is used only
 // to remove the pledges the consent scenario creates and to reset that
@@ -19,24 +40,56 @@ import { fileURLToPath } from "node:url";
 // frontend/node_modules. Resolving explicitly means "cd frontend && npm install"
 // is the only setup step, with no symlink or root install to remember.
 import { createRequire } from "node:module";
-const { chromium } = createRequire(import.meta.url)("../frontend/node_modules/playwright/index.js");
+const { chromium, firefox, webkit, devices } = createRequire(import.meta.url)("../frontend/node_modules/playwright/index.js");
 import { mkdirSync, readFileSync } from "node:fs";
 
 const base = process.argv[2] || "http://127.0.0.1:5173";
 const axeSource = readFileSync(new URL("../frontend/node_modules/axe-core/axe.min.js", import.meta.url), "utf8");
-mkdirSync("shots/public", { recursive: true });
-// screenshots land in ./shots next to wherever you run this from
 
 const results = [];
 const pass = (name, detail = "") => results.push({ ok: true, name, detail });
 const fail = (name, detail = "") => results.push({ ok: false, name, detail });
 const check = (cond, name, detail = "") => (cond ? pass(name, detail) : fail(name, detail));
 
+/* ── Browser, viewports, devices ─────────────────────────────────────────── */
+const BROWSER = (process.env.BROWSER || "chromium").toLowerCase();
+const MOBILE = process.env.MOBILE === "1";
+const DEVICE_NAMES = (process.env.DEVICES || "Pixel 5,iPhone 13").split(",").map((s) => s.trim()).filter(Boolean);
+// The brief's matrix (§24). Screenshots at one phone and one desktop width;
+// axe at the narrowest and at the common laptop width (§23).
+const WIDTHS = [360, 390, 768, 1024, 1366, 1920];
+const SHOT_WIDTHS = [390, 1366];
+const AXE_WIDTHS = [360, 1366];
+const TYPES = { chromium, firefox, webkit, msedge: chromium };
+const engine = BROWSER === "msedge" ? "chromium" : BROWSER;
+if (!TYPES[BROWSER]) {
+  console.error(`BROWSER=${BROWSER} is not one of chromium, firefox, webkit, msedge`);
+  console.log("0 passed, 1 failed");
+  process.exit(2);
+}
+for (const name of MOBILE ? DEVICE_NAMES : []) {
+  if (!devices[name]) {
+    console.error(`DEVICES: "${name}" is not a Playwright device descriptor`);
+    console.log("0 passed, 1 failed");
+    process.exit(2);
+  }
+}
+// The device whose descriptor newPage() applies in MOBILE mode; set by the loops below.
+let device = null;
+const at = (w) => (device ? `@${device}` : `@${w}`);
+// A phone taps; a desktop clicks. Device descriptors carry hasTouch, so the
+// tap goes through the touch path a real phone browser would take.
+const press = (page, selector) => (device ? page.tap(selector) : page.click(selector));
+
+const shotsDir = `shots/public${BROWSER === "chromium" ? "" : "/" + BROWSER}`;
+mkdirSync(shotsDir, { recursive: true });
+// screenshots land in ./shots next to wherever you run this from
+
 /* ── Database access for cleanup, through the shared fixtures script ─────── */
 const REPO = fileURLToPath(new URL("..", import.meta.url));
 const PHP_BIN = process.env.PHP_BIN || "php";
 /** JSON for a command line: non-ASCII escaped, because Windows argv is not UTF-8 all the way down. */
-const cliJson = (obj) => JSON.stringify(obj).replace(/[-￿]/g, (c) => "\\u" + c.charCodeAt(0).toString(16).padStart(4, "0"));
+const cliJson = (obj) => JSON.stringify(obj).replace(/[\u0080-￿]/g, (c) => "\\u" + c.charCodeAt(0).toString(16).padStart(4, "0"));
 function sql(query, params = []) {
   const args = ["tests/support/notify_fixtures.php", "sql", cliJson({ query, params })];
   const viaBash = PHP_BIN.endsWith(".sh");
@@ -51,11 +104,33 @@ function sql(query, params = []) {
   return out;
 }
 
-const browser = await chromium.launch();
+let browser;
+try {
+  browser = await TYPES[BROWSER].launch(BROWSER === "msedge" ? { channel: "msedge" } : {});
+} catch (e) {
+  console.error(`✗ could not launch ${BROWSER}: ${String(e.message || e).split("\n").slice(0, 3).join(" ")}`);
+  console.log("0 passed, 1 failed");
+  process.exit(1);
+}
+const viewportsUsed = MOBILE
+  ? DEVICE_NAMES.map((n) => `${n} ${devices[n].viewport.width}×${devices[n].viewport.height} @${devices[n].deviceScaleFactor}x`).join(", ")
+  : WIDTHS.map((w) => `${w}px`).join(", ");
+console.log(`browser: ${BROWSER} ${browser.version()}${BROWSER === "msedge" ? " (Microsoft Edge via the chromium channel)" : ""}`);
+console.log(`viewports: ${viewportsUsed}`);
+console.log(`device: ${MOBILE ? DEVICE_NAMES.map((n) => `${n} (descriptor's own engine ${devices[n].defaultBrowserType}, run on ${engine})`).join("; ") : "none — desktop viewports"}`);
+console.log(`base: ${base}`);
+
 const IGNORE = /fonts\.gstatic|googleapis|google\.com\/maps|wa\.me|favicon|ERR_ABORTED|reviews|Download the React DevTools|workbox|sw\.js|youtube|ytimg|googlevideo/;
 
 async function newPage(width = 1440, height = 900) {
-  const ctx = await browser.newContext({ viewport: { width, height }, locale: "en-IN" });
+  const opts = device ? { ...devices[device], locale: "en-IN" } : { viewport: { width, height }, locale: "en-IN" };
+  // Firefox has no mobile-mode emulation (Playwright refuses isMobile there);
+  // the viewport, scale factor, user agent and touch still apply.
+  if (device && engine === "firefox") delete opts.isMobile;
+  const ctx = await browser.newContext(opts);
+  // The navigation budget. This network is slow, and a page that needs longer
+  // than this to settle is a finding, not a reason to wait more.
+  ctx.setDefaultNavigationTimeout(30000);
   // Third parties (Google Fonts, the Maps embed, YouTube) are not under test and
   // can take ten seconds or more from this network, so a page waiting for them
   // would never reach "networkidle" in time. They are answered with an empty
@@ -107,196 +182,335 @@ async function axe(page) {
   return r;
 }
 
+/* ── Routes ──────────────────────────────────────────────────────────────── */
 const ROUTES = [
-  "/", "/about", "/sevas", "/events", "/panchangam", "/donations", "/contact",
+  "/", "/about", "/sevas", "/events", "/gallery", "/videos", "/panchangam", "/donations", "/contact",
+  "/register", "/search",
   // Online payments (docs/payments/SPEC.md §7.1): the donate page and the four policies.
   "/donate", "/privacy-policy", "/terms-and-conditions", "/refund-cancellation-policy", "/shipping-delivery-policy",
-  // Live Darshan (docs/live/SPEC-PHASE1.md §5.3) and its schedule (SPEC-PHASE2.md §2.3).
+  // Live Darshan (docs/live/SPEC-PHASE1.md §5.3), its schedule (SPEC-PHASE2.md §2.3) and the archive.
   "/live-darshan",
   "/live-darshan/schedule",
+  "/live-darshan/archive",
   "/definitely-not-a-page",
 ];
-const WIDTHS = [390, 768, 1024, 1440];
+const NOT_FOUND = "/definitely-not-a-page";
+// An event's own page needs an id from the database; /sponsorship and /deities
+// are only in the loop when the build under test has them (they are being
+// added against source while :5173 may still serve an older build), so the
+// run says which of the three it covered rather than failing on the 404 page.
+{
+  const skipped = [];
+  try {
+    let events = await (await fetch(`${base}/api/events`)).json();
+    if (!Array.isArray(events) || !events.length) events = await (await fetch(`${base}/api/events?past=1`)).json();
+    const id = Array.isArray(events) && events[0]?.id;
+    if (id) ROUTES.splice(ROUTES.indexOf("/events") + 1, 0, `/events/${id}`);
+    else skipped.push("/events/<id> (no event in the database)");
+  } catch (e) {
+    skipped.push(`/events/<id> (${String(e.message || e).slice(0, 80)})`);
+  }
+  const probe = await newPage(1366, 900);
+  for (const route of ["/sponsorship", "/deities"]) {
+    try {
+      await probe.goto(base + route, { waitUntil: "networkidle" });
+      await probe.waitForTimeout(400);
+      const is404 = await probe.evaluate(() => !!document.querySelector("#root .notfound"));
+      if (is404) skipped.push(`${route} (not in the build ${base} serves)`);
+      else ROUTES.splice(ROUTES.indexOf(NOT_FOUND), 0, route);
+    } catch (e) {
+      skipped.push(`${route} (${String(e.message || e).split("\n")[0].slice(0, 80)})`);
+    }
+  }
+  await probe.context().close();
+  console.log(`routes (${ROUTES.length}): ${ROUTES.join(" ")}`);
+  if (skipped.length) console.log(`not covered on this build: ${skipped.join("; ")}`);
+}
 
-for (const route of ROUTES) {
-  for (const w of WIDTHS) {
-    const page = await newPage(w, w < 700 ? 844 : 900);
+/** The per-route checks, for one viewport or one device. */
+async function routeChecks(route, w) {
+  const page = await newPage(w, w < 700 ? 844 : 900);
+  const label = `${route} ${at(w)}`;
+  try {
     await page.goto(base + route, { waitUntil: "networkidle" });
     await page.waitForTimeout(600);
     const h1s = await page.locator("h1").count();
-    check(h1s === 1, `${route} @${w}: exactly one h1`, `found ${h1s}`);
-    check(!(await overflow(page)), `${route} @${w}: no horizontal overflow`);
+    check(h1s === 1, `${label}: exactly one h1`, `found ${h1s}`);
+    check(!(await overflow(page)), `${label}: no horizontal overflow`);
     const errs = page.errors();
-    check(errs.length === 0, `${route} @${w}: no console errors`, errs.slice(0, 3).join(" | "));
-    if (w === 1440 || w === 390) {
+    check(errs.length === 0, `${label}: no console errors`, errs.slice(0, 3).join(" | "));
+    const shot = device || SHOT_WIDTHS.includes(w);
+    if (shot) {
       await scrollThrough(page);
-      await page.screenshot({ path: `shots/public/${route === "/" ? "home" : route.slice(1)}-${w}.png`, fullPage: true });
+      await page.screenshot({ path: `${shotsDir}/${route === "/" ? "home" : route.slice(1).replace(/\//g, "_")}-${device ? device.replace(/\s+/g, "") : w}.png`, fullPage: true });
     }
-    if (w === 1440 && route !== "/definitely-not-a-page") {
+    if ((device || AXE_WIDTHS.includes(w)) && route !== NOT_FOUND) {
       const v = await axe(page);
-      check(v.length === 0, `${route}: axe serious/critical violations`, v.slice(0, 6).join("\n      "));
+      check(v.length === 0, `${label}: axe serious/critical violations`, v.slice(0, 6).join("\n      "));
     }
-    await page.context().close();
+  } catch (e) {
+    fail(`${label} (route checks threw)`, String(e.message || e).split("\n")[0].slice(0, 160));
   }
+  await page.context().close();
 }
 
-// Language toggle
-try {
-  const page = await newPage();
-  await page.goto(base + "/", { waitUntil: "networkidle" });
-  const before = await page.evaluate(() => document.documentElement.lang);
-  // Two toggles now: one in the status strip, one in the footer. Take the first.
-  await page.locator('.lang-toggle__btn[lang="en"]').first().click();
-  const after = await page.evaluate(() => document.documentElement.lang);
-  check(before === "ta" && after === "en", "language toggle switches <html lang>", `${before} → ${after}`);
-  check(await page.locator(".navbar__nav").innerText().then((t) => /Home/.test(t)), "language toggle re-renders navigation in English");
-  await page.context().close();
-} catch (e) { fail("Language toggle (scenario threw)", String(e.message || e).split("\n")[0].slice(0, 160)); }
-
-// Mobile drawer + keyboard
-try {
-  const page = await newPage(390, 844);
-  await page.goto(base + "/", { waitUntil: "networkidle" });
-  await page.click(".navbar__toggle");
-  await page.waitForTimeout(450);
-  check(await page.locator("#mobile-drawer").getAttribute("aria-hidden").then((v) => v === "false"), "drawer opens (aria-hidden=false)");
-  const focusInDrawer = await page.evaluate(() => document.activeElement?.closest("#mobile-drawer") != null);
-  check(focusInDrawer, "drawer moves focus inside");
-  await page.keyboard.press("Escape");
-  await page.waitForTimeout(450);
-  check(await page.locator("#mobile-drawer").getAttribute("aria-hidden").then((v) => v === "true"), "Escape closes drawer");
-  const focusBack = await page.evaluate(() => document.activeElement?.classList.contains("navbar__toggle"));
-  check(focusBack, "focus returns to hamburger after close");
-  check(await page.locator(".bottom-nav").isVisible(), "bottom nav visible on mobile");
-  await page.context().close();
-} catch (e) { fail("Mobile drawer + keyboard (scenario threw)", String(e.message || e).split("\n")[0].slice(0, 160)); }
-
-// Seva booking modal: focus trap, validation, real submission
-try {
-  const page = await newPage();
-  await page.goto(base + "/sevas", { waitUntil: "networkidle" });
-  await page.waitForTimeout(500);
-  const book = page.locator("button", { hasText: /Book|பதிவு/ }).first();
-  await book.click();
-  const dialog = page.locator('[role="dialog"]');
-  await dialog.waitFor({ state: "visible" });
-  check(await dialog.count() === 1, "booking modal opens");
-  const inside = await page.evaluate(() => document.activeElement?.closest('[role="dialog"]') != null);
-  check(inside, "modal takes focus");
-  let trapped = true;
-  for (let i = 0; i < 14; i++) {
-    await page.keyboard.press("Tab");
-    if (!(await page.evaluate(() => document.activeElement?.closest('[role="dialog"]') != null))) { trapped = false; break; }
+if (!MOBILE) {
+  for (const route of ROUTES) for (const w of WIDTHS) await routeChecks(route, w);
+} else {
+  for (const name of DEVICE_NAMES) {
+    device = name;
+    for (const route of ROUTES) await routeChecks(route, devices[name].viewport.width);
   }
-  check(trapped, "Tab focus stays trapped in modal");
-  await dialog.locator('button[type="submit"]').click();
-  await page.waitForTimeout(300);
-  const alerts = await dialog.locator('[role="alert"]').count();
-  check(alerts >= 1, "empty submit shows field errors", `${alerts} alerts`);
-  const stamp = "E2E-" + Date.now().toString().slice(-6);
-  await chooseBookingRequest(dialog);
-  await dialog.locator('input[name="devotee_name"]').fill(stamp);
-  await dialog.locator('input[name="phone"]').fill("9876501234");
-  await dialog.locator('button[type="submit"]').click();
-  await page.waitForTimeout(2500);
-  const success = await dialog.innerText();
-  check(/received|பெறப்பட்டது/i.test(success), "booking submits to real API and shows success", success.slice(0, 80));
-  check(await page.locator(".toast").count() >= 1, "success toast appears");
-  await page.keyboard.press("Escape");
-  await page.waitForTimeout(400);
-  check(await page.locator('[role="dialog"]').count() === 0, "Escape closes modal after success");
-  check(page.errors().length === 0, "sevas flow: no console errors", page.errors().slice(0, 2).join(" | "));
-  await page.context().close();
-  results.push({ ok: true, name: `booking created as ${stamp} (clean up in DB)`, detail: stamp, cleanup: stamp });
-} catch (e) { fail("Seva booking modal: focus trap, validation, real submission (scenario threw)", String(e.message || e).split("\n")[0].slice(0, 160)); }
+  device = null;
+}
 
-// Contact form
-try {
-  const page = await newPage();
-  await page.goto(base + "/contact", { waitUntil: "networkidle" });
-  await page.click('form button[type="submit"]');
-  await page.waitForTimeout(300);
-  check((await page.locator('form [role="alert"]').count()) >= 2, "contact: validation errors on empty submit");
-  const stamp = "E2E-MSG-" + Date.now().toString().slice(-6);
-  await page.fill('input[name="name"]', stamp);
-  await page.fill('input[name="phone"]', "9876504321");
-  await page.fill('textarea[name="message"]', "Automated e2e test message — safe to delete.");
-  await page.click('form button[type="submit"]');
-  await page.waitForTimeout(2500);
-  check((await page.locator('[role="status"], .alert--success').filter({ hasText: /sent|அனுப்பப்பட்டது/i }).count()) >= 1, "contact: success feedback shown");
-  check(page.errors().length === 0, "contact: no console errors", page.errors().slice(0, 2).join(" | "));
-  await page.context().close();
-  results.push({ ok: true, name: `message created as ${stamp}`, cleanup: stamp });
-} catch (e) { fail("Contact form (scenario threw)", String(e.message || e).split("\n")[0].slice(0, 160)); }
+/* ── Scenarios that make sense on a phone as well as a desktop ───────────── */
+async function coreScenarios() {
+  const tag = device ? ` [${device}]` : "";
 
-// Donations form + quick amount chip
-try {
-  const page = await newPage();
-  await page.goto(base + "/donations", { waitUntil: "networkidle" });
-  const chip = page.locator('button', { hasText: /₹1001|₹1,001/ }).first();
-  await chip.click();
-  const amount = await page.inputValue('input[name="amount"]');
-  check(amount === "1001", "donation quick-amount chip fills amount", amount);
-  const stamp = "E2E-DON-" + Date.now().toString().slice(-6);
-  await page.fill('input[name="name"]', stamp);
-  await page.fill('input[name="phone"]', "9876509999");
-  await page.click('form button[type="submit"]');
-  await page.waitForTimeout(2500);
-  check((await page.locator('.alert--success, [role="status"]').filter({ hasText: /recorded|பதிவு/i }).count()) >= 1, "donation: success feedback shown");
-  check(page.errors().length === 0, "donations: no console errors", page.errors().slice(0, 2).join(" | "));
-  await page.context().close();
-  results.push({ ok: true, name: `donation created as ${stamp}`, cleanup: stamp });
-} catch (e) { fail("Donations form + quick amount chip (scenario threw)", String(e.message || e).split("\n")[0].slice(0, 160)); }
+  // Language toggle
+  try {
+    const page = await newPage();
+    await page.goto(base + "/", { waitUntil: "networkidle" });
+    const before = await page.evaluate(() => document.documentElement.lang);
+    // Two toggles now: one in the status strip, one in the footer. Take the first.
+    await page.locator('.lang-toggle__btn[lang="en"]').first().click();
+    const after = await page.evaluate(() => document.documentElement.lang);
+    check(before === "ta" && after === "en", `language toggle switches <html lang>${tag}`, `${before} → ${after}`);
+    // The desktop row is hidden below 1024; the drawer carries the same links.
+    const navText = device ? await page.locator(".drawer__nav").innerText() : await page.locator(".navbar__nav").innerText();
+    check(/Home/.test(navText), `language toggle re-renders navigation in English${tag}`);
+    await page.context().close();
+  } catch (e) { fail(`Language toggle (scenario threw)${tag}`, String(e.message || e).split("\n")[0].slice(0, 160)); }
 
-// Events filter tabs + keyboard
-try {
-  const page = await newPage();
-  await page.goto(base + "/events", { waitUntil: "networkidle" });
-  await page.waitForTimeout(800);
-  const tabs = page.locator('[role="tablist"] [role="tab"]');
-  check((await tabs.count()) >= 3, "events: filter tabs rendered");
-  await tabs.nth(1).click();
-  await page.waitForTimeout(300);
-  check(await tabs.nth(1).getAttribute("aria-selected").then((v) => v === "true"), "events: clicking a tab selects it");
-  await tabs.nth(1).focus();
-  await page.keyboard.press("ArrowRight");
-  await page.waitForTimeout(200);
-  check(await tabs.nth(2).getAttribute("aria-selected").then((v) => v === "true"), "events: ArrowRight moves selection");
-  await page.context().close();
-} catch (e) { fail("Events filter tabs + keyboard (scenario threw)", String(e.message || e).split("\n")[0].slice(0, 160)); }
+  // Mobile drawer + keyboard (E2E-041)
+  try {
+    const page = await newPage(390, 844);
+    await page.goto(base + "/", { waitUntil: "networkidle" });
+    await press(page, ".navbar__toggle");
+    await page.waitForTimeout(450);
+    check(await page.locator("#mobile-drawer").getAttribute("aria-hidden").then((v) => v === "false"), `drawer opens (aria-hidden=false)${tag}`);
+    const focusInDrawer = await page.evaluate(() => document.activeElement?.closest("#mobile-drawer") != null);
+    check(focusInDrawer, `drawer moves focus inside${tag}`);
+    await page.keyboard.press("Escape");
+    await page.waitForTimeout(450);
+    check(await page.locator("#mobile-drawer").getAttribute("aria-hidden").then((v) => v === "true"), `Escape closes drawer${tag}`);
+    const focusBack = await page.evaluate(() => document.activeElement?.classList.contains("navbar__toggle"));
+    check(focusBack, `focus returns to hamburger after close${tag}`);
+    check(await page.locator(".bottom-nav").isVisible(), `bottom nav visible on mobile${tag}`);
+    await page.context().close();
+  } catch (e) { fail(`Mobile drawer + keyboard (scenario threw)${tag}`, String(e.message || e).split("\n")[0].slice(0, 160)); }
 
-// Panchangam navigation
-try {
-  const page = await newPage();
-  await page.goto(base + "/panchangam", { waitUntil: "networkidle" });
-  await page.waitForTimeout(800);
-  const label = page.locator(".panchang-nav__label").first();
-  const before = await label.innerText();
-  await page.locator('.panchang-nav__month button').nth(1).click();
-  await page.waitForTimeout(1200);
-  const after = await label.innerText();
-  check(before !== after, "panchangam: next month changes the label", `${before} → ${after}`);
-  check((await page.locator(".panchang__cell, .panchang-cell").count()) >= 28, "panchangam: day cells rendered");
-  await page.context().close();
-} catch (e) { fail("Panchangam navigation (scenario threw)", String(e.message || e).split("\n")[0].slice(0, 160)); }
+  // Header entry points at every width (D-017). Family registration replaced
+  // devotee sign-in (docs/registration/SPEC.md §7), so the retired "sign-up is
+  // visible and sign-in is reachable" checks are stated against the shipped
+  // header without losing what they proved: the primary call to action is
+  // visible at desktop widths, the drawer toggle appears at phone and tablet
+  // widths and opens, and /register is reachable at every width — from the
+  // header button, and below 1024 from the drawer's row as well. Layout.css:
+  // the nav row and Register's words show from 1024 (words hidden 1024–1279
+  // and below 700, the accessible name stays), Book Seva from 1440 in Tamil.
+  try {
+    for (const w of device ? [devices[device].viewport.width] : [1920, 1440, 1366, 1024, 768, 390, 360]) {
+      const page = await newPage(w, 840);
+      const label = at(w);
+      await page.goto(base + "/", { waitUntil: "networkidle" });
+      await page.waitForTimeout(500);
+      const seen = await page.evaluate(() => {
+        const vis = (el) => {
+          if (!el) return false;
+          const r = el.getBoundingClientRect();
+          return r.width > 0 && r.height > 0 && r.right <= document.documentElement.clientWidth + 1;
+        };
+        const register = document.querySelector(".navbar__register");
+        return {
+          register: vis(register),
+          registerName: register?.textContent.trim() ?? "",
+          registerWordShown: vis(document.querySelector(".navbar__register-word")) && document.querySelector(".navbar__register-word").getBoundingClientRect().width > 8,
+          cta: vis(document.querySelector(".navbar__cta")),
+          nav: vis(document.querySelector(".navbar__nav")),
+          toggle: vis(document.querySelector(".navbar__toggle")),
+        };
+      });
+      const desktop = w >= 1024;
+      check(
+        seen.register && /Register family|குடும்பப் பதிவு/.test(seen.registerName),
+        `${label}: Register family is visible in the header and keeps its accessible name`,
+        JSON.stringify(seen),
+      );
+      if (desktop) {
+        check(seen.nav && !seen.toggle, `${label}: primary navigation sits in the header, no hamburger`, JSON.stringify(seen));
+        check(seen.registerWordShown === (w >= 1280), `${label}: Register's words ${w >= 1280 ? "show" : "are hidden visually (icon only)"}`, JSON.stringify(seen));
+        if (w >= 1440) check(seen.cta, `${label}: the Book Seva call to action is visible`, JSON.stringify(seen));
+        else check(!seen.cta, `${label}: Book Seva stays out of the row (Register is the call to action here)`, JSON.stringify(seen));
+      } else {
+        check(seen.toggle && !seen.nav, `${label}: the drawer toggle is visible and the nav row is gone`, JSON.stringify(seen));
+        check(!seen.cta, `${label}: Book Seva is not in the header row`, JSON.stringify(seen));
+      }
+      // /register from the header button.
+      await press(page, ".navbar__register");
+      await page.waitForURL(/\/register$/, { timeout: 15000 }).catch(() => {});
+      await page.waitForTimeout(600);
+      check(new URL(page.url()).pathname === "/register" && (await page.locator("h1").count()) === 1, `${label}: the header button reaches /register`, page.url());
+      if (!desktop) {
+        // …and from the drawer, which is where the navigation lives here.
+        await page.goto(base + "/", { waitUntil: "networkidle" });
+        await press(page, ".navbar__toggle");
+        await page.waitForTimeout(450);
+        const row = page.locator("#mobile-drawer .drawer__register");
+        check(await row.isVisible(), `${label}: the open drawer offers Register your family`);
+        await row.click();
+        await page.waitForURL(/\/register$/, { timeout: 15000 }).catch(() => {});
+        await page.waitForTimeout(600);
+        check(new URL(page.url()).pathname === "/register", `${label}: the drawer row reaches /register`, page.url());
+        check(await page.locator("#mobile-drawer").getAttribute("aria-hidden").then((v) => v === "true"), `${label}: the drawer closes on navigation`);
+      }
+      check(page.errors().length === 0, `${label}: header entry points — no console errors`, page.errors().slice(0, 2).join(" | "));
+      await page.context().close();
+    }
+  } catch (e) {
+    fail(`Header entry points (scenario threw)${tag}`, String(e.message || e).split("\n")[0].slice(0, 160));
+  }
 
-// Chatbot round-trip (rule-based fallback on the backend)
-try {
-  const page = await newPage();
-  await page.goto(base + "/", { waitUntil: "networkidle" });
-  await page.click(".chatbot__trigger");
-  await page.waitForTimeout(400);
-  await page.fill(".chatbot__input", "temple timings");
-  await page.keyboard.press("Enter");
-  await page.waitForTimeout(3000);
-  const bubbles = await page.locator(".chatbot__bubble--assistant").count();
-  check(bubbles >= 2, "chatbot: reply bubble received", `${bubbles} assistant bubbles`);
-  await page.keyboard.press("Escape");
-  await page.waitForTimeout(300);
-  check((await page.locator(".chatbot__window").count()) === 0, "chatbot: Escape closes window");
-  await page.context().close();
-} catch (e) { fail("Chatbot round-trip (rule-based fallback on the backend) (scenario threw)", String(e.message || e).split("\n")[0].slice(0, 160)); }
+  // Seva booking modal: focus trap, validation, real submission
+  try {
+    const page = await newPage();
+    await page.goto(base + "/sevas", { waitUntil: "networkidle" });
+    await page.waitForTimeout(500);
+    const book = page.locator("button", { hasText: /Book|பதிவு/ }).first();
+    await book.click();
+    const dialog = page.locator('[role="dialog"]');
+    await dialog.waitFor({ state: "visible" });
+    check(await dialog.count() === 1, `booking modal opens${tag}`);
+    const inside = await page.evaluate(() => document.activeElement?.closest('[role="dialog"]') != null);
+    check(inside, `modal takes focus${tag}`);
+    let trapped = true;
+    for (let i = 0; i < 14; i++) {
+      await page.keyboard.press("Tab");
+      if (!(await page.evaluate(() => document.activeElement?.closest('[role="dialog"]') != null))) { trapped = false; break; }
+    }
+    check(trapped, `Tab focus stays trapped in modal${tag}`);
+    await dialog.locator('button[type="submit"]').click();
+    await page.waitForTimeout(300);
+    const alerts = await dialog.locator('[role="alert"]').count();
+    check(alerts >= 1, `empty submit shows field errors${tag}`, `${alerts} alerts`);
+    const stamp = "E2E-" + Date.now().toString().slice(-6);
+    await chooseBookingRequest(dialog);
+    await dialog.locator('input[name="devotee_name"]').fill(stamp);
+    await dialog.locator('input[name="phone"]').fill("9876501234");
+    await dialog.locator('button[type="submit"]').click();
+    await page.waitForTimeout(2500);
+    const success = await dialog.innerText();
+    check(/received|பெறப்பட்டது/i.test(success), `booking submits to real API and shows success${tag}`, success.slice(0, 80));
+    check(await page.locator(".toast").count() >= 1, `success toast appears${tag}`);
+    await page.keyboard.press("Escape");
+    await page.waitForTimeout(400);
+    check(await page.locator('[role="dialog"]').count() === 0, `Escape closes modal after success${tag}`);
+    check(page.errors().length === 0, `sevas flow: no console errors${tag}`, page.errors().slice(0, 2).join(" | "));
+    await page.context().close();
+    results.push({ ok: true, name: `booking created as ${stamp} (clean up in DB)`, detail: stamp, cleanup: stamp });
+  } catch (e) { fail(`Seva booking modal: focus trap, validation, real submission (scenario threw)${tag}`, String(e.message || e).split("\n")[0].slice(0, 160)); }
 
+  // Contact form
+  try {
+    const page = await newPage();
+    await page.goto(base + "/contact", { waitUntil: "networkidle" });
+    await page.click('form button[type="submit"]');
+    await page.waitForTimeout(300);
+    check((await page.locator('form [role="alert"]').count()) >= 2, `contact: validation errors on empty submit${tag}`);
+    const stamp = "E2E-MSG-" + Date.now().toString().slice(-6);
+    await page.fill('input[name="name"]', stamp);
+    await page.fill('input[name="phone"]', "9876504321");
+    await page.fill('textarea[name="message"]', "Automated e2e test message — safe to delete.");
+    await page.click('form button[type="submit"]');
+    await page.waitForTimeout(2500);
+    check((await page.locator('[role="status"], .alert--success').filter({ hasText: /sent|அனுப்பப்பட்டது/i }).count()) >= 1, `contact: success feedback shown${tag}`);
+    check(page.errors().length === 0, `contact: no console errors${tag}`, page.errors().slice(0, 2).join(" | "));
+    await page.context().close();
+    results.push({ ok: true, name: `message created as ${stamp}`, cleanup: stamp });
+  } catch (e) { fail(`Contact form (scenario threw)${tag}`, String(e.message || e).split("\n")[0].slice(0, 160)); }
+
+  // Donations form + quick amount chip
+  try {
+    const page = await newPage();
+    await page.goto(base + "/donations", { waitUntil: "networkidle" });
+    const chip = page.locator('button', { hasText: /₹1001|₹1,001/ }).first();
+    await chip.click();
+    const amount = await page.inputValue('input[name="amount"]');
+    check(amount === "1001", `donation quick-amount chip fills amount${tag}`, amount);
+    const stamp = "E2E-DON-" + Date.now().toString().slice(-6);
+    await page.fill('input[name="name"]', stamp);
+    await page.fill('input[name="phone"]', "9876509999");
+    await page.click('form button[type="submit"]');
+    await page.waitForTimeout(2500);
+    check((await page.locator('.alert--success, [role="status"]').filter({ hasText: /recorded|பதிவு/i }).count()) >= 1, `donation: success feedback shown${tag}`);
+    check(page.errors().length === 0, `donations: no console errors${tag}`, page.errors().slice(0, 2).join(" | "));
+    await page.context().close();
+    results.push({ ok: true, name: `donation created as ${stamp}`, cleanup: stamp });
+  } catch (e) { fail(`Donations form + quick amount chip (scenario threw)${tag}`, String(e.message || e).split("\n")[0].slice(0, 160)); }
+
+  // Events filter tabs + keyboard
+  try {
+    const page = await newPage();
+    await page.goto(base + "/events", { waitUntil: "networkidle" });
+    await page.waitForTimeout(800);
+    const tabs = page.locator('[role="tablist"] [role="tab"]');
+    check((await tabs.count()) >= 3, `events: filter tabs rendered${tag}`);
+    await tabs.nth(1).click();
+    await page.waitForTimeout(300);
+    check(await tabs.nth(1).getAttribute("aria-selected").then((v) => v === "true"), `events: clicking a tab selects it${tag}`);
+    await tabs.nth(1).focus();
+    await page.keyboard.press("ArrowRight");
+    await page.waitForTimeout(200);
+    check(await tabs.nth(2).getAttribute("aria-selected").then((v) => v === "true"), `events: ArrowRight moves selection${tag}`);
+    await page.context().close();
+  } catch (e) { fail(`Events filter tabs + keyboard (scenario threw)${tag}`, String(e.message || e).split("\n")[0].slice(0, 160)); }
+
+  // Panchangam navigation
+  try {
+    const page = await newPage();
+    await page.goto(base + "/panchangam", { waitUntil: "networkidle" });
+    await page.waitForTimeout(800);
+    const label = page.locator(".panchang-nav__label").first();
+    const before = await label.innerText();
+    await page.locator('.panchang-nav__month button').nth(1).click();
+    await page.waitForTimeout(1200);
+    const after = await label.innerText();
+    check(before !== after, `panchangam: next month changes the label${tag}`, `${before} → ${after}`);
+    check((await page.locator(".panchang__cell, .panchang-cell").count()) >= 28, `panchangam: day cells rendered${tag}`);
+    await page.context().close();
+  } catch (e) { fail(`Panchangam navigation (scenario threw)${tag}`, String(e.message || e).split("\n")[0].slice(0, 160)); }
+
+  // Chatbot round-trip (rule-based fallback on the backend)
+  try {
+    const page = await newPage();
+    await page.goto(base + "/", { waitUntil: "networkidle" });
+    await press(page, ".chatbot__trigger");
+    await page.waitForTimeout(400);
+    await page.fill(".chatbot__input", "temple timings");
+    await page.keyboard.press("Enter");
+    await page.waitForTimeout(3000);
+    const bubbles = await page.locator(".chatbot__bubble--assistant").count();
+    check(bubbles >= 2, `chatbot: reply bubble received${tag}`, `${bubbles} assistant bubbles`);
+    await page.keyboard.press("Escape");
+    await page.waitForTimeout(300);
+    check((await page.locator(".chatbot__window").count()) === 0, `chatbot: Escape closes window${tag}`);
+    await page.context().close();
+  } catch (e) { fail(`Chatbot round-trip (rule-based fallback on the backend) (scenario threw)${tag}`, String(e.message || e).split("\n")[0].slice(0, 160)); }
+}
+
+if (!MOBILE) {
+  await coreScenarios();
+} else {
+  for (const name of DEVICE_NAMES) {
+    device = name;
+    await coreScenarios();
+  }
+  device = null;
+}
+
+/* ── Desktop-only scenarios ──────────────────────────────────────────────── */
+if (!MOBILE) {
 // Header fit — the row must sit inside its own container at every width.
 //
 // The navbar clips its overflow, so a row that is too wide loses its rightmost
@@ -352,33 +566,6 @@ try {
   fail("Header fit (scenario threw)", String(e.message || e).split("\n")[0].slice(0, 160));
 }
 
-// Sign-in / Sign-up must be reachable from the header at every width.
-try {
-  for (const w of [1920, 1440, 1024, 768, 390]) {
-    const page = await newPage(w, 840);
-    await page.goto(base + "/", { waitUntil: "networkidle" });
-    await page.waitForTimeout(500);
-    const seen = await page.evaluate(() => {
-      const vis = (el) => {
-        if (!el) return false;
-        const r = el.getBoundingClientRect();
-        return r.width > 0 && r.height > 0 && r.right <= document.documentElement.clientWidth + 1;
-      };
-      return {
-        signup: vis(document.querySelector(".navbar__signup")),
-        login: vis(document.querySelector(".navbar__login")),
-        toggle: vis(document.querySelector(".navbar__toggle")),
-      };
-    });
-    // Below 920px Login lives in the drawer, so the hamburger is what must show.
-    const ok = seen.signup && (seen.login || seen.toggle);
-    check(ok, `@${w}: sign-up is visible and sign-in is reachable`, JSON.stringify(seen));
-    await page.context().close();
-  }
-} catch (e) {
-  fail("Header auth entry points (scenario threw)", String(e.message || e).split("\n")[0].slice(0, 160));
-}
-
 // The PHP paths must not be swallowed by the React router.
 //
 // In production public_html/.htaccess passes ^(api|admin|uploads) through
@@ -420,8 +607,11 @@ try {
     // the path a real visitor on https takes. The execCommand fallback is what
     // runs without it, and the button has to work either way — so the copy is
     // asserted by reading the clipboard back, not by trusting the label.
-    permissions: ["clipboard-read", "clipboard-write"],
+    // Only Chromium lets Playwright grant these; Firefox and WebKit refuse the
+    // names, so there the read-back is attempted without a grant (below).
+    permissions: engine === "chromium" ? ["clipboard-read", "clipboard-write"] : [],
   });
+  ctx.setDefaultNavigationTimeout(30000);
   const page = await ctx.newPage();
   const errors = [];
   page.on("pageerror", (e) => errors.push(e.message));
@@ -482,8 +672,15 @@ try {
 
   await sheet.locator(".share-link__btn").click();
   await page.waitForTimeout(500);
-  const clip = await page.evaluate(() => navigator.clipboard.readText().catch(() => ""));
-  check(clip === base + "/gallery", "Copy link puts the address on the clipboard", clip || "(empty)");
+  const clip = await page.evaluate(() => navigator.clipboard.readText().catch(() => null));
+  if (engine === "chromium" || (clip !== null && clip !== "")) {
+    check(clip === base + "/gallery", "Copy link puts the address on the clipboard", clip || "(empty)");
+  } else {
+    // Without a grant the read-back is refused here, so what the visitor sees
+    // — the label, the live region and the toast, asserted next — is the
+    // evidence on this engine; the clipboard itself is proven on Chromium.
+    results.push({ ok: true, name: `Copy link: the clipboard cannot be read back on ${BROWSER} under Playwright (no clipboard-read grant) — proven on chromium; the label, live region and toast are asserted here`, detail: "" });
+  }
   // The site opens in Tamil, so the confirmation is asserted in either language.
   const COPIED = /copied|நகலெடுக்கப்பட்டது/i;
   check(COPIED.test(await sheet.locator(".share-link__btn").innerText()), "…and the button confirms it", await sheet.locator(".share-link__btn").innerText());
@@ -580,6 +777,7 @@ try {
 const clientIp = (n) => `10.71.${n}.${n}`;
 async function newClientPage(n, { width = 1440, height = 900, context } = {}) {
   const ctx = context ?? (await browser.newContext({ viewport: { width, height }, locale: "en-IN" }));
+  ctx.setDefaultNavigationTimeout(30000);
   // Only the site's own API calls, so no third-party request ever carries it.
   await ctx.route(`${base}/api/**`, (route) =>
     route.continue({ headers: { ...route.request().headers(), "x-forwarded-for": clientIp(n) } }),
@@ -900,12 +1098,15 @@ try {
 } catch (e) {
   fail("HTTP 429 messages (scenario threw)", String(e.message || e).split("\n")[0].slice(0, 200));
 }
+} // desktop-only scenarios
 
 await browser.close();
 
 const failed = results.filter((r) => !r.ok);
 for (const r of results) console.log(`${r.ok ? "✓" : "✗"} ${r.name}${r.detail ? " — " + r.detail : ""}`);
-console.log(`\n${results.length - failed.length}/${results.length} passed`);
+console.log(`\nbrowser ${BROWSER} ${browser.version()} · viewports ${viewportsUsed} · device ${MOBILE ? DEVICE_NAMES.join(", ") : "none"}`);
+console.log(`${results.length - failed.length}/${results.length} passed`);
+console.log(`${results.length - failed.length} passed, ${failed.length} failed`);
 const cleanup = results.filter((r) => r.cleanup).map((r) => r.cleanup);
 if (cleanup.length) console.log("CLEANUP:", cleanup.join(","));
 process.exit(failed.length ? 1 : 0);
