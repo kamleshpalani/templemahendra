@@ -275,7 +275,7 @@ async function main() {
   check(Number.isInteger(n1.id) && !n1.deduped && n1.skipped === null, "notify() creates a notification", JSON.stringify(n1));
   eq(["email", "whatsapp", "sms"].map((c) => n1.deliveries[c]?.status), ["queued", "queued", "queued"], "email, WhatsApp and SMS are queued for a family that agreed to updates");
   eq([n1.deliveries.inapp, n1.deliveries.push], [undefined, undefined], "the retired in-app and push channels are dropped before any rule");
-  eq(sql("SELECT channel FROM notification_deliveries WHERE notification_id = ? ORDER BY channel", [n1.id]).map((r) => r.channel), ["email", "sms", "whatsapp"], "exactly three delivery rows exist (NOTIFY_PUSH_DRIVER=test changes nothing)");
+  eq(sql("SELECT channel FROM notification_deliveries WHERE notification_id = ?", [n1.id]).map((r) => r.channel).sort(), ["email", "sms", "whatsapp"], "exactly three delivery rows exist (NOTIFY_PUSH_DRIVER=test changes nothing)");
   const row1 = one("SELECT * FROM notifications WHERE id = ?", [n1.id]);
   check(row1.deliver_after === null && row1.title.includes(NAME) && row1.lang === "ta", "the stored copy is rendered in the family's language and due now", JSON.stringify(row1));
   const w1 = worker([`--notification-ids=${n1.id}`, "--skip-reminders"]);
@@ -509,9 +509,9 @@ async function main() {
   check(saved.ok && saved.id, "the owner saves a draft", JSON.stringify(saved));
   const CID = saved.id;
   let tr = harness("campaign-transition", { id: CID, action: "submit", actor: owner });
-  check(tr.ok && tr.status === "review" && tr.message.includes("Reaches 600 devotees"), "600 devotees needs a second approval", JSON.stringify(tr));
+  check(tr.ok && tr.status === "review" && tr.message.includes("Reaches 600 families") && tr.message.includes("another owner"), "600 families needs a second approval by another owner", JSON.stringify(tr));
   let camp = harness("campaign-get", { id: CID }).campaign;
-  eq([camp.requires_approval, camp.estimated_count, camp.approval_reason, camp.submitted_by], [1, 600, "Reaches 600 devotees", owner.username], "the estimate and reason are stored");
+  eq([camp.requires_approval, camp.estimated_count, camp.approval_reason, camp.submitted_by], [1, 600, "Reaches 600 families", owner.username], "the estimate and reason are stored");
   tr = harness("campaign-transition", { id: CID, action: "approve", actor: editor });
   check(!tr.ok && tr.status === "review", "an editor cannot approve", JSON.stringify(tr));
   tr = harness("campaign-transition", { id: CID, action: "approve", actor: owner });
@@ -628,7 +628,9 @@ async function main() {
   eq([camp.status, camp.run_count, camp.recipient_count, camp.next_run_at], ["scheduled", 1, 2, "2031-02-28 04:30:00"], "after run 1 the next run is 28 February (clamped), same wall clock");
   worker([`--campaign-id=${rec.id}`, "--now=2031-02-28 05:00:00"]);
   camp = harness("campaign-get", { id: rec.id }).campaign;
-  eq([camp.status, camp.run_count, camp.recipient_count, camp.next_run_at], ["completed", 2, 4, null], "31 March is after recur_until, so run 2 is the last");
+  eq([camp.run_count, camp.recipient_count, camp.next_run_at], [2, 4, null], "31 March is after recur_until, so run 2 is the last");
+  worker([`--campaign-id=${rec.id}`, "--channels=none", "--now=2031-02-28 05:01:00"]);
+  eq(harness("campaign-get", { id: rec.id }).campaign.status, "completed", "…and once its emails are sent the campaign completes");
   eq(sql("SELECT run_no, COUNT(*) AS n FROM notifications WHERE campaign_id = ? GROUP BY run_no ORDER BY run_no", [rec.id]).map((r) => [r.run_no, r.n]), [[1, 2], [2, 2]], "each run reached both devotees once");
 
   const cancelCamp = harness("campaign-save", {
@@ -683,14 +685,15 @@ async function main() {
   const bookingReminders = () => sql(`SELECT n.entity_id, n.devotee_id, n.to_phone, n.dedupe_key, n.event FROM notifications n WHERE n.entity_type = 'seva_booking' AND n.entity_id IN (${bookingIds.map((b) => b.id).join(",")}) ORDER BY n.entity_id`);
   let br = bookingReminders();
   eq(br.map((r) => r.entity_id), confirmedIds, "one booking.reminder per confirmed booking, none for the pending one");
-  check(br[0].devotee_id === A && br[1].devotee_id === null && br[1].to_phone === "919812345676" && br.every((r) => r.event === "booking.reminder" && r.dedupe_key.endsWith(`:reminder:${tomorrow}`)), "the registered family's booking goes to the family and the guest booking to its phone (with the country code)", JSON.stringify(br));
+  check(br.every((r) => r.devotee_id === null) && br[0].to_phone === "919812345670" && br[1].to_phone === "919812345676" && br.every((r) => r.event === "booking.reminder" && r.dedupe_key.endsWith(`:reminder:${tomorrow}`)), "each reminder goes to the phone on the booking (a booking is not linked to a registration), the ten-digit one with the country code", JSON.stringify(br));
   const reminderCampaigns = () => sql("SELECT id, name, status, created_by, channels, priority, category, template_key, requires_approval, audience, JSON_UNQUOTE(JSON_EXTRACT(template_vars, '$.reminderKey')) AS rk FROM notification_campaigns WHERE JSON_UNQUOTE(JSON_EXTRACT(template_vars, '$.reminderKey')) IN (?, ?) ORDER BY id", [`event:${eventId}:${tomorrow}`, `pooja:${poojaId}:${tomorrow}`]);
   let rc = reminderCampaigns();
   eq(rc.length, 2, "one automatic campaign for the event and one for the pooja");
   const ev = rc.find((c) => c.rk.startsWith("event:"));
   eq(ev && [ev.name, ev.status, ev.created_by, ev.channels, ev.priority, ev.category, ev.template_key, ev.requires_approval],
     [`Reminder: ${NAME} event (automatic)`, "review", "system", "email,whatsapp", "normal", "event", "event_reminder", 1], "the event reminder campaign is made by the system, by email and WhatsApp, and waits for approval");
-  check(show(JSON.parse(ev.audience).rules) === show([{ field: "consent", op: "is", value: true }]), "its audience is the families who agreed to updates", ev.audience);
+  const evRules = JSON.parse(ev.audience).rules;
+  check(evRules.length === 1 && evRules[0].field === "consent" && evRules[0].op === "is" && evRules[0].value === true, "its audience is the families who agreed to updates", ev.audience);
   eq(rc.find((c) => c.rk.startsWith("pooja:"))?.template_key, "pooja_reminder", "the pooja reminder uses pooja_reminder");
   w = worker([...reminderFlags, "--now=2031-07-14 12:20:00"]);
   br = bookingReminders();
