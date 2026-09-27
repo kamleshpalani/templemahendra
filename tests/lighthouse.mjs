@@ -118,10 +118,27 @@ try {
 
   /* ── 3. Lighthouse ──────────────────────────────────────────────────────── */
   process.env.CHROME_PATH ||= chromium.executablePath();
-  chrome = await chromeLauncher.launch({
-    chromePath: process.env.CHROME_PATH,
-    chromeFlags: ["--headless=new", "--no-sandbox", "--disable-gpu", "--no-first-run", "--disable-dev-shm-usage"],
-  });
+  // Chrome is started here rather than by chrome-launcher: on Windows its
+  // random-port handshake times out against Playwright's Chromium (the port
+  // never answers), while the same binary started with an explicit port and
+  // profile folder is ready in a second. LH_CHROME_PORT picks the port.
+  const chromePort = Number(process.env.LH_CHROME_PORT || 9333);
+  const profile = resolve(REPO, ".lighthouse-dist", ".chrome-profile");
+  mkdirSync(profile, { recursive: true });
+  const proc = spawn(process.env.CHROME_PATH, [
+    "--headless=new", "--no-sandbox", "--disable-gpu", "--no-first-run", "--no-default-browser-check",
+    "--disable-dev-shm-usage", `--remote-debugging-port=${chromePort}`, `--user-data-dir=${profile}`, "about:blank",
+  ], { stdio: "ignore" });
+  let ready = false;
+  for (let i = 0; i < 60 && !ready; i++) {
+    try { ready = (await fetch(`http://127.0.0.1:${chromePort}/json/version`)).ok; } catch { await new Promise((r) => setTimeout(r, 250)); }
+  }
+  if (!ready) { proc.kill(); throw new Error(`Chrome did not open its debugging port ${chromePort}`); }
+  chrome = {
+    port: chromePort,
+    kill: async () => { try { proc.kill(); } catch { /* already gone */ } },
+  };
+  void chromeLauncher; // kept as a dependency of lighthouse itself
   console.log(`▶ Chrome ${process.env.CHROME_PATH} on port ${chrome.port}`);
   console.log(`▶ routes ${ROUTES.join(" ")} · presets ${PRESETS.join(", ")} · base ${base}`);
   mkdirSync(REPORTS, { recursive: true });

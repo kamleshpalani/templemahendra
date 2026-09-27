@@ -130,6 +130,17 @@ export default defineConfig({
         target: proxyTarget,
         changeOrigin: true,
       },
+      // Served by PHP (backend/router.php locally, the root .htaccess rewrite
+      // in production): a crawler — and Lighthouse's SEO audit — must get the
+      // real files, never index.html.
+      "/robots.txt": {
+        target: proxyTarget,
+        changeOrigin: true,
+      },
+      "/sitemap.xml": {
+        target: proxyTarget,
+        changeOrigin: true,
+      },
     },
   },
 });

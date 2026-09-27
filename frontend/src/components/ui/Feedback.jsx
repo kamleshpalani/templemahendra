@@ -6,7 +6,8 @@ import Button from "./Button";
  * EmptyState — "nothing here yet" with an optional action.
  *   <EmptyState icon={<LuCalendar />} title="No upcoming events">…</EmptyState>
  */
-export function EmptyState({ icon, title, children, action, compact = false, tone, className = "" }) {
+export function EmptyState({ icon, title, children, action, compact = false, tone, className = "", headingLevel = 3 }) {
+  const Heading = headingLevel === 2 ? "h2" : headingLevel === 4 ? "h4" : "h3";
   return (
     <div
       className={`empty-state${compact ? " empty-state--compact" : ""}${tone === "error" ? " empty-state--error" : ""} ${className}`.trim()}
@@ -15,7 +16,7 @@ export function EmptyState({ icon, title, children, action, compact = false, ton
       <span className="empty-state__icon" aria-hidden="true">
         {icon ?? <LuFlame />}
       </span>
-      {title && <h3 className="empty-state__title">{title}</h3>}
+      {title && <Heading className="empty-state__title">{title}</Heading>}
       {children && <p>{children}</p>}
       {action && <div className="empty-state__actions">{action}</div>}
     </div>

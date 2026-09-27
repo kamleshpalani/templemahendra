@@ -246,6 +246,7 @@ export default function LiveDarshan() {
             <EmptyState
               icon={<LuTv />}
               className="live-empty"
+              headingLevel={2}
               title={t("அந்த தரிசனம் கிடைக்கவில்லை", "That darshan was not found")}
               action={
                 <Button to="/live-darshan" variant="primary" size="sm" icon={<LuTv aria-hidden="true" />}>
@@ -264,6 +265,7 @@ export default function LiveDarshan() {
             <EmptyState
               icon={<LuTv />}
               className="live-empty"
+              headingLevel={2}
               title={t("இப்போது நேரடி தரிசனம் எதுவும் திட்டமிடப்படவில்லை", "No live darshan is scheduled right now")}
               action={
                 <>

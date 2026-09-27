@@ -278,7 +278,9 @@ async function coreScenarios() {
     const after = await page.evaluate(() => document.documentElement.lang);
     check(before === "ta" && after === "en", `language toggle switches <html lang>${tag}`, `${before} → ${after}`);
     // The desktop row is hidden below 1024; the drawer carries the same links.
-    const navText = device ? await page.locator(".drawer__nav").innerText() : await page.locator(".navbar__nav").innerText();
+    // The drawer is closed here, so its (hidden) text is read with textContent:
+    // innerText of hidden content is empty, which says nothing about the language.
+    const navText = device ? await page.locator(".drawer__nav").textContent() : await page.locator(".navbar__nav").innerText();
     check(/Home/.test(navText), `language toggle re-renders navigation in English${tag}`);
     await page.context().close();
   } catch (e) { fail(`Language toggle (scenario threw)${tag}`, String(e.message || e).split("\n")[0].slice(0, 160)); }
@@ -497,6 +499,20 @@ async function coreScenarios() {
     check((await page.locator(".chatbot__window").count()) === 0, `chatbot: Escape closes window${tag}`);
     await page.context().close();
   } catch (e) { fail(`Chatbot round-trip (rule-based fallback on the backend) (scenario threw)${tag}`, String(e.message || e).split("\n")[0].slice(0, 160)); }
+}
+
+// The core scenarios submit the contact, donation and seva forms from the
+// loopback address itself (the preview proxies /api to PHP without an
+// X-Forwarded-For), so their flood-limit buckets are the loopback's. A second
+// run within the hour — another browser, the mobile pass — would otherwise be
+// refused with 429 by the first one. Reset them, as the launch fixes below do
+// for their own clients.
+try {
+  const loop = ["%:127.0.0.1", "%:::1"];
+  const r = sql("DELETE FROM rate_limits WHERE (bucket LIKE ? OR bucket LIKE ?) AND bucket NOT LIKE 'chat%'", loop);
+  pass("core scenarios: the loopback client's form buckets reset", `${r.affected} row(s)`);
+} catch (e) {
+  fail("core scenarios: resetting the loopback client's buckets (set PHP_BIN)", String(e.message || e).slice(0, 160));
 }
 
 if (!MOBILE) {
