@@ -338,9 +338,9 @@ async function suite(A, H, P) {
   /* ── Tracking links ───────────────────────────────────────────────── */
   section("Tracked clicks");
   const t = new Client("tracker", IP.track); // no session: links are opened from an inbox
-  const tExternal = seed("t-ext", { devotee_id: A.id, category: "event", title: "E2E-NAPI Darshan", body: "Timings.", cta_url: "https://example.org/darshan?x=1" });
-  const tLocal = seed("t-local", { devotee_id: A.id, category: "event", title: "E2E-NAPI Sevas", body: "Book.", cta_url: "/sevas" });
-  const tNone = seed("t-none", { devotee_id: A.id, category: "event", title: "E2E-NAPI No link", body: "Nothing to open." });
+  const tExternal = seed("t-ext", { devotee_id: A.id, category: "event", title: "E2E-NAPI Darshan", body: "Timings.", cta_url: "https://example.org/darshan?x=1", sync: true }, { NOTIFY_EMAIL_DRIVER: "test", NOTIFY_ALLOW_TEST_DRIVER: "1" });
+  const tLocal = seed("t-local", { devotee_id: A.id, category: "event", title: "E2E-NAPI Sevas", body: "Book.", cta_url: "/sevas", sync: true }, { NOTIFY_EMAIL_DRIVER: "test", NOTIFY_ALLOW_TEST_DRIVER: "1" });
+  const tNone = seed("t-none", { devotee_id: A.id, category: "event", title: "E2E-NAPI No link", body: "Nothing to open.", sync: true }, { NOTIFY_EMAIL_DRIVER: "test", NOTIFY_ALLOW_TEST_DRIVER: "1" });
   const emailSend = seed(
     "t-email",
     { devotee_id: A.id, channels: ["email"], category: "booking", priority: "important", title: "E2E-NAPI Email", body: "An email.", cta_url: "/sevas", sync: true },
@@ -351,7 +351,7 @@ async function suite(A, H, P) {
   const dLocal = tLocal.deliveries?.email?.id;
   const dNone = tNone.deliveries?.email?.id;
   const dEmail = emailSend.deliveries?.email?.id;
-  check([dExt, dLocal, dNone, dEmail].every((x) => Number.isInteger(x) && x > 0), "each consenting family's news has an email delivery", JSON.stringify([dExt, dLocal, dNone, dEmail]));
+  check([dExt, dLocal, dNone, dEmail].every((x) => Number.isInteger(x) && x > 0) && [tExternal, tLocal, tNone].every((n) => n.deliveries?.email?.status === "sent"), "each consenting family's news was emailed (test driver)", JSON.stringify([dExt, dLocal, dNone, dEmail]));
   const tk = tokens({ ext: ["c", dExt], local: ["c", dLocal], none: ["c", dNone], open: ["o", dEmail], openAsClick: ["o", dExt], unsub: ["u", A.id], unsubPhone: ["u", P.id], ghost: ["u", 3999999999] });
 
   r = await t.get(`/api/n/c/${tk.ext}`);
@@ -414,7 +414,7 @@ async function suite(A, H, P) {
   check(r.status === 200 && /^text\/html/.test(r.headers.get("content-type") ?? ""), "GET shows a page", `status ${r.status}`);
   check(/<form method="post" action="\/api\/n\/u\//.test(r.text) && /<button type="submit"/.test(r.text), "with a POST button");
   check(r.text.includes("Stop temple updates?") && r.text.includes("கோயில் அறிவிப்புகளை நிறுத்தவா?"), "in both languages");
-  check(r.text.includes("Messages about your own seva bookings and donations") && r.text.includes("call the temple office"), "saying booking and donation messages keep coming, and that the office is the way back");
+  check(r.text.includes("Messages about your own seva bookings and donations") && /call the temple office/i.test(r.text), "saying booking and donation messages keep coming, and that the office is the way back");
   check(r.text.includes("e***@example.test") && !r.text.includes(A.email), "naming the address only in masked form");
   check(!/<script/i.test(r.text) && !r.text.includes("/account"), "with no JavaScript and no account page");
   check(/default-src 'none'/.test(r.headers.get("content-security-policy") ?? ""), "under a strict Content-Security-Policy");
@@ -444,7 +444,7 @@ async function suite(A, H, P) {
   check(r.status === 200 && unsubAt() !== null, "an RFC 8058 one-click POST (multipart, no cookies) unsubscribes", `status ${r.status}`);
 
   r = await t.get(`/api/n/u/${tk.unsubPhone}`);
-  check(r.status === 200 && r.text.includes("******0033") && !r.text.includes("919876500033"), "a registration without an email is named by its masked phone", r.text.match(/\(([^)]*0033[^)]*)\)/)?.[1] ?? "");
+  check(r.status === 200 && r.text.includes("••••••0033") && !r.text.includes("919876500033") && !r.text.includes("98765 00033"), "a registration without an email is named by its masked phone", r.text.match(/\(([^)]*0033[^)]*)\)/)?.[1] ?? "");
   r = await t.get(`/api/n/u/${badSig.replace(/^c/, "u")}`);
   check(r.status === 404 && /^text\/html/.test(r.headers.get("content-type") ?? "") && r.text.includes("This link is not valid"), "a bad unsubscribe token gets a page saying so (404)", `status ${r.status}`);
   r = await t.req("POST", `/api/n/u/${badSig.replace(/^c/, "u")}`, undefined, { raw: "List-Unsubscribe=One-Click", headers: { "Content-Type": "application/x-www-form-urlencoded" } });
