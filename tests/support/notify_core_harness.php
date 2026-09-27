@@ -128,10 +128,10 @@ try {
                 $rows = [];
                 $params = [];
                 for ($i = $start; $i < min($count, $start + 200); $i++) {
-                    $rows[] = '(?, ?, NULL, ?, ?, ?, ?, ?, ?)';
-                    array_push($params, 'E2E Bulk ' . $i, $prefix . $i . '@example.test', $country, 'TN', 'Pudupatti', $hash, !empty($args['verified']) ? $now : null, $now);
+                    $rows[] = '(?, ?, NULL, ?, ?, ?, ?, ?, ?, ?)';
+                    array_push($params, 'E2E Bulk ' . $i, $prefix . $i . '@example.test', $country, 'TN', 'Pudupatti', $hash, !empty($args['verified']) ? $now : null, !empty($args['consent']) ? $now : null, $now);
                 }
-                $db->prepare('INSERT INTO devotees (name, email, phone, country, state, city, pass_hash, email_verified_at, created_at) VALUES ' . implode(', ', $rows))
+                $db->prepare('INSERT INTO devotees (name, email, phone, country, state, city, pass_hash, email_verified_at, updates_consent_at, created_at) VALUES ' . implode(', ', $rows))
                    ->execute($params);
             }
             $like = addcslashes($prefix, '%_\\') . '%';
