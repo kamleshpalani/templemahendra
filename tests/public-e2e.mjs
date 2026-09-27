@@ -410,7 +410,7 @@ async function coreScenarios() {
     check(await page.locator('[role="dialog"]').count() === 0, `Escape closes modal after success${tag}`);
     check(page.errors().length === 0, `sevas flow: no console errors${tag}`, page.errors().slice(0, 2).join(" | "));
     await page.context().close();
-    results.push({ ok: true, name: `booking created as ${stamp} (clean up in DB)`, detail: stamp, cleanup: stamp });
+    results.push({ ok: true, name: `booking created as ${stamp}`, detail: stamp, cleanup: stamp });
   } catch (e) { fail(`Seva booking modal: focus trap, validation, real submission (scenario threw)${tag}`, String(e.message || e).split("\n")[0].slice(0, 160)); }
 
   // Contact form
@@ -792,7 +792,11 @@ try {
    within the hour starts from the same place. */
 const clientIp = (n) => `10.71.${n}.${n}`;
 async function newClientPage(n, { width = 1440, height = 900, context } = {}) {
-  const ctx = context ?? (await browser.newContext({ viewport: { width, height }, locale: "en-IN" }));
+  // No service worker in these contexts: once it controls the page, WebKit
+  // sends the page's fetches past page.route(), so a stubbed answer (the 429
+  // scenario) never applies and the form really posts to the API. The
+  // service worker itself is covered by tests/pwa.mjs.
+  const ctx = context ?? (await browser.newContext({ viewport: { width, height }, locale: "en-IN", serviceWorkers: "block" }));
   ctx.setDefaultNavigationTimeout(30000);
   // Only the site's own API calls, so no third-party request ever carries it.
   await ctx.route(`${base}/api/**`, (route) =>
@@ -1118,11 +1122,27 @@ try {
 
 await browser.close();
 
+// The booking, message and donation the core scenarios really submitted, and
+// anything the 429 scenario posted had a stub been bypassed, are removed with
+// the thank-you notifications queued for them (deliveries cascade).
+{
+  const names = [...results.filter((r) => r.cleanup).map((r) => r.cleanup), "E2E-LIMIT"];
+  try {
+    const marks = names.map(() => "?").join(",");
+    sql(`DELETE FROM notifications WHERE entity_type = 'seva_booking' AND entity_id IN (SELECT id FROM (SELECT id FROM seva_bookings WHERE devotee_name IN (${marks})) AS b)`, names);
+    sql(`DELETE FROM notifications WHERE entity_type = 'donation' AND entity_id IN (SELECT id FROM (SELECT id FROM donations WHERE name IN (${marks})) AS d)`, names);
+    const removed = ["seva_bookings WHERE devotee_name", "contact_messages WHERE name", "donations WHERE name"]
+      .reduce((n, t) => n + sql(`DELETE FROM ${t} IN (${marks})`, names).affected, 0);
+    const created = results.filter((r) => r.cleanup).length;
+    check(removed === created, "cleanup: every submitted test record removed, nothing else", `${removed} of ${created} row(s)`);
+  } catch (e) {
+    fail("cleanup: removing submitted test records (set PHP_BIN)", String(e.message || e).slice(0, 160));
+  }
+}
+
 const failed = results.filter((r) => !r.ok);
 for (const r of results) console.log(`${r.ok ? "✓" : "✗"} ${r.name}${r.detail ? " — " + r.detail : ""}`);
 console.log(`\nbrowser ${BROWSER} ${browser.version()} · viewports ${viewportsUsed} · device ${MOBILE ? DEVICE_NAMES.join(", ") : "none"}`);
 console.log(`${results.length - failed.length}/${results.length} passed`);
 console.log(`${results.length - failed.length} passed, ${failed.length} failed`);
-const cleanup = results.filter((r) => r.cleanup).map((r) => r.cleanup);
-if (cleanup.length) console.log("CLEANUP:", cleanup.join(","));
 process.exit(failed.length ? 1 : 0);

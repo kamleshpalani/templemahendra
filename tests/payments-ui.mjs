@@ -56,6 +56,7 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(HERE, "..");
 const FRONTEND = resolve(ROOT, "frontend");
 const { chromium } = createRequire(import.meta.url)("../frontend/node_modules/playwright/index.js");
+import { ccavEncrypt, ccavDecrypt } from "./support/ccavenue_crypto.mjs";
 const axeSource = readFileSync(resolve(FRONTEND, "node_modules/axe-core/axe.min.js"), "utf8");
 
 const PHP_BIN = process.env.PHP_BIN || "php";
@@ -510,6 +511,69 @@ async function closedState() {
   check((await page.locator('.page-hero a[href="/donate"]').count()) === 0, "off: /donations hero has no Donate-online action");
   check(page.errors().length === 0, "off: no console errors", page.errors().slice(0, 2).join(" | "));
   await page.context().close();
+}
+
+/**
+ * The simulator's server API over HTTP (POST /api/payments/simulator/api),
+ * the endpoint a verification or a refund reaches when the site runs in
+ * simulator mode: the paid order from the success scenario is looked up the
+ * way CCAvenue's orderStatusTracker answers, and every refusal is its own code.
+ */
+async function simulatorServerApi() {
+  const KEY = "simulator-working-key-not-secret"; // PAY_SIMULATOR_DEV_KEY: no PAYMENTS_SIMULATOR_KEY is set here
+  const URL_API = `${PHP_BASE}/api/payments/simulator/api`;
+  const post = async (fields) => {
+    const res = await fetch(URL_API, { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" }, body: new URLSearchParams(fields).toString() });
+    return { status: res.status, type: res.headers.get("content-type") ?? "", cache: res.headers.get("cache-control") ?? "", body: Object.fromEntries(new URLSearchParams(await res.text())) };
+  };
+  const ask = (payload, command = "orderStatusTracker", access_code = "SIMULATORACCESS") =>
+    post({ access_code, command, request_type: "JSON", response_type: "JSON", version: "1.2", enc_request: ccavEncrypt(JSON.stringify(payload), KEY) });
+  const open = (r) => { try { return JSON.parse(ccavDecrypt(r.body.enc_response ?? "", KEY) ?? "null"); } catch { return null; } };
+
+  const get = await fetch(URL_API);
+  check(get.status === 405 && get.headers.get("allow") === "POST", "simulator API: GET → 405, Allow: POST", `${get.status} ${get.headers.get("allow")}`);
+
+  const paid = sql(
+    "SELECT t.order_id, t.tracking_id, t.amount, t.currency FROM payment_transactions t JOIN donations d ON t.payable_type = 'donation' AND t.payable_id = d.id WHERE d.name = ? AND t.status = 'SUCCESS' AND t.environment = 'simulator' ORDER BY t.id DESC LIMIT 1",
+    [DONOR],
+  )[0];
+  check(!!paid, "simulator API: the success scenario left a paid simulator order to ask about", JSON.stringify(paid));
+  if (!paid) return;
+
+  let r = await ask({ order_no: paid.order_id });
+  let a = open(r);
+  check(r.status === 200 && r.body.status === "0" && r.body.enc_error_code === "" && r.type.includes("text/plain") && r.cache.includes("no-store"), "simulator API: orderStatusTracker → status=0, encrypted answer, not cached", JSON.stringify({ s: r.status, b: r.body.status, t: r.type, c: r.cache }));
+  check(a?.order_no === paid.order_id && a?.order_status === "Successful" && a?.reference_no === paid.tracking_id && Number(a?.order_amt) === Number(paid.amount) && a?.order_currncy === paid.currency, "simulator API: the paid order answers Successful with its reference, amount and currency", JSON.stringify(a));
+
+  r = await ask({ reference_no: paid.tracking_id });
+  a = open(r);
+  check(a?.order_no === paid.order_id && a?.order_status === "Successful", "simulator API: the same order found by its CCAvenue reference", JSON.stringify(a));
+
+  r = await ask({ order_no: "DON-19990101-00000000" });
+  a = open(r);
+  check(r.body.status === "0" && a?.status === 1 && a?.error_code === "51419", "simulator API: an unknown order → 51419 No records found", JSON.stringify(a));
+
+  r = await ask({ order_no: paid.order_id }, "orderStatusTracker", "WRONGACCESS");
+  check(r.body.status === "1" && r.body.enc_error_code === "51407" && !r.body.enc_response?.includes(paid.order_id), "simulator API: a wrong access code → 51407 and nothing about the order", JSON.stringify(r.body));
+
+  r = await post({ access_code: "SIMULATORACCESS", command: "orderStatusTracker", enc_request: "00zz" });
+  check(r.body.status === "1" && r.body.enc_error_code === "-1", "simulator API: an unreadable request → -1 Invalid Request", JSON.stringify(r.body));
+
+  r = await ask({ order_no: paid.order_id }, "deleteOrder");
+  check(r.body.status === "1" && r.body.enc_error_code === "51410", "simulator API: an unknown command → 51410", JSON.stringify(r.body));
+
+  // Refunds: never more than was paid; the .13 amount is the simulated refusal.
+  const refund = async (amount) => open(await ask({ reference_no: paid.tracking_id, refund_amount: amount, refund_ref_no: `E2E-${RUN}` }, "refundOrder"))?.Refund_Order_Result;
+  const over = await refund((Number(paid.amount) + 1).toFixed(2));
+  check(over?.refund_status === 1 && over?.error_code === "52020", "simulator API: a refund above the paid amount → 52020", JSON.stringify(over));
+  const refused = await refund("10.13");
+  check(refused?.refund_status === 1 && refused?.reason === "Simulated refusal", "simulator API: the .13 amount is refused (the simulated refusal)", JSON.stringify(refused));
+  const ok = await refund("10.00");
+  check(ok?.refund_status === 0, "simulator API: a refund within the paid amount is accepted", JSON.stringify(ok));
+  const unknown = open(await ask({ reference_no: "000000000000", refund_amount: "1.00" }, "refundOrder"))?.Refund_Order_Result;
+  check(unknown?.refund_status === 1 && unknown?.error_code === "51419", "simulator API: a refund for an unpaid reference → 51419", JSON.stringify(unknown));
+  const after = sql("SELECT status FROM payment_transactions WHERE order_id = ?", [paid.order_id])[0];
+  check(after?.status === "SUCCESS", "simulator API: asking changes nothing on the site's own record", JSON.stringify(after));
 }
 
 async function donationsPage() {
@@ -1294,6 +1358,7 @@ try {
   await scenario("donations", "/donations with payments on", donationsPage);
   await scenario("purpose", "Step 1", purposeStep);
   await scenario("success", "Success flow", successFlow);
+  await scenario("simapi", "Simulator server API", simulatorServerApi);
   await scenario("decline", "Decline and retry", declineAndRetry);
   await scenario("cancel", "Cancel", cancelKeepsDraft);
   await scenario("awaited", "Awaited", awaitedThenConfirmed);

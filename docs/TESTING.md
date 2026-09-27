@@ -53,7 +53,7 @@ rehearsal. Full detail per gateway: `docs/CCAvenue-INTEGRATION.md`,
 | E2E-002 | English renders correctly | Covered | `public-e2e.mjs` — `language toggle re-renders navigation in English`, `language: English survives a reload / a full navigation / an in-app navigation` |
 | E2E-003 | Tamil renders correctly | Covered | `public-e2e.mjs` — `language: a first visit opens in Tamil`, `a fresh browser context starts in Tamil`; Tamil round-trips in `brief-e2e.mjs` (`pooja row stored with Tamil name intact`, `the event is public with Tamil intact`), `registration-api.mjs`, `live-api.mjs` |
 | E2E-004 | Language switching works | Covered | `public-e2e.mjs` — `language toggle switches <html lang>`, `the choice is stored as temple:lang`, `switching in one tab updates the other` |
-| E2E-005 | Announcement displays | Covered | `brief-e2e.mjs` — `E2E-020 the announcement is in the public feed` (`/api/announcements`); rendering: `public-e2e.mjs` Home route checks |
+| E2E-005 | Announcement displays | Covered | `brief-e2e.mjs` — `E2E-020 the announcement is in the public feed` (`/api/announcements`); `public-content-ui.mjs` — `E2E-020 (en)` / `(ta): today's notice is in the home page's notice band by its title`, the band labelled for screen readers, its scrolling copy hidden from them |
 | E2E-006 | Upcoming pooja displays | Covered | `brief-e2e.mjs` — `E2E-006 an upcoming pooja is shown and every date is today or later` (`/api/homepage_widgets`) |
 | E2E-007 | Expired pooja is excluded | Covered | `brief-e2e.mjs` — `E2E-007 the expired Pournami is not shown as upcoming` (a calendar card still linked to a past pooja); since migration 024 also `a manual card linked to a past pooja never publishes it` (D-027) |
 | E2E-008 | Next pooja automatically selected | Covered | `brief-e2e.mjs` — `E2E-008 the stale calendar card was re-pointed at the next valid Pournami-first pooja` (compared with the ordering rule in `api/homepage_widgets.php`); `a second stale calendar card is re-pointed as well` |
@@ -68,7 +68,7 @@ rehearsal. Full detail per gateway: `docs/CCAvenue-INTEGRATION.md`,
 | E2E-017 | Admin creates event | Covered | `brief-e2e.mjs` — `E2E-017 admin created an event`, `an event without a date is refused`; `content-bilingual.mjs` — event create with type, featured, last day, times, venue, picture and bilingual description, eight validation refusals |
 | E2E-018 | Event displays publicly | Covered | `brief-e2e.mjs` — `E2E-018 the event is public with Tamil intact` (`/api/events?upcoming=1`); `public-e2e.mjs` events filtering; `content-bilingual.mjs` — `?upcoming` / `?past` / `?featured` / `?type`, `GET /api/events/{id}` 200 / 404, the `/events/<id>` preview, status and sitemap entry |
 | E2E-019 | Admin creates announcement | Covered | `brief-e2e.mjs` — `E2E-019 admin created an announcement`, `an announcement without a title is refused`; `content-bilingual.mjs` — create / edit / hide / delete in both languages with a publish window |
-| E2E-020 | Announcement appears on homepage | Partial | API feed asserted (`brief-e2e.mjs` E2E-020; `content-bilingual.mjs` proves future, expired and hidden notices stay out of `/api/announcements`); the homepage's rendering of a specific new announcement in the browser is not asserted by title (Home is checked structurally in `public-e2e.mjs`; `cms-settings.mjs` does not touch announcements) |
+| E2E-020 | Announcement appears on homepage | Covered | `public-content-ui.mjs` — a notice published today reaches the home page through the real `/api/announcements?limit=3`: `E2E-020 (en): today's notice is in the home page's notice band by its title`, the same in Tamil, and `the hidden, future and expired notices are not on the page`; the feed itself in `brief-e2e.mjs` (E2E-020) and `content-bilingual.mjs` (future, expired and hidden notices stay out) |
 | E2E-021 | Gallery image upload | Covered | `brief-e2e.mjs` — `E2E-021 stored under a random name with the decoded type's extension`, `file is on disk`, `the stored name never comes from the upload`; `gallery.mjs` — uploads of a GD-drawn PNG and JPEG stored under a random name with 480 px thumb and 1280 px medium copies (WebP where GD can write it, else JPEG; never upscaled) |
 | E2E-022 | Gallery image displays | Covered | `brief-e2e.mjs` — `E2E-022 the photo is in the public gallery feed`, `the photo is served as an image`; `public-e2e.mjs` `/gallery` route checks; `gallery.mjs` — `/api/gallery` and `/api/gallery/albums` shapes, `?album=`, `?limit=`, hidden photos / albums left out |
 | E2E-023 | Invalid gallery upload rejected | Covered | `brief-e2e.mjs` — `E2E-023 a PHP file with an image name and MIME is refused`, `an unsupported image type is refused`, `refused uploads created no rows`; `uploads never execute PHP`; `gallery.mjs` — disguised PHP and GIF refused, junk parameters 422 |
@@ -109,9 +109,12 @@ rehearsal. Full detail per gateway: `docs/CCAvenue-INTEGRATION.md`,
 | §22 | Alt text on gallery images | Covered | `gallery.mjs` — `alt_ta` / `alt_en` on every photo and on an album's cover, per-photo edit of caption / alt text / album / shown; the single-language caption stays the fallback |
 | §34 | Image loading (thumbnails) | Covered | `gallery.mjs` — 480 px thumb and 1280 px medium copies made with GD (WebP, or JPEG on a GD without it; never upscaled), `thumb_url` / `medium_url` / `width` / `height` in `/api/gallery`, `?limit=` for the homepage strip, delete removes all three files |
 
-Totals: 54 of the numbered cases covered (10 of them against local
-simulators), 1 partial (E2E-020), 0 gaps; the four unnumbered §22 / §32 / §34
-rows are covered (one simulated).
+Totals: all 55 numbered cases covered (10 of them against local
+simulators), 0 partial, 0 gaps; the four unnumbered §22 / §32 / §34 rows are
+covered (one simulated). `node tests/coverage-audit.mjs` holds this: it fails
+when a case here is not Covered, and when an API route, an admin page or a
+page of the site (read from `backend/api/index.php`, `backend/admin/` and
+`frontend/src/App.jsx`) is requested by no suite.
 
 ## Running the §30 set
 

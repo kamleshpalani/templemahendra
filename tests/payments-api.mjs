@@ -432,6 +432,8 @@ try {
   check(r.status === 404, "an unknown payments route → 404");
   r = await http("POST", "/api/payments/simulator", { form: { encRequest: "00", access_code: "x" }, ip: IP.methods });
   check(r.status === 404, "the simulator route answers 404 in TEST mode");
+  r = await http("POST", "/api/payments/simulator/api", { form: { enc_request: "00", access_code: "SIMULATORACCESS", command: "orderStatusTracker" }, ip: IP.methods });
+  check(r.status === 404, "the simulator's server API answers 404 in TEST mode too");
   r = await http("GET", "/api/payments-cron", { ip: IP.methods });
   check(r.status === 404, "the HTTP cron is off without PAYMENTS_CRON_KEY → 404");
 

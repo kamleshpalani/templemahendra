@@ -2,7 +2,8 @@
  * tests/public-content-ui.mjs — the public content pages in a real browser
  * (brief §6 Pooja / Seva, Events and Home; §7 Tamil; §23 accessibility;
  * §24 360 / 1366; §30 E2E-006 upcoming pooja, E2E-007 expired pooja excluded,
- * E2E-009 / 010 sponsor with and without consent, E2E-018 event displays;
+ * E2E-009 / 010 sponsor with and without consent, E2E-018 event displays,
+ * E2E-005 / 020 announcement on the homepage;
  * defect D-026 the events page's idea of "today").
  *
  *   PHP_BIN=/path/to/php node tests/public-content-ui.mjs
@@ -39,11 +40,15 @@
  *            the gallery strip shows the seeded photographs with their alt
  *            text, lazily loaded, each linking to /gallery?photo=<id>, and is
  *            absent when the gallery answers nothing.
+ *   /        E2E-005 / 020: a notice published today is in the home page's
+ *            notice band by its title, in English and in Tamil, the second
+ *            (scrolling) copy hidden from screen readers; a notice not yet
+ *            due, one past its end date and one switched off are never shown.
  *   /donate  ?pooja=<id> names the pooja from /api/poojas.
  *   axe on /sevas and /events at 360 and 1366, no horizontal overflow, no
  *   console errors on any page.
  *
- * Data: poojas, sponsors, sevas, events and gallery rows named
+ * Data: poojas, sponsors, sevas, events, announcements and gallery rows named
  * "E2E-PUBUI-<run> …" with real PNG files under backend/uploads/, written
  * through tests/support/live_fixtures.php `sql` and removed in `finally`
  * (only rows of this prefix, never by id). The home page's featured-seva and
@@ -295,6 +300,7 @@ function cleanup() {
   del("sevas", "DELETE FROM sevas WHERE name_en LIKE ?", ["E2E-PUBUI-%"]);
   del("events", "DELETE FROM events WHERE title_en LIKE ?", ["E2E-PUBUI-%"]);
   del("gallery", "DELETE FROM gallery WHERE caption LIKE ?", ["E2E-PUBUI-%"]);
+  del("announcements", "DELETE FROM announcements WHERE title_en LIKE ?", ["E2E-PUBUI-%"]);
   let files = 0;
   for (const name of readdirSync(UPLOADS)) {
     if (name.startsWith(FILE_PREFIX) && name.endsWith(".png")) {
@@ -781,6 +787,53 @@ async function homePage() {
   await empty.context().close();
 }
 
+/**
+ * E2E-005 / E2E-020: a notice the committee publishes today reaches the home
+ * page's notice band through the real /api/announcements; the three that must
+ * not (not yet due, past its end date, switched off) never do.
+ */
+async function homeAnnouncements() {
+  section("/ — announcements (E2E-005, E2E-020)");
+  const notice = (key, ta, active, start, end) => {
+    const en = `${PREFIX} ${key} notice`;
+    sql(
+      "INSERT INTO announcements (title, title_ta, title_en, body, body_ta, body_en, start_date, end_date, is_active) VALUES (?, ?, ?, NULL, NULL, NULL, ?, ?, ?)",
+      [en, `${ta} ${RUN}`, en, start, end, active],
+    );
+    return { id: idOf("announcements", "title_en", en), en, ta: `${ta} ${RUN}` };
+  };
+  const hidden = notice("Hidden", "மறைக்கப்பட்ட அறிவிப்பு", 0, null, null);
+  const future = notice("Future", "வரவிருக்கும் அறிவிப்பு", 1, addDays(TODAY, 3), null);
+  const expired = notice("Expired", "காலாவதியான அறிவிப்பு", 1, addDays(TODAY, -10), addDays(TODAY, -1));
+  const today = notice("Today", "இன்றைய அறிவிப்பு", 1, TODAY, addDays(TODAY, 7));
+  check([hidden, future, expired, today].every((n) => n.id > 0), "four notices were written", JSON.stringify([hidden.id, future.id, expired.id, today.id]));
+
+  const feed = await fetch(`${PHP_BASE}/api/announcements?limit=3`).then((r) => r.json());
+  const ids = (Array.isArray(feed) ? feed : []).map((a) => a.id);
+  check(ids[0] === today.id, "/api/announcements?limit=3 (the home page's request) leads with today's notice", JSON.stringify(ids));
+  check(![hidden, future, expired].some((n) => ids.includes(n.id)), "the API leaves out the hidden, future and expired notices", JSON.stringify(ids));
+
+  for (const lang of ["en", "ta"]) {
+    const page = await newPage({ width: lang === "en" ? 1366 : 390, height: 900, lang });
+    await page.goto(`${BASE}/`, { waitUntil: "networkidle" });
+    const band = page.locator(".live-band__seg--notices");
+    await band.waitFor({ state: "attached" });
+    const shown = await band.locator(".live-band__item:not(.live-band__item--dup)").allTextContents();
+    const want = lang === "en" ? today.en : today.ta;
+    check(shown.includes(want), `E2E-020 (${lang}): today's notice is in the home page's notice band by its title`, JSON.stringify(shown));
+    const all = await page.locator(".live-band").first().textContent();
+    const leaks = [hidden, future, expired].filter((n) => all.includes(n.en) || all.includes(n.ta)).map((n) => n.en);
+    check(leaks.length === 0, `${lang}: the hidden, future and expired notices are not on the page`, JSON.stringify(leaks));
+    const label = await band.locator('.live-band__marquee[role="marquee"]').getAttribute("aria-label");
+    check(label === (lang === "en" ? "Announcements" : "அறிவிப்புகள்"), `${lang}: the band is labelled for screen readers`, label);
+    const dupHidden = await band.locator(".live-band__item--dup").evaluateAll((els) => els.length > 0 && els.every((e) => e.getAttribute("aria-hidden") === "true"));
+    check(dupHidden, `${lang}: the scrolling copy is hidden from screen readers`);
+    check(!(await overflow(page)), `/ @${lang === "en" ? 1366 : 390}: no horizontal overflow with the notice band`);
+    check(page.errors().length === 0, `/ ${lang}: no console errors`, page.errors().slice(0, 3).join(" | "));
+    await page.context().close();
+  }
+}
+
 async function donatePooja() {
   section("/donate?pooja=<id>");
   const page = await newPage();
@@ -848,6 +901,7 @@ try {
   await scenario("sevas-360", sevasSmall);
   await scenario("events", eventsPage);
   await scenario("home", homePage);
+  await scenario("announcements", homeAnnouncements);
   await scenario("donate", donatePooja);
 } catch (e) {
   check(false, "the suite ran to the end", String(e?.stack || e).split("\n").slice(0, 4).join(" "));
@@ -870,6 +924,7 @@ try {
     )[0];
     check(Number(left?.n) === 0, "no rows of this run are left behind", JSON.stringify(left));
     check(seed.files.every((f) => !existsSync(resolve(UPLOADS, f))), "no files of this run are left behind");
+    check(Number(sql("SELECT COUNT(*) AS n FROM announcements WHERE title_en LIKE ?", [`${PREFIX}%`])[0]?.n) === 0, "no notices of this run are left behind");
   } catch (e) {
     check(false, "cleanup at the end", String(e?.message || e));
   }
