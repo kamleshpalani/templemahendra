@@ -639,7 +639,14 @@ export default function Donate() {
                 <span className="don-pooja__label">{t("இதற்காக:", "For:")}</span>{" "}
                 <span className="don-pooja__name">{sponsored.loading ? t("பூஜையைத் தேடுகிறோம்…", "Finding the pooja…") : poojaLabel}</span>
                 {errors.purpose.pooja_id && <span className="don-pooja__error">{errors.purpose.pooja_id}</span>}
-                {errors.purpose.pooja_id && (
+                {!errors.purpose.pooja_id && sponsored.pooja && (sponsored.pooja.isPast || sponsored.pooja.sponsorshipAvailable === false) && (
+                  <span className="don-pooja__error" role="status">
+                    {sponsored.pooja.isPast
+                      ? t("இந்தப் பூஜை முடிந்துவிட்டது; உபயம் ஏற்க இயலாது.", "This pooja has already taken place, so it cannot be sponsored.")
+                      : t("இந்தப் பூஜைக்கு உபயம் தற்போது ஏற்கப்படுவதில்லை.", "This pooja is not open for sponsorship.")}
+                  </span>
+                )}
+                {(errors.purpose.pooja_id || (sponsored.pooja && (sponsored.pooja.isPast || sponsored.pooja.sponsorshipAvailable === false))) && (
                   <Link to="/donate" className="don-pooja__link">
                     {t("பொது நன்கொடை வழங்கவும்", "Make a general donation instead")}
                   </Link>

@@ -48,6 +48,7 @@ export default function Search() {
 
   const label = (item) => (lang === "ta" ? item.title_ta || item.title_en : item.title_en || item.title_ta);
   const sub = (item) => (lang === "ta" ? item.sub_ta || item.sub_en : item.sub_en || item.sub_ta);
+  const snip = (item) => (lang === "ta" ? item.snippet_ta || item.snippet_en : item.snippet_en || item.snippet_ta) || item.snippet;
 
   return (
     <>
@@ -202,7 +203,7 @@ export default function Search() {
                             <span className="srch__hit-text">
                               <span className="srch__hit-title">{label(item)}</span>
                               {sub(item) && <span className="srch__hit-sub">{sub(item)}</span>}
-                              {item.snippet && <span className="srch__hit-snip">{item.snippet}</span>}
+                              {snip(item) && <span className="srch__hit-snip">{snip(item)}</span>}
                             </span>
                             <span className="srch__hit-go" aria-hidden="true">
                               <LuArrowRight />

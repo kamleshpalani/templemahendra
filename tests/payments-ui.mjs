@@ -995,7 +995,7 @@ async function poojaSponsor() {
   const poojaName = `${NAME_PREFIX}-${RUN} Pournami`;
   sql("INSERT INTO poojas (name_ta, name_en, pooja_date, pooja_time, pooja_type, is_active) VALUES (?, ?, DATE_ADD(CURDATE(), INTERVAL 12 DAY), '18:00', 'pournami', 1)", [`${NAME_PREFIX}-${RUN} பௌர்ணமி`, poojaName]);
   const poojaId = Number(sql("SELECT id FROM poojas WHERE name_en = ?", [poojaName])[0]?.id);
-  // The card that carries the sponsor link: /api/homepage_widgets is where the page looks the pooja up.
+  // The card that carries the sponsor link: /api/poojas?all=1 is where the page looks the pooja up (the widget below is no longer needed but harmless).
   sql("INSERT INTO homepage_widgets (content_type, title_ta, title_en, source_type, linked_pooja_id, priority, is_pinned, is_active) VALUES ('upcoming_pooja', ?, ?, 'manual', ?, 1, 1, 1)", [`${NAME_PREFIX}-${RUN} பூஜை அட்டை`, `${NAME_PREFIX}-${RUN} Pooja card`, poojaId]);
   const donor = `${DONOR} Pooja`;
 

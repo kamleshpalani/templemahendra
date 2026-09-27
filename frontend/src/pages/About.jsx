@@ -253,6 +253,9 @@ export default function About() {
           <p className="about-link">
             <Button variant="soft" size="sm" to="/events" icon={<LuCalendarDays aria-hidden="true" />}>
               {t("பௌர்ணமி தேதிகள் →", "Pournami dates →")}
+            </Button>{" "}
+            <Button variant="soft" size="sm" to="/deities">
+              {t("அனைத்து தெய்வங்கள் →", "All deities →")}
             </Button>
           </p>
 

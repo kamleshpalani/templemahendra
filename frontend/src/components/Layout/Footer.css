@@ -318,3 +318,8 @@
     margin-left: 0;
   }
 }
+
+/* The social-links row: the committee's YouTube, Facebook and Instagram. */
+.footer__social a {
+  white-space: nowrap;
+}

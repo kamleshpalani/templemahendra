@@ -891,6 +891,19 @@ export default function Sevas() {
   const setParamsRef = useRef(setParams);
   setParamsRef.current = setParams;
 
+  // A new ?seva= while the page is already open (a search result for a seva)
+  // opens that seva's form too, under the same rules as the first link.
+  const sevaParam = params.get("seva");
+  const selectedRef = useRef(null);
+  selectedRef.current = selectedSeva;
+  selectedRef.current = selectedSeva;
+  useEffect(() => {
+    if (!deepLinkDone.current || !sevaParam || sevas.length === 0) return;
+    if (selectedRef.current && String(selectedRef.current.id) === sevaParam) return;
+    const match = sevas.find((s) => String(s.id) === sevaParam);
+    if (match && sevaBookable(match)) setSelectedSeva(match);
+  }, [sevaParam]);
+
   // Matched against the live list only. The standard fallback list has ids of
   // its own, and honouring the link against those could open a different
   // offering than the one that was sent.

@@ -368,6 +368,10 @@ $PAGES = [
      'sub_ta' => 'கொள்கைகள்', 'sub_en' => 'Policies', 'kw' => 'refund refunds cancel cancellation money back return duplicate payment failed payment seva cancellation 48 hours பணம் திருப்பி ரத்து திரும்பப் பெறுதல்'],
     ['url' => '/shipping-delivery-policy', 'ta' => 'அனுப்புதல் & விநியோகக் கொள்கை', 'en' => 'Shipping & Delivery Policy',
      'sub_ta' => 'கொள்கைகள்', 'sub_en' => 'Policies', 'kw' => 'shipping delivery courier post dispatch prasadam receipt delivery அனுப்புதல் விநியோகம் கூரியர் அஞ்சல் பிரசாதம்'],
+    ['url' => '/deities',             'ta' => 'குலதெய்வங்கள்', 'en' => 'Deities',
+     'sub_ta' => 'கோயில்', 'sub_en' => 'Temple', 'kw' => 'deities deity god goddess amman lingammal renukadevi chinnammal kula deivam clan deity தெய்வம் தெய்வங்கள் குலதெய்வம் அம்மன் லிங்கம்மாள் ரேணுகாதேவி சின்னம்மாள்'],
+    ['url' => '/sponsorship',         'ta' => 'பூஜை உபயம்', 'en' => 'Pooja sponsorship',
+     'sub_ta' => 'பூஜைகள்', 'sub_en' => 'Poojas', 'kw' => 'sponsorship sponsor sponsors ubayam pooja pournami donate உபயம் உபயதாரர் பூஜை பௌர்ணமி நன்கொடை'],
     ['url' => '/videos',              'ta' => 'காணொளிகள்', 'en' => 'Videos',
      'sub_ta' => 'காணொளிகள்', 'sub_en' => 'Videos', 'kw' => 'videos video youtube recordings watch pooja festival discourse darshan recording காணொளி காணொளிகள் வீடியோ யூடியூப் பதிவுகள் சொற்பொழிவு'],
     // Live darshan (docs/live/SPEC-PHASE1.md §4.6). Title = the page's SEO title.

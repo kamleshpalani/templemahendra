@@ -148,6 +148,19 @@ export default function Gallery() {
    */
   const shownRef = useRef(shown);
   shownRef.current = shown;
+  // A new ?photo= while the gallery is already open (a search result for a
+  // photo, a shared link followed from the same tab) opens that photo too;
+  // the address the lightbox itself writes is recognised and left alone.
+  const photoParam = params.get("photo");
+  const lightboxRef = useRef(lightbox);
+  lightboxRef.current = lightbox;
+  useEffect(() => {
+    if (!deepLinkDone.current || !photoParam) return;
+    const open = lightboxRef.current != null ? String(shownRef.current[lightboxRef.current]?.id ?? "") : "";
+    if (open === photoParam) return;
+    const i = shownRef.current.findIndex((img) => String(img.id) === photoParam);
+    if (i >= 0) setLightbox(i);
+  }, [photoParam]);
   const setParamsRef = useRef(setParams);
   setParamsRef.current = setParams;
   const mounted = useRef(false);
