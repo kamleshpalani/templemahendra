@@ -55,6 +55,14 @@ It does not call YouTube. `live-sync.mjs` separately exercises the HTTP stand-in
 | `videos.mjs` | Videos (brief §6): migration 017 shape (utf8mb4 InnoDB, unique `youtube_id`, FKs to `video_categories` and `live_streams`); `/api/videos` lists only shown videos of shown categories with Tamil intact, the featured video, category counts, filter and pagination, public fields only, a clean 422 for junk parameters; the admin page redirects without a session, opens for owner and editor, answers 403 to finance and viewer (page, video and category POSTs), refuses forged and missing CSRF tokens, accepts bare ids and watch / youtu.be / shorts / live / embed URLs while refusing other hosts, `javascript:`, short ids and markup, refuses a duplicate id (naming the existing row) on create and edit, validates titles / date / order / category / stream, creates with Tamil titles and descriptions, edits, features, hides / shows, deletes and relists a freed id; categories create (unique slug) / edit / hide (hides their videos publicly) / delete (refused while videos remain); a blank link inherits a completed stream's recording id and deleting the stream clears the link; hostile input is stored as text and escaped everywhere; the videos search group and sitemap entry; `video_*` / `video_category_*` audit rows. Starts its own PHP server; rows prefixed `E2E-VIDEO-<run>` — 118 checks |
 | `calendar-entries.mjs` | Temple Calendar entries (brief §6, gap G-09): migration 018 shape (utf8mb4 InnoDB, date-range/pooja/event indexes, FKs `ON DELETE SET NULL`); `/api/calendar` computed baseline for March 2033, then a created entry appears on its day with `id`, `custom`, Tamil title/description and links while every other computed value stays byte-identical, a multi-day span marks each day across the month boundary, entries on one day follow `sort_order`, edits and hide/show/delete follow through publicly, a `hide` entry removes the computed Pournami (and `upcoming[]` follows) but keeps the committee's own entry, `all` clears every computed observance, hiding the suppression restores them; the admin page redirects without a session, opens for owner and editor, answers 403 to finance and viewer (page, toggle and delete POSTs), refuses forged and missing CSRF tokens, validates dates (2020–2035, impossible dates, end ≥ start), titles, type (`all` only for suppressions), order and pooja/event ids; deleting a linked pooja/event nulls the link; hostile input is stored as text and escaped everywhere; `calendar_entry_*` audit rows. Starts its own PHP server; rows prefixed `E2E-CAL-<run>` in 2033 — 90 checks |
 | `audit-log.mjs` | Audit Logs (brief §28/§15/§16, gap G-10): `admin_activity` shape (InnoDB utf8mb4, column widths, indexes); failed and successful sign-ins, sign-out, account creation and password changes are audited with actor and the proxy-resolved IP (D-020); announcement / event / pooja / seva / homepage-widget create, update, toggle and delete each leave a row (deletes carry the name of what was removed; deleting an already-deleted pooja is not audited twice); settings saves list only the changed keys or `no changes`; the page redirects without a session, opens for owner and admin, answers 403 to editor, finance and viewer (page and CSV), hides its links from them, has no write path (a forged POST deletes nothing); filters by who, module, one action, search (wildcards literal), date range (reversed dates swapped, impossible dates flagged) and sort direction; 50/page with clamped out-of-range pages; CSV honours the filters, keeps Tamil intact and is itself audited; SQL and script payloads in audited data and in every filter are stored/echoed as text. Starts its own PHP server with `TRUSTED_PROXIES=127.0.0.1`; rows prefixed `E2E-AUD-<run>` — 72 checks |
+| `admin-auth.mjs` | Auth hardening (gap G-01, brief §18): idle expiry, lockout after ten failures, secure/HttpOnly/SameSite cookies, sign-out invalidation, revocation on disable |
+| `admin-registrations.mjs` | Family Registrations admin: KPIs, filters, editing rules, duplicates (merge / not a duplicate), archive, CSV, RBAC, browser layout and axe |
+| `registration-api.mjs` | `POST /api/registrations`: the multi-step form's contract, validation matrix, duplicates, consent, flood limits |
+| `search-api.mjs` | `GET /api/search`: groups, ranking, Tamil and English queries, the register entry points; read-only |
+| `search-ui.mjs` | The Ctrl+K search dialog and the `/search` page in a real browser at four widths: keyboard navigation, results, axe; read-only |
+| `public-hardening.mjs` | The public forms, lists and chat against abuse and disclosure: sponsor privacy, honeypots, flood limits, the AI cost cap, donor visibility in the admin |
+| `og.mjs` / `seo-crawl.mjs` | Crawler previews and canonical metadata per route; `robots.txt`, `sitemap.xml`, the SPA fallback answering 404 for unknown routes |
+| `sponsors.mjs` | Sponsors (gap G-08): migration 016, consent gating on every public path, CRUD, bulk import columns, RBAC |
 | `screenshot.mjs` | Utility: `node screenshot.mjs <url> <out.png> [w] [h] [--login] [--full]` |
 
 ```bash
@@ -65,10 +73,12 @@ node tests/admin-bulk-import.mjs
 node tests/public-e2e.mjs   http://localhost:5173
 ```
 
-**Clear `rate_limits` before each run of the two account suites.** Sign-up is
-capped at five completed registrations per hour per IP address and sign-in at
-twenty attempts per fifteen minutes, which is correct in production and will
-stop a repeated test run part-way through:
+**Flood limits and repeated runs.** The public forms (family registration,
+seva bookings, donations, contact) and admin sign-in are rate-limited per
+client address, which is correct in production and would stop a repeated run
+part-way through. Every suite therefore sends its own `X-Forwarded-For` (start
+the server with `TRUSTED_PROXIES=127.0.0.1,::1`) and removes its own
+`rate_limits` buckets at the end; if a crashed run leaves some behind:
 
 ```sql
 DELETE FROM rate_limits;
@@ -90,6 +100,24 @@ DELETE FROM donations       WHERE name LIKE 'E2E%';
 DELETE FROM devotees        WHERE email LIKE 'e2e-%';
 DELETE FROM rate_limits;
 ```
+
+## Notifications (email, WhatsApp, SMS)
+
+Devotee accounts, the in-app bell and web push were retired (see
+`docs/registration/SPEC.md` §1); the committee reaches families by email,
+WhatsApp and SMS, governed by language and consent. `NOTIFY_ALLOW_TEST_DRIVER=1`
+plus `NOTIFY_<CHANNEL>_DRIVER=test` gives deterministic providers for local runs.
+
+| Script | Needs | What it proves |
+| ------ | ----- | -------------- |
+| `notify-unit.php` | CLI + database | The channel policy matrix (consent, guests, fallbacks, the SMS restraint), recipients, tokens, audiences, the event catalogue and templates, and an end-to-end run with the test drivers |
+| `notify-templates-unit.php` | CLI + database | Every built-in template in Tamil and English with SMS and WhatsApp variants, lengths, interpolation safety, database overrides and language fallback, the branded email |
+| `notify-worker.mjs` | CLI + database (starts what it needs) | The queue and worker: retries and backoff, throttle, stale claims, dedupe, skip reasons, campaign approval and expansion, recipient time zones, recurrence, reminders, provider status updates, the cron key |
+| `notify-triggers.mjs` | PHP `:8002` with default drivers and `CONTACT_NOTIFY_EMAIL=office@example.test` | The places the site sends a message: registration with consent, bookings and the admin's status changes, donations and receipts, announcements → draft campaign, contact messages → the office |
+| `notify-providers.mjs` | starts its own servers on 8020–8029 | The mailer over SMTP and the log transport, Meta WhatsApp, Twilio WhatsApp/SMS, MSG91 against mock APIs; the webhook endpoint per driver; `notify_keys.php` |
+| `notify-links.mjs` | PHP `:8001` (+ its own `:8030`) | Tracked clicks and the open pixel, unsubscribe (GET is inert, POST and RFC 8058 one-click act), the webhook and cron routes through `api/index.php` |
+| `admin-notifications.mjs` | PHP `:8003` with `NOTIFY_EMAIL_DRIVER=test NOTIFY_APPROVAL_THRESHOLD=2` | Communication → Notifications: server-side roles, estimate and preview, validation without JavaScript, approval flow, send now and the worker, audiences, the composer in a browser |
+| `admin-notify-content.mjs` | PHP `:8035` with all three test drivers | Templates, categories, analytics and the delivery views in the admin |
 
 ## Online payments (CCAvenue)
 

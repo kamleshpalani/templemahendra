@@ -908,7 +908,7 @@ function notifyCampaignRecipientRows(array $ids): array
         $params[':d' . $i] = (int) $id;
     }
     $stmt = getDB()->prepare(
-        'SELECT d.id, d.name, d.email, d.phone, d.country, d.lang, d.is_active, d.updates_consent_at, d.unsubscribed_at
+        'SELECT d.id, d.name, d.email, d.phone, d.phone_country, d.country, d.lang, d.is_active, d.updates_consent_at, d.unsubscribed_at
            FROM devotees d
           WHERE d.id IN (' . implode(', ', $names) . ')'
     );

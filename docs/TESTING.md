@@ -27,8 +27,8 @@ local quirks (container on :3307, `ADMIN_PASS_HASH`, restart recovery).
 | --- | --- | --- |
 | Syntax | every PHP file, both shell scripts | `find backend -name '*.php' -exec php -l {} \; \| grep -v 'No syntax'`; `bash -n deploy/backup.sh deploy/restore.sh` |
 | Unit | pure PHP: state machines, crypto vectors, templates, health verdicts | `php tests/payments-unit.php`, `php tests/live-unit.php`, `php tests/notify-unit.php`, `php tests/notify-templates-unit.php` |
-| API / integration | Node scripts against a PHP server they start (or `:8000`) and MySQL; each owns its fixtures and cleans them in `finally` | `node tests/<suite>.mjs` — the §30 list below, plus `admin-*.mjs`, `live-*.mjs`, `payments-api.mjs`, `notifications-*.mjs`, `notify-*.mjs` |
-| Browser | Playwright + axe at 360/390/768/1024/1366/1920 against Vite `:5173` + PHP `:8000` | `node tests/public-e2e.mjs http://localhost:5173`, `live-ui.mjs`, `payments-ui.mjs`, `notifications-ui.mjs`, the recorded testing-agent runs linked from each PR |
+| API / integration | Node scripts against a PHP server they start (or `:8000`) and MySQL; each owns its fixtures and cleans them in `finally` | `node tests/<suite>.mjs` — the §30 list below, plus `admin-*.mjs`, `live-*.mjs`, `payments-api.mjs`, `notify-*.mjs`, `search-api.mjs` |
+| Browser | Playwright + axe at 360/390/768/1024/1366/1920 against Vite `:5173` + PHP `:8000` | `node tests/public-e2e.mjs http://localhost:5173`, `search-ui.mjs`, `live-ui.mjs`, `payments-ui.mjs`, the recorded testing-agent runs linked from each PR |
 | Frontend | production build (no linter is configured; the browser suites assert zero console errors) + design-token audit | `cd frontend && npm run build && npm run audit` |
 | Database / backup | schema, foreign keys, Tamil round trip, backup → fresh-database restore, tamper rejection | `docs/DATABASE.md`; the rehearsal in `docs/DEPLOYMENT.md` → *Backups and restore* (`deploy/backup.sh`, `deploy/restore.sh`) |
 
@@ -83,20 +83,20 @@ rehearsal. Full detail per gateway: `docs/CCAvenue-INTEGRATION.md`,
 | E2E-037 | Payment confirmation email triggered | Covered (simulated) | `payments-api.mjs` — `donation.paid` notification queued with `to_email`, `its channels follow the settings: email and whatsapp`; delivery through `notify-worker.mjs` / `notify-providers.mjs` to the local stubs only |
 | E2E-038 | Contact form succeeds | Covered | `public-e2e.mjs` — `contact: success feedback`, `contact: no console errors`; `brief-e2e.mjs` — `/api/contact` 201 |
 | E2E-039 | Invalid contact form rejected | Covered | `public-e2e.mjs` — `contact: validation errors on empty submit`; `public-hardening.mjs` honeypot and `429: contact form shows the friendly message` |
-| E2E-040 | Contact notification generated | **Gap (not built)** | `api/contact.php` stores the message; no notification event exists for it (`includes/notify/events.php` has no contact trigger). Tracked as G-19 in `docs/GAP-ANALYSIS.md` |
+| E2E-040 | Contact notification generated | Covered | `brief-e2e.mjs` — `E2E-040 one contact.received notification is created for the office mailbox`, `…names the sender, quotes the message and phone, and links to the admin Messages page`, `…an email delivery is queued for the office without asking for consent`, `…one notification per message`; `notify-triggers.mjs` contact scenario; `notify-unit.php` catalogue row; migration 019 (`office` category), `CONTACT_NOTIFY_EMAIL` |
 | E2E-041 | Mobile navigation works | Covered | `public-e2e.mjs` — `drawer opens (aria-hidden=false)`, `drawer moves focus inside`, `Escape closes drawer`, `focus returns to hamburger after close`; every route @390 |
-| E2E-042 | Tablet layout works | Covered | `public-e2e.mjs` — every route `@768` and `@1024`: one h1, no overflow, no console errors, axe; header fit guard; `live-ui.mjs` `/live-darshan @768/@1024`; `payments-ui.mjs`, `notifications-ui.mjs` at 768 |
+| E2E-042 | Tablet layout works | Covered | `public-e2e.mjs` — every route `@768` and `@1024`: one h1, no overflow, no console errors, axe; header fit guard; `live-ui.mjs` `/live-darshan @768/@1024`; `payments-ui.mjs` at 768; `search-ui.mjs` `/search @768` |
 | E2E-043 | Desktop layout works | Covered | `public-e2e.mjs` — every route `@1440`, header fit at 1920; `live-ui.mjs` @1440 |
 | E2E-044 | Invalid URL returns correct 404 | Covered | `seo-crawl.mjs` — unknown SPA route → HTTP 404 + React shell + `X-Robots-Tag: noindex, nofollow`, `an unfurler still gets the 404 preview`, `API 404 stays JSON`; `public-e2e.mjs` — `/admin/ does not render the SPA shell` |
-| E2E-045 | Protected API rejects unauthenticated user | Covered | `brief-e2e.mjs` — `E2E-045 admin API answers 401 without a session`, `admin page redirects to sign-in`; `audit-log.mjs` — `E2E-045 audit page redirects to sign-in`, `anonymous CSV export is refused`; `live-api.mjs`, `notifications-api.mjs` 401 paths |
+| E2E-045 | Protected API rejects unauthenticated user | Covered | `brief-e2e.mjs` — `E2E-045 admin API answers 401 without a session`, `admin page redirects to sign-in`; `audit-log.mjs` — `E2E-045 audit page redirects to sign-in`, `anonymous CSV export is refused`; `live-api.mjs` admin JSON API 401 paths; `admin-notifications.mjs` signed-out estimate answers JSON 401 |
 | E2E-046 | RBAC endpoint rejects unauthorized role | Covered | `admin-auth.mjs` — `E2E-046 finance POST to a content page is refused`, `editor POST to settings is refused`, `viewer POST to payments is refused`; `admin-roles.mjs` |
 | E2E-047 | SQL injection payload does not execute | Covered | `brief-e2e.mjs` — `E2E-047 …` (search, contact, admin save; payload stored verbatim, `the poojas table is intact`); `search-api.mjs` — `an injection attempt is just a search term`; `admin-hostile-input.mjs` |
 | E2E-048 | XSS payload does not execute | Covered | `brief-e2e.mjs` — `E2E-048 admin inbox renders the payload inert`, `admin list escapes it`, `edit form escapes it`, public responses stay JSON; `admin-hostile-input.mjs` reflected-script checks; `og.mjs` / `live-og.mjs` escaped metadata |
-| E2E-049 | CSRF protection rejects invalid request | Covered | `brief-e2e.mjs` — `E2E-049 forged token is refused with a message`, `…and nothing was written`, `a missing token is refused too`; `admin-payments.mjs`, `admin-live.mjs`, `notifications-api.mjs` CSRF cases |
+| E2E-049 | CSRF protection rejects invalid request | Covered | `brief-e2e.mjs` — `E2E-049 forged token is refused with a message`, `…and nothing was written`, `a missing token is refused too`; `admin-payments.mjs`, `admin-live.mjs`, `admin-notifications.mjs` CSRF cases |
 | E2E-050 | Session logout invalidates admin session | Covered | `admin-auth.mjs` — `E2E-050 old session cookie no longer works after logout`; idle expiry and revocation on disable/delete in the same suite |
 
-Totals: 48 covered (7 of them against local simulators), 1 partial (E2E-020),
-1 gap (E2E-040, feature not built).
+Totals: 49 covered (7 of them against local simulators), 1 partial (E2E-020),
+0 gaps (E2E-040 was built in the release-readiness pass, G-19).
 
 ## Running the §30 set
 
@@ -120,14 +120,13 @@ node tests/payments-api.mjs && node tests/payments-ui.mjs   # E2E-029…037
 with `ADMIN_USERNAME` / `ADMIN_PASSWORD`; it derives `ADMIN_PASS_HASH` for the
 server it starts) and cleans every `E2E-BRIEF-<run>` row and upload it wrote.
 
-## Known failures (pre-existing, tracked in `docs/DEFECTS.md`)
+## Known failures
 
-- D-014 — `admin-live.mjs`: 2 of 235 checks (column-drift assertion; form-drawer axe @1440).
-- D-015 / G-18 — `admin-notifications.mjs`: retired `inapp`/`push` channels; 39/47.
-- D-017 — `public-e2e.mjs`: 5 header checks expect the retired sign-in/sign-up links.
-
-None of these change the verdict of a §30 row above; the affected assertions
-are not the ones cited.
+None. The release-readiness pass (2026-09-28) ran every suite against a fresh
+database on MariaDB 10.11 (MySQL 8 compatible), PHP 8.4, Node 22 and Chromium;
+D-014, D-015 and D-017 are closed in `docs/DEFECTS.md`, and the account-era
+suites were retired or reworked (G-18). Suites that depend on the machine's
+ICU (date wording) build their expectations from the browser's own `Intl`.
 
 ## Not testable locally (staging / production only)
 

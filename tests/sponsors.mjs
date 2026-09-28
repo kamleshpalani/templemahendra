@@ -140,8 +140,14 @@ try {
 
   /* ── migration 016 ──────────────────────────────────────────────────── */
   const cols = sql("SELECT COLUMN_NAME AS c, COLUMN_TYPE AS t, COLUMN_DEFAULT AS d, IS_NULLABLE AS n FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'sponsors'").rows;
-  const col = (c) => cols.find((x) => x.c === c);
-  check(col("family_name")?.t === "varchar(200)" && col("email")?.t === "varchar(190)" && col("event_id")?.t === "int unsigned" && col("amount")?.t === "decimal(12,2)" && col("payment_ref")?.t === "varchar(100)", "migration 016: family_name, email, event_id, amount, payment_ref columns", JSON.stringify(cols.map((c) => c.c)));
+  // MariaDB still reports the display width of an integer ("int(10) unsigned")
+  // where MySQL 8 says "int unsigned", and quotes a string default ('PENDING');
+  // the column is the same either way.
+  const col = (c) => {
+    const x = cols.find((y) => y.c === c);
+    return x && { ...x, t: x.t.replace(/^int\(\d+\)/, "int"), d: x.d == null ? x.d : String(x.d).replace(/^'(.*)'$/, "$1") };
+  };
+  check(col("family_name")?.t === "varchar(200)" && col("email")?.t === "varchar(190)" && col("event_id")?.t === "int unsigned" && col("amount")?.t === "decimal(12,2)" && col("payment_ref")?.t === "varchar(100)", "migration 016: family_name, email, event_id, amount, payment_ref columns", JSON.stringify(cols.map((c) => `${c.c}:${c.t}`)));
   check(/^enum\('PENDING','PAID','FAILED','REFUNDED','WAIVED'\)$/.test(col("payment_status")?.t ?? "") && col("payment_status").d === "PENDING", "migration 016: payment_status enum defaults to PENDING", col("payment_status")?.t);
   check(col("publish_consent")?.t === "tinyint(1)" && col("publish_consent").d === "0" && col("publish_consent").n === "NO", "migration 016: publish_consent defaults to 0 — existing sponsors are never published silently");
   check(!!col("updated_at"), "migration 016: updated_at column");

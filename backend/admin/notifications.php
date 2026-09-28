@@ -64,7 +64,7 @@ if (!notifyTablesExist()) {
     if ($ncIsJson) ncJson(['error' => 'Notifications are not switched on yet.', 'code' => 'notifications_disabled'], 503);
     adminHeader('Notifications', 'Communication');
     echo adminEmpty('bell', 'Notifications are not switched on yet',
-        'Apply database/migrations/007_notifications.sql to let the committee send messages to devotees by in-app notification, email, WhatsApp, SMS and push.');
+        'Apply database/migrations/007_notifications.sql to let the committee send messages to devotees by email, WhatsApp and SMS.');
     adminFooter();
     exit;
 }
@@ -246,7 +246,7 @@ function ncOrderLangs(array $langs): array
 function ncComposerBlank(): array
 {
     return [
-        'name' => '', 'category' => 'announcement', 'priority' => 'normal', 'channels' => ['inapp'],
+        'name' => '', 'category' => 'announcement', 'priority' => 'normal', 'channels' => ['email'],
         'cta_url' => '', 'image_url' => '', 'template_key' => '', 'template_vars' => '',
         'translations' => ['ta' => ['title' => '', 'body' => '', 'cta_label' => ''], 'en' => ['title' => '', 'body' => '', 'cta_label' => '']],
         'langs' => ['ta', 'en'], 'schedule_mode' => 'manual', 'scheduled_local' => '', 'schedule_tz' => 'temple',
@@ -402,7 +402,7 @@ function ncErrorTarget(string $key): string
 {
     if (preg_match('/^translations\.([a-z0-9-]+)\.(title|body|cta_label)$/', $key, $m)) return 'nc-lang-' . $m[1] . '-' . $m[2];
     if (preg_match('/^translations\.([a-z0-9-]+)$/', $key, $m)) return 'nc-lang-' . $m[1] . '-title';
-    return ['name' => 'nc-name', 'category' => 'nc-category', 'priority' => 'nc-priority', 'channels' => 'nc-ch-inapp',
+    return ['name' => 'nc-name', 'category' => 'nc-category', 'priority' => 'nc-priority', 'channels' => 'nc-ch-email',
             'cta_url' => 'nc-cta', 'image_url' => 'nc-image', 'template_key' => 'nc-template', 'template_vars' => 'nc-template',
             'segment_id' => 'nc-segment', 'audience' => 'nc-audience', 'translations' => 'nc-lang-ta-title',
             'schedule_tz' => 'nc-tz-temple', 'scheduled_local' => 'nc-when', 'recurrence' => 'nc-recurrence',
@@ -442,7 +442,7 @@ if ($ncIsJson) {
         $form = ncComposerFromPost($_POST);
 
         if ($ncAction === 'estimate') {
-            $est = adminAudienceEstimate($db, $form['audience']);
+            $est = adminAudienceEstimate($db, $form['audience'], $form['category']);
             if ($est['count'] === null) {
                 ncJson(['error' => $est['error'], 'code' => 'invalid', 'fields' => [$est['field'] => $est['error']]], 422);
             }
@@ -507,7 +507,7 @@ if ($ncMethod === 'POST') {
             $composerErrors['_'] = 'Your session expired or the form was tampered with. Nothing was saved - check the form and save again.';
         } elseif ($refresh) {
             if ($ncAction === 'estimate_form') {
-                $serverEstimate = adminAudienceEstimate($db, $composer['audience']);
+                $serverEstimate = adminAudienceEstimate($db, $composer['audience'], $composer['category']);
             }
             if ($ncAction === 'find_devotees') {
                 $composer['audience']['source'] = 'selected';
@@ -732,11 +732,9 @@ if ($composer !== null) {
           <div class="nc-channel-grid">
             <?php
               $channelNotes = [
-                  'inapp'    => 'In the bell on the website, for devotees with an account.',
                   'email'    => 'Needs a confirmed address for most categories.',
                   'whatsapp' => 'Paid per message. Needs the devotee\'s mobile number.',
                   'sms'      => 'Paid per message. Used only for important messages and above.',
-                  'push'     => 'Devotees who switched on alerts on a phone or computer.',
               ];
             ?>
             <?php foreach (NOTIFY_CHANNELS as $ch): $ps = ncProviderStatus($ch); $on = in_array($ch, $f['channels'], true); ?>
@@ -841,7 +839,7 @@ if ($composer !== null) {
               <input id="nc-image" type="text" inputmode="url" name="image_url" maxlength="500" spellcheck="false" autocapitalize="off"
                      value="<?= h($f['image_url']) ?>" placeholder="/uploads/gallery/festival.jpg" data-nc-refresh<?= ncAria($errors, 'image_url', 'nc-image-hint') ?> />
               <?= ncError($errors, 'image_url') ?>
-              <span class="field__hint" id="nc-image-hint">Shown in push alerts and the bell where the device supports it.</span>
+              <span class="field__hint" id="nc-image-hint">Sent with the WhatsApp message where the provider supports images (Twilio); email and SMS carry the text alone.</span>
             </label>
           </div>
         </section>
@@ -974,7 +972,7 @@ if ($gets('view') !== '') {
     $catLabel = $cat['label_en'] ?? (string) $c['category'];
     $liveCount = null;
     try {
-        if ($c['rules'] !== null && in_array($status, ['draft', 'review', 'approved', 'scheduled'], true)) $liveCount = notifyAudienceCount($c['rules']);
+        if ($c['rules'] !== null && in_array($status, ['draft', 'review', 'approved', 'scheduled'], true)) $liveCount = notifyAudienceCount($c['rules'], (string) $c['category']);
     } catch (Throwable) {
         $liveCount = null;
     }
@@ -1146,7 +1144,7 @@ if ($gets('view') !== '') {
           <span class="nc-muted">Repeats <?= h($c['recurrence']) ?><?= $c['recur_until'] ? ' until ' . h(ncWallClock($c['recur_until'] . ' 00:00:00')) : ' until cancelled' ?>.</span>
         <?php endif; ?>
         <?php if ($c['schedule_tz'] === 'recipient' && $c['scheduled_local']): ?>
-          <span class="nc-muted nc-tz-note"><?= adminIcon('globe', 'ico--xs') ?>Each devotee receives it at that time in their own time zone (from their settings, or their country).
+          <span class="nc-muted nc-tz-note"><?= adminIcon('globe', 'ico--xs') ?>Each family receives it at that time in their own time zone (from their country).
             <?= $c['scheduled_at'] && $status === 'scheduled' ? 'The first devotees, furthest east, receive it from ' . h(ncTempleTime((string) $c['scheduled_at'])) . '; devotees west of India later that day.' : '' ?></span>
         <?php elseif ($c['scheduled_local']): ?>
           <span class="nc-muted nc-tz-note"><?= adminIcon('globe', 'ico--xs') ?>Temple time. Devotees in other countries receive it at the same moment, which is a different hour on their clock.</span>
@@ -1562,7 +1560,7 @@ adminHeader('Notifications', 'Communication', [
 ]);
 echo $msg;
 echo adminPageIntro(
-    'Messages from the committee to devotees: in the bell on the website, and by email, WhatsApp, SMS or push. '
+    'Messages from the committee to families by email, WhatsApp or SMS. '
     . 'Large, urgent, paid and promotional messages wait for a second owner\'s approval before anything is sent.'
     . ($canCompose ? '' : ' You have read access.'),
     '<a href="/admin/notification_segments.php" class="btn btn-ghost btn--sm">' . adminIcon('users') . 'Saved audiences</a>'

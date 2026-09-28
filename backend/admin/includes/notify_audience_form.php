@@ -193,11 +193,16 @@ function adminAudienceRules(PDO $db, array $state): array
     return notifyAudienceNormalize(adminAudienceToInput($state)['audience'] ?? []);
 }
 
-/** ['count' => ?int, 'error' => ?string, 'field' => 'audience'|'segment_id'] — never throws. */
-function adminAudienceEstimate(PDO $db, array $state): array
+/**
+ * ['count' => ?int, 'error' => ?string, 'field' => 'audience'|'segment_id'] — never throws.
+ * $category is the campaign's, so that an update (a category that needs consent)
+ * counts only consenting families, exactly as submitting it will; a saved
+ * audience on its own passes none.
+ */
+function adminAudienceEstimate(PDO $db, array $state, ?string $category = null): array
 {
     try {
-        return ['count' => notifyAudienceCount(adminAudienceRules($db, $state)), 'error' => null, 'field' => null];
+        return ['count' => notifyAudienceCount(adminAudienceRules($db, $state), $category), 'error' => null, 'field' => null];
     } catch (InvalidArgumentException $e) {
         return ['count' => null, 'error' => $e->getMessage(), 'field' => $e->getCode() === 1 ? 'segment_id' : 'audience'];
     } catch (Throwable $e) {

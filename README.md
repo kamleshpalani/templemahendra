@@ -234,6 +234,7 @@ Upload via Hostinger File Manager or FTP:
 | `016_sponsors_consent.sql` | Sponsor management (brief §11): `family_name`, `email`, `event_id` (FK, `ON DELETE SET NULL`), `amount`, `payment_ref`, `payment_status`, `publish_consent` (defaults to 0 — existing sponsors stay private until an admin grants consent) and `updated_at`. Public APIs only ever show `is_active = 1 AND publish_consent = 1` rows, under the family name when one is set. |
 | `017_videos.sql` | Videos module (brief §6): `video_categories` (bilingual names, slug, order, visibility; seeded Poojas / Festivals / Discourses / Darshan recordings) and `videos` (unique 11-character `youtube_id`, bilingual titles and descriptions, `category_id` FK `ON DELETE SET NULL`, optional `live_stream_id` FK to a completed broadcast `ON DELETE SET NULL`, `published_on`, `sort_order`, `is_featured`, `is_active`). Public: `GET /api/videos`, `/videos`. |
 | `018_calendar_entries.sql` | Temple Calendar entries (brief §6): `calendar_entries` (`mode` add/hide, `entry_type`, `entry_date`/`end_date` span, bilingual title and description, optional `pooja_id`/`event_id` FKs `ON DELETE SET NULL`, `sort_order`, `is_active`). Merged into `GET /api/calendar`: add-entries join a day's `special[]`, hide-entries remove a computed observance (Pournami, Pradosham, …) the temple does not follow that day. Admin: Worship → Temple Calendar. |
+| `019_contact_notifications.sql` | Contact-form notifications (brief §20, E2E-040, gap G-19): the transactional `office` notification category the `contact_received` template is filed under, so the office copy of a website message needs no devotee consent and can never be picked for a campaign. |
 
 ```bash
 for f in database/migrations/*.sql; do mysql -u <user> -p <db> < "$f"; done
@@ -270,6 +271,8 @@ Values needed:
 | `ADMIN_PASS_HASH` | bcrypt hash of the admin password (see Step 5)           |
 | `ADMIN_IDLE_MINUTES` | Optional. Admin sessions end after this many idle minutes (default 30, max 1440) |
 | `CORS_ORIGIN`     | Allowed origin, e.g. `https://www.templemahendra.in`     |
+| `CONTACT_NOTIFY_EMAIL` | Optional. The temple office mailbox(es), comma-separated, that receive a copy of every website contact-form message through the Notification Service (`contact.received`, migration 019). Blank: messages are only stored for Admin → Messages. |
+| `CONTACT_NOTIFY_LANG` | Optional. `en` (default) or `ta`: the language of the office copy. |
 
 Admin sign-in locks an account for 15 minutes after 10 failed attempts (any
 IP, case-insensitive username). A Super Admin issuing a new password from

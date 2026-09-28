@@ -57,8 +57,9 @@ line, idempotent statements, then a row in the migration table in `README.md`
 | `016_sponsors_consent.sql` | sponsor family name, email, event, amount, payment status, `publish_consent` |
 | `017_videos.sql` | `video_categories` (seeded), `videos` |
 | `018_calendar_entries.sql` | `calendar_entries` (add/hide observances) |
+| `019_contact_notifications.sql` | the transactional `office` row in `notification_categories` for the office copy of contact-form messages (`contact.received`) |
 
-47 tables after `018`. The brief's §25 names (`users`, `roles`, `audit_logs`,
+47 tables after `019` (019 adds a row, not a table). The brief's §25 names (`users`, `roles`, `audit_logs`,
 `payment_events`, `receipts`, …) map onto: `admin_users` + `roles.php`
 (roles/permissions are code, `ADMIN_ROLE_GRANTS`, not tables — five roles do
 not justify three join tables), `admin_activity` (audit), `payment_audit_log`
