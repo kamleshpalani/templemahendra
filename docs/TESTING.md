@@ -83,7 +83,7 @@ rehearsal. Full detail per gateway: `docs/CCAvenue-INTEGRATION.md`,
 | E2E-037 | Payment confirmation email triggered | Covered (simulated) | `payments-api.mjs` — `donation.paid` notification queued with `to_email`, `its channels follow the settings: email and whatsapp`; delivery through `notify-worker.mjs` / `notify-providers.mjs` to the local stubs only |
 | E2E-038 | Contact form succeeds | Covered | `public-e2e.mjs` — `contact: success feedback`, `contact: no console errors`; `brief-e2e.mjs` — `/api/contact` 201 |
 | E2E-039 | Invalid contact form rejected | Covered | `public-e2e.mjs` — `contact: validation errors on empty submit`; `public-hardening.mjs` honeypot and `429: contact form shows the friendly message` |
-| E2E-040 | Contact notification generated | **Gap (not built)** | `api/contact.php` stores the message; no notification event exists for it (`includes/notify/events.php` has no contact trigger). Tracked as G-19 in `docs/GAP-ANALYSIS.md` |
+| E2E-040 | Contact notification generated | Covered | `brief-e2e.mjs` — `E2E-040 one contact.received notification is created for the office mailbox`, `…names the sender, quotes the message and phone, and links to the admin Messages page`, `…an email delivery is queued for the office without asking for consent`, `…one notification per message`; `notify-triggers.mjs` contact scenario; `notify-unit.php` catalogue row; migration 019 (`office` category), `CONTACT_NOTIFY_EMAIL` |
 | E2E-041 | Mobile navigation works | Covered | `public-e2e.mjs` — `drawer opens (aria-hidden=false)`, `drawer moves focus inside`, `Escape closes drawer`, `focus returns to hamburger after close`; every route @390 |
 | E2E-042 | Tablet layout works | Covered | `public-e2e.mjs` — every route `@768` and `@1024`: one h1, no overflow, no console errors, axe; header fit guard; `live-ui.mjs` `/live-darshan @768/@1024`; `payments-ui.mjs`, `notifications-ui.mjs` at 768 |
 | E2E-043 | Desktop layout works | Covered | `public-e2e.mjs` — every route `@1440`, header fit at 1920; `live-ui.mjs` @1440 |
@@ -95,8 +95,8 @@ rehearsal. Full detail per gateway: `docs/CCAvenue-INTEGRATION.md`,
 | E2E-049 | CSRF protection rejects invalid request | Covered | `brief-e2e.mjs` — `E2E-049 forged token is refused with a message`, `…and nothing was written`, `a missing token is refused too`; `admin-payments.mjs`, `admin-live.mjs`, `notifications-api.mjs` CSRF cases |
 | E2E-050 | Session logout invalidates admin session | Covered | `admin-auth.mjs` — `E2E-050 old session cookie no longer works after logout`; idle expiry and revocation on disable/delete in the same suite |
 
-Totals: 48 covered (7 of them against local simulators), 1 partial (E2E-020),
-1 gap (E2E-040, feature not built).
+Totals: 49 covered (7 of them against local simulators), 1 partial (E2E-020),
+0 gaps (E2E-040 was built in the release-readiness pass, G-19).
 
 ## Running the §30 set
 

@@ -343,7 +343,10 @@ try {
   fail("Header fit (scenario threw)", String(e.message || e).split("\n")[0].slice(0, 160));
 }
 
-// Sign-in / Sign-up must be reachable from the header at every width.
+// The header's entry points at every width. Devotee accounts were retired
+// (/login → /register), so what must be reachable is Register family, the
+// Book Seva call to action where the row has room for it (1400 px and up), and
+// the menu button that carries the navigation once the links leave the bar.
 try {
   for (const w of [1920, 1440, 1024, 768, 390]) {
     const page = await newPage(w, 840);
@@ -355,19 +358,24 @@ try {
         const r = el.getBoundingClientRect();
         return r.width > 0 && r.height > 0 && r.right <= document.documentElement.clientWidth + 1;
       };
+      const reg = document.querySelector(".navbar__register");
       return {
-        signup: vis(document.querySelector(".navbar__signup")),
-        login: vis(document.querySelector(".navbar__login")),
+        register: vis(reg),
+        registerName: (reg?.textContent || "").trim() !== "",
+        cta: vis(document.querySelector(".navbar__cta")),
+        nav: vis(document.querySelector(".navbar__nav")),
         toggle: vis(document.querySelector(".navbar__toggle")),
+        login: Boolean(document.querySelector(".navbar__login, .navbar__signup, a[href='/login']")),
       };
     });
-    // Below 920px Login lives in the drawer, so the hamburger is what must show.
-    const ok = seen.signup && (seen.login || seen.toggle);
-    check(ok, `@${w}: sign-up is visible and sign-in is reachable`, JSON.stringify(seen));
+    const ok = seen.register && seen.registerName && !seen.login
+      && (w >= 1024 ? seen.nav && !seen.toggle : seen.toggle && !seen.nav)
+      && (w >= 1440 ? seen.cta : true);
+    check(ok, `@${w}: Register family is visible and named, the navigation or the menu button shows, no retired sign-in link`, JSON.stringify(seen));
     await page.context().close();
   }
 } catch (e) {
-  fail("Header auth entry points (scenario threw)", String(e.message || e).split("\n")[0].slice(0, 160));
+  fail("Header entry points (scenario threw)", String(e.message || e).split("\n")[0].slice(0, 160));
 }
 
 // The PHP paths must not be swallowed by the React router.

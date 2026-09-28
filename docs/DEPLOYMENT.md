@@ -73,7 +73,9 @@ Do this on staging first, then repeat on production.
    hides dotfiles.
 6. **Environment variables**: add any new variable the release introduced
    (`backend/.env.example` is the annotated list; the PR description names
-   them). Changing a variable in hPanel takes effect on the next PHP request.
+   them). This release adds `CONTACT_NOTIFY_EMAIL` (the office mailbox that
+   receives contact-form messages; optional `CONTACT_NOTIFY_LANG`).
+   Changing a variable in hPanel takes effect on the next PHP request.
 7. **Cron**: confirm the three jobs are still scheduled (below).
 8. **Smoke test** from the deployed URL, not localhost:
    - `/` loads in both languages; `/about`, `/events`, `/live-darshan`, `/donate`

@@ -36,6 +36,7 @@ const php = process.env.PHP_BIN || "php";
 const RUN = Date.now().toString(36);
 const P = `E2E-BRIEF-${RUN}`;
 const ADMIN = { username: process.env.ADMIN_USERNAME || "admin", password: process.env.ADMIN_PASSWORD || "Admin@Test123" };
+const OFFICE_EMAIL = "office@example.test";
 const FATAL = /(<b>Fatal error<\/b>|Uncaught|Stack trace|SQLSTATE|<b>Warning<\/b>|<b>Notice<\/b>|<b>Deprecated<\/b>)/;
 const SQLI = `${P}'); DROP TABLE poojas;-- ' OR '1'='1`;
 const XSS = `${P}"><script>alert(1)</script><img src=x onerror=alert(2)>`;
@@ -103,7 +104,10 @@ try {
     || spawnSync(php, ["-r", "echo password_hash($argv[1], PASSWORD_DEFAULT);", ADMIN.password], { encoding: "utf8" }).stdout.trim();
   server = spawn(php, ["-S", `127.0.0.1:${port}`, "router.php"], {
     cwd: resolve(root, "backend"),
-    env: { ...process.env, TRUSTED_PROXIES: "127.0.0.1", ADMIN_USERNAME: ADMIN.username, ADMIN_PASS_HASH: passHash },
+    // The office mailbox for E2E-040, and the deterministic email driver so its
+    // delivery is queued whatever mail transport the shell has.
+    env: { ...process.env, TRUSTED_PROXIES: "127.0.0.1", ADMIN_USERNAME: ADMIN.username, ADMIN_PASS_HASH: passHash,
+      CONTACT_NOTIFY_EMAIL: OFFICE_EMAIL, NOTIFY_ALLOW_TEST_DRIVER: "1", NOTIFY_EMAIL_DRIVER: "test" },
     stdio: ["ignore", "pipe", "pipe"],
   });
   server.stdout.on("data", (d) => { log += d; });
@@ -255,6 +259,22 @@ try {
   /* ── E2E-048: script payloads never come back executable ───────────── */
   r = await api("/api/contact", { name: XSS, phone: "+91 90000 33333", phoneCountry: "IN", message: `${P} ${XSS}`, hp_token: "" });
   check(r.status === 201, "E2E-048 contact form accepts the text");
+
+  // E2E-040 — the office is told. The server above runs with CONTACT_NOTIFY_EMAIL.
+  r = await api("/api/contact", { name: `${P} Visitor`, phone: "+91 90000 44444", phoneCountry: "IN", message: `${P} please call me about the abhishekam`, hp_token: "" });
+  check(r.status === 201, "E2E-040 contact form accepts a message", `${r.status}`);
+  const msgRow = sql("SELECT id FROM contact_messages WHERE name = ?", [`${P} Visitor`]).rows[0];
+  const office = sql("SELECT id, to_email, template_key, category, title, body, cta_url FROM notifications WHERE event = 'contact.received' AND entity_type = 'contact_message' AND entity_id = ?", [msgRow?.id ?? 0]).rows;
+  check(office.length === 1 && office[0].to_email === OFFICE_EMAIL && office[0].template_key === "contact_received" && office[0].category === "office",
+    "E2E-040 one contact.received notification is created for the office mailbox", JSON.stringify(office).slice(0, 300));
+  check(/Visitor/.test(office[0]?.title || "") && (office[0]?.body || "").includes("please call me about the abhishekam") && (office[0]?.body || "").includes("+919000044444") && /\/admin\/contact_messages\.php$/.test(office[0]?.cta_url || ""),
+    "E2E-040 it names the sender, quotes the message and phone, and links to the admin Messages page", JSON.stringify(office[0]).slice(0, 300));
+  const officeDeliveries = sql("SELECT channel, status, skip_reason FROM notification_deliveries WHERE notification_id = ?", [office[0]?.id ?? 0]).rows;
+  check(officeDeliveries.length === 1 && officeDeliveries[0].channel === "email" && ["queued", "sent"].includes(officeDeliveries[0].status),
+    "E2E-040 an email delivery is queued for the office without asking for consent", JSON.stringify(officeDeliveries));
+  r = await api("/api/contact", { name: `${P} Visitor`, phone: "+91 90000 44444", phoneCountry: "IN", message: `${P} a second message`, hp_token: "" });
+  check(r.status === 201 && sql("SELECT COUNT(*) AS n FROM notifications WHERE event = 'contact.received' AND entity_type = 'contact_message' AND entity_id IN (SELECT id FROM contact_messages WHERE name = ?)", [`${P} Visitor`]).rows[0].n === 2,
+    "E2E-040 every message reaches the office (one notification per message)");
   r = await get("/admin/contact_messages.php");
   check(r.status === 200 && !r.text.includes("<script>alert(1)") && !r.text.includes("onerror=alert(2)"), "E2E-048 admin inbox renders the payload inert");
   r = await save({ id: "0", name_ta: XSS, name_en: `${P} xss en`, description_en: XSS, pooja_date: isoDate(1), pooja_type: "special", is_active: "1" });
@@ -279,6 +299,7 @@ try {
   }
   sql("DELETE FROM homepage_widgets WHERE title_en LIKE ?", [`${P}%`]);
   sql("DELETE FROM gallery WHERE caption LIKE ?", [`${P}%`]);
+  sql("DELETE FROM notifications WHERE event = 'contact.received' AND entity_type = 'contact_message' AND entity_id IN (SELECT id FROM contact_messages WHERE name LIKE ?)", [`${P}%`]);
   sql("DELETE FROM contact_messages WHERE name LIKE ?", [`${P}%`]);
   sql("DELETE FROM announcements WHERE title LIKE ? OR body LIKE ?", [`${P}%`, `${P}%`]);
   sql("DELETE FROM events WHERE title_en LIKE ?", [`${P}%`]);
