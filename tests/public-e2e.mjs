@@ -58,7 +58,10 @@ async function newPage(width = 1440, height = 900) {
   const ctx = await browser.newContext({ viewport: { width, height }, locale: "en-IN" });
   const page = await ctx.newPage();
   const errors = [];
-  page.on("console", (m) => { if (m.type() === "error") errors.push(`[console] ${m.text()}`); });
+  // Chromium's "Failed to load resource" line names no URL in its text; the
+  // location carries it, so a third-party font or map that IGNORE already
+  // exempts (a sandbox that cannot reach fonts.googleapis.com) is exempt here too.
+  page.on("console", (m) => { if (m.type() === "error") errors.push(`[console] ${m.text()} ${m.location()?.url ?? ""}`.trimEnd()); });
   page.on("pageerror", (e) => errors.push(`[pageerror] ${e.message}`));
   page.on("requestfailed", (r) => { if (!IGNORE.test(r.url())) errors.push(`[requestfailed] ${r.url()} ${r.failure()?.errorText}`); });
   page.errors = () => errors.filter((e) => !IGNORE.test(e));
