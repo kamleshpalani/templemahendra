@@ -1,14 +1,28 @@
 # Notification System — Design and Build Contract
 
-This document is the single source of truth for the devotee notification
-system. It is written for the people (and agents) building it in parallel: every
-shared name, shape and rule is fixed here so that independently written pieces
-fit together. If you find a contract here that cannot work, implement the
-closest safe behaviour, keep the public shape, and **report the deviation** in
-your final summary. Do not silently rename things.
+> **Change history.** Rewritten 2026-09-28 to describe the system as the code
+> is today. Devotee accounts, the in-app bell, web push, OTP, devotee
+> notification preferences and the devotee-facing `/api/notifications` API were
+> retired with family registration (docs/registration/SPEC.md §1, §6;
+> migration 009). The channels are now exactly **email, WhatsApp and SMS**,
+> governed by the consent tick box on the registration form and an unsubscribe
+> link in every update. This revision also adds the `contact.received` office
+> event (migration 019) and the online-payment events, and lists the test
+> suites that exist now. Where this document and the code disagree, the code
+> wins; report the difference rather than silently renaming anything.
 
-- Data model: `database/migrations/007_notifications.sql` (applied locally)
-- Provider contract: `backend/includes/notify/contracts.php` (written, tested — do not change the interface)
+This document is the source of truth for the notification system: every shared
+name, shape and rule is fixed here so that independently written pieces fit
+together. If you find a contract here that cannot work, implement the closest
+safe behaviour, keep the public shape, and **report the deviation** in your
+final summary. Do not silently rename things.
+
+- Data model: `database/migrations/007_notifications.sql` (tables),
+  `009_family_registration.sql` (consent columns; retires in-app/push),
+  `013_live_subscriptions.sql` (`live_reminders` category),
+  `019_contact_notifications.sql` (`office` category)
+- Provider contract: `backend/includes/notify/contracts.php`
+- Family-registration rules the service follows: `docs/registration/SPEC.md` §6
 - Test fixtures CLI: `tests/support/notify_fixtures.php`
 
 ---
@@ -17,77 +31,70 @@ your final summary. Do not silently rename things.
 
 | Thing | Where / how |
 | --- | --- |
-| MySQL 8.4 | Docker container `temple-mysql`, host port **3307**, db `templemahendra`, app user `temple/templepass`, root `root/rootpass`. Query: `docker exec temple-mysql mysql -uroot -prootpass templemahendra -e "…"` |
+| MySQL 8.4 | Docker container `temple-mysql`, host port **3307**, db `templemahendra`, app user `temple/templepass`, root `root/rootpass`. Query: `docker exec temple-mysql mysql -uroot -prootpass templemahendra -e "…"`. Apply SQL with `--default-character-set=utf8mb4`. |
 | PHP 8.3 CLI | `/c/Users/nithp/AppData/Local/Temp/claude/temple-php-0913/php.sh` — exports the DB environment, passes other env through. Use it as `PHP_BIN` for test suites. |
-| PHP dev server | `/c/Users/nithp/AppData/Local/Temp/claude/temple-php-0913/serve.sh <port>` (run in the background). Inherits exported env, sets `TRUSTED_PROXIES=127.0.0.1,::1`, `SITE_URL=http://localhost:5173`. The built-in server is **single-threaded**; that is why each agent gets its own port. Code changes need no restart. |
-| Vite | Already running on `http://localhost:5173` (IPv6 loopback — never use 127.0.0.1:5173). Proxies `/api`, `/admin`, `/uploads` to PHP on 8000. |
+| PHP dev server | `/c/Users/nithp/AppData/Local/Temp/claude/temple-php-0913/serve.sh <port>` (run in the background). Inherits exported env, sets `TRUSTED_PROXIES=127.0.0.1,::1`, `SITE_URL=http://localhost:5173`. The built-in server is **single-threaded**; that is why each suite gets its own port. Code changes need no restart. |
+| Vite | `http://localhost:5173` (IPv6 loopback — never use 127.0.0.1:5173). Proxies `/api`, `/admin`, `/uploads` to PHP on 8000. |
 | Playwright + axe | `frontend/node_modules`; tests resolve them with `createRequire("../frontend/node_modules/playwright/index.js")` exactly as `tests/public-e2e.mjs` does. |
 | Admin login | `admin` / `Admin@Test123` (owner, environment account). Create editor/viewer accounts for role tests via `/admin/users.php` or SQL into `admin_users` (bcrypt). |
-| Design audit | `cd frontend && npm run audit` must report **0 actionable findings**. Every literal `className`/`class` needs a CSS rule; no opaque raw colours outside `styles/tokens.css`; no inline `style=` except custom properties. It scans `frontend/src` and `backend/admin`. |
+| Design audit | `cd frontend && npm run audit` must report **0 actionable findings** if you touch `frontend/src` or `backend/admin`. |
 | PHP lint | `php.sh -l <file>` on every PHP file you touch. |
 
-### Ports (one owner each)
+### Ports
 
-| Port | Owner |
-| --- | --- |
-| 8000 | shared by Vite (UI agents) — already running, default env |
-| 8001 | API agent |
-| 8002 | triggers agent |
-| 8003 | admin campaigns agent |
-| 8004 | admin content agent |
-| 8010–8019 | core service agent (start your own with the env you need) |
-| 8020–8029 | providers agent (PHP webhook server and Node mock provider servers) |
-| 8030–8039 | API agent's extra servers (cron key, etc.) |
-
-Start any server you need with `serve.sh`; stop what you started when you are
-done (`Get-NetTCPConnection -LocalPort <p> -State Listen | % { Stop-Process -Id $_.OwningProcess -Force }`).
-Never stop 8000.
+The notification suites use PHP 8010–8029 and the CLI (docs/registration/SPEC.md
+§9): `notify-providers.mjs` takes 8020–8029 (8020 and 8028 PHP webhook servers,
+8021 Meta, 8022 Twilio, 8023 MSG91, 8024 SMTP, 8029 deliberately closed);
+`admin-notify-content.mjs` runs against 8025; `admin-notifications.mjs` against
+8003; `notify-triggers.mjs` against 8002. Never stop 8000 (Vite's backend).
 
 ### Shared-machine rules
 
-- **Rate limits are per IP.** Every test HTTP request must send a unique
-  `X-Forwarded-For` for your suite (e.g. `10.21.0.1` for providers, `10.31.x.y`
-  for API). Servers trust it because of `TRUSTED_PROXIES`. For Playwright use
-  `browser.newContext({ extraHTTPHeaders: { "X-Forwarded-For": "…" } })`.
+- **Rate limits are per IP.** Every test HTTP request sends a unique
+  `X-Forwarded-For` for its suite (notifications use `10.81.0.<n>`; older
+  suites keep their own ranges). Servers trust it because of `TRUSTED_PROXIES`.
+  For Playwright use `browser.newContext({ extraHTTPHeaders: { "X-Forwarded-For": "…" } })`.
   Never run `DELETE FROM rate_limits` without a `WHERE bucket LIKE '%<your ip>%'`.
-- **Create test devotees with the fixtures CLI**, not `/api/auth/register`
-  (sign-up is capped at five per hour per IP). Sign in through `/api/auth/login`.
-- **Test data prefixes**: emails `e2e-<suite>-<run>-…@example.test`; campaign
-  names `E2E-<SUITE>-…`; dedupe keys `e2e:<suite>:…`. Every suite must be
-  re-runnable and clean up after itself (fixtures `cleanup` removes devotees by
-  email prefix and everything that cascades from them).
+- **Create test registrations with the fixtures CLI**
+  (`tests/support/notify_fixtures.php create-devotee`), not `/api/registrations`
+  (the form is flood-limited per connection). `create-devotee` accepts
+  `consent`, `unsubscribed`, `active` and `members`.
+- **Test data prefixes**: emails `e2e-<suite>-<run>-…@example.test`; names and
+  campaign names `E2E-<SUITE>-…`; dedupe keys `e2e:<suite>:…`. Every suite must
+  be re-runnable and clean up after itself (`cleanup` removes registrations by
+  name or email prefix and everything that cascades from them).
 - **Scope worker runs to your own rows**: `notify_worker.php --notification-ids=1,2`
   or `--campaign-id=9`. Another suite's queue is not yours to drain.
-- **Do not run `npm run build`** (other agents' dev servers read `frontend/`).
-  To prove a production build compiles, use
+- **Do not run `npm run build`** (dev servers read `frontend/`). To prove a
+  production build compiles, use
   `npx vite build --outDir C:/Users/nithp/AppData/Local/Temp/claude/build-<you> --emptyOutDir`.
-- Do not commit to git. Do not edit files you do not own (§9).
+- Do not commit to git from an agent session.
 
 ---
 
 ## 2. Architecture
 
 ```
- module (auth, bookings, donations, admin)          admin campaign composer
-            │  notifyEvent('booking.confirmed', …)            │ notifyCampaignTransition()
-            ▼                                                  ▼
-   ┌─────────────────────────── Notification Service (backend/includes/notify/) ──────────┐
-   │ events catalogue → template render (lang × channel) → recipient + preferences →      │
-   │ channel policy → notifications row (+dedupe) → notification_deliveries rows (queue)   │
-   │  sync=true: dispatch now inside the request (security emails, OTP)                    │
-   └─────────────────────────────────────────────┬─────────────────────────────────────────┘
+ module (registration, bookings, donations, payments, contact, admin)   admin campaign composer
+            │  notifyEvent('booking.confirmed', …)                              │ notifyCampaignTransition()
+            ▼                                                                    ▼
+   ┌─────────────────────────── Notification Service (backend/includes/notify/) ───────────────┐
+   │ events catalogue → template render (lang × channel) → recipient (registration or guest) → │
+   │ channel policy (contact, provider, consent, SMS restraint) → notifications row (+dedupe)  │
+   │ → notification_deliveries rows (queue);  sync=true: dispatch now inside the request        │
+   └─────────────────────────────────────────────┬─────────────────────────────────────────────┘
                                                  │ cron: php backend/bin/notify_worker.php (every minute)
                                                  ▼
-   worker: lock → recover stale claims → expand due campaigns (batches) → reminders →
-           claim due deliveries (priority order, per-channel throttle) → dispatch
+   worker: lock → recover stale claims → expand due campaigns (batches) → reminders (bookings,
+           event/pooja campaigns, live darshan) → claim due deliveries (priority order,
+           per-channel throttle) → re-check consent → dispatch
                                                  │  NotifyProvider::send(NotifyMessage)
-                    ┌──────────────┬─────────────┼──────────────┬───────────────┐
-                  email         whatsapp        sms           push           inapp
-               (mailer.php)   (meta|twilio)  (twilio|msg91) (webpush|fcm)  (the row itself)
+                              ┌──────────────────┼──────────────────┐
+                            email             whatsapp             sms
+                         (mailer.php)       (meta|twilio)     (twilio|msg91)
                                                  │
         provider status callbacks → /api/notify-webhook/<driver> → notifyApplyProviderUpdate()
         email opens / link clicks → /api/n/o|c/<token> ;  unsubscribe → /api/n/u/<token>
-        devotee UI → /api/notifications/* (bell polls /unread every 30 s, instant on push)
 ```
 
 Hosting constraints that shaped this (Hostinger shared hosting):
@@ -96,13 +103,15 @@ Hosting constraints that shaped this (Hostinger shared hosting):
   cron job (`* * * * *`), with an HTTP trigger (`/api/notify-cron`) for hosts
   without CLI cron. Each run has a time budget (default 50 s) so runs never
   overlap; a MySQL `GET_LOCK` makes overlap harmless anyway.
-- Real-time in-app updates are a cheap poll (one indexed `COUNT`) every 30 s
-  while the tab is visible, plus an immediate refresh when a Web Push arrives,
-  plus cross-tab sync with `BroadcastChannel`. SSE would hold one PHP worker per
-  open tab, which shared hosting cannot afford.
-- No native mobile app exists. "Mobile push" is Web Push to the installed PWA
-  (Android, desktop, iOS 16.4+ home-screen apps). FCM for a future native app
-  sits behind the same interface.
+- Devotees do not sign in, so there is nothing to push to and no page to poll.
+  The bell, web push and per-devotee settings were removed by migration 009:
+  `inapp` and `push` survive only as enum values and history rows
+  (`NOTIFY_RETIRED_CHANNELS`), labelled "In-app (retired)" / "Push (retired)"
+  in the admin and never offered, sent or counted as live channels.
+- Consent is one tick box on the registration form (`devotees.updates_consent_at`)
+  that covers festival, pooja and temple announcements on every channel, and one
+  unsubscribe link (`devotees.unsubscribed_at`) that withdraws it on every
+  channel. Messages about a family's own booking or donation need no consent.
 
 ---
 
@@ -111,26 +120,30 @@ Hosting constraints that shaped this (Hostinger shared hosting):
 - **UTC everywhere.** All notification `DATETIME`s are UTC, written explicitly
   with `UTC_TIMESTAMP()` or `notifyNow()`. APIs return ISO-8601 with `Z`
   (`notifyIso()`). The admin displays the temple timezone
-  (`NOTIFY_TEMPLE_TZ`, default `Asia/Kolkata`, label it "IST" when it is);
-  the devotee UI formats in the browser's zone.
+  (`NOTIFY_TEMPLE_TZ`, default `Asia/Kolkata`, label it "IST" when it is).
 - **Code style follows the codebase**: plain PHP functions with a `notify`
   prefix (no framework, no Composer), PDO prepared statements, early returns,
-  comments that explain *why*. React function components, `useLang()` `t(ta, en)`
-  for every visible string, existing UI primitives (`Button`, `Badge`, `Chip`,
-  `Switch`, `Field`, `EmptyState`, `ErrorState`, `SkeletonText`, `Modal`,
-  `useDialogBehaviour`), design tokens only.
+  comments that explain *why*. Admin pages use the shared `admin_layout.php`
+  primitives and design tokens only.
 - **Never break a user flow.** `notify()`/`notifyEvent()` must not throw into
   their callers: wrap, `error_log('[notify] …')`, and return a result that says
   what happened. A booking must save even if the notification tables are
-  missing (`notifyTablesExist()` false → return `['id' => null, 'skipped' => 'tables missing']`).
-- **Never store secrets in notifications.** OTP codes, verification and reset
-  links go in `secret_vars`, are rendered only at dispatch, and require
-  `sync => true` (§5.3). Provider responses are redacted (`notifyRedact`).
+  missing (`notifyTablesExist()` false → `['id' => null, 'skipped' => 'tables missing']`).
+  Form and admin callers go through `devoteeNotifyEvent()` in
+  `backend/includes/devotee_notify.php`, which loads the service lazily and
+  returns `null` when it is unavailable.
+- **Never store secrets in notifications.** A value that must never be stored
+  goes in `secret_vars`, is rendered only at dispatch, and forces `sync => true`
+  (§5.3). No built-in message uses one since sign-in was retired; the rule
+  stays for any module that does. Provider responses are redacted (`notifyRedact`).
 - **No PII in URLs.** Tracking and unsubscribe links carry opaque signed tokens
-  (§5.10). The devotee API takes ids in POST bodies, never emails or phones in
-  query strings.
+  (§5.10). The unsubscribe page shows a masked email or phone, never the full one.
 - **Bilingual.** Tamil is the site default. Every built-in template ships `ta`
-  and `en`; the architecture accepts any language code in `NOTIFY_LANGUAGES`.
+  and `en`; a registration's `devotees.lang` is `ta` or `en`; the architecture
+  accepts any language code in `NOTIFY_LANGUAGES` for campaign translations.
+- **No message points at an account.** Every `cta_path` and body links to a
+  public page (`/`, `/contact`, `/sevas`, `/events`, `/panchangam`, a payment
+  receipt or result page) or tells the family to call the temple office.
 
 ---
 
@@ -142,22 +155,24 @@ Hosting constraints that shaped this (Hostinger shared hosting):
 | --- | --- | --- |
 | queued | waiting for the worker (or for `next_attempt_at`) | no |
 | sending | claimed by a worker run (`claim_token`, `claimed_at`) | no |
-| sent | the provider accepted it (or in-app: visible to the devotee) | no |
+| sent | the provider accepted it | no |
 | delivered | provider confirmed delivery (webhook) | no |
-| read | opened / read (email pixel, WhatsApp read receipt, in-app read) | yes |
+| read | opened / read (email pixel or tracked click, WhatsApp read receipt) | yes |
 | failed | a retry is scheduled — **only while attempts < max_attempts** | no |
-| rejected | permanent provider refusal | yes |
-| dead | retries exhausted; kept for the admin to requeue | yes |
-| skipped | never attempted: opted out, no contact, not configured (`skip_reason`) | yes |
-| cancelled | the campaign was cancelled before this was sent | yes |
+| rejected | permanent provider refusal, or a failure reported by webhook | yes |
+| dead | retries exhausted (or interrupted on the last attempt); kept for the admin to requeue | yes |
+| skipped | never attempted: no contact, not configured, no consent, unsubscribed, archived (`skip_reason`) | yes |
+| cancelled | the campaign was cancelled before this was sent; also what migration 009 did to waiting in-app/push rows | yes |
 
 Progression is monotonic: `queued < sending < sent < delivered < read`. A webhook
 may only move a delivery forward; a late "failed" after "delivered" is recorded
-as a delivery event but does not change the status.
+as a delivery event but does not change the status. A webhook "failed" on a
+`queued`/`sending`/`sent` delivery becomes `rejected`, not a retry: the
+provider has already tried, and sending again could reach the devotee twice.
 
-In-app deliveries are created `sent` (or `queued` with `next_attempt_at` =
-`deliver_after` when scheduled) and become `read` when the devotee reads the
-notification.
+Every state change writes a `notification_delivery_events` row (`event` ≤ 24
+chars: queued, skipped, claimed, sent, failed, dead, rejected, requeued, read,
+clicked, webhook, cancelled).
 
 Campaign statuses: `draft → review → approved → scheduled → sending → completed`,
 plus `cancelled` and `failed`. See §5.8.
@@ -167,119 +182,193 @@ plus `cancelled` and `failed`. See §5.8.
 ## 5. The service (backend/includes/notify/)
 
 `backend/includes/notify.php` is the one file every caller requires. It loads
-`notify/contracts.php` and every service file. Requiring it must have no side
-effects beyond defining functions (no session start, no output, no DB query).
+`notify/contracts.php` and every service file (and `includes/live.php`, whose
+reminder step the worker runs). Requiring it must have no side effects beyond
+defining functions (no session start, no output, no DB query).
 
-### 5.1 Time, secrets, languages, categories
+| file | provides |
+| --- | --- |
+| `contracts.php` | `NOTIFY_CHANNELS`, `NOTIFY_RETIRED_CHANNELS`, priorities, `NotifyProvider`, `NotifyMessage`, `NotifyResult`, the driver registry, `notifyRedact`, `notifyHttp`, the log and test drivers |
+| `defaults.php` | built-in wording (`notifyTemplateDefaults`), `notifyTempleFacts`, `notifyTemplateRegister` |
+| `templates.php` | `notifyTemplate`, `notifyInterpolate`, `notifyRender`, `notifySmsInfo`, `notifyTemplateSample`, `notifyTemplateCacheClear` |
+| `email.php` | `notifyEmailHtml`, `notifyEmailText` |
+| `time.php` | `notifyTablesExist`, `notifyBool`, the UTC clock and test clock, time zones, `notifySecret`, `notifyLanguages`, `notifyPickLang`, `notification_kv` |
+| `categories.php` | categories and their kinds, `notifyCategoryNeedsConsent` |
+| `consent.php` | `notifyConsentState`, `notifyUnsubscribe`, `notifyMaskPhone` |
+| `policy.php` | `notifyAllowedChannels`, `notifyChannelDecision`, `NOTIFY_CONSENT_REASONS` |
+| `tracking.php` | signed tokens, `notifySafeCtaUrl`, `notifyAbsoluteUrl`, opens and clicks |
+| `service.php` | `notify()`, `notifyCreate()`, recipient shapes |
+| `events.php` | the event catalogue, `notifyEvent()` |
+| `queue.php` | `notifyDispatchDelivery`, the worker, `notifyRequeue`, `notifyApplyProviderUpdate` |
+| `audience.php` | campaign audiences as SQL |
+| `campaigns.php` | campaigns, approval, expansion, previews, test sends, audit |
+| `reminders.php` | evening-before reminders |
+| `providers/*.php` | one class per driver, loaded on first use |
+
+### 5.1 Time, secrets, languages, categories, consent
 
 ```php
-function notifyTablesExist(): bool;                       // cached per request; false before migration 007
-function notifyNow(): string;                             // UTC 'Y-m-d H:i:s'
+function notifyTablesExist(): bool;   // cached per request; probes notification_categories, notification_kv
+                                      // and devotees.lang/updates_consent_at/unsubscribed_at → false before 007 + 009
+function notifyBool(mixed $v): ?bool; // true/false, 1/0, "1"/"0", "true"/"false", "on"/"off", "yes"/"no"; else null
+function notifyNow(): string;                             // UTC 'Y-m-d H:i:s' (honours the worker's test clock)
+function notifyNowPlus(int $seconds): string;
 function notifyIso(?string $utc): ?string;                // 'Y-m-d\TH:i:s\Z' or null
+function notifyIsTimezone(mixed $tz): bool;
 function notifyTempleTz(): string;                        // NOTIFY_TEMPLE_TZ, default 'Asia/Kolkata'
-function notifyToUtc(string $localWallClock, string $tz): string;
+function notifyToUtc(string $localWallClock, string $tz): string;   // throws InvalidArgumentException
 function notifyFromUtc(string $utc, string $tz, string $format = 'Y-m-d H:i:s'): string;
-function notifyTimezoneFor(?array $prefs, ?string $countryIso2): string; // prefs.timezone → country map → temple tz
+function notifyCountryTimezones(): array;                 // ISO2 => zone
+function notifyTimezoneFor(?array $prefs, ?string $countryIso2): string; // $prefs['timezone'] → country map → temple tz
+                                                          // (registrations have no prefs: callers pass null)
+function notifyKvGet(string $key): ?string;  function notifyKvSet(string $key, string $value): void;
+function notifyKvAdd(string $key, string $value): string; // insert-if-absent, returns the winner
 function notifySecret(): string;                          // NOTIFY_SECRET (≥32 chars) else generated once into notification_kv('secret')
-function notifyLanguages(): array;                        // code => native label, from NOTIFY_LANGUAGES (default "ta,en,hi,te,ml,kn")
-function notifyCategories(bool $activeOnly = true): array; // key => row + ['mutable' => bool]
-function notifyCategory(string $key): ?array;
+function notifyLanguages(): array;                        // code => native label, from NOTIFY_LANGUAGES; ta and en always present
+function notifyLangOrDefault(mixed $lang): string;        // an offered code, else 'ta'
+function notifyPickLang(mixed $value, string $lang): ?string; // string, or per-language map → $lang, ta, en, then any
+
+const NOTIFY_KINDS         = ['transactional', 'security', 'critical', 'informational', 'promotional'];
+const NOTIFY_CONSENT_KINDS = ['informational', 'critical', 'promotional'];
+function notifyCategories(bool $activeOnly = true): array; // key => row + ['consent' => bool], committee order
+function notifyCategory(string $key): ?array;              // active or not (history still needs it)
+function notifyCategoryKind(string $key): string;          // unknown key → 'informational' (needs consent: a mistake sends less)
+function notifyCategoryNeedsConsent(string $key): bool;
+function notifyCategoryLabel(string $key, string $lang): string;
+function notifyCategoriesForget(): void;                   // the admin category editor calls it after a save
+
+function notifyConsentState(int $devoteeId): ?array;
+// ['consent','unsubscribed','consentAt','unsubscribedAt','email','phone','active'] or null
+function notifyUnsubscribe(int $devoteeId): bool;          // sets unsubscribed_at = COALESCE(unsubscribed_at, now); idempotent
+function notifyMaskPhone(?string $phone): string;          // "+91 ••••••3210"
 ```
 
-Country → timezone map must cover at least IN, LK, SG, MY, AE, SA, QA, KW, OM,
-BH, GB, IE, DE, FR, NL, CH, US (America/New_York), CA (America/Toronto),
-AU (Australia/Sydney), NZ, ZA, MU, FJ, JP, HK. Unknown → temple tz.
+Country → timezone map covers IN, LK, SG, MY, AE, SA, QA, KW, OM, BH, GB, IE,
+DE, FR, NL, CH, US (America/New_York), CA (America/Toronto), AU
+(Australia/Sydney), NZ, ZA, MU, FJ, JP, HK, NP, BD, PK, MV, MM, TH, ID, PH, CN,
+KR, RE, SC, KE, TZ, IT, ES, BE, SE, NO, DK, GY, TT. Unknown → temple tz.
 
-`mutable` = kind is `informational` or `promotional`.
+**Category kinds** decide whether consent is needed (docs/registration/SPEC.md §6):
+
+| kind | consent | categories seeded |
+| --- | --- | --- |
+| transactional | none; an unsubscribe does not stop it | booking, donation, payment, membership, **office** (019) |
+| informational | needs `updates_consent_at`, stopped by `unsubscribed_at` | general, announcement, festival, pooja, event, special_darshan, volunteer, administrative, **live_reminders** (013, `default_on` 0) |
+| critical | same rule as informational | emergency |
+| promotional | inactive since 009; reached anyway, treated as informational | promotional |
+| security | inactive since 009; reached anyway, treated as transactional | security |
+
+The committee edits labels, icon, order, `default_on` and `is_active` in the
+admin (§8.3) and may add informational or promotional categories; kinds of
+built-in categories are read-only.
 
 ### 5.2 Templates
 
 Built-in defaults live in `notify/defaults.php`:
 
 ```php
-function notifyTemplateDefaults(): array;
+function notifyTemplateDefaults(): array;     // built-in + runtime-registered
+function notifyTemplateBuiltIn(): array;
+function notifyTemplateRegister(string $key, array $definition): bool; // a module adds its own key; built-in keys cannot be replaced
 // template_key => [
 //   'category'    => 'booking',
-//   'description' => 'Sent when the committee confirms a seva booking',
-//   'variables'   => ['devoteeName', 'sevaName', 'bookingNumber', 'bookingDate', 'ctaUrl'],
-//   'cta_path'    => '/account?tab=bookings',          // default CTA; may use {{vars}}
+//   'description' => 'Sent when the committee confirms a seva booking.',   // shown in the admin
+//   'variables'   => ['devoteeName', 'bookingNumber', 'sevaName', 'bookingDate', 'ctaUrl'],
+//   'cta_path'    => '/contact',                          // default CTA; may use {{vars}}
 //   'langs' => [
 //     'ta' => ['any' => ['title' => …, 'body' => …, 'cta_label' => …],
-//              'sms' => ['title' => '', 'body' => …],   // optional channel overrides
+//              'sms' => ['title' => '', 'body' => …],      // channel overrides
 //              'whatsapp' => ['title' => '', 'body' => …]],
 //     'en' => [ … ],
 //   ],
 // ]
 
+function notifyTempleFacts(): array;
+// name, shortName, descriptor, address (ta/en), mapsUrl, phones, supportPhone(+Display), trust, taxNote,
+// taxShort, registrationNo — copied from frontend/src/data/temple.js (PHP cannot read the JS module)
+
 function notifyTemplate(string $key, string $lang, string $channel): ?array;
 // Resolution order: DB (key, lang, channel) → DB (key, lang, 'any') → default (lang, channel) →
-// default (lang, 'any') → same four steps for 'ta' → then 'en'. Returns
-// ['title','body','cta_label','provider_template','provider_params'(names),'source'=>'db'|'default',
-//  'lang'=>used, 'channel'=>used] or null for an unknown key.
+// default (lang, 'any') → the same four steps for 'ta' → then 'en'. A regional code (en-IN) tries
+// its base language first. Returns ['title','body','cta_label','provider_template',
+// 'provider_params'(names),'source'=>'db'|'default','lang'=>used,'channel'=>used] or null for an
+// unknown key. A channel row without a cta_label borrows the shared version's label.
 
 function notifyInterpolate(string $text, array $vars, bool $html = false): string;
 // {{name}} → value. Unknown names render as ''. $html escapes values (never the template).
-// Values that are arrays are ignored. No other syntax.
+// Array/object values are ignored. No other syntax.
 
 function notifyRender(string $key, string $lang, string $channel, array $vars): array;
-// ['title','body','cta_label','provider_template','provider_params'(ordered VALUES),
-//  'missing'=>[names used by the template but absent from $vars], 'lang'=>used, 'source']
+// ['title'(≤200, one line),'body','cta_label'(≤80),'provider_template','provider_params'(ordered VALUES),
+//  'missing'=>[names used by the template but absent from $vars],'lang','channel','source']
+// Unknown key → every text '' and source null (a caller that forgot to check still sends nothing).
+
+const NOTIFY_TEMPLATE_AUTO_VARS = ['templeName','templeShortName','templeAddress','mapsUrl','supportPhone','trustName','taxNote'];
+// filled from notifyTempleFacts() in the template's language when absent; never reported missing.
+// devoteeName, when absent, renders as "அன்பர்" / "devotee" but IS reported missing.
+
+function notifyTemplateVarsUsed(string ...$texts): array;
+function notifyTemplateCacheClear(): void;    // the admin editor and tests call it after writing rows
+function notifySmsInfo(string $text): array;  // ['chars','segments','encoding' => 'GSM-7'|'UCS-2'] (160/153 or 70/67 per part)
+function notifyTemplateSample(string $key, string $lang): array;  // realistic values for previews and tests
 
 function notifyEmailHtml(array $p): string;
-// Branded, responsive, table-layout email with inline styles (extends the look of
-// mailTemplate() in mailer.php). $p keys: title, body (plain text; blank lines are
-// paragraphs, single newlines <br>), lang, preheader, category_label, priority,
-// cta_url, cta_label, details ([[label, value], …]), logo_url (absolute /logo.png
-// or /icons/icon-192x192.png), contact (['phone' => …, 'email' => …, 'address' => …]),
-// preferences_url, unsubscribe_url, open_pixel_url. Emergency/urgent priorities get a
-// visible banner. Must render in Gmail, Outlook and Apple Mail (no <style> reliance,
-// max-width 600, 16px min body text, dark-mode-safe colours).
+function notifyEmailText(array $p): string;
+// $p keys: title, body (plain text; blank lines are paragraphs, single newlines <br>, URLs become links),
+// lang, preheader, category_label, priority (urgent/emergency show a banner), cta_url, cta_label,
+// details ([[label, value], …]), logo_url (default the site icon), contact (['phone','email','address'];
+// default the temple office), unsubscribe_url (the "stop temple updates" link appears only when given),
+// open_pixel_url, kind / category (choose the footer's "why you received this"), footer_note (replaces it).
+// Table layout, inline styles, max-width 600, 16px body text, dark-mode-safe; renders in Gmail, Outlook, Apple Mail.
 ```
 
-Template keys (all must exist in defaults, ta and en, with an `sms` override
-≤ 160 GSM-7 characters in English and a concise Tamil variant, and a `whatsapp`
-override where WhatsApp formatting helps):
+Template keys (all exist in defaults, `ta` and `en`, each with an `sms` override
+that fits one GSM-7 segment in English with realistic values and a `whatsapp`
+override with *bold* labels; `tests/notify-templates-unit.php` checks this):
 
-| key | category | variables (beyond devoteeName, templeName, ctaUrl) |
-| --- | --- | --- |
-| welcome | general | — |
-| email_verification | security | verifyUrl, expiresHours |
-| email_verified | security | — |
-| password_reset | security | resetUrl, expiresMinutes |
-| password_changed | security | changedAt |
-| profile_updated | security | changedFields |
-| phone_otp | security | otpCode, expiresMinutes |
-| phone_verified | security | phoneMasked |
-| booking_received | booking | bookingNumber, sevaName, bookingDate |
-| booking_confirmed | booking | bookingNumber, sevaName, bookingDate |
-| booking_modified | booking | bookingNumber, sevaName, bookingDate, changes |
-| booking_cancelled | booking | bookingNumber, sevaName, bookingDate, reason |
-| booking_completed | booking | bookingNumber, sevaName |
-| booking_reminder | booking | bookingNumber, sevaName, bookingDate, templeAddress, mapsUrl |
-| donation_received | donation | receiptNumber, donationAmount, donationPurpose |
-| donation_receipt | donation | receiptNumber, donationAmount, donationPurpose, donationDate, trustName, taxNote |
-| payment_success | payment | paymentReference, paymentAmount, paymentFor |
-| payment_failed | payment | paymentReference, paymentAmount, paymentFor, reason |
-| event_registered | event | eventName, eventDate, eventLocation |
-| event_cancelled | event | eventName, eventDate, reason |
-| event_reminder | event | eventName, eventDate, eventLocation |
-| festival_reminder | festival | eventName, eventDate, eventLocation |
-| pooja_reminder | pooja | poojaName, poojaDate, poojaTime |
-| volunteer_registered | volunteer | opportunityName |
-| volunteer_opportunity | volunteer | opportunityName, eventDate |
-| membership_renewal | membership | membershipName, renewalDate |
-| special_darshan | special_darshan | eventName, eventDate, eventLocation |
-| announcement | announcement | headline, message |
-| emergency | emergency | headline, message |
-| campaign_generic | (campaign's) | title, message — the wrapper for free-text campaigns |
+| key | category | variables (beyond devoteeName, ctaUrl) | cta_path |
+| --- | --- | --- | --- |
+| registration_received | general | familyCount | / |
+| booking_received | booking | bookingNumber, sevaName, bookingDate | /contact |
+| booking_confirmed | booking | bookingNumber, sevaName, bookingDate | /contact |
+| booking_modified | booking | bookingNumber, sevaName, bookingDate, changes | /contact |
+| booking_cancelled | booking | bookingNumber, sevaName, bookingDate, reason | /sevas |
+| booking_completed | booking | bookingNumber, sevaName | /sevas |
+| booking_reminder | booking | bookingNumber, sevaName, bookingDate, templeAddress, mapsUrl | /contact |
+| donation_received | donation | receiptNumber, donationAmount, donationPurpose | /contact |
+| donation_receipt | donation | receiptNumber, donationAmount, donationPurpose, donationDate, trustName, taxNote | /contact |
+| donation_paid | donation | receiptNumber, paymentReference, paymentAmount, paymentFor, paymentDate, paymentMode, trustName, taxNote | /payment/receipt |
+| payment_success | payment | receiptNumber, paymentReference, paymentAmount, paymentFor, bookingDate, paymentDate, paymentMode | /payment/receipt |
+| payment_failed | payment | paymentReference, paymentAmount, paymentFor, reason | /payment/result |
+| payment_refund | payment | refundAmount, paymentReference, receiptNumber, refundReference, paymentFor | /payment/receipt |
+| event_registered | event | eventName, eventDate, eventLocation | /events |
+| event_cancelled | event | eventName, eventDate, reason | /events |
+| event_reminder | event | eventName, eventDate, eventLocation | /events |
+| festival_reminder | festival | eventName, eventDate, eventLocation | /events |
+| pooja_reminder | pooja | poojaName, poojaDate, poojaTime | /panchangam |
+| special_darshan | special_darshan | eventName, eventDate, eventLocation | /events |
+| volunteer_registered | volunteer | opportunityName | /contact |
+| volunteer_opportunity | volunteer | opportunityName, eventDate | /contact |
+| membership_renewal | membership | membershipName, renewalDate | /contact |
+| contact_received | office | senderName, senderPhone, message, receivedAt | /admin/contact_messages.php |
+| announcement | announcement | headline, message | / |
+| emergency | emergency | headline, message | /contact |
+| campaign_generic | general (the campaign's wins) | title, message — the wrapper for free-text campaigns | / |
 
-`templeName`, `templeAddress`, `mapsUrl`, `supportPhone` are filled automatically
-(from `data/temple.js` facts copied into PHP once, in `defaults.php`).
+Amounts are written "Rs. 1,001", never "₹" (outside GSM-7). `templeName`,
+`templeShortName`, `templeAddress`, `mapsUrl`, `supportPhone` ("+91 94430 02296"),
+`trustName` and `taxNote` are filled automatically. The "stop updates" line on
+WhatsApp/SMS and the email unsubscribe link are added at dispatch (§5.7), never
+written into a template. The eight account-only keys (`welcome`,
+`email_verification`, `email_verified`, `password_reset`, `password_changed`,
+`profile_updated`, `phone_otp`, `phone_verified`) no longer exist; migration
+009 deleted their DB overrides.
 
 ### 5.3 Creating a notification
 
 ```php
-function notify(array $n): array;
+function notify(array $n): array;        // never throws
+function notifyCreate(array $n): array;  // the same, throwing (used by the live module inside its own transaction)
 ```
 
 Input (all keys optional unless stated):
@@ -287,32 +376,36 @@ Input (all keys optional unless stated):
 | key | type | notes |
 | --- | --- | --- |
 | event | string | the automated event name, stored in `notifications.event` |
-| template | string | template key; required unless `title`+`body` given |
-| vars | array | template variables; stored in `notifications.vars` |
-| secret_vars | array | rendered only at dispatch, never stored; forces `sync` |
-| title, body, cta_label | string or `['ta' => …, 'en' => …]` | free text (campaigns); per-language maps pick the recipient language with the §5.2 fallback order |
-| devotee_id | int | recipient account; its email, phone, language, timezone and preferences are loaded |
-| to_email, to_phone, name, lang | string | a guest, or an override for this send |
-| category | string | default: the template's category, else `general` |
+| template | string | template key; required unless `title`+`body` given; unknown → `skipped: unknown template` |
+| vars | array | template variables (scalars; strings cut to 2000 chars); stored in `notifications.vars` |
+| secret_vars | array | rendered only at dispatch, never stored (`vars._secret` lists the names); forces `sync` |
+| title, body, cta_label | string or `['ta' => …, 'en' => …]` | free text (campaigns, live reminders); per-language maps pick the recipient language with `notifyPickLang` |
+| devotee_id | int | a family registration; its email, phone, country, `lang`, consent and `is_active` are loaded |
+| to_email, to_phone, name, lang | string | a guest, or an override for this send (a different email/phone than the registration's is stored on the row) |
+| category | string | default: the template's category, else `general`; unknown → `general` |
 | priority | string | `normal` (default), `important`, `urgent`, `emergency` |
-| channels | string[] | subset of `NOTIFY_CHANNELS`; default: the event catalogue's, else `['inapp']` |
-| cta_url | string | passed through `notifySafeCtaUrl()`; default: template `cta_path` |
-| image_url | string | site path or https URL |
-| details | `[[label, value], …]` | email details table; stored in vars as `_details` |
-| entity_type, entity_id | string, int | what it is about |
-| dedupe_key | string | **required for automated events**; ≤190 chars |
+| channels | string[] or CSV | subset of `NOTIFY_CHANNELS`; retired/unknown names are dropped; default `['email']`; none left → `skipped: no channels` |
+| fallbacks | `['whatsapp' => 'sms']` | applied when a channel's provider is not configured (§5.4) |
+| cta_url | string | passed through `notifySafeCtaUrl()`; default: template `cta_path` interpolated |
+| image_url | string | site path or https URL (kept for campaigns; email only shows it) |
+| details | `[[label, value], …]` | email details table (≤20 rows); stored in vars as `_details` |
+| entity_type, entity_id | string `[a-z_]{1,32}`, int | what it is about |
+| dedupe_key | string | **required for automated events**; >190 chars → head + sha1 |
 | campaign_id, run_no | int | set by campaign expansion |
-| deliver_after | UTC string | hold in-app visibility and all deliveries until then |
-| sync | bool | dispatch external channels now, inside this request |
+| deliver_after | UTC string | hold every delivery until then (`next_attempt_at`); ignored when in the past |
+| sync | bool | dispatch now, inside this request (not when `deliver_after` is set) |
 | actor | string | admin username, default `system` |
+| title_prefix | string ≤20 | prepended on every channel ("[TEST] " for test sends) |
+| `_recipient`, `_test`, `_campaign` | internal | a preloaded recipient row (expansion); an admin's typed address (§5.4); campaign flag |
 
 Returns:
 
 ```php
 [
-  'id'         => ?int,        // null when deduped, suppressed or the tables are missing
-  'deduped'    => bool,        // a notification with this dedupe_key already exists
-  'skipped'    => ?string,     // why nothing was created, when id is null and not deduped
+  'id'         => ?int,        // null when deduped, skipped or the tables are missing
+  'deduped'    => bool,        // a notification with this dedupe_key already exists (id = the existing one)
+  'skipped'    => ?string,     // tables missing · unknown template · nothing to send · no channels · no such devotee ·
+                               // registration archived · no recipient · invalid live reminder · live subscription unavailable · error
   'deliveries' => [ 'email' => ['id' => int, 'status' => 'queued'|'sent'|'skipped'|…,
                                 'reason' => ?string, 'recordedOnly' => bool], … ],
 ]
@@ -320,323 +413,451 @@ Returns:
 
 Behaviour, in order:
 
-1. Tables missing → `['id' => null, 'deduped' => false, 'skipped' => 'tables missing', 'deliveries' => []]`.
-2. Resolve the recipient (`notifyRecipientFromDevotee` or the guest fields).
-   A closed account (`is_active = 0`) receives nothing (`skipped: account closed`),
-   except `security` category sends to its own email.
-3. Dedupe: `INSERT` with the unique `dedupe_key`; on duplicate return
-   `deduped => true` with the existing id. Never a second row.
-4. Render title/body/cta in the recipient language for channel `any` (what the
-   bell shows). With `secret_vars`, the stored copy renders secrets as `••••`.
-5. Channel policy (§5.4) decides each channel: create one delivery per channel
-   with status `queued`, `sent` (in-app) or `skipped` + `skip_reason`.
-   `show_in_app` = in-app delivery not skipped.
-6. `sync` (or `secret_vars` present): dispatch each queued external delivery now
-   via `notifyDispatchDelivery()`. A retryable failure of a send carrying
-   `secret_vars` becomes `dead` with reason "security message not retried" —
-   the secret was never stored, so a later retry could not reproduce it.
+1. Tables missing → `skipped: tables missing`. Unknown template, or neither a
+   template nor a title+body → skipped.
+2. Resolve the recipient. `devotee_id` → `notifyRecipientFromDevotee()`; a
+   registration that does not exist → `no such devotee`; an **archived**
+   registration (`is_active = 0`) receives nothing in a category that needs
+   consent → `registration archived` (its own booking or donation message
+   still goes). Otherwise the guest fields; neither an email nor a phone →
+   `no recipient`. `name` and `lang` override what was loaded.
+3. Sanitise vars, secrets, details; resolve the CTA (`cta_url`, else the
+   template's `cta_path`).
+4. Render the stored copy (title, body, cta label) in the recipient language for
+   channel `any`; secrets render as `••••`. An empty title falls back to the
+   category label.
+5. Channel policy (§5.4) decides each requested channel (and fallbacks): one
+   delivery per channel with status `queued` (`next_attempt_at` =
+   `deliver_after`) or `skipped` + `skip_reason`; `max_attempts` email 5,
+   whatsapp 5, sms 3; a delivery event is written for each.
+6. Insert the notification and its deliveries in one transaction
+   (`show_in_app` is always 0: the column belonged to the retired bell). A
+   duplicate `dedupe_key` (MySQL 1062 on `uniq_dedupe`) returns
+   `deduped => true` with the existing id and its deliveries. Never a second row.
+7. `sync` (or `secret_vars` present) and no `deliver_after`: dispatch each
+   queued delivery now via `notifyDispatchDelivery()`. A retryable failure of a
+   send carrying secrets becomes `dead` ("security message not retried").
+
+**Recipient shapes** (what the policy reads):
 
 ```php
 function notifyRecipientFromDevotee(array|int $devotee): array;
-// ['devotee_id','name','email','email_verified'(bool),'phone','phone_verified'(bool),
-//  'country','lang','timezone','prefs'(notifyPrefs), 'active'(bool)]
+// ['devotee_id','name','email' (may be null),'phone','country','lang' ('ta'|'en'),'timezone'
+//  (notifyTimezoneFor(null, country)),'active' (is_active = 1),
+//  'consent' (updates_consent_at IS NOT NULL AND unsubscribed_at IS NULL),'unsubscribed' (unsubscribed_at IS NOT NULL)]
+// Accepts an id or a devotees row with those columns (campaign expansion passes rows for a whole batch).
+// A missing registration comes back with devotee_id null and active false.
+
+function notifyGuestRecipient(?string $email, ?string $phone, string $lang = 'ta'): array;
+// devotee_id null, name '', timezone = temple tz, active true, consent false, unsubscribed false
+// (+ 'test' => true when an admin typed the address for a test send)
 ```
 
 ### 5.4 Channel policy
 
 ```php
-function notifyAllowedChannels(array $requested, string $category, string $priority, array $recipient, bool $isCampaign): array;
-// channel => ['status' => 'queued'|'sent'|'skipped', 'reason' => ?string]
+const NOTIFY_CONSENT_REASONS = ['no consent', 'unsubscribed'];   // re-checked at dispatch
+function notifyAllowedChannels(array $requested, string $category, string $priority, array $recipient, bool $isCampaign, array $fallbacks = []): array;
+// channel => ['status' => 'queued'|'skipped', 'reason' => ?string, 'fallbackFor' => channel (only on a fallback)]
+function notifyChannelDecision(string $channel, string $category, string $priority, array $recipient, bool $isCampaign): array;
 ```
 
-For each requested channel, the first rule that applies wins:
+For each requested channel, the first rule that applies wins
+(`$isCampaign` is passed by every caller but no rule depends on it: consent is
+the same for an automated update and a committee broadcast):
 
-1. **inapp**: no `devotee_id` → skipped `no account`. `inapp_on` off, category
-   mutable and priority below urgent → skipped `turned off`. Otherwise `sent`
-   (or `queued` when `deliver_after` is in the future).
-2. **Contact**: email needs a valid address; whatsapp/sms need a phone; push
-   needs ≥1 active device → skipped `no email` / `no phone` / `no device`.
-3. **Provider**: `notifyProviderFor($channel)->isConfigured()` false → skipped
-   `not configured`, then apply the event's fallback (e.g. whatsapp → sms) if any.
-4. **Consent for the kind**:
-   - `promotional`: requires `promotional_opt_in_at`; whatsapp/sms additionally
-     require `phone_verified`; email requires `email_verified`.
-   - `informational` campaigns: email requires `email_verified`.
-   - `unsubscribed_at` set → email skipped `unsubscribed` for informational and
-     promotional kinds.
-5. **Channel toggle** off (`<channel>_on = 0`) → skipped `turned off`, except:
-   `security` kind always allows email; `critical` kind (emergency) ignores every
-   toggle except `whatsapp_on` (WhatsApp opt-in is a Meta policy requirement).
-6. **Muted category** (mutable kinds only) → skipped `muted`, unless priority is
-   `urgent` or `emergency`.
-7. **SMS restraint**: priority `normal` with an `informational` or `promotional`
-   kind → skipped `sms reserved for important messages`.
-8. Otherwise `queued`.
+1. **Only email, whatsapp, sms.** A retired or unknown channel is dropped
+   before any rule is asked, so it never becomes a delivery row.
+2. **Contact**: email needs a valid address → `no email`; whatsapp/sms need a
+   phone of ≥7 digits → `no phone`.
+3. **Provider**: `notifyProviderFor($channel)->isConfigured()` false →
+   `not configured`. Then the event's fallback (e.g. `whatsapp → sms`) is
+   decided by the same rules and added with `fallbackFor`, unless the fallback
+   channel was requested in its own right (its own decision stands). The mailer
+   provider is always configured (it logs when no transport is set), so in
+   practice only WhatsApp and SMS fall back.
+4. **Consent by category kind** (`notifyCategoryNeedsConsent`): transactional
+   (booking, donation, payment, membership, office) needs none. Informational,
+   critical and promotional need the recipient's `consent`; `unsubscribed` is
+   checked first (`unsubscribed`), then missing consent (`no consent`). A guest
+   never gave consent, so a guest never receives an update. The one exception:
+   `recipient.test` (an admin's test send to an address they typed) bypasses
+   this rule — they asked for it.
+5. **SMS restraint**: `sms` with priority `normal` in an informational or
+   promotional category → `sms reserved for important messages`.
+6. Otherwise `queued`.
 
-Guests have no preferences: every toggle counts as on, no category is muted,
-promotional is never allowed.
+At dispatch (§5.7) the consent rules are applied again for a registered
+recipient, so a family that unsubscribed while a campaign waited in the queue
+is skipped with the consent reason; an archived registration is skipped for
+updates; changed contact details are used as they are now.
 
 ### 5.5 Automated events
 
 ```php
 function notifyEventCatalogue(): array;
-function notifyEvent(string $event, array $ctx): array;   // returns notify()'s result
+// event => ['template','priority','channels','fallbacks','sync','dedupe' (pattern|null),'entity_type','description']
+function notifyEventDedupeKey(string $pattern, array $ctx): ?string;   // null when a placeholder has no value
+function notifyEvent(string $event, array $ctx): array;                // returns notify()'s result; never throws
 ```
 
 `$ctx` carries the recipient (`devotee_id`, or `to_phone`/`to_email`/`name`/`lang`
-for guests), `vars`, optional `secret_vars`, `entity_id`, and any extras the
-catalogue entry names. `notifyEvent` fills template, category, priority,
-channels, fallbacks, cta and `dedupe_key` from the catalogue; `$ctx` may override
-`channels`, `priority` and `dedupe_key`.
+for a booking, donation or office mailbox), `vars`, optional `secret_vars`,
+`entity_id`, and any extras the dedupe pattern names (`donation.receipt`:
+`sequence`). `notifyEvent` fills template, category (the template's), priority,
+channels, fallbacks, sync, `entity_type` and `dedupe_key` from the catalogue;
+`$ctx` may override `channels`, `priority` and `dedupe_key`, and passes
+`cta_url`, `image_url`, `details`, `deliver_after` and `actor` through. A
+dedupe pattern whose placeholder is missing from `$ctx` → `skipped: missing dedupe context`
+(logged), never an un-deduplicated send. Unknown event → `skipped: unknown event`.
 
-| event | template | priority | channels | fallbacks | sync | dedupe_key |
-| --- | --- | --- | --- | --- | --- | --- |
-| account.registered | welcome | normal | inapp | — | no | `devotee:{id}:welcome` |
-| account.email_verification | email_verification | urgent | email | — | yes | none (every resend is new) |
-| account.email_verified | email_verified | normal | inapp, email | — | no | `devotee:{id}:email_verified` |
-| account.profile_updated | profile_updated | important | inapp, email | — | no | none |
-| security.password_reset | password_reset | urgent | email | — | yes | none |
-| security.password_changed | password_changed | important | inapp, email | — | yes | none |
-| phone.otp | phone_otp | urgent | sms | sms→whatsapp | yes | none |
-| phone.verified | phone_verified | normal | inapp | — | no | `devotee:{id}:phone:{phoneHash8}` |
-| booking.received | booking_received | normal | inapp, email, whatsapp | — | no | `booking:{entity_id}:received` |
-| booking.confirmed | booking_confirmed | important | inapp, email, whatsapp, push | whatsapp→sms | no | `booking:{entity_id}:confirmed` |
-| booking.modified | booking_modified | important | inapp, email, whatsapp, push | — | no | `booking:{entity_id}:modified:{vars.bookingDate}` |
-| booking.cancelled | booking_cancelled | important | inapp, email, whatsapp, sms, push | — | no | `booking:{entity_id}:cancelled` |
-| booking.completed | booking_completed | normal | inapp | — | no | `booking:{entity_id}:completed` |
-| booking.reminder | booking_reminder | important | inapp, whatsapp, push, email | whatsapp→sms | no | `booking:{entity_id}:reminder:{vars.bookingDate}` |
-| donation.received | donation_received | normal | inapp, email, whatsapp | — | no | `donation:{entity_id}:received` |
-| donation.receipt | donation_receipt | important | inapp, email, whatsapp | — | no | `donation:{entity_id}:receipt:{ctx.sequence}` |
-| payment.succeeded | payment_success | important | inapp, email, whatsapp, sms | — | no | `payment:{vars.paymentReference}:success` |
-| payment.failed | payment_failed | urgent | inapp, email, whatsapp, sms | — | no | `payment:{vars.paymentReference}:failed` |
-| event.registered | event_registered | normal | inapp, email, whatsapp | — | no | `event:{entity_id}:registered:{recipient}` |
-| event.cancelled | event_cancelled | important | inapp, email, whatsapp, sms, push | — | no | `event:{entity_id}:cancelled:{recipient}` |
-| volunteer.registered | volunteer_registered | normal | inapp, email | — | no | `volunteer:{entity_id}:{recipient}` |
-| membership.renewal_due | membership_renewal | important | inapp, email, whatsapp | — | no | `membership:{entity_id}:renewal:{vars.renewalDate}` |
+Dedupe placeholders: `{id}` devotee id · `{entity_id}` · `{vars.name}` ·
+`{ctx.name}` · `{recipient}` = `d<devotee id>`, or `p<first 12 of sha1(phone digits)>`
+/ `e<first 12 of sha1(email)>` for a guest.
 
-`{recipient}` is `d{devotee_id}` or `p{sha1(phone) first 12}` for a guest.
-`payment.*`, `event.registered`, `event.cancelled`, `volunteer.registered` and
-`membership.renewal_due` have **no caller yet** — the site has no payment
-gateway, event registration, volunteer or membership module. They are complete
-and tested so the day such a module lands it calls one function.
+| event | template | priority | channels | fallbacks | sync | dedupe_key | raised by |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| registration.received | registration_received | important | email, whatsapp | whatsapp→sms | no | `devotee:{id}:registered` | `api/registrations.php`, only when consent was ticked |
+| booking.received | booking_received | normal | email, whatsapp | — | no | `booking:{entity_id}:received` | `api/seva_bookings.php` |
+| booking.confirmed | booking_confirmed | important | email, whatsapp | whatsapp→sms | no | `booking:{entity_id}:confirmed` | `admin/seva_bookings.php` (single and bulk) |
+| booking.modified | booking_modified | important | email, whatsapp | — | no | `booking:{entity_id}:modified:{vars.bookingDate}` | **no caller yet** |
+| booking.cancelled | booking_cancelled | important | email, whatsapp, sms | — | no | `booking:{entity_id}:cancelled` | `admin/seva_bookings.php` |
+| booking.completed | booking_completed | normal | email, whatsapp | — | no | `booking:{entity_id}:completed` | `admin/seva_bookings.php` |
+| booking.reminder | booking_reminder | important | whatsapp, email | whatsapp→sms | no | `booking:{entity_id}:reminder:{vars.bookingDate}` (the worker passes the ISO date) | `notify/reminders.php` |
+| donation.received | donation_received | normal | email, whatsapp | — | no | `donation:{entity_id}:received` | `api/donations.php` |
+| donation.receipt | donation_receipt | important | email, whatsapp | — | no | `donation:{entity_id}:receipt:{ctx.sequence}` | `admin/donations.php` "Send receipt" |
+| donation.paid | donation_paid | important | email, whatsapp, sms | — | no | `donation:{vars.paymentReference}:paid` | `includes/payments/notify.php` (channels from Admin → Payment Gateway) |
+| payment.succeeded | payment_success | important | email, whatsapp, sms | — | no | `payment:{vars.paymentReference}:success` | `includes/payments/notify.php` |
+| payment.failed | payment_failed | important | email | — | no | `payment:{vars.paymentReference}:failed` | `includes/payments/notify.php` |
+| payment.refunded | payment_refund | important | email, whatsapp, sms | — | no | `refund:{entity_id}:processed` | `includes/payments/notify.php` |
+| event.registered | event_registered | normal | email, whatsapp | — | no | `event:{entity_id}:registered:{recipient}` | **no caller yet** |
+| event.cancelled | event_cancelled | important | email, whatsapp, sms | — | no | `event:{entity_id}:cancelled:{recipient}` | **no caller yet** |
+| volunteer.registered | volunteer_registered | normal | email | — | no | `volunteer:{entity_id}:{recipient}` | **no caller yet** |
+| membership.renewal_due | membership_renewal | important | email, whatsapp | — | no | `membership:{entity_id}:renewal:{vars.renewalDate}` | **no caller yet** |
+| contact.received | contact_received | important | email | — | no | `contact:{entity_id}:received:{recipient}` | `api/contact.php`, once per address in `CONTACT_NOTIFY_EMAIL` |
 
-Broadcast reminders (events, poojas) are not per-devotee events: the worker
-creates an automatic campaign for them (§5.9).
+Notes:
 
-### 5.6 Preferences
+- No event is `sync` and none carries `secret_vars` any more; both mechanisms
+  remain in `notify()` for a future module.
+- `registration.received` is `important` rather than `normal` so its SMS
+  fallback is not held back by the SMS restraint. Its category, `general`, needs
+  consent, which is why the caller raises it only when the box was ticked.
+- The payment events are always raised for a guest recipient after the payments
+  module's transaction commits, with the channels chosen in Admin → Payment
+  Gateway (`docs/payments/SPEC.md` §6). `paymentReference` is the Donation or
+  Booking ID, so a replayed gateway callback never sends twice; a receipt
+  resend re-raises `donation.paid` / `payment.succeeded` with its own dedupe key.
+- `contact.received` is the temple office's own copy of a website contact
+  message: category `office` (transactional), so no consent is asked of the
+  committee mailbox; written in `CONTACT_NOTIFY_LANG` (`ta`|`en`, default `en`);
+  `senderPhone` is the international number with its plus; `receivedAt` is the
+  temple-time stamp; the CTA is the admin Messages page.
+- The retired account events (`account.*`, `security.*`, `phone.*`) are gone
+  from the catalogue; a call with one of those names logs "unknown event" and
+  sends nothing.
+- Broadcast reminders (events, poojas) are not per-devotee events: the worker
+  creates an automatic campaign for them (§5.9). Live darshan reminders are
+  free-text notifications created by the live module (§5.9).
 
-```php
-function notifyPrefs(int $devoteeId): array;
-// ['lang' => 'ta', 'timezone' => ?string, 'effectiveTimezone' => string,
-//  'channels' => ['inapp' => bool, 'email' => bool, 'whatsapp' => bool, 'sms' => bool, 'push' => bool],
-//  'muted' => [category keys], 'promotional' => bool, 'unsubscribed' => bool, 'updatedAt' => ?iso]
+### 5.6 Consent (devotee preferences are retired)
 
-function notifySavePrefs(int $devoteeId, array $input): array;
-// Input keys as above (partial allowed). Validates lang against notifyLanguages(),
-// timezone against timezone_identifiers_list(). Silently drops unmutable and unknown
-// categories from `muted`. promotional true sets promotional_opt_in_at (keeps the
-// first consent time), false clears it. Turning email back on clears unsubscribed_at.
-// Returns notifyPrefs(). Throws InvalidArgumentException(message) on an invalid lang/timezone.
-```
+There are no per-devotee preferences, muted categories, channel toggles,
+languages or time zones any more (`devotee_notification_prefs` is legacy and
+never read; `notifyPrefs`/`notifySavePrefs` do not exist). What a family can
+decide is recorded on the registration itself (migration 009):
+
+| column | meaning |
+| --- | --- |
+| `devotees.lang` | `ta` or `en`: the language every message to this family is written in |
+| `devotees.updates_consent_at` | when the family agreed to temple updates (the tick box, or the committee recording it: `updates_consent_by`) |
+| `devotees.unsubscribed_at` | when they withdrew it from a message link; wins over consent until the committee records consent again (which clears it) |
+
+`notifyConsentState()`, `notifyUnsubscribe()` and the unsubscribe endpoint
+(§6.1) are the whole API. One consent covers festival, pooja and temple
+announcements on every channel; unsubscribing stops them on every channel;
+booking and donation messages continue either way.
 
 ### 5.7 Queue, worker, dispatch
 
 ```php
 function notifyDispatchDelivery(int $deliveryId, array $secretVars = []): array;
-// Loads the delivery + notification + recipient + devices, re-renders the channel
-// variant from template_key + vars (+ secretVars), builds NotifyMessage, calls the
-// provider, applies the result. Returns ['status' => new status, 'reason' => ?string,
-// 'recordedOnly' => bool, 'providerMessageId' => ?string].
+// Claims a queued|failed delivery (attempt counted), loads the notification and the recipient as they are
+// NOW, re-checks consent, re-renders the channel variant, builds NotifyMessage, calls the provider, records
+// the result. Returns ['status' => new status, 'reason' => ?string, 'recordedOnly' => bool,
+// 'providerMessageId' => ?string]. A delivery already 'sending' → ['status' => 'sending', 'reason' => 'already being sent'].
 
 function notifyWorkerRun(array $opts = []): array;
-// opts: max_seconds (50), batch (100), channels (all external), notification_ids (int[]),
-//       campaign_id (?int), skip_campaigns (bool), skip_reminders (bool), trigger ('cli'|'http'),
-//       now (UTC string — tests only, honoured only when NOTIFY_ALLOW_TEST_DRIVER=1)
-// Returns ['run_id','claimed','sent','failed','dead','rejected','skipped',
-//          'campaigns_expanded','reminders_created','duration_ms','locked'(bool: another run held the lock)]
+// opts: max_seconds (50, ≤600), batch (100, ≤1000), channels (default all three; [] processes none),
+//       notification_ids (int[]; confines recovery and claims, skips campaigns and reminders; an empty
+//       scope matches nothing), campaign_id (confines claims and expands only that campaign; skips reminders),
+//       skip_campaigns, skip_reminders, expand_limit (devotees per campaign per run; 0 = budget),
+//       trigger ('cli'|'http'), now (UTC string — tests only, honoured only when NOTIFY_ALLOW_TEST_DRIVER=1)
+// Returns ['run_id','claimed','sent','failed','dead','rejected','skipped','campaigns_expanded',
+//          'reminders_created','duration_ms','locked' (another run held the lock),'error' (?string)]
+// Throws RuntimeException when the tables are missing.
 
-function notifyRequeue(int $deliveryId, string $actor): bool;   // dead|failed|rejected → queued, attempts 0, audited
+function notifyRequeue(int $deliveryId, string $actor): bool;   // dead|failed|rejected → queued, attempts 0; refused for a secret-carrying message; audited
 function notifyApplyProviderUpdate(string $provider, string $messageId, string $status, ?string $error = null, ?string $at = null): int;
-function notifyRecordClick(int $deliveryId): void;              // clicked_at once; in-app also marks read
-function notifyRecordOpen(int $deliveryId): void;               // email read_at once
+function notifyRecordClick(int $deliveryId): void;              // clicked_at once; an email click also marks it read
+function notifyRecordOpen(int $deliveryId): void;               // email only; read_at once (from sent|delivered)
+function notifyBackoffSeconds(int $attempts, ?int $retryAfter = null): int;
+function notifyRatePerMinute(string $channel): int;
+function notifyStopUpdatesLine(string $lang, string $unsubscribeUrl): string;   // "To stop temple updates: <url>"
 ```
 
 Worker run, in order:
 
-1. `GET_LOCK('temple_notify_worker', 0)`; if not obtained return `locked => true`.
-2. Insert a `notification_worker_runs` row.
+1. `GET_LOCK('temple_notify_worker', 0)`; not obtained → `locked => true`.
+2. Insert a `notification_worker_runs` row (`trigger` cli|http).
 3. Recover stale claims: `sending` with `claimed_at` older than 10 minutes →
-   `queued`, delivery event `requeued` ("worker interrupted").
-4. Expand due campaigns (§5.8) unless `skip_campaigns`.
-5. Reminders (§5.9) unless `skip_reminders`; at most once every 15 minutes
-   (`notification_kv('reminders_last_run')`).
+   `queued` (event `requeued`, "worker interrupted"), or `dead` when it was the
+   last attempt.
+4. Expand due campaigns (§5.8) unless `skip_campaigns` or id-scoped.
+5. Reminders (§5.9) unless `skip_reminders` or scoped: at most once every 15
+   minutes (`notification_kv('reminders_last_run')`; a test clock always runs
+   them), then live darshan reminders (`liveQueueReminders()`).
 6. Claim loop until the time budget ends. Per channel not over its throttle:
    ```sql
    UPDATE notification_deliveries
-      SET status='sending', claim_token=:t, claimed_at=UTC_TIMESTAMP(), attempts=attempts+1
+      SET status='sending', claim_token=:t, claimed_at=:now, attempts=attempts+1
     WHERE status IN ('queued','failed') AND channel=:c
-      AND (next_attempt_at IS NULL OR next_attempt_at <= UTC_TIMESTAMP())
-      [AND notification_id IN (…)]
-    ORDER BY priority_rank, id LIMIT :batch
+      AND (next_attempt_at IS NULL OR next_attempt_at <= :now)
+      [AND notification_id IN (…)] [AND notification_id IN (SELECT id FROM notifications WHERE campaign_id = :c)]
+    ORDER BY priority_rank, id LIMIT min(batch, room)
    ```
-   then read rows by `claim_token` and dispatch each.
-7. Finish the run row (counters, duration, last error).
+   then read rows by `claim_token` and dispatch each. Rows still unsent when
+   the deadline arrives are handed back (`queued`/`failed`, attempt uncounted)
+   rather than left `sending`. One row that throws goes through the normal retry path.
+7. Finish the run row (counters, duration, last error). Each step's failure is
+   recorded in `error` and does not stop the others.
 
-Retries: `retry` result → status `failed`, `next_attempt_at` = now + max(provider
-`retryAfter`, backoff[attempts]) with backoff `[60, 300, 1800, 7200, 21600]`
+Retries: a `retry` result → status `failed`, `next_attempt_at` = now +
+max(provider `retryAfter`, backoff[attempts]) with backoff `[60, 300, 1800, 7200, 21600]`
 seconds and ±10% jitter. When `attempts >= max_attempts` → `dead`.
-`max_attempts`: email 5, whatsapp 5, sms 3, push 3 (set at delivery creation).
-`rejected` → `rejected`. `skipped` → `skipped`.
+`rejected` → `rejected`. `skipped` → `skipped`. A success is always recorded
+even by a run whose claim was recovered (the message did go out).
 
-Push results: devices reported `gone` get `is_active = 0`; any `ok` device makes
-the delivery `sent`; all failed-retryable → retry; all gone → `rejected`.
+Throttle per channel per minute (`NOTIFY_RATE_<CHANNEL>_PER_MIN`, defaults
+email 60, whatsapp 80, sms 30): count deliveries of that channel with `sent_at`
+in the last 60 s; stop claiming that channel for this run when reached.
 
-Throttle per channel per minute (`NOTIFY_RATE_<CHANNEL>_PER_MIN`, defaults email
-60, whatsapp 80, sms 30, push 600): count deliveries of that channel with
-`sent_at` in the last 60 s; stop claiming that channel for this run when reached.
+**What dispatch adds to a message** (`notifyBuildMessage`):
 
-Every state change writes a `notification_delivery_events` row.
+- The CTA is the stored `cta_url` made absolute and **tracked**
+  (`/api/n/c/<token>`); a link built from a secret is rebuilt from the template's
+  `cta_path` and sent untracked.
+- **Unsubscribe**: every message to a registered family in a kind that needs
+  consent carries `notifyUnsubscribeUrl(devotee_id)`. Email: the footer link
+  plus `List-Unsubscribe: <url>` and `List-Unsubscribe-Post: List-Unsubscribe=One-Click`
+  headers (RFC 8058). SMS: the CTA link is added when the template did not
+  include one and it does not push the message past two parts, then the
+  stop-updates line. WhatsApp: a free-form message gets the stop-updates line;
+  an approved provider template (sent by name with parameters) cannot have text
+  appended, so **its registered wording must include the unsubscribe link**
+  (the same for an MSG91 DLT template). Booking, donation and payment messages
+  carry no unsubscribe (it would not stop them); guests have nothing to
+  unsubscribe. Live reminders carry the live module's own unsubscribe link.
+- **WhatsApp buttons**: a `url` button for an https CTA (label ≤20 chars,
+  default "View details"), and a `call` button to the temple office for
+  transactional and critical kinds.
+- Email carries the open pixel, the category label, the priority banner and the
+  footer's "why you received this" (an update: because the family agreed at
+  registration; a booking/donation: about your own booking; live: you asked for it).
 
 `backend/bin/notify_worker.php` (CLI only):
 
 ```
 php backend/bin/notify_worker.php [--max-seconds=50] [--batch=100]
-        [--channels=email,sms] [--notification-ids=1,2] [--campaign-id=9]
-        [--skip-campaigns] [--skip-reminders] [--now="2026-09-13 12:00:00"] [--json]
+        [--channels=email,sms|none] [--notification-ids=1,2] [--campaign-id=9]
+        [--skip-campaigns] [--skip-reminders] [--expand-limit=500]
+        [--now="2026-09-13 12:00:00"] [--json]
 ```
 
 Prints a one-line summary, or the result as JSON with `--json`. Exit 0 on a
-completed run (including `locked`), 1 on an exception.
+completed run (including `locked`), 1 on an exception or a bad option.
+Hostinger: hPanel → Advanced → Cron Jobs, "Custom", every minute,
+`/usr/bin/php /home/<account>/domains/<site>/public_html/bin/notify_worker.php`.
 
 HTTP trigger: `backend/api/notify_cron.php`, routed at `/api/notify-cron`
-(GET or POST). Requires `NOTIFY_CRON_KEY` (≥24 chars) sent as header
-`X-Cron-Key` or `?key=`; compares with `hash_equals`. When the variable is unset
-the endpoint answers 404. Runs `notifyWorkerRun(['trigger' => 'http', 'max_seconds' => 25])`
-and returns the counters as JSON.
+(GET or POST; 405 otherwise). Requires `NOTIFY_CRON_KEY` (≥24 chars) sent as
+header `X-Cron-Key` (preferred) or `?key=`; compared with `hash_equals`. When
+the variable is unset or too short the endpoint answers 404. Wrong keys are
+rate-limited per address (30 per hour → 429) and logged; a wrong key → 403;
+tables missing → 503 `notifications_disabled`. Runs
+`notifyWorkerRun(['trigger' => 'http', 'max_seconds' => 25])` with
+`ignore_user_abort` and returns the counters as JSON (500 `worker_failed` on an exception).
 
 ### 5.8 Campaigns
 
 ```php
 function notifyCampaignSave(array $input, array $actor, ?int $id = null): array;
 // actor: ['username' => …, 'role' => 'owner'|'editor'|'viewer']
-// input: name, category, priority, channels[], cta_url, image_url, template_key, template_vars,
-//        segment_id, audience (rules array), translations => ['ta' => ['title','body','cta_label'], 'en' => …],
-//        schedule_tz ('temple'|'recipient'), scheduled_local ('Y-m-d H:i' or null), recurrence, recur_until
-// Validates everything; at least one translation with title and body; channels non-empty.
-// Saving a campaign in review/approved/scheduled returns it to draft (approval is void) — audited.
-// Only draft/review/approved/scheduled campaigns are editable.
+// input: name (≤160), category, priority, channels[] (email|whatsapp|sms), cta_url, image_url, template_key,
+//        template_vars, segment_id or audience (rules array/JSON), translations => [lang => ['title' ≤200,
+//        'body' ≤20000, 'cta_label' ≤80]], schedule_tz ('temple'|'recipient'), scheduled_local ('Y-m-d H:i' or null),
+//        recurrence (none|daily|weekly|monthly), recur_until
+// Validates everything; at least one translation with title and body; channels non-empty; the category
+// must exist and be active (or be the one already saved). The service accepts any kind; it is the admin
+// composer that offers only active informational, promotional and critical categories and refuses
+// transactional and security ones (§8.3). Saving a campaign in review/approved/scheduled returns it
+// to draft (approval is void) — audited. Only draft/review/approved/scheduled campaigns are editable.
 // Returns ['ok' => bool, 'id' => ?int, 'errors' => [field => message]]
 
-function notifyCampaignGet(int $id): ?array;
-// row + 'translations' => [lang => …] + 'rules' (resolved: segment's or own) + 'channelsList' + 'stats'
+function notifyCampaignLoad(int $id): ?array;   // row + 'translations' + 'rules' (segment's or own) + 'segment' + 'channelsList' + 'templateVars'
+function notifyCampaignGet(int $id): ?array;    // notifyCampaignLoad() + 'stats'
+function notifyCampaignStats(int $id): array;
+// ['recipients','byChannel' => [channel => [status => count]],'opened','clicked','failed','dead',
+//  'skippedConsent' (skipped for "no consent" or "unsubscribed")]
 
 function notifyCampaignNeedsApproval(array $campaign, int $estimate): ?string;
 // Returns the reason, or null when no second approval is needed:
-//   estimate > NOTIFY_APPROVAL_THRESHOLD (default 50) → "Reaches N devotees"
-//   priority urgent or emergency                      → "Urgent/emergency priority"
-//   channels include whatsapp or sms and estimate > 10 → "Paid channels to N devotees"
-//   category kind promotional                         → "Promotional message"
+//   estimate > NOTIFY_APPROVAL_THRESHOLD (default 50)  → "Reaches N families"
+//   priority urgent or emergency                       → "Urgent/emergency priority"
+//   channels include whatsapp or sms and estimate > 10 → "Paid channels to N families"
+//   category kind promotional                          → "Promotional message"
 
+function notifyCampaignReach(array $c): array;     // [estimate, ?"nobody" sentence] — counts consenting families for an update
+function notifyCampaignProblem(array $c): ?string; // what stops it being sent (no words, no channel, lost segment, bad rules, lost category)
 function notifyCampaignTransition(int $id, string $action, array $actor, array $opts = []): array;
 // Returns ['ok' => bool, 'status' => new status, 'message' => human text, 'id' => ?int (duplicate)]
+function notifyAudit(?int $campaignId, string $action, array $actor, array $detail = []): void;  // never throws
 ```
 
 | action | from | to | who (capability) | notes |
 | --- | --- | --- | --- | --- |
-| submit | draft | review, or approved when no approval is needed | notifications.compose | estimates now; stores estimated_count, requires_approval, approval_reason. Auto-approval is audited as approved by `system` with the reason "below approval threshold". |
+| submit | draft | review, or approved when no approval is needed | notifications.compose | estimates now (consenting families only for an update; "nobody" refuses); stores estimated_count, requires_approval, approval_reason. Auto-approval is audited as approved by `system` with the reason "below approval threshold". |
 | approve | review | approved | notifications.approve | approver ≠ created_by, unless `NOTIFY_ALLOW_SELF_APPROVAL=1` or no other active owner exists |
 | reject | review | draft | notifications.approve | `opts['reason']` required |
-| schedule | approved | scheduled | notifications.compose | needs scheduled_local in the future; sets scheduled_at / next_run_at |
-| send_now | approved | sending | notifications.compose | next_run_at = now |
-| emergency_send | draft, review, approved | sending | notifications.approve | priority must be emergency; `opts['reason']` required; audited `emergency_override` |
-| cancel | draft, review, approved, scheduled, sending | cancelled | compose (own drafts) / approve (others') | queued deliveries of this campaign → cancelled |
-| duplicate | any | new draft | notifications.compose | copies translations/audience/channels; name + " (copy)"; no schedule |
+| schedule | approved | scheduled | notifications.compose | `opts['scheduled_local']`/`schedule_tz` or the saved ones; must be in the future (recipient mode: the earliest zone, 14 h before the wall clock); sets scheduled_at / next_run_at |
+| send_now | approved | sending | notifications.compose | next_run_at = now; refused for a repeating campaign (use schedule) |
+| emergency_send | draft, review, approved | sending | notifications.approve | priority must be emergency; `opts['reason']` required; drops recurrence; audited `emergency_override` |
+| cancel | draft, review, approved, scheduled, sending | cancelled | compose (own drafts) / approve (others') | queued/failed deliveries of this campaign → cancelled (with an event each) |
+| duplicate | any | new draft | notifications.compose | copies translations/audience/channels/image; name + " (copy)"; no schedule; drops `reminderKey` |
 
 Every transition writes `notification_audit` with the campaign snapshot.
 
 Expansion (worker): a campaign is due when status is `approved`/`scheduled`
 with `next_run_at <= now` (recipient-timezone campaigns: `next_run_at - 14h`),
-or `sending` with expansion unfinished. Mark `sending`, set `started_at` on the
-first batch, then for devotees in the audience with `id > expand_cursor` in
-batches of 500 (within the time budget): render per recipient language and call
-`notify()` with `campaign_id`, `run_no = run_count + 1`,
-`dedupe_key = "campaign:{id}:{run}:{devotee_id}"`, and for recipient mode
-`deliver_after` = the scheduled local time in that devotee's timezone converted
-to UTC. Advance `expand_cursor`. When no devotees remain: `run_count++`,
-`recipient_count +=`, `expand_cursor = 0`; if recurrence and the next occurrence
-≤ `recur_until` → status `scheduled` with the next `next_run_at`, else mark
-`completed` once no delivery of the campaign is `queued`/`sending`/`failed`
-(checked on later runs).
+or `sending`. Mark `sending`, set `started_at` on the first batch; an
+**automatic reminder** whose `reminderKey` date is today or earlier is
+cancelled instead ("approved on or after the day it is about"); rules that no
+longer validate or a category that no longer exists → status `failed` with
+`last_error`. Then for families in the audience with `id > expand_cursor`, in
+batches of 500 within the time budget (and `expand_limit`): resolve the
+translation per recipient language and call `notify()` with `campaign_id`,
+`run_no = run_count + 1`, `dedupe_key = "campaign:{id}:{run}:{devotee_id}"`,
+and for recipient mode `deliver_after` = the scheduled wall-clock time in that
+family's timezone converted to UTC. Advance `expand_cursor` (saved every 100
+rows); a cancellation between batches stops at once. When no family remains:
+`run_count++`, `recipient_count`, `expand_cursor = 0`; if recurrence and the
+next occurrence ≤ `recur_until` → status `scheduled` with the next
+`next_run_at` (occurrences missed while the worker was down are skipped, not
+sent in a burst), else mark `completed` once no delivery of the campaign is
+`queued`/`sending`/`failed` (checked on later runs).
 
-Recurrence: daily +1 day, weekly +7 days, monthly same day next month (clamped
-to the month's last day), computed on the wall-clock time in the schedule's
-timezone.
+Recurrence (`notifyNextOccurrence`): daily +1 day, weekly +7 days, monthly the
+same day next month clamped to the month's last day and anchored to the
+original day (31 Jan → 28 Feb → 31 Mar), computed on the wall clock in the
+schedule's timezone.
 
 ```php
 function notifyCampaignPreview(array $campaign, string $channel, string $lang, ?int $sampleDevoteeId = null): array;
 // ['title','body','html'(email only),'cta_label','cta_url','provider_template','params',
-//  'sms' => ['chars' => int, 'segments' => int, 'encoding' => 'GSM-7'|'UCS-2'] (sms only),
-//  'missing' => []]
-// $campaign is a notifyCampaignGet() row or unsaved input in the same shape.
+//  'sms' => ['chars','segments','encoding'] (sms only),'missing' => []]
+// $campaign is a notifyCampaignGet() row or unsaved input in the same shape. An update shows the
+// unsubscribe link / stop-updates line exactly where dispatch puts it, using notifyPreviewUnsubscribeUrl()
+// (a token that verifies for nobody).
 
 function notifyCampaignTestSend(int $id, array $actor, array $to): array;
-// to: ['email' => ?, 'phone' => ?, 'devotee_id' => ?]. Sends the campaign as it stands to that one
-// recipient immediately (sync), ignoring the audience and the approval state, with the title
-// prefixed "[TEST] ". dedupe_key "test:{campaign}:{sha1(to)}:{minute}". Audited test_sent.
-
-function notifyCampaignStats(int $id): array;
-// ['recipients','byChannel' => [channel => [status => count]], 'opened','clicked','read','failed','dead']
-
-function notifyAudit(?int $campaignId, string $action, array $actor, array $detail = []): void;  // never throws
+// to: ['email' => ?, 'phone' => ?, 'devotee_id' => ?, 'lang' => ?]. Sends the campaign as it stands to that one
+// recipient now (sync), whatever its state and audience, with the title prefixed "[TEST] ". Channel rules
+// still apply, except that an address the admin typed counts as consenting ('_test'); a devotee_id keeps
+// that family's real consent. dedupe_key "test:{campaign}:{sha1(to+lang)}:{minute}". Audited test_sent
+// with the address masked. Returns ['ok','message','id','deduped','deliveries'].
 ```
 
 ### 5.9 Reminders (worker)
 
 - **Booking reminders**: `seva_bookings` with `status = 'confirmed'` and
   `preferred_date` = tomorrow in the temple timezone, once the temple-time clock
-  is past 17:00 → `notifyEvent('booking.reminder', …)` for the booking's account,
-  or for the guest phone when it has no account.
+  is past 17:00 → `notifyEvent('booking.reminder', …)` to the **phone on the
+  booking** (ten Indian digits from before migration 004 get `91`), in the
+  booking's own `lang`, with `bookingNumber` (`B-000091`, identical to
+  `devoteeBookingNumber()`), the seva name in that language, the worded date,
+  and `dedupe_key = booking:<id>:reminder:<ISO date>`. Bookings are not linked
+  to registrations, so no consent is involved (transactional).
 - **Event and pooja reminders**: `events` (`is_active = 1`, `event_date` =
   tomorrow) and `poojas` (`is_active = 1`, `pooja_date` = tomorrow), after 17:00
   temple time → one automatic campaign each: name
-  `Reminder: <title> (automatic)`, `created_by = 'system'`, status `approved`,
-  `requires_approval = 0`, channels `inapp,push`, priority `normal`, category
-  `event` / `pooja`, template `event_reminder` / `pooja_reminder`, audience
-  `{"mode":"rules","match":"all","rules":[{"field":"category_not_muted","op":"is","value":"event"}]}`,
-  `template_vars` including `"reminderKey": "event:<id>:<date>"`. Before
-  creating, check no campaign has that `reminderKey`
-  (`JSON_UNQUOTE(JSON_EXTRACT(template_vars, '$.reminderKey'))`). Expansion then
-  handles scale exactly as for an admin campaign.
+  `Reminder: <title> (automatic)`, `created_by = 'system'`, **status `review`**
+  with `requires_approval = 1` and the reason "Automatic reminder by email and
+  WhatsApp: approve it this evening so it goes out before <date>", channels
+  `email,whatsapp`, priority `normal`, category `event` / `pooja`, template
+  `event_reminder` / `pooja_reminder`, `cta_url` `/events`, audience
+  `{"mode":"rules","match":"all","rules":[{"field":"consent","op":"is","value":true}]}`,
+  `template_vars` with per-language `eventName`/`eventDate`/`eventLocation` (or
+  `poojaName`/`poojaDate`/`poojaTime`) and `"reminderKey": "event:<id>:<date>"`.
+  Before creating, check no campaign has that `reminderKey`
+  (`JSON_UNQUOTE(JSON_EXTRACT(template_vars, '$.reminderKey'))`). Once approved,
+  expansion handles scale exactly as for a committee campaign; approved on or
+  after the day itself, it is cancelled (§5.8).
+- **Live darshan reminders** (`backend/includes/live/subscriptions.php`,
+  `liveQueueReminders()`): for each `live_stream_subscriptions` row whose stream
+  starts within −15/+10 minutes, not yet reminded for that start, one free-text
+  `notifyCreate()` with `event = 'live.reminder'`, category `live_reminders`,
+  channel `email`, `entity_type = 'live_subscription'`, dedupe
+  `live-reminder:<subscription>:<start>`. `notify()` and dispatch resolve the
+  recipient through `liveSubscriptionRecipient()` (consent = the "Notify me"
+  tick box on the stream page; null once the stream is cancelled, deleted or
+  unsubscribed) and use the live module's own unsubscribe URL
+  (`/api/live-subscriptions/unsubscribe?token=…`). See `docs/live/`.
 
 ### 5.10 Tracking, unsubscribe, CTA safety
 
 ```php
-function notifyToken(string $kind, int $id): string;       // kind: 'c' click (delivery id), 'o' open (delivery id), 'u' unsubscribe (devotee id)
-function notifyTokenVerify(string $token): ?array;         // ['kind' => …, 'id' => int] or null
+const NOTIFY_TOKEN_KINDS = ['c', 'o', 'u'];
+function notifyToken(string $kind, int $id): string;       // 'c' click (delivery id), 'o' open (delivery id), 'u' unsubscribe (devotee id)
+function notifyTokenVerify(string $token): ?array;         // ['kind' => …, 'id' => int] or null (only the canonical form verifies)
 function notifyTrackedUrl(int $deliveryId, ?string $target): ?string;   // siteUrl('/api/n/c/<token>'), or null when no target
 function notifyOpenPixelUrl(int $deliveryId): string;      // siteUrl('/api/n/o/<token>')
 function notifyUnsubscribeUrl(int $devoteeId): string;     // siteUrl('/api/n/u/<token>')
-function notifyPreferencesUrl(): string;                   // siteUrl('/account?tab=notifications')
-function notifySafeCtaUrl(?string $url): ?string;          // '/path…' (not '//') or 'https://…'; anything else null
+function notifySafeCtaUrl(?string $url): ?string;          // '/path…' (not '//') or 'https://host…' without credentials; anything else null, never "repaired"
+function notifyAbsoluteUrl(?string $url): ?string;         // a safe link made absolute with siteUrl()
+function notifyMarkDeliveryRead(int $deliveryId, string $at, string $detail): bool;  // sent|delivered → read, once
 ```
+
+`notifyPreferencesUrl()` no longer exists: there is no settings page to link to.
 
 Token format: `<kind><id>.<sig>` where `sig` = base64url of the first 12 bytes
 of `HMAC-SHA256(kind . id, notifySecret())`. Regex:
 `^[cou][0-9]{1,10}\.[A-Za-z0-9_-]{16}$`. Tokens do not expire; rotating
 `NOTIFY_SECRET` invalidates them all.
 
-Email deliveries to devotees in informational/promotional categories carry
-`List-Unsubscribe: <unsubscribe_url>` and
-`List-Unsubscribe-Post: List-Unsubscribe=One-Click`. Security and transactional
-emails carry the preferences link only.
+Email deliveries to registered families in categories that need consent carry
+the unsubscribe link and the `List-Unsubscribe` / `List-Unsubscribe-Post`
+headers; WhatsApp and SMS carry the stop-updates line (§5.7). Transactional
+messages carry neither.
 
 ### 5.11 Audience
 
 ```php
+const NOTIFY_AUDIENCE_MAX_SELECTED = 5000;  const NOTIFY_AUDIENCE_MAX_RULES = 50;
+const NOTIFY_AUDIENCE_CONSENT_SQL  = 'd.updates_consent_at IS NOT NULL AND d.unsubscribed_at IS NULL';
+const NOTIFY_AUDIENCE_RETIRED_FIELDS = ['email_verified','phone_verified','last_login_days','channel_enabled','category_not_muted'] (with labels);
+
 function notifyAudienceFields(): array;                    // for UI builders, see below
-function notifyAudienceNormalize(array $rules): array;     // throws InvalidArgumentException(message)
-function notifyAudienceQuery(array $rules): array;         // ['sql' => 'SELECT d.id FROM devotees d … ORDER BY d.id', 'params' => [...]]
-function notifyAudienceCount(array $rules): int;
+function notifyAudienceFieldOps(): array;
+function notifyAudienceRetiredFieldsIn(mixed $rules): array;   // field => label; never throws. Meant for the admin to flag
+                                                               // stored rules; nothing calls it yet — normalisation refuses
+                                                               // such rules with a sentence naming the field instead
+function notifyAudienceNormalize(array|string $rules): array;  // throws InvalidArgumentException(sentence); a retired field names itself
+function notifyAudienceNeedsConsent(?string $category): bool;
+function notifyAudienceWhere(array|string $rules, ?string $category = null): array;   // ['sql','params']
+function notifyAudienceQuery(array|string $rules, ?string $category = null): array;   // ['sql' => 'SELECT d.id FROM devotees d … ORDER BY d.id', 'params']
+function notifyAudienceCount(array|string $rules, ?string $category = null): int;
+function notifyAudienceBreakdown(array|string $rules): array;  // ['all' => active matches, 'consenting' => of those, agreed and not unsubscribed]
+function notifyAudienceBatch(array|string $rules, int $afterId, int $limit, ?string $category = null): array;  // ids
 ```
 
 Rules JSON:
@@ -650,18 +871,23 @@ Rules JSON:
 }
 ```
 
-Every query excludes `is_active = 0`. `selected` is capped at 5000 ids.
+Every query excludes `is_active = 0`. When `$category` needs consent
+(informational, critical, promotional) the query also requires
+`NOTIFY_AUDIENCE_CONSENT_SQL`, so estimates, the approval threshold and
+"families reached" are honest and no skipped notification is written for a
+family that never said yes. `selected` is capped at 5000 ids.
 
 | field | ops | value |
 | --- | --- | --- |
 | country | in, not_in | ISO2[] |
 | state | in, not_in | string[] (as stored, e.g. "TN") |
 | city | contains, equals | string (case-insensitive) |
-| lang | in | language codes (from prefs; no prefs row counts as 'ta') |
-| email_verified | is | bool |
-| phone_verified | is | bool |
+| lang | in | `ta`, `en` (from `devotees.lang`) |
+| consent | is | bool (agreed and not unsubscribed) |
+| has_email | is | bool |
+| has_phone | is | bool |
+| family_size | gte, lte | int (1 + member count, ≤100) |
 | registered_days | lte, gte | int (days since created_at) |
-| last_login_days | lte, gte | int |
 | has_booking | is | bool |
 | booked_seva | in | seva ids |
 | booking_status | in | pending, confirmed, completed, cancelled |
@@ -670,279 +896,123 @@ Every query excludes `is_active = 0`. `selected` is capped at 5000 ids.
 | donated_total | gte, lte | number (sum of donations.amount) |
 | donated_days | lte | int |
 | tag | in, not_in | tag strings |
-| channel_enabled | in | channel names (pref on; no row = on) |
-| category_not_muted | is | category key |
 
 `notifyAudienceFields()` returns `field => ['label' => …, 'ops' => […], 'type' => 'iso2list'|'strlist'|'string'|'bool'|'int'|'number'|'idlist'|'enum', 'options' => [...]|null]`
-where `options` are filled for `lang`, `booking_status`, `booked_seva` (from `sevas`),
-`channel_enabled`, `category_not_muted`, `tag` (distinct tags in use).
+where `options` are filled for `lang`, `booking_status`, `booked_seva` (from
+`sevas`) and `tag` (distinct tags in use).
 
-Groups named in the brief map onto this: all devotees → `all_devotees`;
+Groups named in the brief map onto this: all families → `all_devotees`;
 individual/selected → `selected`; donors → `has_donated`; booking customers →
-`has_booking`; registered users → `email_verified`; volunteers, members,
-interests, devotee categories, event participants → `tag` (committee applies
-tags in the admin); geography → country/state/city; language → lang;
-preferences → channel_enabled / category_not_muted.
+`has_booking`; volunteers, members, interests, devotee categories, event
+participants → `tag` (committee applies tags in the admin); geography →
+country/state/city; language → lang; agreed to updates → `consent`.
 
-### 5.12 Devices, OTP
+### 5.12 Retired: devices, OTP, push, preferences
 
-```php
-function notifyRegisterDevice(int $devoteeId, array $subscription, string $platform = 'web', ?string $userAgent = null): array;
-// subscription: ['endpoint' => https URL ≤2000, 'keys' => ['p256dh' => b64url 87 chars, 'auth' => b64url 22 chars]]
-// Upserts by sha256(endpoint); re-assigns an endpoint to the current devotee (a shared browser).
-// Returns ['ok' => bool, 'id' => ?int, 'error' => ?string]
-function notifyRemoveDevice(int $devoteeId, string $endpoint): bool;
-function notifyVapidPublicKey(): ?string;
-// VAPID_PUBLIC_KEY env; else, only when NOTIFY_PUSH_DRIVER is webpush|log and no env keys exist,
-// a development key pair generated once into notification_kv (vapid_public, vapid_private).
-
-function notifyOtpIssue(int $devoteeId, string $phone, string $purpose = 'phone_verify'): array;
-// 6-digit code from random_int, HMAC-SHA256 with notifySecret(), 10-minute expiry, retires earlier
-// unconsumed codes. Limits: 3 issues per 15 minutes and 10 per day per devotee.
-// Sends notifyEvent('phone.otp', ['devotee_id' => …, 'to_phone' => $phone,
-//   'secret_vars' => ['otpCode' => …], 'vars' => ['expiresMinutes' => 10]]).
-// Returns ['ok' => bool, 'channel' => 'sms'|'whatsapp'|null, 'expiresIn' => 600,
-//          'error' => ?string, 'code' => ?'rate_limited'|'unavailable', 'retryAfter' => ?int]
-function notifyOtpVerify(int $devoteeId, string $phone, string $code, string $purpose = 'phone_verify'): array;
-// Constant-time compare; 5 attempts per code; on success consumes it and sets devotees.phone_verified_at.
-// Returns ['ok' => bool, 'error' => ?string, 'attemptsLeft' => ?int]
-```
+Removed with devotee sign-in (docs/registration/SPEC.md §6): `prefs.php`,
+`otp.php`, `devices.php`, `NotifyWebPushProvider`, `NotifyFcmProvider`,
+`NotifyEcKeys`, their registry entries, and `notify_keys.php`'s
+`vapid`/`fcm` commands. `notifyRegisterDevice`, `notifyRemoveDevice`,
+`notifyVapidPublicKey`, `notifyOtpIssue`, `notifyOtpVerify`, `notifyPrefs`
+and `notifySavePrefs` do not exist. The tables `devotee_devices`,
+`devotee_otps`, `devotee_notification_prefs` and `devotee_tokens` remain in
+the schema, unread, until a later migration drops them; migration 009 deleted
+the `vapid_public`, `vapid_private` and `fcm_token` rows from `notification_kv`.
 
 ---
 
 ## 6. HTTP API
 
-All JSON unless stated. Devotee endpoints need the devotee session
-(401 `{"error","code":"unauthenticated"}`); every POST needs `X-CSRF-Token`
-(419 `code: csrf`). Tables missing → 503 `{"code":"notifications_disabled"}`.
-Unknown action → 404 before auth.
+The devotee-facing `/api/notifications/*` API (list, unread, prefs, read,
+archive, devices, …) and the `/api/account/phone-verify-*` additions were
+removed with devotee accounts; no page calls them. What remains are the links
+inside messages, the provider callbacks and the cron trigger. `n.php` and
+`notify_webhook.php` answer HTML/GIF/provider bodies, so they set their own
+`Content-Type` and do not rely on the JSON exception handler.
 
-### 6.1 `backend/api/notifications.php` — `/api/notifications/<action>`
-
-Dispatched by `api/index.php` with `$notificationsAction`.
-
-**Item shape** (every list and panel):
-
-```json
-{
-  "id": 12, "title": "…", "body": "…",
-  "category": "booking", "categoryLabel": { "ta": "சேவை பதிவு", "en": "Booking" },
-  "icon": "calendar-check", "priority": "important",
-  "ctaUrl": "/account?tab=bookings", "ctaLabel": "View booking", "imageUrl": null,
-  "createdAt": "2026-09-13T04:05:06Z", "readAt": null, "archivedAt": null,
-  "isRead": false, "isArchived": false,
-  "entity": { "type": "seva_booking", "id": 91 }
-}
-```
-
-Only the signed-in devotee's rows with `show_in_app = 1`, `deleted_at IS NULL`
-and `deliver_after` null or past.
-
-| method | action | request | response |
-| --- | --- | --- | --- |
-| GET | list | `?status=all\|unread\|read\|archived` (all = not archived), `category=a,b`, `q` (≤100, title+body), `from`/`to` (`YYYY-MM-DD` in the devotee's effective timezone), `cursor`, `limit` (1–50, default 20) | `{ "items": [Item], "nextCursor": ?string, "unread": int }` — newest first; cursor is opaque base64url of `createdAt\|id` |
-| GET | unread | — | `{ "unread": int, "latestId": ?int, "latestAt": ?iso }`, `Cache-Control: no-store` |
-| GET | categories | — | `[{ "key", "label": {ta,en}, "icon", "kind", "mutable", "defaultOn" }]` |
-| GET | prefs | — | see below |
-| POST | prefs | `{ lang?, timezone?, channels?: {…}, muted?: [], promotional?: bool }` | `{ "ok": true, "prefs": …, "message": "Your notification settings are saved." }`; 422 `{error, fields}` |
-| POST | read | `{ "ids": [int] }` (≤200) | `{ "ok", "updated", "unread" }` |
-| POST | unread | `{ "ids" }` | same |
-| POST | read-all | `{}` | same |
-| POST | archive | `{ "ids" }` | same |
-| POST | unarchive | `{ "ids" }` | same |
-| POST | delete | `{ "ids" }` (soft: sets deleted_at) | same |
-| POST | click | `{ "id" }` | `{ "ok", "url": ?string, "unread" }` — marks read and records the in-app click |
-| POST | devices | `{ "subscription": {endpoint, keys}, "platform": "web" }` | `{ "ok", "deviceId" }` / 422 |
-| POST | devices-remove | `{ "endpoint" }` | `{ "ok" }` |
-
-`GET prefs` response:
-
-```json
-{
-  "prefs": { "lang": "ta", "timezone": null, "effectiveTimezone": "Asia/Kolkata",
-             "channels": { "inapp": true, "email": true, "whatsapp": true, "sms": true, "push": true },
-             "muted": [], "promotional": false, "unsubscribed": false },
-  "categories": [ { "key", "label", "icon", "kind", "mutable", "defaultOn" } ],
-  "channels": {
-    "inapp":    { "available": true },
-    "email":    { "available": true,  "reason": null },
-    "whatsapp": { "available": false, "reason": "no phone" | "not configured" | null },
-    "sms":      { "available": true,  "reason": null },
-    "push":     { "available": true,  "reason": null, "publicKey": "BF…", "devices": 1 }
-  },
-  "languages": [ { "code": "ta", "label": "தமிழ்" } ],
-  "phone": { "number": "+919876543210", "verified": false }
-}
-```
-
-POST rate limit: 120 per minute per devotee (`rateLimitAllow('notif-post', 120, 60, 'd'.$id)`).
-
-### 6.2 `backend/api/n.php` — tracking and unsubscribe
+### 6.1 `backend/api/n.php` — tracking and unsubscribe
 
 Routed by `api/index.php` for `/api/n/<kind>/<token>` with `$trackKind` and
-`$trackToken` (kind `c|o|u`, token per §5.10; anything else 404).
+`$trackToken` (kind `c|o|u`, token per §5.10 — the route regex checks the
+shape; anything else under `/n/` is 404). Every response sends
+`X-Robots-Tag: noindex, nofollow`, `Referrer-Policy: no-referrer` and
+`X-Content-Type-Options: nosniff`. A token is accepted only for the kind it was
+issued for.
 
 - `GET /api/n/c/<token>` → `notifyRecordClick`, `302` to the notification's CTA
-  (relative paths via `siteUrl()`); invalid token or no CTA → `302 siteUrl('/')`.
+  (re-checked with `notifySafeCtaUrl`; relative paths via `siteUrl()`); invalid
+  token or no CTA → `302 siteUrl('/')`. `HEAD` redirects without recording
+  (link checkers). Other methods → 405.
 - `GET /api/n/o/<token>` → `notifyRecordOpen`, `200 image/gif` 1×1,
-  `Cache-Control: no-store, private`. Invalid tokens still get the GIF.
-- `GET /api/n/u/<token>` → a small bilingual HTML page (site colours, no JS)
-  explaining what unsubscribing does, with a POST button. **GET never changes
-  anything** (mail scanners follow links).
-- `POST /api/n/u/<token>` (form button, or RFC 8058 one-click body
-  `List-Unsubscribe=One-Click`) → sets `unsubscribed_at`, mutes every mutable
-  category for email, answers a confirmation page with a link to the
-  preferences page. Idempotent.
+  `Cache-Control: no-store, private, max-age=0`. Invalid tokens still get the
+  GIF (a different answer would tell a prober which tokens are real).
+- `GET /api/n/u/<token>` → a small bilingual HTML page (site colours, inline
+  CSS, no JS, strict CSP) showing the registration's masked email (or masked
+  phone when it has no email), what stops and what continues, a POST button,
+  and the temple office's phone instead of any settings link. **GET never
+  changes anything** (mail scanners follow links). Already unsubscribed →
+  the "already stopped" page; invalid token or a deleted/merged registration →
+  404 page; tables missing → 503 page.
+- `POST /api/n/u/<token>` (the form button, or an RFC 8058 one-click body
+  `List-Unsubscribe=One-Click`) → `notifyUnsubscribe()`: sets
+  `devotees.unsubscribed_at` (first time kept), answers the "stopped" page.
+  Idempotent; no session, no CSRF — the signed token is the proof.
 
-### 6.3 `backend/api/notify_webhook.php` — `/api/notify-webhook/<driver>`
+### 6.2 `backend/api/notify_webhook.php` — `/api/notify-webhook/<driver>`
 
-Routed with `$webhookDriver` (`meta|twilio|msg91|fcm|test`, any method). Finds
-the channel(s) whose configured driver matches, calls `handleWebhook()`, applies
-each update with `notifyApplyProviderUpdate()`, answers the provider's expected
-body and status. Signature failures → 403 and an `error_log` line (no body
-detail). Always fast: no sending from inside a webhook.
+Routed with `$webhookDriver` (`^[a-z0-9]{2,16}$`: `meta|twilio|msg91|test`,
+any method). Finds the channel(s) whose configured driver matches (404 when
+none), reads at most 1 MB of body (413 beyond), and calls each provider's
+`handleWebhook()` in turn until one verifies the request; applies its
+`updates` with `notifyApplyProviderUpdate()` (status `sent|delivered|read|failed|rejected`,
+`at` as `Y-m-d H:i:s` UTC) and answers the provider's expected body and
+status (Meta's `hub.challenge`, Twilio's empty TwiML). Unverified → 403 with
+an empty body and one `error_log` line naming the driver, method and client
+IP; a handler exception → 500 with an empty body so the provider redelivers.
+Always fast: nothing is sent from inside a webhook.
 
-### 6.4 `/api/notify-cron` — see §5.7.
+### 6.3 `/api/notify-cron` — see §5.7.
 
-### 6.5 Account additions (triggers agent, `backend/api/account.php`)
+### 6.4 Routing (`backend/api/index.php`)
 
-| method | action | request | response |
-| --- | --- | --- | --- |
-| POST | phone-verify-start | `{}` (uses the saved profile phone) | `{ ok, channel, expiresIn, message }`; 422 no phone; 429 `code rate_limited` + `retryAfter`; 503 `code otp_unavailable` |
-| POST | phone-verify-confirm | `{ "code": "123456" }` | `{ ok, user, message }`; 422 `{ error, fields: { code }, attemptsLeft }` |
-
-`devoteePublic()` gains `"phoneVerified": bool`. Saving a different phone number
-on the profile clears `phone_verified_at`.
-
-### 6.6 Routing (`backend/api/index.php`, API agent)
-
-Add, without disturbing existing routes:
-
-- group `'/notifications/' => ['file' => 'notifications.php', 'var' => 'notificationsAction']`
-- `/n/<c|o|u>/<token>` → `n.php` (before the generic groups; exact regex)
-- `/notify-webhook/<driver>` → `notify_webhook.php` (`$webhookDriver`, `^[a-z0-9]{2,16}$`)
-- `/notify-cron` (GET, POST) → `notify_cron.php`
-
-`n.php` and `notify_webhook.php` answer HTML/GIF/provider bodies, so they set
-their own `Content-Type` and must not rely on the JSON exception handler for
-normal responses.
+- `/n/<c|o|u>/<token>` → `n.php` (matched first, exact regex); any other
+  `/n/…` → 404
+- `/notify-webhook/<driver>` → `notify_webhook.php` (`$webhookDriver`)
+- `/notify-cron` → `notify_cron.php`
+- `/live-subscriptions/*` (subscribe, unsubscribe) belongs to the live module
+  (`docs/live/`), not to this service.
 
 ---
 
 ## 7. Frontend
 
-### 7.1 NotificationContext (`frontend/src/context/NotificationContext.jsx`)
+There is no notification UI on the public site: no bell, panel, history page,
+preferences tab, push subscription hook or `push-sw.js`, and no
+`NotificationContext`. `/notifications`, `/account`, `/login` and the other
+account routes redirect to `/register`. What the site still has that touches
+this service:
 
-Mounted in `main.jsx` inside `AuthProvider`, around `App`.
-
-```js
-const {
-  enabled,        // signed in, accounts enabled, and the API did not answer 503
-  unread,         // number
-  latest,         // Item[] — newest 10, for the panel
-  status,         // 'idle' | 'loading' | 'ready' | 'error'
-  error,          // AuthError | null
-  refresh,        // () => Promise — unread + latest
-  markRead,       // (ids) => Promise
-  markUnread,     // (ids) => Promise
-  markAllRead,    // () => Promise
-  archive,        // (ids) => Promise
-  unarchive,      // (ids) => Promise
-  remove,         // (ids) => Promise  (soft delete)
-  open,           // (item) => Promise<url|null> — POST click, then the caller navigates
-} = useNotifications();
-```
-
-- Poll `GET /notifications/unread` every 30 s while `document.visibilityState === 'visible'`;
-  when `latestId` changes, fetch `list?limit=10`. Refresh on window focus and on
-  `online`. Stop entirely when signed out.
-- Optimistic updates for read/unread/archive/delete with rollback + toast on failure.
-- Cross-tab: `BroadcastChannel('temple-notifications')` posting `{ type: 'changed' }`
-  after every mutation; other tabs refresh.
-- Service worker messages: `{ type: 'notification-received', notificationId }`
-  → refresh immediately.
-- Uses `useAuth().get/post` so CSRF and error shapes match the rest of the site.
-
-### 7.2 Helpers (`frontend/src/lib/notifications.js`)
-
-```js
-export const CATEGORY_ICONS;                 // category key → lucide-react-icons component (react-icons/lu)
-export function iconFor(item);               // by item.icon then category, fallback LuBell
-export function groupByTime(items, now = new Date()); // [{ key: 'today'|'yesterday'|'week'|'earlier', items }]
-export function relativeTime(iso, lang, now = new Date());
-export function isInternalPath(url);         // '/…' but not '//'
-```
-
-### 7.3 Bell, panel, page
-
-- `components/Notifications/NotificationBell.jsx` — rendered by `Layout.jsx`
-  immediately before the account avatar, **signed-in devotees only**. A
-  `navbar__icon-btn`-sized round button (`.notif-bell`) with an unread count
-  badge (`.notif-bell__count`, "9+" above nine; hidden at zero; announced via
-  the button's accessible name "Notifications, 3 unread"). Subtle ring animation
-  when the count increases (disabled under `prefers-reduced-motion`).
-- `components/Notifications/NotificationPanel.jsx` — opens from the bell. ≥640 px:
-  a popover anchored under the bell (`role="dialog"`, `aria-label`, focus moves
-  in, Escape and outside click close, focus returns to the bell). <640 px: a
-  bottom sheet via the existing `Modal`. Header with "Mark all as read"; list of
-  latest 10 (`NotificationItem`); footer "View all notifications" → `/notifications`.
-  Loading skeleton, empty state ("You're all caught up"), error state with retry.
-- `components/Notifications/NotificationItem.jsx` — shared by panel and page:
-  category icon tile, title, 2-line body, relative time (`<time dateTime>` with
-  full date in `title`), category chip, priority badge for important+, unread
-  dot + bold title, actions menu (mark read/unread, archive/unarchive, delete).
-  Clicking the item calls `open(item)` then navigates: internal paths with
-  `useNavigate`, https URLs in a new tab with `rel="noopener noreferrer"`.
-- `pages/Notifications.jsx` at `/notifications` (inside `RequireAuth`, lazy):
-  `<Seo title robots="noindex, nofollow" />`, a compact header, toolbar with
-  search (debounced 300 ms), status segmented control (All / Unread / Read /
-  Archived), category chips (multi-select), date range (from/to), bulk select
-  with "Mark read", "Archive", "Delete" (with confirm), grouped sections
-  Today / Yesterday / This week / Earlier, infinite scroll
-  (`IntersectionObserver` sentinel) with a "Load more" button fallback, and
-  loading / empty / filtered-empty / error states. Filters live in the URL query.
-- Mobile drawer (`Layout.jsx` → `DrawerAccount`): a "Notifications" row with the
-  count, for signed-in devotees.
-
-### 7.4 Preferences and push
-
-- `components/Notifications/NotificationPreferences.jsx` — the "Notifications"
-  tab of `/account` (`?tab=notifications` opens it; `Account.jsx` reads the
-  query param for every tab). Sections: channels (switches with availability
-  reasons — "Add a phone number", "Not available yet" for unconfigured
-  providers), categories (mutable ones as switches; transactional/security shown
-  as locked "Always on" with a short explanation), language, timezone,
-  promotional consent, and push on this device. Save with toast; unsaved-change
-  guard.
-- `hooks/usePushSubscription.js` → `{ supported, reason, permission, subscribed, busy, error, subscribe, unsubscribe }`.
-  Supported needs `serviceWorker`, `PushManager`, `Notification` and an active
-  registration (the PWA registers one in production; in `vite dev` there is
-  none, so `supported = false, reason = 'service-worker-inactive'`). iOS outside
-  an installed home-screen app → `reason = 'ios-install-required'` with guidance.
-  Denied permission → explain how to re-enable in browser settings.
-- `frontend/public/push-sw.js`, loaded by the generated service worker through
-  `workbox.importScripts: ["push-sw.js"]` in `vite.config.js`:
-  - `push`: payload JSON `{ title, body, url, trackUrl, notificationId, category, priority, tag, image, icon }`
-    → `showNotification(title, { body, icon: '/icons/icon-192x192.png', badge: '/icons/icon-192x192.png', image, tag, renotify: true, requireInteraction: priority is urgent|emergency, data: { url, trackUrl, notificationId } })`,
-    then `postMessage({ type: 'notification-received', notificationId })` to every client.
-  - `notificationclick`: close, then focus an open same-origin client and
-    navigate it to `url`, else `openWindow(trackUrl || url)`.
-
-### 7.5 Styling
-
-Glass surfaces, maroon/gold tokens, `--radius-*`, `--space-*`, `--shadow-*`,
-existing `.btn`, `.chip`, `.badge`, `.menu`, `.card`, `.skeleton` classes.
-Component CSS files next to their components. Touch targets ≥ 44 px on mobile.
-Test at 390, 768, 1024, 1440 px: no horizontal overflow; the signed-in header
-must still fit at every width `tests/public-e2e.mjs` checks (390–1920).
+- **Consent tick box** on the Review step of family registration
+  (`components/Registration/ReviewStep.jsx`, `#reg-consent`, unticked by
+  default): "Send me festival, pooja and temple updates by WhatsApp, SMS or
+  email", with the hint that every update has a link to stop them. It becomes
+  `devotees.updates_consent_at`; the preferred language on step 1 becomes
+  `devotees.lang`. Ticked, the API raises `registration.received`.
+- **Booking and donation forms** send `lang`, which `seva_bookings.lang` /
+  `donations.lang` keep so every message about that booking or pledge is
+  written in it.
+- **"Notify me" on a live darshan page** (`components/Live/NotifyForm.jsx`):
+  an email and a consent box per stream, stored in `live_stream_subscriptions`,
+  reminded by email through this service's queue (§5.9) with the live module's
+  own unsubscribe link.
+- **The unsubscribe landing** is served by the API itself (`/api/n/u/<token>`,
+  §6.1), not by the SPA, so it works without JavaScript from any mail client.
 
 ---
 
 ## 8. Admin
 
-### 8.1 Capabilities (`backend/includes/auth.php`, admin campaigns agent)
-
-Add to `ADMIN_CAPABILITIES`:
+### 8.1 Capabilities (`backend/includes/auth.php`)
 
 | capability | minimum role |
 | --- | --- |
@@ -960,122 +1030,139 @@ Page policy (`adminPageCapability` / `adminPageWriteCapability`):
 | notification_templates.php | notifications.view | notifications.templates |
 | notification_analytics.php | notifications.view | notifications.compose (requeue) |
 
-### 8.2 Navigation (`admin_layout.php`, admin campaigns agent)
+### 8.2 Navigation (`admin_layout.php`)
 
-New group `'Communication'` after `'Devotees'`:
+Group `'Communication'` after `'Devotees'`:
 
 ```php
-'notifications.php'          => ['bell',     'Notifications',     'Campaigns, broadcasts and scheduling'],
-'notification_templates.php' => ['mail',     'Message Templates', 'Wording of every automated message'],
-'notification_segments.php'  => ['users',    'Audiences',         'Saved devotee segments'],
-'notification_analytics.php' => ['activity', 'Delivery Analytics','Sends, opens, clicks and failures'],
+'notifications.php'          => ['bell',     'Notifications',      'Campaigns, broadcasts and scheduling'],
+'notification_templates.php' => ['mail',     'Message Templates',  'Wording of every automated message'],
+'notification_segments.php'  => ['users',    'Audiences',          'Saved devotee segments'],
+'notification_analytics.php' => ['activity', 'Delivery Analytics', 'Sends, opens, clicks and failures'],
 ```
 
-and in `<head>` after `admin.css`:
-`<link rel="stylesheet" href="/admin/assets/notify-campaigns.css" />` and
-`<link rel="stylesheet" href="/admin/assets/notify-content.css" />`.
-Quick actions: "New notification" (compose) and "Delivery analytics" (view).
+with `assets/notify-campaigns.css` and `assets/notify-content.css` in `<head>`
+after `admin.css`. Quick actions: "New notification" (compose) and "Delivery
+analytics" (view).
 
 ### 8.3 Pages
 
-**notifications.php** (campaigns agent) — list with status chips and counts,
-search, per-row stats (recipients, sent, failed), row menu (edit, duplicate,
-cancel, audit). Composer: name, category, priority, channels (checkbox cards
-with provider configured/not configured), translations (Tamil and English tabs,
-"Add language" for any `notifyLanguages()` code), CTA URL + label, image URL,
-audience (saved segment select, or rules builder from
-`admin/includes/notify_audience_form.php`, or selected devotees with search),
-live recipient estimate, schedule (send on approval / at a time, temple or
-recipient timezone, recurrence + until), multi-channel preview (in-app card,
-email in a sandboxed `iframe srcdoc`, WhatsApp bubble with template name and
-params, SMS text with character and segment count, push card), test send to
-yourself, save draft, submit, approve/reject (owner), schedule, send now,
-emergency send (owner, reason required), cancel, duplicate. Approval banner
-showing the reason and who can approve. Audit timeline and per-channel delivery
-stats on the campaign view. JSON sub-endpoints on the same page:
-`POST action=estimate` → `{ "count" }`, `POST action=preview` → `notifyCampaignPreview()`
-(both CSRF-checked). Behaviour in `assets/notify-campaigns.js`, styles in
-`assets/notify-campaigns.css`.
+**notifications.php** — list with status chips and counts, search, per-row
+stats (recipients, sent, failed), row menu (edit, duplicate, cancel, audit).
+Composer: name, category (transactional categories are refused), priority,
+channels (checkbox cards for email, WhatsApp and SMS with provider
+configured/not configured; default email), translations (Tamil and English
+tabs, "Add language" for any `notifyLanguages()` code), CTA URL + label, image
+URL, audience (saved segment select, rules builder from
+`admin/includes/notify_audience_form.php`, or selected families with search),
+live estimate showing all matches and consenting families, schedule (send on
+approval / at a time, temple or recipient timezone, recurrence + until),
+per-channel preview (email in a sandboxed `iframe srcdoc`, WhatsApp bubble with
+template name and params, SMS text with character and segment count, each
+including the unsubscribe link or stop-updates line an update will carry), test
+send, save draft, submit, approve/reject (owner), schedule, send now, emergency
+send (owner, reason required), cancel, duplicate. Approval banner showing the
+reason and who can approve. Audit timeline and per-channel delivery stats
+(including "skipped for consent") on the campaign view. JSON sub-endpoints on
+the same page: `POST action=estimate` → `{ "count", "approvalReason" }`,
+`POST action=preview` → `notifyCampaignPreview()`, `GET ?devotee_search=<q>`
+→ `{ "items": [{id, name, email, city}] }` (≤20); all CSRF/role-checked and
+answered in JSON even when refused. Behaviour in `assets/notify-campaigns.js`.
 
-**notification_segments.php** (campaigns agent) — saved segments CRUD with the
-same rules builder, estimate, "used by N campaigns", delete blocked while a
-scheduled/sending campaign uses it.
+**notification_segments.php** — saved audiences CRUD with the same rules
+builder, estimate (all / consenting), "used by N campaigns", rules locked and
+delete blocked while an approved/scheduled/sending campaign uses it; a segment
+using a retired field (§5.11) is refused with a sentence naming the rule, not
+crashed on.
 
-**notification_templates.php** (content agent) — every template key from
-defaults merged with DB rows; filter by category, language, channel,
-customised/default; editor for (key, lang, channel): title, body, CTA label,
-provider template name + ordered params, variable chips that insert at the
-cursor, warnings for unknown or missing variables, live preview (email iframe,
-SMS count, WhatsApp bubble) with sample variables, "Reset to built-in". Owner
-only for writes (`notifications.templates`), audited `template_saved`.
-Categories section: edit labels, icon, sort, active, default-on; add a new
-informational or promotional category; built-in kinds read-only. Audited
-`category_saved`. Assets: `notify-content.js/.css`.
+**notification_templates.php** — every template key from defaults merged with
+DB rows; filter by category, language, channel (Shared / Email / WhatsApp /
+SMS), customised/default; editor for (key, lang, channel): title, body, CTA
+label, provider template name + ordered params, variable chips, warnings for
+unknown or missing variables (never blocking), live preview (email iframe, SMS
+count, WhatsApp bubble) with sample variables and the dispatch-time unsubscribe
+line, "Reset to built-in". Owner only for writes (`notifications.templates`),
+audited `template_saved`. Categories section: edit labels, icon, sort, active,
+default-on; add a new informational or promotional category; built-in kinds
+read-only. Audited `category_saved`. Assets: `notify-content.js/.css`.
 
-**notification_analytics.php** (content agent) — filters: date range (temple
-timezone), channel, campaign, category, source (automated / campaign / segment
-id), status. KPIs: notifications created, deliveries sent, delivered, failed
-(failed+rejected+dead), email open rate, in-app read rate, click-through rate,
-WhatsApp delivery rate, SMS delivery rate, push engagement. Daily sends
-(`adminBars`), channel shares (`adminShares`), channel performance table,
-campaign performance table (sent/delivered/opened/clicked/failed per campaign),
-worker health card (last run, ago, last error, queue depth by channel, dead
-count; warning when the last run is older than 5 minutes), failed/dead
-deliveries table with provider response (already redacted) and **Requeue**
-(`notifyRequeue`, CSRF, `notifications.compose`), CSV export of the filtered
-deliveries. Rates show "—" when the denominator is zero, never NaN.
+**notification_analytics.php** — filters: date range (temple timezone,
+≤366 days), channel, campaign, category, source (automated / campaign /
+segment), status. KPIs: notifications created, deliveries sent, delivered,
+failed (failed+rejected+dead), email open rate, click-through rate, WhatsApp
+delivery rate, SMS delivery rate, skipped for consent. Daily sends, channel
+shares, channel performance table, campaign performance table, worker health
+card (last run, ago, last error, queue depth by channel, dead count; warning
+when the last run is older than 5 minutes), failed/dead deliveries table with
+the (redacted) provider response and **Requeue** (`notifyRequeue`, CSRF,
+`notifications.compose`), CSV export of the filtered deliveries (no addresses
+or phone numbers). Historic `inapp`/`push` rows in the range are shown as
+"In-app (retired)" / "Push (retired)", never offered as filters for new sends
+and never requeued. Rates show "—" when the denominator is zero, never NaN.
 
-**devotees.php tags** (content agent) — tag editor in the existing edit panel
-(add/remove, lowercase `[a-z0-9:_-]{1,40}`, suggestions from tags in use), a
-tag filter on the list, tags column. Audited through `adminAudit`.
+**devotees.php tags** — tag editor in the registration edit panel (add/remove,
+lowercase `[a-z0-9:_-]{1,40}`, suggestions from tags in use), a tag filter on
+the list, tags column. The same page records consent on behalf of a family
+(`updates_consent_by` = the admin, clears `unsubscribed_at`).
 
-**Announcements hook** (triggers agent, `announcements.php`) — a checkbox
-"Also notify devotees" on create; when ticked, after saving, create a draft
-campaign (category `announcement`, template `announcement`, translations from
-the title/body in both languages, channels `inapp,push`) and flash a link to it.
+**Announcements hook** (`announcements.php`) — "Also notify devotees" on
+create; when ticked, after saving, creates a **draft** campaign (category
+`announcement`, template `announcement`, channels `email,whatsapp`, audience
+`all_devotees`, the same words as both translations) and flashes a link to it.
 Nothing is sent without going through the campaign flow.
 
-**Bookings and donations** (triggers agent) — `admin/seva_bookings.php`
-single and bulk status changes fire `booking.confirmed` / `booking.cancelled` /
-`booking.completed` (deduped, so re-applying a status is harmless);
-`admin/donations.php` gains a "Send receipt" row action firing `donation.receipt`
-with `sequence` = the number of receipts already sent + 1.
+**Bookings and donations** — `admin/seva_bookings.php` single and bulk status
+changes fire `booking.confirmed` / `booking.cancelled` / `booking.completed`
+to the booking's phone in the booking's language (deduped, so re-applying a
+status is harmless); `admin/donations.php` "Send receipt" fires
+`donation.receipt` to the pledge's phone with `sequence` = receipts already
+sent + 1 (an online donation's receipt is resent from Online Payments instead).
 
 ---
 
-## 9. File ownership (build phase)
+## 9. Files and test suites
 
-Each file has exactly one owner. Anything not listed is read-only for everyone.
+Code:
 
-| agent | owns |
+| area | files |
 | --- | --- |
-| **core** | `backend/includes/notify.php`; `backend/includes/notify/*.php` except `contracts.php`, `providers/` and the three content files below (suggested split: `time.php`, `events.php`, `prefs.php`, `service.php`, `queue.php`, `campaigns.php`, `audience.php`, `reminders.php`, `tracking.php`, `devices.php`, `otp.php`, `categories.php`); `backend/bin/notify_worker.php`; `backend/api/notify_cron.php`; `tests/notify-unit.php`; `tests/notify-worker.mjs`; `tests/support/notify_core_harness.php`; any `tests/support/notify_cron_router.php` |
-| **core-content** | `backend/includes/notify/templates.php` (`notifyTemplate`, `notifyInterpolate`, `notifyRender`, `notifySmsInfo`, `notifyTemplateSample`); `backend/includes/notify/defaults.php` (`notifyTemplateDefaults`, `notifyTempleFacts`); `backend/includes/notify/email.php` (`notifyEmailHtml`, `notifyEmailText`); `tests/notify-templates-unit.php` |
-| **providers** | `backend/includes/notify/providers/*.php`; the registry map in `contracts.php` **only if a class name must change** (report it); `backend/includes/mailer.php` (extra headers support for `sendMail`, backward compatible); `backend/api/notify_webhook.php`; `backend/bin/notify_keys.php` (VAPID and FCM helpers); `tests/support/notify_provider_harness.php`; `tests/notify-providers.mjs` |
-| **api** | `backend/api/notifications.php`; `backend/api/n.php`; `backend/api/index.php` (routes in §6.6 only); `tests/notifications-api.mjs` |
-| **triggers** | `backend/api/auth.php`; `backend/api/account.php`; `backend/api/seva_bookings.php`; `backend/api/donations.php`; `backend/includes/devotee_auth.php`; `backend/admin/seva_bookings.php`; `backend/admin/donations.php`; `backend/admin/announcements.php`; `tests/notify-triggers.mjs`; keeps `tests/devotee-auth.mjs` and `tests/accounts-ui.mjs` passing (may update their assertions only where behaviour intentionally changed, and must say so) |
-| **bell** | `frontend/src/context/NotificationContext.jsx`; `frontend/src/lib/notifications.js`; `frontend/src/components/Notifications/NotificationBell.jsx`, `NotificationPanel.jsx`, `NotificationItem.jsx`, `Notifications.css`; `frontend/src/pages/Notifications.jsx`, `Notifications.css`; `frontend/src/main.jsx`; `frontend/src/App.jsx`; `frontend/src/components/Layout/Layout.jsx`, `Layout.css`; `tests/support/notify_seed.mjs` (optional); `tests/notifications-ui.mjs` |
-| **prefs** | `frontend/src/components/Notifications/NotificationPreferences.jsx`, `NotificationPreferences.css`; `frontend/src/hooks/usePushSubscription.js`; `frontend/public/push-sw.js`; `frontend/vite.config.js` (`workbox.importScripts` only); `frontend/src/pages/Account.jsx`, `Account.css` (the tab, `?tab=` support, phone verification UI in Profile); `tests/notify-prefs-ui.mjs` |
-| **admin-campaigns** | `backend/admin/notifications.php`; `backend/admin/notification_segments.php`; `backend/admin/includes/notify_audience_form.php`; `backend/admin/includes/admin_layout.php` (§8.2); `backend/admin/includes/admin_ui.php` (new icons only); `backend/includes/auth.php` (§8.1); `backend/admin/assets/notify-campaigns.css`, `notify-campaigns.js`; `tests/admin-smoke.mjs` (add the four pages); `tests/admin-notifications.mjs` |
-| **admin-content** | `backend/admin/notification_templates.php`; `backend/admin/notification_analytics.php`; `backend/admin/devotees.php` (tags); `backend/admin/assets/notify-content.css`, `notify-content.js`; `tests/admin-notify-content.mjs` |
+| service | `backend/includes/notify.php`, `backend/includes/notify/*.php`, `backend/includes/notify/providers/*.php` |
+| callers' wrapper | `backend/includes/devotee_notify.php` (`devoteeNotifyReady`, `devoteeNotifyEvent`, numbers, amounts, dates, phones) |
+| endpoints | `backend/api/n.php`, `backend/api/notify_webhook.php`, `backend/api/notify_cron.php`, routes in `backend/api/index.php` |
+| CLI | `backend/bin/notify_worker.php`, `backend/bin/notify_keys.php check` (reports which channels are configured, never prints a secret, exit 1 on a broken setting) |
+| admin | `backend/admin/notifications.php`, `notification_segments.php`, `notification_templates.php`, `notification_analytics.php`, `includes/notify_audience_form.php`, `assets/notify-campaigns.css/.js`, `assets/notify-content.css/.js` |
+| triggers | `backend/api/registrations.php`, `seva_bookings.php`, `donations.php`, `contact.php`, `backend/includes/payments/notify.php`, `backend/admin/seva_bookings.php`, `donations.php`, `announcements.php` |
+| live | `backend/includes/live/subscriptions.php` (live reminders through this queue) |
+| migrations | 007, 009, 013, 019 |
 
-Phase 1 (core, core-content, providers) runs first. Phase 2 (api, triggers,
-admin-campaigns, admin-content) starts when phase 1 is finished. Phase 3 (bell,
-prefs) starts when api and triggers are finished, because the devotee UI calls
-their endpoints. Every later phase builds on the real code — read it, do not
-re-implement it.
+Test suites (run with `PHP_BIN` set to the wrapper in §1; each is re-runnable,
+sends its own `X-Forwarded-For`, scopes worker runs to its own rows and cleans up):
 
-### Definition of done (every agent)
+| suite | what it proves |
+| --- | --- |
+| `tests/notify-unit.php` | the policy matrix for registered families (with/without consent, unsubscribed, archived) and guests incl. fallbacks; recipient shapes; tokens, CTA safety, time zones, recurrence, backoff; audience rules, retired fields and the automatic consent filter; the event catalogue and `registration_received`; the payment events and templates; end to end with the test drivers that updates stop on every channel after an unsubscribe while a booking confirmation still goes, and that every update carries its unsubscribe link |
+| `tests/notify-templates-unit.php` | every §5.2 key exists in ta and en with SMS and WhatsApp variants using only declared or automatic variables; English SMS fit one GSM-7 segment; interpolation and escaping; DB-over-default resolution order; SMS segment counting; the email wrapper's safety, unsubscribe link, pixel and banner |
+| `tests/notify-worker.mjs` | queue, worker, retries, throttle, stale-claim recovery, dedupe, campaigns (approval, 600-family expansion across runs, recipient-time delivery, recurrence, cancel), reminders, provider status updates, `/api/notify-cron` key handling (harness: `tests/support/notify_core_harness.php`, `notify_cron_router.php`) |
+| `tests/notify-triggers.mjs` | the places the site tells a family something: registration, bookings and donations (public and admin), receipts, announcements → draft campaign, contact → office copy (against PHP on 8002 with the default drivers, reading `backend/logs/mail.log` and `notify.log`) |
+| `tests/notify-providers.mjs` | every provider against Node mocks of Meta, Twilio, MSG91 and an SMTP server; each answer class → `NotifyResult`; the webhook endpoint's verification per driver; `notify_keys.php check` (harness: `notify_provider_harness.php`, `notify_webhook_router.php`) |
+| `tests/notify-links.mjs` (renamed from `notifications-api.mjs`) | tracked clicks redirect and count once, the open pixel is a real GIF, unsubscribe GET changes nothing and POST / RFC 8058 one-click does, and the webhook and cron routes reach their endpoints through `api/index.php` |
+| `tests/admin-notifications.mjs` | the campaigns and audiences admin over HTTP and in a browser: roles, estimate, preview, send now + scoped worker run, cancel, duplicate, emergency send, test send, CSRF, segment locking, axe and overflow at 390/1440 (server env: `NOTIFY_ALLOW_TEST_DRIVER=1 NOTIFY_EMAIL_DRIVER=test NOTIFY_APPROVAL_THRESHOLD=2`) |
+| `tests/admin-notify-content.mjs` | Message Templates (wording, preview, reset, categories) and Delivery Analytics (KPIs against independently computed numbers, filters, retired channels labelled, CSV, requeue, worker health) |
 
-1. Every public name and shape in this document that you own exists and matches.
+`tests/notifications-ui.mjs`, `tests/notify-prefs-ui.mjs` and
+`tests/accounts-ui.mjs` are deleted with the UI they tested. Some of the
+`.mjs` suites above still carry scenarios written for the retired in-app/push
+channels and account events (see their file headers); the two PHP unit suites
+encode the current rules and are the cross-check for this document.
+
+### Definition of done (any change to this system)
+
+1. Every public name and shape in this document that you touch still exists and matches.
 2. `php.sh -l` clean for every PHP file you touched; `npm run audit` 0 actionable
    if you touched `frontend/src` or `backend/admin`.
-3. Your test suite exists, passes, is re-runnable twice in a row, sends a unique
-   `X-Forwarded-For`, scopes worker runs to its own rows, and cleans up.
-4. Existing suites that exercise files you touched still pass (name them and
-   give the counts).
-5. Your final report lists: files created/changed, test commands with pass/fail
-   counts, every deviation from this spec, and anything left undone and why.
+3. The suites that exercise what you touched pass, twice in a row.
+4. Your final report lists: files changed, test commands with pass/fail counts,
+   every deviation from this document, and anything left undone and why.
 
 ---
 
@@ -1083,22 +1170,24 @@ re-implement it.
 
 | variable | default | used by |
 | --- | --- | --- |
-| NOTIFY_SECRET | generated into notification_kv | token signing, OTP hashing (set ≥32 random chars in production) |
+| NOTIFY_SECRET | generated into notification_kv | token signing (set ≥32 random chars in production; shorter values are ignored with a log line) |
 | NOTIFY_TEMPLE_TZ | Asia/Kolkata | reminders, admin display, temple-time schedules |
-| NOTIFY_LANGUAGES | ta,en,hi,te,ml,kn | template and campaign languages |
-| NOTIFY_APPROVAL_THRESHOLD | 50 | campaign approval rule |
+| NOTIFY_LANGUAGES | ta,en,hi,te,ml,kn | campaign translation languages (ta and en are always offered) |
+| NOTIFY_APPROVAL_THRESHOLD | 50 | campaign approval rule "Reaches N families" |
 | NOTIFY_ALLOW_SELF_APPROVAL | 0 | single-committee deployments |
-| NOTIFY_CRON_KEY | unset (endpoint 404) | HTTP worker trigger |
-| NOTIFY_RATE_EMAIL_PER_MIN / _WHATSAPP_ / _SMS_ / _PUSH_ | 60 / 80 / 30 / 600 | worker throttle |
+| NOTIFY_CRON_KEY | unset (endpoint 404) | HTTP worker trigger, ≥24 chars |
+| NOTIFY_RATE_EMAIL_PER_MIN / NOTIFY_RATE_WHATSAPP_PER_MIN / NOTIFY_RATE_SMS_PER_MIN | 60 / 80 / 30 | worker throttle |
 | NOTIFY_EMAIL_DRIVER | mailer | mailer · log · test |
 | NOTIFY_WHATSAPP_DRIVER | log | meta · twilio · log · test |
 | NOTIFY_SMS_DRIVER | log | twilio · msg91 · log · test |
-| NOTIFY_PUSH_DRIVER | log | webpush · fcm · log · test |
-| NOTIFY_ALLOW_TEST_DRIVER | 0 | enables the test driver (never in production) |
-| NOTIFY_TEST_WEBHOOK_SECRET | test-webhook-secret | test driver webhooks |
-| MAIL_TRANSPORT, SMTP_*, MAIL_FROM, MAIL_FROM_NAME | existing | email via mailer.php |
-| WHATSAPP_META_TOKEN, WHATSAPP_META_PHONE_NUMBER_ID, WHATSAPP_META_APP_SECRET, WHATSAPP_META_VERIFY_TOKEN, WHATSAPP_META_API_VERSION (v21.0), WHATSAPP_META_BASE_URL (https://graph.facebook.com) | — | Meta WhatsApp Cloud API; base URL overridable for tests |
-| TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_WHATSAPP_FROM (whatsapp:+…), TWILIO_SMS_FROM or TWILIO_MESSAGING_SERVICE_SID, TWILIO_BASE_URL (https://api.twilio.com), TWILIO_STATUS_CALLBACK_URL (default siteUrl('/api/notify-webhook/twilio')) | — | Twilio WhatsApp and SMS |
-| MSG91_AUTH_KEY, MSG91_SENDER_ID, MSG91_ROUTE (4), MSG91_DLT_ENTITY_ID, MSG91_BASE_URL (https://control.msg91.com), MSG91_WEBHOOK_TOKEN | — | MSG91 SMS (India, DLT template ids in `provider_template`) |
-| VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY (base64url raw P-256), VAPID_SUBJECT (mailto: or https:) | dev keys in notification_kv | Web Push |
-| FCM_PROJECT_ID, FCM_SERVICE_ACCOUNT_JSON (path or inline JSON), FCM_BASE_URL (https://fcm.googleapis.com), FCM_TOKEN_URL (https://oauth2.googleapis.com/token) | — | Firebase Cloud Messaging HTTP v1 |
+| NOTIFY_ALLOW_TEST_DRIVER | 0 | enables the `test` driver and the worker's `--now` clock (never in production) |
+| NOTIFY_TEST_WEBHOOK_SECRET | test-webhook-secret | test driver webhooks (`X-Test-Signature` = hex HMAC-SHA256 of the body) |
+| CONTACT_NOTIFY_EMAIL | unset (nothing sent) | office mailbox(es), comma-separated, that receive `contact.received` |
+| CONTACT_NOTIFY_LANG | en | `ta` or `en`: the language of the office's copy |
+| SITE_URL | — | the public https address every tracking, unsubscribe and callback link is built on |
+| MAIL_TRANSPORT (smtp · mail · unset = log), SMTP_HOST, SMTP_PORT (587), SMTP_SECURE (tls · ssl · none), SMTP_USER, SMTP_PASS, MAIL_FROM, MAIL_FROM_NAME | existing | email via mailer.php (`notify_keys.php check` reports them) |
+| WHATSAPP_META_TOKEN, WHATSAPP_META_PHONE_NUMBER_ID (numeric id), WHATSAPP_META_APP_SECRET (signs callbacks), WHATSAPP_META_VERIFY_TOKEN (≥16 chars), WHATSAPP_META_API_VERSION (v21.0), WHATSAPP_META_BASE_URL (https://graph.facebook.com) | — | Meta WhatsApp Cloud API; base URL overridable for tests |
+| TWILIO_ACCOUNT_SID (AC…), TWILIO_AUTH_TOKEN, TWILIO_WHATSAPP_FROM (whatsapp:+…), TWILIO_SMS_FROM or TWILIO_MESSAGING_SERVICE_SID (MG…), TWILIO_BASE_URL (https://api.twilio.com), TWILIO_STATUS_CALLBACK_URL (default siteUrl('/api/notify-webhook/twilio')) | — | Twilio WhatsApp and SMS |
+| MSG91_AUTH_KEY, MSG91_WEBHOOK_TOKEN (≥24 chars), MSG91_BASE_URL (https://control.msg91.com) | — | MSG91 SMS (India; sender id, route and DLT entity belong to each flow template in the MSG91 panel; DLT template ids go in `provider_template` in the admin) |
+
+`VAPID_*` and `FCM_*` are no longer read: there is no push channel.

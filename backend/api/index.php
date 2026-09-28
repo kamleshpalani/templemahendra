@@ -66,7 +66,7 @@ if (str_starts_with($path, '/n/')) {
     sendError('Not found', 404);
 }
 
-// Delivery status callbacks from WhatsApp, SMS and push providers, any method.
+// Delivery status callbacks from WhatsApp and SMS providers, any method.
 // notify_webhook.php verifies the provider's signature and answers the body
 // and Content-Type that provider expects.
 if (preg_match('#^/notify-webhook/([a-z0-9]{2,16})$#', $path, $webhookMatch)) {
