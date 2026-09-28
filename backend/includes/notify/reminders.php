@@ -196,7 +196,9 @@ function notifyRemindBroadcast(string $kind, string $date): int
                 'en' => ['title' => $titleEn, 'body' => trim("{$titleEn} is tomorrow, {$dateEn}" . ($timeEn !== '' ? " at {$timeEn}" : '') . '.')],
             ];
             $template = 'pooja_reminder';
-            $cta = '/events';
+            // The pooja lives on the Panchangam calendar, where its template's
+            // cta_path also points; /events would show the festival list instead.
+            $cta = '/panchangam';
         }
         // Families who agreed to temple updates. The category's consent rule would
         // limit the audience to them anyway; saying so in the rule makes the
