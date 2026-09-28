@@ -120,14 +120,13 @@ node tests/payments-api.mjs && node tests/payments-ui.mjs   # E2E-029…037
 with `ADMIN_USERNAME` / `ADMIN_PASSWORD`; it derives `ADMIN_PASS_HASH` for the
 server it starts) and cleans every `E2E-BRIEF-<run>` row and upload it wrote.
 
-## Known failures (pre-existing, tracked in `docs/DEFECTS.md`)
+## Known failures
 
-- D-014 — `admin-live.mjs`: 2 of 235 checks (column-drift assertion; form-drawer axe @1440).
-- D-015 / G-18 — `admin-notifications.mjs`: retired `inapp`/`push` channels; 39/47.
-- D-017 — `public-e2e.mjs`: 5 header checks expect the retired sign-in/sign-up links.
-
-None of these change the verdict of a §30 row above; the affected assertions
-are not the ones cited.
+None. The release-readiness pass (2026-09-28) ran every suite against a fresh
+database on MariaDB 10.11 (MySQL 8 compatible), PHP 8.4, Node 22 and Chromium;
+D-014, D-015 and D-017 are closed in `docs/DEFECTS.md`, and the account-era
+suites were retired or reworked (G-18). Suites that depend on the machine's
+ICU (date wording) build their expectations from the browser's own `Intl`.
 
 ## Not testable locally (staging / production only)
 

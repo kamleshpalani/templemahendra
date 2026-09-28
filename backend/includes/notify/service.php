@@ -73,12 +73,12 @@ function notifyRecipientFromDevotee(array|int $devotee): array
     if (!notifyTablesExist()) return $blank;
 
     $row = $devotee;
-    $needed = ['id', 'name', 'email', 'phone', 'country', 'lang', 'is_active', 'updates_consent_at', 'unsubscribed_at'];
+    $needed = ['id', 'name', 'email', 'phone', 'phone_country', 'country', 'lang', 'is_active', 'updates_consent_at', 'unsubscribed_at'];
     if (is_int($devotee) || count(array_intersect_key(array_flip($needed), $devotee)) < count($needed)) {
         $id = is_int($devotee) ? $devotee : (int) ($devotee['id'] ?? 0);
         if ($id < 1) return $blank;
         $stmt = getDB()->prepare(
-            'SELECT id, name, email, phone, country, lang, is_active, updates_consent_at, unsubscribed_at FROM devotees WHERE id = :id'
+            'SELECT id, name, email, phone, phone_country, country, lang, is_active, updates_consent_at, unsubscribed_at FROM devotees WHERE id = :id'
         );
         $stmt->execute([':id' => $id]);
         $loaded = $stmt->fetch(PDO::FETCH_ASSOC);
@@ -88,6 +88,11 @@ function notifyRecipientFromDevotee(array|int $devotee): array
 
     $email = trim((string) ($row['email'] ?? ''));
     $phone = trim((string) ($row['phone'] ?? ''));
+    // Registrations from before international numbers (migration 004) hold ten
+    // Indian digits; a WhatsApp or SMS provider needs the country code, as the
+    // booking, donation and reminder paths already add it (D-025).
+    $digits = preg_replace('/\D+/', '', $phone) ?? '';
+    if (strlen($digits) === 10 && in_array($row['phone_country'] ?? null, [null, '', 'IN'], true)) $phone = '91' . $digits;
     return [
         'devotee_id'   => (int) $row['id'],
         'name'         => (string) $row['name'],
