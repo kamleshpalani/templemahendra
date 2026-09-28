@@ -11,31 +11,32 @@
  *   • how each class of answer (success, 429 with Retry-After, 5xx, network
  *     failure, each permanent error group, bad credentials) becomes a
  *     NotifyResult: sent, retry (with its wait), rejected, skipped;
- *   • Web Push end to end: a subscriber key pair made in Node, a receiver that
- *     verifies the VAPID JWT with the key the request names and decrypts the
- *     RFC 8291 aes128gcm body itself before asserting the payload;
- *   • FCM's OAuth: the mock token endpoint verifies the RS256 assertion with the
- *     public half of a key pair made here, and the token is cached across processes;
- *   • the mailer's new extra headers over SMTP and in the log transport, and the
+ *   • the mailer's extra headers over SMTP and in the log transport, and the
  *     refusal of header injection;
  *   • the webhook endpoint over HTTP (two PHP servers with different drivers):
  *     Meta verification and signatures, Twilio signatures computed exactly as
- *     Twilio does, the MSG91 token, the test driver, and what is refused.
+ *     Twilio does, the MSG91 token, the test driver, what is refused, and that
+ *     a verified update reaches notification_deliveries;
+ *   • backend/bin/notify_keys.php check: the three live channels, no secret
+ *     printed, exit 1 on a broken setting, and the retired vapid command gone.
+ *
+ * The temple sends on email, WhatsApp and SMS only. Web push and FCM went with
+ * devotee sign-in (docs/registration/SPEC.md §1, §6): there is no push channel,
+ * no push provider and no VAPID/FCM key check any more.
  *
  * Ports 8020–8029 (the providers agent's range): 8020 and 8028 PHP webhook
- * servers, 8021 Meta, 8022 Twilio, 8023 MSG91, 8024 SMTP, 8025 push receiver,
- * 8026 FCM, 8029 deliberately closed. Requests to the PHP servers carry
- * X-Forwarded-For 10.20.0.1. Creates e2e-providers-<run>-… rows and removes them.
+ * servers, 8021 Meta, 8022 Twilio, 8023 MSG91, 8024 SMTP, 8029 deliberately
+ * closed. Requests to the PHP servers carry X-Forwarded-For 10.20.0.1. Creates
+ * e2e-providers-<run>-… rows and removes them.
  */
 
 import http from "node:http";
 import net from "node:net";
 import crypto from "node:crypto";
 import { spawn, spawnSync } from "node:child_process";
-import { readFileSync, existsSync, writeFileSync, rmSync, mkdtempSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { readFileSync, existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { dirname, resolve, join } from "node:path";
+import { dirname, resolve } from "node:path";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(HERE, "..");
@@ -46,7 +47,7 @@ const EMAIL_PREFIX = `e2e-providers-${RUN}`;
 const MAIL_LOG = resolve(ROOT, "backend/logs/mail.log");
 const SITE = "https://temple.example";
 
-const PORT = { hookA: 8020, meta: 8021, twilio: 8022, msg91: 8023, smtp: 8024, push: 8025, fcm: 8026, hookB: 8028, closed: 8029 };
+const PORT = { hookA: 8020, meta: 8021, twilio: 8022, msg91: 8023, smtp: 8024, hookB: 8028, closed: 8029 };
 const LOCAL = (port) => `http://127.0.0.1:${port}`;
 
 let passed = 0;
@@ -70,9 +71,6 @@ function note(text) {
 }
 const show = (v) => JSON.stringify(v)?.slice(0, 400) ?? String(v);
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-const b64u = (buf) => Buffer.from(buf).toString("base64url");
-const b64uDecode = (s) => Buffer.from(String(s ?? ""), "base64url");
-const pad32 = (buf) => (buf.length >= 32 ? buf : Buffer.concat([Buffer.alloc(32 - buf.length), buf]));
 function safeJson(input) {
   try {
     return JSON.parse(Buffer.isBuffer(input) ? input.toString("utf8") : String(input));
@@ -85,7 +83,7 @@ function safeJson(input) {
 
 // Provider settings from the caller's shell must not leak into a case that
 // expects them unset; each case passes exactly what it needs.
-const PROVIDER_ENV = /^(NOTIFY_|WHATSAPP_|TWILIO_|MSG91_|VAPID_|FCM_|MAIL_|SMTP_)/i;
+const PROVIDER_ENV = /^(NOTIFY_|WHATSAPP_|TWILIO_|MSG91_|MAIL_|SMTP_)/i;
 function phpEnv(extra = {}) {
   const env = {};
   for (const [k, v] of Object.entries(process.env)) if (!PROVIDER_ENV.test(k)) env[k] = v;
@@ -313,126 +311,6 @@ function startSmtp(port) {
     server.once("error", fail);
     server.listen(port, "127.0.0.1", () => ok(server));
   });
-}
-
-/* Web Push receiver: verifies VAPID and decrypts like a push service plus browser would */
-const vapidEcdh = crypto.createECDH("prime256v1");
-vapidEcdh.generateKeys();
-const VAPID = {
-  public: b64u(vapidEcdh.getPublicKey()),
-  private: b64u(pad32(vapidEcdh.getPrivateKey())),
-  subject: "mailto:committee@temple.example",
-};
-function subscriber() {
-  const ecdh = crypto.createECDH("prime256v1");
-  ecdh.generateKeys();
-  const auth = crypto.randomBytes(16);
-  return { ecdh, auth, keys: { p256dh: b64u(ecdh.getPublicKey()), auth: b64u(auth) } };
-}
-const subs = Object.fromEntries(["ok1", "ok2", "tamil", "long", "gone", "big", "rate", "fail", "normal", "important"].map((n) => [n, subscriber()]));
-const push = { requests: [] };
-
-function verifyVapid(authorization) {
-  const m = /^vapid t=([A-Za-z0-9_-]+)\.([A-Za-z0-9_-]+)\.([A-Za-z0-9_-]+), k=([A-Za-z0-9_-]+)$/.exec(authorization ?? "");
-  if (!m) return { ok: false, why: "Authorization is not 'vapid t=…, k=…'" };
-  const [, h, c, s, k] = m;
-  const header = safeJson(b64uDecode(h));
-  const claims = safeJson(b64uDecode(c));
-  const point = b64uDecode(k);
-  if (point.length !== 65 || point[0] !== 4) return { ok: false, why: "k is not a 65-byte point", header, claims, k };
-  const key = crypto.createPublicKey({ key: { kty: "EC", crv: "P-256", x: b64u(point.subarray(1, 33)), y: b64u(point.subarray(33)) }, format: "jwk" });
-  const signature = b64uDecode(s);
-  const ok = signature.length === 64 && crypto.verify("sha256", Buffer.from(`${h}.${c}`), { key, dsaEncoding: "ieee-p1363" }, signature);
-  return { ok, header, claims, k };
-}
-
-/** RFC 8291 decryption, written independently of the PHP side. */
-function decryptPush(body, sub) {
-  const salt = body.subarray(0, 16);
-  const rs = body.readUInt32BE(16);
-  const idlen = body[20];
-  const keyid = body.subarray(21, 21 + idlen);
-  const sealed = body.subarray(21 + idlen);
-  const hmac = (key, data) => crypto.createHmac("sha256", key).update(data).digest();
-  const uaPublic = sub.ecdh.getPublicKey();
-  const secret = sub.ecdh.computeSecret(keyid);
-  const prkKey = hmac(sub.auth, secret);
-  const ikm = hmac(prkKey, Buffer.concat([Buffer.from("WebPush: info\0", "latin1"), uaPublic, keyid, Buffer.from([1])]));
-  const prk = hmac(salt, ikm);
-  const cek = hmac(prk, Buffer.from("Content-Encoding: aes128gcm\0\x01", "latin1")).subarray(0, 16);
-  const nonce = hmac(prk, Buffer.from("Content-Encoding: nonce\0\x01", "latin1")).subarray(0, 12);
-  const decipher = crypto.createDecipheriv("aes-128-gcm", cek, nonce);
-  decipher.setAuthTag(sealed.subarray(sealed.length - 16));
-  const plain = Buffer.concat([decipher.update(sealed.subarray(0, sealed.length - 16)), decipher.final()]);
-  let end = plain.length;
-  while (end > 0 && plain[end - 1] === 0) end -= 1;
-  if (plain[end - 1] !== 2) throw new Error("no 0x02 last-record delimiter");
-  const text = plain.subarray(0, end - 1);
-  return { rs, idlen, keyid, bytes: text.length, json: JSON.parse(text.toString("utf8")) };
-}
-
-async function pushHandler(req, res, body) {
-  const name = req.url.replace(/^\/push\//, "");
-  const record = { name, headers: req.headers, vapid: verifyVapid(req.headers.authorization), bodyLength: body.length };
-  try {
-    record.decrypted = decryptPush(body, subs[name]);
-  } catch (e) {
-    record.decryptError = String(e);
-  }
-  push.requests.push(record);
-  if (name === "gone") return reply(res, 410, "push subscription has unsubscribed or expired.");
-  if (name === "big") return reply(res, 413, "Payload Too Large");
-  if (name === "rate") return reply(res, 429, "Too Many Requests", { "Retry-After": "120" });
-  if (name === "fail") return reply(res, 500, "Internal Server Error");
-  return reply(res, 201, "", { Location: `${LOCAL(PORT.push)}/messages/${crypto.randomUUID()}` });
-}
-
-/* FCM: OAuth token endpoint + messages:send */
-const fcmKeys = crypto.generateKeyPairSync("rsa", {
-  modulusLength: 2048,
-  privateKeyEncoding: { type: "pkcs8", format: "pem" },
-  publicKeyEncoding: { type: "spki", format: "pem" },
-});
-const FCM = { project: "temple-e2e", clientEmail: `notify-${RUN}@temple-e2e.iam.gserviceaccount.com`, keyId: `kid${RUN}`, tokenUrl: `${LOCAL(PORT.fcm)}/token` };
-const serviceAccount = (privateKey = fcmKeys.privateKey) =>
-  JSON.stringify({ type: "service_account", project_id: FCM.project, private_key_id: FCM.keyId, private_key: privateKey, client_email: FCM.clientEmail, client_id: "1", token_uri: FCM.tokenUrl });
-const fcm = { tokenRequests: [], sendRequests: [], issued: new Set(), revoked: new Set(), revokeNext: false };
-async function fcmHandler(req, res, body) {
-  if (req.url === "/token") {
-    const form = new URLSearchParams(body.toString("utf8"));
-    const record = { grantType: form.get("grant_type"), contentType: req.headers["content-type"] };
-    const [h, c, s] = String(form.get("assertion") ?? "").split(".");
-    record.header = safeJson(b64uDecode(h));
-    record.claims = safeJson(b64uDecode(c));
-    try {
-      record.signatureOk = crypto.verify("RSA-SHA256", Buffer.from(`${h}.${c}`), fcmKeys.publicKey, b64uDecode(s));
-    } catch {
-      record.signatureOk = false;
-    }
-    fcm.tokenRequests.push(record);
-    if (!record.signatureOk) return reply(res, 400, { error: "invalid_grant", error_description: "Invalid JWT Signature." });
-    const token = `ya29.e2e-${RUN}-${fcm.tokenRequests.length}`;
-    fcm.issued.add(token);
-    return reply(res, 200, { access_token: token, expires_in: 3599, token_type: "Bearer" });
-  }
-  const route = /^\/v1\/projects\/([^/]+)\/messages:send$/.exec(req.url);
-  if (!route) return reply(res, 404, { error: { code: 404, message: "no such route", status: "NOT_FOUND" } });
-  const bearer = String(req.headers.authorization ?? "").replace(/^Bearer /, "");
-  const json = safeJson(body);
-  fcm.sendRequests.push({ project: route[1], bearer, json, headers: req.headers });
-  const error = (status, state, code, message, headers = {}) =>
-    reply(res, status, { error: { code: status, message, status: state, details: code ? [{ "@type": "type.googleapis.com/google.firebase.fcm.v1.FcmError", errorCode: code }] : [] } }, headers);
-  if (fcm.revokeNext) {
-    fcm.revokeNext = false;
-    fcm.revoked.add(bearer);
-  }
-  if (!fcm.issued.has(bearer) || fcm.revoked.has(bearer)) return error(401, "UNAUTHENTICATED", null, "Request had invalid authentication credentials.");
-  const token = String(json?.message?.token ?? "");
-  if (token.startsWith("unregistered")) return error(404, "NOT_FOUND", "UNREGISTERED", "Requested entity was not found.");
-  if (token.startsWith("invalid")) return error(400, "INVALID_ARGUMENT", "INVALID_ARGUMENT", "The registration token is not a valid FCM registration token");
-  if (token.startsWith("quota")) return error(429, "RESOURCE_EXHAUSTED", "QUOTA_EXCEEDED", "Quota exceeded for quota metric", { "Retry-After": "60" });
-  if (token.startsWith("unavailable")) return error(503, "UNAVAILABLE", "UNAVAILABLE", "The service is currently unavailable.");
-  return reply(res, 200, { name: `projects/${route[1]}/messages/0:${RUN}${fcm.sendRequests.length}` });
 }
 
 /* ── Shared message shapes ─────────────────────────────────────────────── */
@@ -669,198 +547,6 @@ async function testMsg91() {
   check(msg91.requests.length === 6 && !msg91.requests.some((r) => r.json?.template_id === undefined), "the case without a template never reached MSG91", `requests ${msg91.requests.length}`);
 }
 
-/* ── Web Push ──────────────────────────────────────────────────────────── */
-
-const device = (id, name, over = {}) => ({ id, provider: "webpush", endpoint: `${LOCAL(PORT.push)}/push/${name}`, keys: subs[name]?.keys ?? subscriber().keys, ...over });
-
-async function testWebPush() {
-  const env = { VAPID_PUBLIC_KEY: VAPID.public, VAPID_PRIVATE_KEY: VAPID.private, VAPID_SUBJECT: VAPID.subject, NOTIFY_ALLOW_TEST_DRIVER: "1" };
-  const data = { url: `${SITE}/account?tab=bookings`, trackUrl: `${SITE}/api/n/c/c77.abcdefghijklmnop`, notificationId: 301, category: "booking", priority: "urgent", tag: "booking-1042", image: `${SITE}/uploads/seva.jpg` };
-  section("Web Push: VAPID, encryption and payload, verified by an independent receiver");
-  push.requests.length = 0;
-  const started = Math.floor(Date.now() / 1000);
-  const [main] = await batch([
-    send("push", "webpush", env, {
-      priority: "urgent",
-      title: "சேவை உறுதி",
-      body: "உங்கள் சேவை பதிவு BK-1042 உறுதி செய்யப்பட்டது.",
-      devices: [device(201, "ok1"), device(202, "ok2"), device(203, "gone"), { id: 209, provider: "fcm", endpoint: "fcm-token-not-for-webpush" }],
-      data,
-    }),
-  ]);
-  const ok1 = push.requests.find((r) => r.name === "ok1");
-  const ok2 = push.requests.find((r) => r.name === "ok2");
-  check(main.configured === true && main.result?.status === "sent", "two accepted and one gone → sent", show(main));
-  const devs = main.result?.deviceResults ?? {};
-  check(devs["201"]?.ok === true && devs["202"]?.ok === true && devs["203"]?.gone === true && devs["209"] === undefined, "per device: 201/202 ok, 203 gone (410), the FCM device untouched", show(devs));
-  check(push.requests.length === 3, "one POST per web push subscription", `requests ${push.requests.length}`);
-  check(ok1?.vapid.ok === true, "the VAPID JWT verifies (ES256, raw R||S) with the k key", show(ok1?.vapid));
-  check(ok1?.vapid.header?.alg === "ES256" && ok1?.vapid.header?.typ === "JWT", "JWT header ES256");
-  check(ok1?.vapid.k === VAPID.public, "k is VAPID_PUBLIC_KEY");
-  check(ok1?.vapid.claims?.aud === LOCAL(PORT.push) && ok1?.vapid.claims?.sub === VAPID.subject, "aud is the push service origin, sub is VAPID_SUBJECT", show(ok1?.vapid.claims));
-  const exp = ok1?.vapid.claims?.exp ?? 0;
-  check(exp >= started + 43200 - 120 && exp <= started + 43200 + 300, "exp is twelve hours ahead", `exp - now = ${exp - started}`);
-  check(ok1?.headers.ttl === "86400" && ok1?.headers.urgency === "high" && ok1?.headers.topic === "booking-1042", "urgent: TTL 86400, Urgency high, Topic from the tag", show([ok1?.headers.ttl, ok1?.headers.urgency, ok1?.headers.topic]));
-  check(ok1?.headers["content-encoding"] === "aes128gcm" && ok1?.headers["content-type"] === "application/octet-stream", "Content-Encoding aes128gcm, application/octet-stream");
-  check(!ok1?.decryptError && ok1?.decrypted?.rs === 4096 && ok1?.decrypted?.idlen === 65 && ok1?.decrypted?.keyid[0] === 4, "RFC 8188 header: record size 4096, 65-byte key id", ok1?.decryptError ?? show({ rs: ok1?.decrypted?.rs, idlen: ok1?.decrypted?.idlen }));
-  const payload = ok1?.decrypted?.json ?? {};
-  check(payload.title === "சேவை உறுதி" && payload.body === "உங்கள் சேவை பதிவு BK-1042 உறுதி செய்யப்பட்டது.", "decrypted payload: Tamil title and body intact", show(payload));
-  check(payload.url === data.url && payload.trackUrl === data.trackUrl && payload.notificationId === 301 && payload.category === "booking" && payload.priority === "urgent" && payload.tag === "booking-1042" && payload.image === data.image && payload.icon === "/icons/icon-192x192.png", "decrypted payload carries url, trackUrl, notificationId, category, priority, tag, image, icon (SPEC §7.4)", show(payload));
-  check(!ok2?.decryptError && ok2?.decrypted?.json?.tag === "booking-1042", "the second device decrypts with its own keys");
-  check(ok1?.decrypted && ok2?.decrypted && !ok1.decrypted.keyid.equals(ok2.decrypted.keyid), "a fresh ephemeral key per subscription");
-
-  section("Web Push: priorities, size limit and outcomes");
-  push.requests.length = 0;
-  const longBody = "அன்னதானம் ".repeat(900);
-  const [normal, important, long, allGone, tooBig, rate, fail, mixed, onlyFcm, notHttps, badKeys] = await batch([
-    send("push", "webpush", env, { priority: "normal", devices: [device(211, "normal")], data: { tag: "event reminder: Pournami 2026" } }),
-    send("push", "webpush", env, { priority: "important", devices: [device(212, "important")] }),
-    send("push", "webpush", env, { priority: "normal", title: "அன்னதானம் அழைப்பு", body: longBody, devices: [device(213, "long")], data }),
-    send("push", "webpush", env, { devices: [device(214, "gone")] }),
-    send("push", "webpush", env, { devices: [device(215, "big")] }),
-    send("push", "webpush", env, { devices: [device(216, "rate")] }),
-    send("push", "webpush", env, { devices: [device(217, "fail")] }),
-    send("push", "webpush", env, { devices: [device(218, "rate"), device(219, "gone")] }),
-    send("push", "webpush", env, { devices: [{ id: 220, provider: "fcm", endpoint: "token" }] }),
-    send("push", "webpush", env, { devices: [device(221, "ok1", { endpoint: "http://push.example.com/abc" })] }),
-    send("push", "webpush", env, { devices: [device(222, "ok1", { keys: { p256dh: "AAAA", auth: "BBBB" } })] }),
-  ]);
-  const normalReq = push.requests.find((r) => r.name === "normal");
-  const importantReq = push.requests.find((r) => r.name === "important");
-  const longReq = push.requests.find((r) => r.name === "long");
-  check(normal.result?.status === "sent" && normalReq?.headers.ttl === "2419200" && normalReq?.headers.urgency === "low", "normal: TTL 28 days, Urgency low", show(normalReq?.headers));
-  check(/^[A-Za-z0-9_-]{32}$/.test(normalReq?.headers.topic ?? "") && normalReq?.decrypted?.json?.tag === "event reminder: Pournami 2026", "a tag outside the Topic alphabet is hashed into 32 base64url characters", normalReq?.headers.topic);
-  check(importantReq?.headers.urgency === "normal", "important: Urgency normal");
-  const longPayload = longReq?.decrypted?.json ?? {};
-  check(long.result?.status === "sent" && longReq?.decrypted?.bytes <= 3800, "a long message is fitted within 3800 bytes", `${longReq?.decrypted?.bytes} bytes`);
-  check(longPayload.body?.endsWith("…") && longPayload.title === "அன்னதானம் அழைப்பு" && longPayload.url === data.url, "the body is shortened first; the title and link survive", show({ title: longPayload.title, tail: longPayload.body?.slice(-12) }));
-  check(allGone.result?.status === "rejected" && allGone.result?.reason === "every device is gone" && allGone.result?.deviceResults?.["214"]?.gone === true, "all devices gone → rejected \"every device is gone\"", show(allGone));
-  check(tooBig.result?.status === "rejected" && /too large/.test(tooBig.result?.reason ?? ""), "413 → rejected", show(tooBig));
-  check(rate.result?.status === "retry" && rate.result?.retryAfter === 120, "429 → retry honouring Retry-After", show(rate));
-  check(fail.result?.status === "retry", "500 → retry", show(fail));
-  check(mixed.result?.status === "retry" && mixed.result?.deviceResults?.["219"]?.gone === true, "retryable plus gone → retry, still reporting the gone device", show(mixed));
-  check(onlyFcm.result?.status === "skipped" && /no web push device/.test(onlyFcm.result?.reason ?? ""), "no web push device → skipped", show(onlyFcm));
-  check(notHttps.result?.deviceResults?.["221"]?.gone === true && /https/.test(notHttps.result?.deviceResults?.["221"]?.reason ?? ""), "a non-https endpoint is never called and is retired", show(notHttps));
-  check(badKeys.result?.deviceResults?.["222"]?.gone === true && /malformed/.test(badKeys.result?.deviceResults?.["222"]?.reason ?? ""), "malformed subscription keys → retired", show(badKeys));
-  check(!push.requests.some((r) => r.name === "ok1"), "neither refused device reached a push service");
-
-  section("Web Push: configuration");
-  const other = crypto.createECDH("prime256v1");
-  other.generateKeys();
-  const [mismatch, half, loopbackProd] = await batch([
-    send("push", "webpush", { ...env, VAPID_PUBLIC_KEY: b64u(other.getPublicKey()) }, { devices: [device(231, "ok1")] }),
-    send("push", "webpush", { ...env, VAPID_PRIVATE_KEY: null }, { devices: [device(232, "ok1")] }),
-    send("push", "webpush", { ...env, NOTIFY_ALLOW_TEST_DRIVER: null }, { devices: [device(233, "ok1")] }),
-  ]);
-  check(mismatch.configured === false && mismatch.result?.status === "skipped", "a public key that does not match the private key → not configured", show(mismatch));
-  check(half.configured === false && half.result?.status === "skipped", "only one of the two VAPID keys → not configured", show(half));
-  check(loopbackProd.result?.deviceResults?.["233"]?.gone === true, "plain-http loopback endpoints are refused outside a test environment", show(loopbackProd));
-
-  // The development pair in notification_kv (SPEC §5.12), used when no env keys exist.
-  const core = await harness("core", {});
-  let rows = (await sql("SELECT k, v FROM notification_kv WHERE k IN ('vapid_public','vapid_private')")).rows ?? [];
-  let inserted = null;
-  if (rows.length < 2 && !core.vapidPublicKey) {
-    const dev = crypto.createECDH("prime256v1");
-    dev.generateKeys();
-    inserted = { pub: b64u(dev.getPublicKey()), priv: b64u(pad32(dev.getPrivateKey())) };
-    await sql("INSERT IGNORE INTO notification_kv (k, v, updated_at) VALUES ('vapid_public', ?, UTC_TIMESTAMP()), ('vapid_private', ?, UTC_TIMESTAMP())", [inserted.pub, inserted.priv]);
-    note("notifyVapidPublicKey() is not available yet; a development pair was inserted for this check and is removed afterwards");
-  }
-  push.requests.length = 0;
-  const devKeys = await harness("send", send("push", "webpush", { NOTIFY_ALLOW_TEST_DRIVER: "1", VAPID_PUBLIC_KEY: null, VAPID_PRIVATE_KEY: null }, { devices: [device(241, "ok1")] }, { core: true }));
-  rows = (await sql("SELECT k, v FROM notification_kv WHERE k IN ('vapid_public','vapid_private')")).rows ?? [];
-  const kvPublic = rows.find((r) => r.k === "vapid_public")?.v ?? "";
-  const devReq = push.requests.find((r) => r.name === "ok1");
-  check(devKeys.configured === true && devKeys.result?.status === "sent" && devReq?.vapid.ok === true, "without env keys the development pair from notification_kv signs", show(devKeys));
-  check(kvPublic.includes("BEGIN") || devReq?.vapid.k === kvPublic, "k is notification_kv's vapid_public", `${devReq?.vapid.k} vs ${kvPublic}`);
-  if (inserted) {
-    await sql("DELETE FROM notification_kv WHERE (k = 'vapid_public' AND v = ?) OR (k = 'vapid_private' AND v = ?)", [inserted.pub, inserted.priv]);
-  }
-}
-
-/* ── FCM ───────────────────────────────────────────────────────────────── */
-
-async function testFcm() {
-  const env = { FCM_PROJECT_ID: FCM.project, FCM_SERVICE_ACCOUNT_JSON: serviceAccount(), FCM_BASE_URL: LOCAL(PORT.fcm), FCM_TOKEN_URL: FCM.tokenUrl };
-  const data = { url: `${SITE}/account?tab=bookings`, notificationId: 301, category: "booking", priority: "urgent", tag: "booking-1042", image: `${SITE}/uploads/seva.jpg` };
-  const original = (await sql("SELECT v FROM notification_kv WHERE k = 'fcm_token'")).rows?.[0]?.v ?? null;
-  const tmp = mkdtempSync(join(tmpdir(), "notify-providers-"));
-
-  try {
-    section("FCM HTTP v1: OAuth assertion, the message, token caching");
-    const first = await harness("send", send("push", "fcm", env, {
-      priority: "urgent",
-      title: "Booking confirmed",
-      body: "BK-1042 is confirmed.",
-      devices: [{ id: 301, provider: "fcm", endpoint: "device-ok-1" }, { id: 302, provider: "webpush", endpoint: "https://push.example/x", keys: subs.ok1.keys }],
-      data,
-    }));
-    const tokenReq = fcm.tokenRequests[0];
-    const sent = fcm.sendRequests[0];
-    const m = sent?.json?.message ?? {};
-    check(first.configured === true && first.result?.status === "sent" && first.result?.messageId === `projects/${FCM.project}/messages/0:${RUN}1`, "accepted → sent with the message name", show(first));
-    check(first.result?.deviceResults?.["301"]?.ok === true && first.result?.deviceResults?.["302"] === undefined, "only devices whose provider is fcm are sent", show(first.result?.deviceResults));
-    check(fcm.tokenRequests.length === 1 && tokenReq?.signatureOk === true, "the RS256 assertion verifies with the service account's public key", show(tokenReq));
-    check(tokenReq?.grantType === "urn:ietf:params:oauth:grant-type:jwt-bearer" && tokenReq?.header?.alg === "RS256" && tokenReq?.header?.kid === FCM.keyId, "jwt-bearer grant, alg RS256, kid");
-    check(tokenReq?.claims?.iss === FCM.clientEmail && tokenReq?.claims?.scope === "https://www.googleapis.com/auth/firebase.messaging" && tokenReq?.claims?.aud === FCM.tokenUrl && tokenReq?.claims?.exp - tokenReq?.claims?.iat === 3600, "iss, firebase.messaging scope, aud = token URL, one-hour lifetime", show(tokenReq?.claims));
-    check(sent?.project === FCM.project && fcm.issued.has(sent?.bearer), "POST /v1/projects/{id}/messages:send with the issued Bearer token");
-    check(m.token === "device-ok-1" && show(m.notification) === show({ title: "Booking confirmed", body: "BK-1042 is confirmed.", image: data.image }), "token and notification {title, body, image}", show(m));
-    check(show(m.data) === show({ url: data.url, notificationId: "301", category: "booking", priority: "urgent", tag: "booking-1042" }), "data values are all strings", show(m.data));
-    check(m.android?.priority === "high" && m.apns?.headers?.["apns-priority"] === "10" && m.apns?.payload?.aps?.sound === "default", "urgent: android high, apns-priority 10, sound default", show([m.android, m.apns]));
-    check(m.webpush?.fcm_options?.link === data.url, "webpush.fcm_options.link is the https deep link");
-
-    const second = await harness("send", send("push", "fcm", env, { priority: "normal", devices: [{ id: 303, provider: "fcm", endpoint: "device-ok-2" }] }));
-    const m2 = fcm.sendRequests.at(-1)?.json?.message ?? {};
-    check(second.result?.status === "sent" && fcm.tokenRequests.length === 1, "a second worker process reuses the cached token (no token request)", `token requests ${fcm.tokenRequests.length}`);
-    check(fcm.sendRequests.at(-1)?.bearer === sent?.bearer, "same bearer token from notification_kv");
-    check(m2.android?.priority === "normal" && m2.apns?.headers?.["apns-priority"] === "5", "normal: android normal, apns-priority 5", show([m2.android, m2.apns]));
-    const cached = safeJson((await sql("SELECT v FROM notification_kv WHERE k = 'fcm_token'")).rows?.[0]?.v ?? "");
-    check(cached?.token === sent?.bearer && cached?.expires_at > Date.now() / 1000 + 3000 && /^[0-9a-f]{32}$/.test(cached?.fingerprint ?? ""), "notification_kv fcm_token holds the token, its expiry and an account fingerprint", show({ ...cached, token: cached?.token ? "…" : null }));
-
-    section("FCM HTTP v1: errors and refresh");
-    const [gone, mixed, invalid, quota, unavailable, noDevice] = await batch([
-      send("push", "fcm", env, { devices: [{ id: 311, provider: "fcm", endpoint: "unregistered-1" }] }),
-      send("push", "fcm", env, { devices: [{ id: 312, provider: "fcm", endpoint: "device-ok-3" }, { id: 313, provider: "fcm", endpoint: "unregistered-2" }] }),
-      send("push", "fcm", env, { devices: [{ id: 314, provider: "fcm", endpoint: "invalid-1" }] }),
-      send("push", "fcm", env, { devices: [{ id: 315, provider: "fcm", endpoint: "quota-1" }] }),
-      send("push", "fcm", env, { devices: [{ id: 316, provider: "fcm", endpoint: "unavailable-1" }] }),
-      send("push", "fcm", env, { devices: [{ id: 317, provider: "webpush", endpoint: "https://push.example/x" }] }),
-    ]);
-    check(gone.result?.status === "rejected" && gone.result?.reason === "every device is gone" && gone.result?.deviceResults?.["311"]?.gone === true, "UNREGISTERED → device gone", show(gone));
-    check(mixed.result?.status === "sent" && mixed.result?.deviceResults?.["313"]?.gone === true, "one ok and one UNREGISTERED → sent, the stale token retired", show(mixed));
-    check(invalid.result?.status === "rejected" && invalid.result?.deviceResults?.["314"]?.gone === false, "INVALID_ARGUMENT → rejected (not retired)", show(invalid));
-    check(quota.result?.status === "retry" && quota.result?.retryAfter === 60, "QUOTA_EXCEEDED (429) → retry honouring Retry-After", show(quota));
-    check(unavailable.result?.status === "retry", "UNAVAILABLE (503) → retry", show(unavailable));
-    check(noDevice.result?.status === "skipped", "no FCM device → skipped", show(noDevice));
-    check(fcm.tokenRequests.length === 1, "one batch of sends, still no new token", `token requests ${fcm.tokenRequests.length}`);
-
-    fcm.revokeNext = true;
-    const revoked = await harness("send", send("push", "fcm", env, { devices: [{ id: 321, provider: "fcm", endpoint: "device-ok-4" }] }));
-    check(revoked.result?.status === "sent" && fcm.tokenRequests.length === 2, "a 401 on a cached token refreshes it once and the send succeeds", show(revoked));
-    check(fcm.sendRequests.at(-1)?.bearer === `ya29.e2e-${RUN}-2`, "the retry used the fresh token");
-
-    const file = join(tmp, "service-account.json");
-    writeFileSync(file, serviceAccount());
-    const [fromFile, noProject, broken, missingFile] = await batch([
-      send("push", "fcm", { ...env, FCM_SERVICE_ACCOUNT_JSON: file }, { devices: [{ id: 331, provider: "fcm", endpoint: "device-ok-5" }] }),
-      { command: "configured", channel: "push", driver: "fcm", env: { ...env, FCM_PROJECT_ID: null } },
-      { command: "configured", channel: "push", driver: "fcm", env: { ...env, FCM_SERVICE_ACCOUNT_JSON: "{\"client_email\": \"x@y\"" } },
-      { command: "configured", channel: "push", driver: "fcm", env: { ...env, FCM_SERVICE_ACCOUNT_JSON: join(tmp, "missing.json") } },
-    ]);
-    check(fromFile.configured === true && fromFile.result?.status === "sent", "FCM_SERVICE_ACCOUNT_JSON as a file path works", show(fromFile));
-    check(noProject.configured === false && broken.configured === false && missingFile.configured === false, "no project id, unparsable JSON or a missing file → not configured", show([noProject, broken, missingFile]));
-
-    const stranger = crypto.generateKeyPairSync("rsa", { modulusLength: 2048, privateKeyEncoding: { type: "pkcs8", format: "pem" }, publicKeyEncoding: { type: "spki", format: "pem" } });
-    const refused = await harness("send", send("push", "fcm", { ...env, FCM_SERVICE_ACCOUNT_JSON: serviceAccount(stranger.privateKey) }, { devices: [{ id: 341, provider: "fcm", endpoint: "device-ok-6" }] }));
-    check(refused.result?.status === "retry" && refused.result?.retryAfter === 3600 && /FCM_SERVICE_ACCOUNT_JSON/.test(refused.result?.reason ?? ""), "a key Google refuses (invalid_grant) → retry in an hour", show(refused));
-  } finally {
-    rmSync(tmp, { recursive: true, force: true });
-    if (original === null) await sql("DELETE FROM notification_kv WHERE k = 'fcm_token'");
-    else await sql("UPDATE notification_kv SET v = ? WHERE k = 'fcm_token'", [original]);
-  }
-}
-
 /* ── Webhooks through the endpoint ─────────────────────────────────────── */
 
 function startPhpServer(port, env) {
@@ -909,11 +595,13 @@ function twilioSignature(token, url, params) {
 
 async function testWebhooks() {
   const testSecret = `test-hook-secret-${RUN}`;
+  // Server A: WhatsApp and SMS both on twilio, email on the test driver (so the
+  // test driver's webhook has a channel to route to). Server B: meta and msg91.
   const envA = {
     SITE_URL: LOCAL(PORT.hookA),
     NOTIFY_WHATSAPP_DRIVER: "twilio",
     NOTIFY_SMS_DRIVER: "twilio",
-    NOTIFY_PUSH_DRIVER: "test",
+    NOTIFY_EMAIL_DRIVER: "test",
     NOTIFY_ALLOW_TEST_DRIVER: "1",
     NOTIFY_TEST_WEBHOOK_SECRET: testSecret,
     TWILIO_ACCOUNT_SID: TWILIO.sid,
@@ -1040,16 +728,18 @@ async function testWebhooks() {
     check(show(parsed91[3].result?.updates?.map((u) => [u.message_id, u.status])) === show([["R-SENT", "sent"], ["R-NDNC", "failed"]]), "a list of reports: sent, and numeric code 9 (NDNC) → failed", show(parsed91[3]));
     check(parsed91[4].result?.updates?.[0]?.message_id === "R-GET" && parsed91[4].result?.updates?.[0]?.status === "delivered", "a GET report reads the query string", show(parsed91[4]));
 
-    section("Webhook endpoint: test driver, routing and refusals");
+    section("Webhook endpoint: test driver (on email), routing and refusals");
     const testBody = JSON.stringify({ updates: [{ message_id: `test-e2e-${RUN}`, status: "delivered" }] });
     const testOk = await hook(PORT.hookA, "POST", "/api/notify-webhook/test", { headers: { "Content-Type": "application/json", "X-Test-Signature": crypto.createHmac("sha256", testSecret).update(testBody).digest("hex") }, body: testBody });
     check(testOk.status === 200 && testOk.type.startsWith("application/json") && safeJson(testOk.text)?.ok === true, "test driver with a valid X-Test-Signature → 200", show(testOk));
     const testBad = await hook(PORT.hookA, "POST", "/api/notify-webhook/test", { headers: { "Content-Type": "application/json", "X-Test-Signature": "0".repeat(64) }, body: testBody });
     check(testBad.status === 403 && testBad.text === "", "test driver with a bad signature → 403", show(testBad));
     const notHere = await hook(PORT.hookA, "POST", "/api/notify-webhook/meta", { body: "{}" });
-    const fcmHere = await hook(PORT.hookA, "POST", "/api/notify-webhook/fcm", { body: "{}" });
+    const msg91Here = await hook(PORT.hookA, "POST", "/api/notify-webhook/msg91", { body: "{}" });
+    const retired = await hook(PORT.hookA, "POST", "/api/notify-webhook/webpush", { body: "{}" });
     const badName = await hook(PORT.hookA, "POST", "/api/notify-webhook/Not_A_Driver", { body: "{}" });
-    check(notHere.status === 404 && fcmHere.status === 404 && badName.status === 404, "a driver not configured on this server, or a malformed name → 404", show([notHere.status, fcmHere.status, badName.status]));
+    check(notHere.status === 404 && msg91Here.status === 404 && badName.status === 404, "a driver not configured on this server, or a malformed name → 404", show([notHere.status, msg91Here.status, badName.status]));
+    check(retired.status === 404, "a retired push driver name is not an endpoint any more → 404", show(retired.status));
     const huge = await hook(PORT.hookA, "POST", "/api/notify-webhook/test", { headers: { "Content-Type": "application/json" }, body: "x".repeat(1024 * 1024 + 10) });
     check(huge.status === 413, "a body over 1 MB → 413", show(huge.status));
     const twilioGet = await hook(PORT.hookA, "GET", "/api/notify-webhook/twilio");
@@ -1071,13 +761,13 @@ async function testWebhooks() {
       await sql("INSERT INTO notifications (devotee_id, title, body, category, dedupe_key, created_by, created_at) VALUES (?, 'E2E-PROVIDERS webhook', 'x', 'general', ?, 'system', UTC_TIMESTAMP())", [created.id, dedupe]);
       const notificationId = (await sql("SELECT id FROM notifications WHERE dedupe_key = ?", [dedupe])).rows?.[0]?.id;
       const twilioSid = `SM${RUN}applied`;
-      await sql("INSERT INTO notification_deliveries (notification_id, channel, status, provider, provider_message_id, sent_at) VALUES (?, 'sms', 'sent', 'twilio', ?, UTC_TIMESTAMP()), (?, 'push', 'sent', 'test', ?, UTC_TIMESTAMP())", [notificationId, twilioSid, notificationId, `test-e2e-${RUN}`]);
+      await sql("INSERT INTO notification_deliveries (notification_id, channel, status, provider, provider_message_id, sent_at) VALUES (?, 'sms', 'sent', 'twilio', ?, UTC_TIMESTAMP()), (?, 'email', 'sent', 'test', ?, UTC_TIMESTAMP())", [notificationId, twilioSid, notificationId, `test-e2e-${RUN}`]);
       const p = { MessageSid: twilioSid, MessageStatus: "delivered" };
       await hook(PORT.hookA, "POST", "/api/notify-webhook/twilio", { headers: { "Content-Type": "application/x-www-form-urlencoded", "X-Twilio-Signature": twilioSignature(TWILIO.token, twilioUrl, p) }, body: new URLSearchParams(p).toString() });
       await hook(PORT.hookA, "POST", "/api/notify-webhook/test", { headers: { "Content-Type": "application/json", "X-Test-Signature": crypto.createHmac("sha256", testSecret).update(testBody).digest("hex") }, body: testBody });
       const rows = (await sql("SELECT channel, status FROM notification_deliveries WHERE notification_id = ?", [notificationId])).rows ?? [];
       const byChannel = Object.fromEntries(rows.map((r) => [r.channel, r.status]));
-      check(byChannel.sms === "delivered" && byChannel.push === "delivered", "verified updates reach notification_deliveries through notifyApplyProviderUpdate()", show(rows));
+      check(byChannel.sms === "delivered" && byChannel.email === "delivered", "verified updates reach notification_deliveries through notifyApplyProviderUpdate()", show(rows));
     } else {
       const before = (serverA.log.match(/verified status update\(s\) not applied/g) ?? []).length;
       const p = { MessageSid: `SM${RUN}once`, MessageStatus: "delivered" };
@@ -1097,34 +787,35 @@ async function testWebhooks() {
 
 async function testKeysCli() {
   section("backend/bin/notify_keys.php");
-  const vapid = await runPhp(["backend/bin/notify_keys.php", "vapid"]);
-  const pub = /^VAPID_PUBLIC_KEY=([A-Za-z0-9_-]+)$/m.exec(vapid.stdout)?.[1] ?? "";
-  const priv = /^VAPID_PRIVATE_KEY=([A-Za-z0-9_-]+)$/m.exec(vapid.stdout)?.[1] ?? "";
-  check(vapid.code === 0 && vapid.stdout.trim().split(/\r?\n/).length === 2, "vapid prints exactly two lines on stdout", vapid.stdout + vapid.stderr);
-  check(b64uDecode(pub).length === 65 && b64uDecode(pub)[0] === 4 && b64uDecode(priv).length === 32, "a 65-byte public point and a 32-byte private key");
-  const ecdh = crypto.createECDH("prime256v1");
-  ecdh.setPrivateKey(b64uDecode(priv));
-  check(b64u(ecdh.getPublicKey()) === pub, "the printed public key belongs to the printed private key");
-
+  const smtpPass = `smtp-pass-${RUN}`;
   const fine = {
     SITE_URL: SITE,
+    MAIL_TRANSPORT: "smtp", SMTP_HOST: "smtp.example.test", SMTP_PORT: "587", SMTP_SECURE: "tls", SMTP_USER: "notify", SMTP_PASS: smtpPass, MAIL_FROM: "notify@temple.example",
     NOTIFY_WHATSAPP_DRIVER: "meta", WHATSAPP_META_TOKEN: META.token, WHATSAPP_META_PHONE_NUMBER_ID: META.phoneId, WHATSAPP_META_APP_SECRET: META.appSecret, WHATSAPP_META_VERIFY_TOKEN: META.verifyToken,
     NOTIFY_SMS_DRIVER: "msg91", MSG91_AUTH_KEY: MSG91.key, MSG91_WEBHOOK_TOKEN: MSG91.webhookToken,
-    NOTIFY_PUSH_DRIVER: "webpush", VAPID_PUBLIC_KEY: pub, VAPID_PRIVATE_KEY: priv, VAPID_SUBJECT: VAPID.subject,
   };
   const ok = await runPhp(["backend/bin/notify_keys.php", "check"], { env: fine });
   notePhpNoise("notify_keys check", ok.stdout + ok.stderr);
-  check(ok.code === 0 && /push \(driver "webpush"\): ready/.test(ok.stdout) && /whatsapp \(driver "meta"\): ready/.test(ok.stdout) && /sms \(driver "msg91"\): ready/.test(ok.stdout), "check with good settings: every channel ready, exit 0", ok.stdout.slice(0, 1200));
-  check(/the VAPID public and private keys belong together/.test(ok.stdout), "check confirms the VAPID pair matches");
-  check(![priv, META.token, META.appSecret, MSG91.key, MSG91.webhookToken].some((s) => ok.stdout.includes(s) || ok.stderr.includes(s)), "check prints no secret");
+  check(ok.code === 0 && /email \(driver "mailer"\): ready/.test(ok.stdout) && /whatsapp \(driver "meta"\): ready/.test(ok.stdout) && /sms \(driver "msg91"\): ready/.test(ok.stdout), "check with good settings: every channel ready, exit 0", ok.stdout.slice(0, 1200));
+  check((ok.stdout.match(/^\S+ \(driver "[a-z0-9]+"\): /gm) ?? []).length === 3 && !/push|vapid|fcm/i.test(ok.stdout), "exactly the three live channels are reported; nothing about push, VAPID or FCM", ok.stdout.slice(0, 1200));
+  check(/MAIL_TRANSPORT=smtp/.test(ok.stdout) && /SMTP_PASS is set \(\d+ characters\)/.test(ok.stdout) && /MAIL_FROM is a valid address/.test(ok.stdout), "the mailer's SMTP settings are reported by presence and length", ok.stdout.slice(0, 1200));
+  check(![smtpPass, META.token, META.appSecret, MSG91.key, MSG91.webhookToken].some((s) => ok.stdout.includes(s) || ok.stderr.includes(s)), "check prints no secret");
 
-  const broken = await runPhp(["backend/bin/notify_keys.php", "check"], { env: { ...fine, VAPID_PUBLIC_KEY: VAPID.public, NOTIFY_SMS_DRIVER: "twilio", TWILIO_ACCOUNT_SID: "AC123" } });
-  check(broken.code === 1 && /does not belong to VAPID_PRIVATE_KEY/.test(broken.stdout) && /TWILIO_ACCOUNT_SID must be AC/.test(broken.stdout), "check with a mismatched pair and a bad SID: named problems, exit 1", broken.stdout.slice(0, 1500));
+  const broken = await runPhp(["backend/bin/notify_keys.php", "check"], { env: { ...fine, WHATSAPP_META_PHONE_NUMBER_ID: "+15550783881", NOTIFY_SMS_DRIVER: "twilio", TWILIO_ACCOUNT_SID: "AC123" } });
+  check(broken.code === 1 && /WHATSAPP_META_PHONE_NUMBER_ID must be the numeric phone number id/.test(broken.stdout) && /TWILIO_ACCOUNT_SID must be AC/.test(broken.stdout) && /set TWILIO_SMS_FROM or TWILIO_MESSAGING_SERVICE_SID/.test(broken.stdout), "check with a phone number for the Meta id and a bad SID: named problems, exit 1", broken.stdout.slice(0, 1500));
+  // Meta's isConfigured() only asks whether the token and id are set, so the
+  // channel line still says ready; the shape error is listed and counted anyway.
+  check(/whatsapp \(driver "meta"\): ready/.test(broken.stdout) && /sms \(driver "twilio"\): NOT READY/.test(broken.stdout) && /the provider reports it is not configured, so this channel will be skipped/.test(broken.stdout) && /5 problem\(s\) found\./.test(broken.stdout), "Twilio is NOT READY (and says it will be skipped); every problem is counted", broken.stdout.slice(-400));
 
-  const fcmCheck = await runPhp(["backend/bin/notify_keys.php", "check"], { env: { SITE_URL: SITE, NOTIFY_PUSH_DRIVER: "fcm", FCM_PROJECT_ID: FCM.project, FCM_SERVICE_ACCOUNT_JSON: serviceAccount() } });
-  check(/push \(driver "fcm"\): ready/.test(fcmCheck.stdout) && /private_key loads/.test(fcmCheck.stdout) && !fcmCheck.stdout.includes("PRIVATE KEY"), "check validates the FCM service account without printing the key", fcmCheck.stdout.slice(-900));
+  const logDrivers = await runPhp(["backend/bin/notify_keys.php", "check"], { env: { SITE_URL: SITE } });
+  check(logDrivers.code === 0 && /whatsapp \(driver "log"\): ready/.test(logDrivers.stdout) && /sms \(driver "log"\): ready/.test(logDrivers.stdout) && /nothing reaches a devotee/.test(logDrivers.stdout), "with nothing set, WhatsApp and SMS fall back to the log driver with a warning, exit 0", logDrivers.stdout.slice(0, 1200));
+
+  const vapid = await runPhp(["backend/bin/notify_keys.php", "vapid"]);
+  check(vapid.code === 2 && /Unknown command "vapid"/.test(vapid.stderr) && vapid.stdout.trim() === "", "the retired vapid command is unknown: exit 2, no key printed", vapid.stdout + vapid.stderr);
   const unknown = await runPhp(["backend/bin/notify_keys.php", "rotate"]);
   check(unknown.code === 2, "an unknown command exits 2");
+  const help = await runPhp(["backend/bin/notify_keys.php", "help"]);
+  check(help.code === 0 && /notify_keys\.php check/.test(help.stdout) && !/vapid|fcm/i.test(help.stdout), "help lists only check", help.stdout);
 }
 
 /* ── Run ───────────────────────────────────────────────────────────────── */
@@ -1144,10 +835,8 @@ async function main() {
     servers.push(await startHttp(PORT.twilio, twilioHandler));
     servers.push(await startHttp(PORT.msg91, msg91Handler));
     servers.push(await startSmtp(PORT.smtp));
-    servers.push(await startHttp(PORT.push, pushHandler));
-    servers.push(await startHttp(PORT.fcm, fcmHandler));
 
-    const suites = [testMailer, testMeta, testTwilio, testMsg91, testWebPush, testFcm, testWebhooks, testKeysCli];
+    const suites = [testMailer, testMeta, testTwilio, testMsg91, testWebhooks, testKeysCli];
     for (const suite of suites) {
       try {
         await suite();

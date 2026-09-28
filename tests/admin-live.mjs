@@ -385,8 +385,12 @@ try {
   }));
   const after = streamRow(F.a.id);
   check(res.status === 303 && res.flash === "Updated.", "update → 303 with the flash Updated.", `${res.status} ${res.flash}`);
-  const changedCols = Object.keys(after).filter((k) => String(after[k]) !== String(before[k]));
-  check(changedCols.sort().join(",") === "description_en,scheduled_end_at,updated_at", "only the edited columns (and updated_at) changed", changedCols.join(","));
+  // updated_at is set to the request's own second (store.php: `updated_at = :now`,
+  // DATETIME), so when the create and this edit land in the same second it
+  // keeps its value: compare it by order, not by inequality (D-014).
+  const changedCols = Object.keys(after).filter((k) => k !== "updated_at" && String(after[k]) !== String(before[k]));
+  check(changedCols.sort().join(",") === "description_en,scheduled_end_at", "only the edited columns changed", changedCols.join(","));
+  check(String(after.updated_at) >= String(before.updated_at), "…and updated_at did not move backwards", `${before.updated_at} → ${after.updated_at}`);
   check(after.description_en === "Edited description." && after.scheduled_end_at === `${tomorrow} 14:30:00`, "…to the new values");
   check(activity(F.a.id).some((a) => a.action === "live_stream_update" && /changed description_en, scheduled_end_at/.test(a.detail)), "the update is audited naming the changed fields", JSON.stringify(activity(F.a.id).slice(-1)));
 
