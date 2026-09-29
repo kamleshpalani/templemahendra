@@ -6,6 +6,16 @@ require_once __DIR__ . '/../includes/public_guard.php';
 
 setCorsHeaders();
 
+// Built-in answers hold the Tamil text, this marker, then the English text; only one is sent.
+const REPLY_SPLIT = "\x1e";
+
+function pickReply(string $reply, string $lang): string
+{
+    if (!str_contains($reply, REPLY_SPLIT)) return $reply;
+    [$ta, $en] = explode(REPLY_SPLIT, $reply, 2);
+    return trim($lang === 'ta' ? $ta : $en);
+}
+
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     sendError('Method not allowed', 405);
 }
@@ -22,6 +32,10 @@ $history = is_array($body['history'] ?? null) ? array_slice($body['history'], -8
 if ($message === '') {
     sendError('Message is required');
 }
+
+// Tamil script in the question wins; otherwise the site language the visitor chose.
+$lang = in_array($body['lang'] ?? '', ['ta', 'en'], true) ? $body['lang'] : 'en';
+if (preg_match('/\p{Tamil}/u', $message)) $lang = 'ta';
 
 // Whether the temple is taking online donations right now decides what the
 // assistant may promise (docs/payments/SPEC.md §7.8). Never let a payment
@@ -149,7 +163,7 @@ $donationReply =
     . "🔢 வங்கி கணக்கு எண்: 713055315 | IFSC CODE: TNSC0011500\n"
     . "✅ 80G வருமான வரிச்சலுகை\n"
     . "🧾 இவை அனைத்தும் வழங்கும் போது நிர்வாகத்திற்கு தங்களது முகவரி தெளிவாக வழங்கினால் மட்டுமே ரசீது அனுப்பி வைக்கப்படும். நன்கொடை பெற நேரடியாக வருபவர்களிடம் ரசீது பெற்றுக் கொள்ளும்படி அன்புடன் கேட்டுக்கொள்கிறோம். ரசீது வாங்காமல் கொடுக்கும் பணத்திற்கு அறக்கட்டளை பொறுப்பல்ல.\n"
-    . "\n"
+    . REPLY_SPLIT
     . "How to donate\n"
     . $donationOnlineEn
     . "Donations may also be made by bank transfer or by cheque in the Trust's name.\n"
@@ -163,7 +177,8 @@ $rules = [
     // Greeting only when the WHOLE message is a greeting, so "hello, how do I
     // donate?" falls through to the donation rule instead of the welcome text.
     '/^\s*(?:வணக்கம்|நமஸ்காரம்|hello|hi|hey|namask\w*)[\s!.🙏]*$/u'
-        => "வணக்கம்! 🙏 தப்பலவார் குலதெய்வம் அருள்மிகு ஸ்ரீ லிங்கம்மாள், ஸ்ரீ ரேணுகாதேவி, ஸ்ரீ சின்னம்மாள் திருக்கோவில், புதுப்பட்டி — தங்களை அன்புடன் வரவேற்கிறோம்.\n"
+        => "வணக்கம்! 🙏 தப்பலவார் குலதெய்வம் அருள்மிகு ஸ்ரீ லிங்கம்மாள், ஸ்ரீ ரேணுகாதேவி, ஸ்ரீ சின்னம்மாள் திருக்கோவில், புதுப்பட்டி — தங்களை அன்புடன் வரவேற்கிறோம்."
+         . REPLY_SPLIT
          . "Namaskar! Welcome to Arulmigu Sri Lingammal, Sri Renukadevi, Sri Chinnammal Temple, Pudupatti — the Dhabbalavaar Kula Deivam temple. How can I help you today?",
 
     '/அறக்கட்டளை|trust|80\s?g|\bpan\b|(?<![\p{L}\p{M}])பான்|வரிச்சலுகை|tax(?!i)|ரசீது|receipt|ifsc/u'
@@ -175,7 +190,7 @@ $rules = [
          . "🏦 வங்கியின் பெயர்: திருநெல்வேலி மத்திய கூட்டுறவு வங்கி, திருவேங்கடம் கிளை\n"
          . "🔢 வங்கி கணக்கு எண்: 713055315 | IFSC CODE: TNSC0011500\n"
          . "🧾 நிர்வாகத்திற்கு தங்களது முகவரி தெளிவாக வழங்கினால் மட்டுமே ரசீது அனுப்பி வைக்கப்படும். நன்கொடை பெற நேரடியாக வருபவர்களிடம் ரசீது பெற்றுக் கொள்ளும்படி அன்புடன் கேட்டுக்கொள்கிறோம். ரசீது வாங்காமல் கொடுக்கும் பணத்திற்கு அறக்கட்டளை பொறுப்பல்ல.\n"
-         . "\n"
+         . REPLY_SPLIT
          . "Arulmigu Sri Renukadevi Sri Lingammal Sri Chinnammal Temple Dharma Trust — Registration Details\n"
          . "📋 Registration No.: 9/2023 (Date: 22-06-2023)\n"
          . "🆔 PAN: AAKTA2241H\n"
@@ -193,7 +208,7 @@ $rules = [
          . "👤 இணைச்செயலாளர் – A. குருசாமி – +91 82205 52427\n"
          . "👤 பொருளாளர் 1 – K. இராஜேந்திரன் – +91 99650 40693\n"
          . "👤 பொருளாளர் 2 – L. சிவக்குமார் – +91 94884 68206\n"
-         . "\n"
+         . REPLY_SPLIT
          . "Temple Committee\n"
          . "👤 President – S. Gengaiah – +91 94430 02296\n"
          . "👤 Vice President – S. Ponraj – +91 94431 26612\n"
@@ -215,7 +230,7 @@ $rules = [
          . "• 22-06-2023: தர்ம அறக்கட்டளை பதிவு (பதிவு எண் 9/2023); பான் கார்டு, வங்கிக் கணக்கு, 80G வரிச்சலுகை உத்தரவு பெறப்பட்டது.\n"
          . "• திரு. த.கா. சுப்பாராம் (காவல்துறை உதவி ஆய்வாளர், ஓய்வு, இராஜபாளையம்) குடும்பத்தார் — திருமதி. இராமலட்சுமி & திரு. சீனிவாசன் — அறக்கட்டளை பெயரில் நன்கொடையாக வழங்கிய இடத்தில் அன்னதான கூடமும் கழிப்பறைகளும் கட்டப்படுகின்றன; தங்கும் ஓய்வறைகள் திட்டமிடப்பட்டுள்ளன.\n"
          . "• 2012-ல் கும்பாபிஷேகம் செய்து 12 வருடங்கள் முடிவடைந்துள்ளது. அடுத்த மஹா கும்பாபிஷேகத்திற்கும் கட்டிடங்களுக்கும் நன்கொடை வேண்டப்படுகிறது.\n"
-         . "\n"
+         . REPLY_SPLIT
          . "Temple History\n"
          . "• Founded many centuries ago at Pudupatti by the elders of the Dhabbalaar clan. Worship was offered before the naar-petti — the fibre box the clan deities brought, holding a silk saree and bangles.\n"
          . "• 1990: idols were sculpted for the three deities and consecrated.\n"
@@ -230,7 +245,7 @@ $rules = [
          . "🕉️ ஆண்டுதோறும் — மஹா சிவராத்திரி: ஒவ்வொரு மஹா சிவராத்திரி அன்று நமது குல மக்கள் வந்து தரிசனம் செய்து வருகின்றார்கள். அன்று அன்னதானமும் நடைபெற்று வருகின்றது.\n"
          . "🛕 2012-ல் கும்பாபிஷேகம் செய்து 12 வருடங்கள் முடிவடைந்துள்ளது — அடுத்த மஹா கும்பாபிஷேகத்திற்கு நன்கொடை வேண்டப்படுகிறது.\n"
          . "மற்ற திருவிழா தேதிகள்: உறுதி செய்யப்பட வேண்டும் — கமிட்டியாரை தொடர்பு கொள்ளவும்.\n"
-         . "\n"
+         . REPLY_SPLIT
          . "Events\n"
          . "🌕 Every month — Pournami Pooja & Annadanam: special pooja and annadanam are held every full-moon day.\n"
          . "🕉️ Annual — Maha Shivaratri: every Maha Shivaratri, our clan members gather for darshan, and annadanam is offered on that day.\n"
@@ -238,7 +253,7 @@ $rules = [
          . "Other festival dates: to be confirmed — please contact the Temple Committee.",
 
     '/நேரம்|திற(?!்)|மூடு|time|timing|hour|open|close/u'
-        => "கோயில் நேரம்:\n🌅 காலை 6:00 – மதியம் 12:30\n🌇 மாலை 4:00 – இரவு 9:00\n\nTemple Hours:\n🌅 6:00 AM – 12:30 PM\n🌇 4:00 PM – 9:00 PM",
+        => "கோயில் நேரம்:\n🌅 காலை 6:00 – மதியம் 12:30\n🌇 மாலை 4:00 – இரவு 9:00" . REPLY_SPLIT . "Temple Hours:\n🌅 6:00 AM – 12:30 PM\n🌇 4:00 PM – 9:00 PM",
 
     // Live darshan (docs/live/SPEC-PHASE1.md §4.6): after the timings rule, so
     // "darshan timings" still gets the hours, and before the seva rule, so
@@ -248,12 +263,14 @@ $rules = [
     '/\blive\b|\bstream|youtube|live\s*darshan|darshan\s*(online|live)|online\s*darshan|நேரடி\s*தரிசனம்|ஒளிபரப்பு|நேரலை/iu'
         => "நேரடி தரிசனம் 📺\n"
          . "தினசரி பூஜைகள், அபிஷேகம், தீபாராதனை மற்றும் திருவிழாக்கள் ஒளிபரப்பு திட்டமிடப்பட்டிருக்கும்போது இணையதளத்தின் நேரடி தரிசனம் பக்கத்தில் (/live-darshan) நேரலையாகக் காணலாம். அடுத்த ஒளிபரப்பின் தேதியும் நேரமும் அங்கே காட்டப்படும்; இன்று, நாளை மற்றும் இந்த வாரத்தின் முழு அட்டவணை /live-darshan/schedule பக்கத்தில் உள்ளது.\n"
-         . "\n"
+         . REPLY_SPLIT
          . "Live darshan\n"
          . "Daily poojas, abhishekam, deeparadhana and festivals are streamed live on the website's Live Darshan page (/live-darshan) when a broadcast is scheduled. The next stream's date and time are shown there too, and the full schedule for today, tomorrow and this week is at /live-darshan/schedule.",
 
     '/சேவை|பூஜை|அபிஷேகம்|அர்ச்சனை|ஹோமம்|seva|pooja|puja|abhishekam|archana|homam/u'
-        => "நாங்கள் வழங்கும் சேவைகள்:\n• அபிஷேகம் (Abhishekam)\n• அர்ச்சனை (Archana)\n• ஹோமம் (Homam)\n• நிவேதனம் (Neivedyam)\n• அலங்காரம் (Alangaram)\n\nSevas page-ல் விவரம் காணலாம் அல்லது நேரடியாக அழைக்கவும். 🙏",
+        => "நாங்கள் வழங்கும் சேவைகள்:\n• அபிஷேகம் (Abhishekam)\n• அர்ச்சனை (Archana)\n• ஹோமம் (Homam)\n• நிவேதனம் (Neivedyam)\n• அலங்காரம் (Alangaram)\n\nசேவைகள் பக்கத்தில் விவரம் காணலாம் அல்லது நேரடியாக அழைக்கவும். 🙏"
+         . REPLY_SPLIT
+         . "Sevas we offer:\n• Abhishekam\n• Archana\n• Homam\n• Neivedyam\n• Alangaram\n\nSee the Sevas page for details, or call us directly. 🙏",
 
     // Family registration. After the trust rule, so "trust registration number"
     // still gets the Trust's details, and after the seva rule, because Tamil
@@ -266,7 +283,7 @@ $rules = [
          . "கோயில் உங்கள் குடும்பத்தை அறிந்து கொள்ள, இணையதளத்தின் \"குடும்பப் பதிவு\" பக்கத்தில் (/register) ஒரு முறை மட்டும் படிவத்தை நிரப்புங்கள்: உங்கள் பெயர், தொலைபேசி எண், வீட்டு முகவரி, விரும்பினால் குடும்ப உறுப்பினர்கள். கணக்கோ கடவுச்சொல்லோ தேவையில்லை.\n"
          . "✅ திருவிழா, பூஜை மற்றும் கோயில் அறிவிப்புகள் வேண்டுமெனில் படிவத்தில் உள்ள பெட்டியைத் தேர்வு செய்யுங்கள்.\n"
          . "📞 பதிவு செய்த விவரங்களை மாற்ற கோயில் அலுவலகத்தைத் தொடர்பு கொள்ளவும்.\n"
-         . "\n"
+         . REPLY_SPLIT
          . "Family registration\n"
          . "Fill in the form once on the website's Family registration page (/register) so the temple knows your family: your name, phone number and home address, and your family members if you wish. No account or password is needed.\n"
          . "✅ Tick the box on the form if you would like festival, pooja and temple updates.\n"
@@ -281,7 +298,7 @@ $rules = [
          . "புதுப்பட்டி,\n"
          . "திருவேங்கடம் தாலுகா,\n"
          . "தென்காசி மாவட்டம் - 627719\n"
-         . "\n"
+         . REPLY_SPLIT
          . "📍 Address:\n"
          . "Pudupatti,\n"
          . "Thiruvengadam Taluk,\n"
@@ -293,7 +310,7 @@ $rules = [
          . "செயலாளர் G. குமார் – +91 73730 16302\n"
          . "பொருளாளர் 1 K. இராஜேந்திரன் – +91 99650 40693\n"
          . "Contact page-ல் உள்ள படிவம் மூலம் செய்தி அனுப்பலாம்.\n"
-         . "\n"
+         . REPLY_SPLIT
          . "📞 Contact:\n"
          . "President S. Gengaiah – +91 94430 02296\n"
          . "Secretary G. Kumar – +91 73730 16302\n"
@@ -303,8 +320,8 @@ $rules = [
 
 foreach ($rules as $pattern => $reply) {
     if (preg_match($pattern, $msg)) {
-        sendJson(['reply' => $reply]);
+        sendJson(['reply' => pickReply($reply, $lang)]);
     }
 }
 
-sendJson(['reply' => "நன்றி! 🙏 கோயில் நேரம், சேவைகள், பௌர்ணமி & நிகழ்வுகள், நன்கொடை & அறக்கட்டளை, கமிட்டியார், வரலாறு அல்லது முகவரி பற்றி கேட்கவும்.\n\nI can help with temple timings, sevas, Pournami & events, donations & the Dharma Trust, the temple committee, history, or directions. Please ask away! 🙏"]);
+sendJson(['reply' => pickReply("நன்றி! 🙏 கோயில் நேரம், சேவைகள், பௌர்ணமி & நிகழ்வுகள், நன்கொடை & அறக்கட்டளை, கமிட்டியார், வரலாறு அல்லது முகவரி பற்றி கேட்கவும்." . REPLY_SPLIT . "I can help with temple timings, sevas, Pournami & events, donations & the Dharma Trust, the temple committee, history, or directions. Please ask away! 🙏", $lang)]);
