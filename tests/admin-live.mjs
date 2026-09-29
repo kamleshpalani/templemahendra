@@ -703,6 +703,7 @@ try {
     }
     // The create form: a drawer opened by the button on a phone, always open beside the list on a desktop.
     await pg.goto(`${BASE}${PAGE}?q=${q}`, { waitUntil: "load" });
+    await pg.waitForTimeout(400);
     const toggle = pg.locator(".form-drawer-toggle").first();
     if (await toggle.isVisible()) {
       await toggle.click();

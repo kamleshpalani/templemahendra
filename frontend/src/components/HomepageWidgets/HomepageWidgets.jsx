@@ -19,6 +19,13 @@ const TYPE_META = {
 };
 const STRIPE_TONE = { default: "maroon", gold: "gold", sage: "sage", moon: "moon" };
 
+function daysUntil(dateStr) {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const target = new Date(dateStr + "T00:00:00");
+  return Math.max(0, Math.round((target - today) / 86400000));
+}
+
 // ── Individual card ───────────────────────────────────────────────────────────
 function WidgetCard({ widget, pournami, lang, index }) {
   const { t } = useLang();
@@ -31,8 +38,18 @@ function WidgetCard({ widget, pournami, lang, index }) {
     widget.content_type === "coming_soon";
   const isEventLike = isUpcomingEvent || isUpcomingPooja;
   const isFeatured = index === 0; // first card always gets featured treatment
-  // Use panchangam pournami data to enrich calendar_pooja cards
-  const richP = isCalPooja && pournami ? pournami : null;
+  // calendar_pooja cards show the CMS pooja's own date/time; panchangam data
+  // (tamil month, tithi) enriches the card only when it is for the same day.
+  const calDate = isCalPooja ? (widget.pooja?.date ?? pournami?.date ?? null) : null;
+  const richP =
+    isCalPooja && calDate
+      ? {
+          ...(pournami && pournami.date === calDate ? pournami : {}),
+          date: calDate,
+          daysLeft: daysUntil(calDate),
+          timing: widget.pooja?.time ?? null,
+        }
+      : null;
 
   const title = t(widget.title_ta, widget.title_en) || t(meta.ta, meta.en);
   const desc = t(widget.description_ta, widget.description_en);
@@ -133,10 +150,12 @@ function WidgetCard({ widget, pournami, lang, index }) {
                 ? t("நாளை", "Tomorrow")
                 : t(`${richP.daysLeft} நாட்களில்`, `In ${richP.daysLeft} days`)}
           </Badge>
-          <p className="hw-pournami__timing">
-            <LuClock aria-hidden="true" />
-            {t("நேரம்", "Timings")}: 04:00 PM – 09:00 PM
-          </p>
+          {richP.timing && (
+            <p className="hw-pournami__timing">
+              <LuClock aria-hidden="true" />
+              {t("நேரம்", "Timings")}: {richP.timing}
+            </p>
+          )}
         </div>
       ) : (
         /* Standard title for all other types */
@@ -237,14 +256,15 @@ export default function HomepageWidgets({
     <div className={`bento hw-bento hw-bento--${allWidgets.length}`}>
       {allWidgets.map((w, idx) => {
         // Resolve which pournami object to pass for enrichment:
-        // synth cards carry _pournami; DB calendar_pooja cards match by date
+        // synth cards carry _pournami; DB calendar_pooja cards match by date,
+        // and only fall back to the nearest pournami when they have no pooja.
         const cardPournami =
           w._pournami ??
           calPournamis.find(
             (p) =>
               w.content_type === "calendar_pooja" && w.pooja?.date === p.date,
           ) ??
-          (w.content_type === "calendar_pooja" ? calPournamis[0] : null);
+          (w.content_type === "calendar_pooja" && !w.pooja?.date ? calPournamis[0] : null);
         return (
           <WidgetCard
             key={w.id ? String(w.id) : `${w.content_type}-${idx}`}

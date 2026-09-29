@@ -80,10 +80,11 @@ try {
                ->execute(array_combine(array_map(fn($n) => ':' . $n, $names), array_values($cols)));
             $id = (int) $db->lastInsertId();
             if (!empty($args['consent'])) {
-                $db->prepare('UPDATE devotees SET updates_consent_at = UTC_TIMESTAMP() WHERE id = :id')->execute([':id' => $id]);
+                // Consent given "earlier" so a same-second re-record in a test is distinguishable.
+                $db->prepare('UPDATE devotees SET updates_consent_at = UTC_TIMESTAMP() - INTERVAL 1 DAY WHERE id = :id')->execute([':id' => $id]);
             }
             if (!empty($args['unsubscribed'])) {
-                $db->prepare('UPDATE devotees SET unsubscribed_at = UTC_TIMESTAMP() WHERE id = :id')->execute([':id' => $id]);
+                $db->prepare('UPDATE devotees SET unsubscribed_at = UTC_TIMESTAMP() - INTERVAL 1 HOUR WHERE id = :id')->execute([':id' => $id]);
             }
             $insert = $db->prepare(
                 'INSERT INTO devotee_family_members (devotee_id, name, relationship, age, sort_order)

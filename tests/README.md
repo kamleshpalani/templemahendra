@@ -117,7 +117,7 @@ plus `NOTIFY_<CHANNEL>_DRIVER=test` gives deterministic providers for local runs
 | `notify-providers.mjs` | starts its own servers on 8020–8029 | The mailer over SMTP and the log transport, Meta WhatsApp, Twilio WhatsApp/SMS, MSG91 against mock APIs; the webhook endpoint per driver; `notify_keys.php` |
 | `notify-links.mjs` | PHP `:8001` (+ its own `:8030`) | Tracked clicks and the open pixel, unsubscribe (GET is inert, POST and RFC 8058 one-click act), the webhook and cron routes through `api/index.php` |
 | `admin-notifications.mjs` | PHP `:8003` with `NOTIFY_EMAIL_DRIVER=test NOTIFY_APPROVAL_THRESHOLD=2` | Communication → Notifications: server-side roles, estimate and preview, validation without JavaScript, approval flow, send now and the worker, audiences, the composer in a browser |
-| `admin-notify-content.mjs` | PHP `:8035` with all three test drivers | Templates, categories, analytics and the delivery views in the admin |
+| `admin-notify-content.mjs` | PHP `:8025` with all three test drivers | Templates, categories, analytics and the delivery views in the admin |
 
 ## Online payments (CCAvenue)
 

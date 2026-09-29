@@ -147,6 +147,8 @@ foreach ($rows as $row) {
                 'time'    => $row['pooja_time'] ?? null,
                 'type'    => $row['pooja_type'],
             ];
+            $w['title_ta'] = $w['title_ta'] ?: $row['pooja_name_ta'];
+            $w['title_en'] = $w['title_en'] ?: $row['pooja_name_en'];
         } elseif ($autoPooja) {
             $w['pooja']        = buildPoojaBlock($autoPooja);
             // override widget title with auto-selected pooja name

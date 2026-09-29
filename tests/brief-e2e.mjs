@@ -187,6 +187,13 @@ try {
   const ours = r.json.find((w) => w.title_en === `${P} widget`);
   const expected = sql("SELECT id FROM poojas WHERE is_active = 1 AND pooja_date >= CURDATE() ORDER BY FIELD(pooja_type,'pournami','amavasai','ekadasi','special','monthly','sashti','daily') ASC, pooja_date ASC LIMIT 1").rows[0].id;
   check(ours && ours.pooja && ours.pooja.id === expected && ours.pooja.date >= today, "E2E-008 the stale calendar card was re-pointed at the next valid Pournami-first pooja", JSON.stringify(ours?.pooja));
+  // D-029: an untitled calendar widget linked to a still-upcoming pooja takes that pooja's name.
+  sql("INSERT INTO homepage_widgets (content_type, title_ta, title_en, source_type, linked_pooja_id, priority, is_pinned, is_active) VALUES ('calendar_pooja', '', '', 'calendar', ?, 2, 0, 1)", [special.id]);
+  const untitledId = sql("SELECT id FROM homepage_widgets WHERE linked_pooja_id = ? AND title_en = ''", [special.id]).rows[0].id;
+  created.widgets.push(untitledId);
+  r = await api("/api/homepage_widgets");
+  const untitled = r.json.find((w) => w.id === untitledId);
+  check(untitled && untitled.title_en === `${P} Abhishekam` && untitled.title_ta === `${P} அபிஷேகம்` && untitled.pooja?.id === special.id, "D-029 an untitled calendar card linked to an upcoming pooja shows that pooja's own name", JSON.stringify(untitled));
 
   /* ── E2E-016: archive (hide) ────────────────────────────────────────── */
   r = await post("/admin/poojas.php", { _csrf: csrf, action: "toggle", id: String(next.id) });
