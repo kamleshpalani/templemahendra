@@ -60,3 +60,28 @@ No external secrets are needed for a disposable local setup. Obtain authorized l
 - Viewer denial of the page and CSV generates expected browser403 resource messages. Separate those intentional RBAC responses from unexpected console/page/PHP errors.
 - For scoped cleanup, retain the initial audit maximum ID, record exact newly owned subjects/IDs, delete fixtures through their CMS confirmations, then remove only those owned audit IDs. Preserve unrelated audit history and compare original account/content hashes.
 - Sign in as the env owner by exporting ADMIN_USERNAME and ADMIN_PASS_HASH to the PHP server; do not assume that account also exists in `admin_users`. `tests/audit-log.mjs` shows the exact server invocation (it also sets TRUSTED_PROXIES=127.0.0.1 so `X-Forwarded-For` becomes the audited IP).
+
+## Full-cycle browser testing notes
+
+## Browser harness isolation
+- If trusted-proxy test IPs isolate contact/payment/login limits, add X-Forwarded-For only to local application requests. A context-wide extra header also reaches Google Fonts and third-party players and can manufacture CORS failures. Separate harness noise from product errors and rerun affected checks after correcting instrumentation.
+- Record response status for permission checks: a valid HTTP 403 page may say "You do not have access" without the literal number 403.
+- Inspect actual row menu labels: Committee Accounts uses "Delete account", unlike generic "Delete". The confirmation overlay is `[role=alertdialog]` with `[data-act=ok]`.
+- Pooja list filters use `when=all`, not the generic `f=all`; include past rows before fixture cleanup.
+- Video pages can contain only a featured card and no grid. Target the visible owned title instead of assuming `.videos__grid` exists.
+
+## Full-cycle scope
+- Confirm canonical routes from the current router; `/live-darshan` and `/panchangam` are not `/live` and `/calendar`.
+- Distinguish unsupported Pages CMS, album editing and recurrence controls from defects in implemented single-photo/widget workflows.
+- For linked calendar widgets test both configured and empty widget titles, linked CMS dates/times, synthesized calendar cards and both languages. Widget fallback fields can hide bugs that the explicit-title case misses.
+- Check ordinary reload/navigation after CMS edits; a hard refresh can conceal public API cache staleness. Clear an old long-lived cache entry once after a cache-header fix, then use normal navigation for retesting.
+
+## Exact scoped cleanup
+- Capture created IDs, original homepage switches, payment references, contact IDs and isolated IP/time windows incrementally in a durable evidence ledger.
+- Delete through CMS first. Some stream deletion is soft deletion; distinguish disappearance from physical cleanup.
+- Where no UI deletion exists, inspect current foreign keys and use transactional exact-ID cleanup with ownership guards. Payment audit/transaction rows precede their donation; notification delivery/event dependencies may cascade. Never reset receipt counters or truncate shared tables.
+- Do not remove concurrent automated-suite E2E fixtures. A separate browser prefix makes ownership unambiguous. Avoid global baseline-count claims while concurrent writers run.
+- After a restart use saved evidence to resume remaining work, not recreate already-tested fixtures. Stop/finalize recordings; explicitly disclose any recording recovered from interrupted raw segments.
+
+## Devin Secrets Needed
+- No new secret names are required. Use the session-authorized local test owner/database credentials; never write production credentials into the skill or commit temporary login helpers.
