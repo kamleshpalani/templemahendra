@@ -7,8 +7,8 @@ Image files here are served from the site root, e.g.
 
 | File | Used by | Notes |
 |---|---|---|
-| `deities-alankaram.jpg` | About page (sanctum photograph), Home hero at ≤640px | The supplied full portrait of the three deities in floral alankaram — Sri Lingammal (left, green saree), Sri Renukadevi (centre), Sri Chinnammal (right, red saree). 916×1600px, JPEG quality 80. The About page contains the full photograph; the mobile hero uses this portrait to avoid the much tighter crop of the landscape version. |
-| `temple-hero.jpg` | Home page hero background at >640px | A landscape crop of the same photograph, centred around all three deities' faces. 1280×857px, JPEG quality 80. Referenced as `/images/temple-hero.jpg` in `src/pages/Home.css`. |
+| `deities-alankaram.jpg` | About page (sanctum photograph), Home hero at ≤1024px | The supplied full portrait of the three deities in floral alankaram — Sri Lingammal (left, green saree), Sri Renukadevi (centre), Sri Chinnammal (right, red saree). 916×1600px, JPEG quality 80. The About page contains the full photograph; the tablet/mobile hero uses this portrait at `center 35%` to avoid clipping the outer deities in its taller, stacked layout. |
+| `temple-hero.jpg` | Home page hero background at >1024px | A landscape crop of the same photograph, centred around all three deities' faces. 1280×857px, JPEG quality 80. Referenced as `/images/temple-hero.jpg` in `src/pages/Home.css`. |
 
 The supplied original is 916px wide. The hero export is upscaled to 1280px;
 this does not add detail. For sharper replacements, use an original ≥1200px

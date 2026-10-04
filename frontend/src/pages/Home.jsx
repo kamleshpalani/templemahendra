@@ -50,6 +50,7 @@ import {
   NALLA_NERAM,
   TEMPLE_HOURS,
   getISTNow,
+  getDailySchedule,
   getNextPooja,
   isTempleOpen,
   to12h,
@@ -495,6 +496,89 @@ function SponsorContent({ t }) {
   );
 }
 
+function DailySchedule({ now, lang, t }) {
+  const schedule = getDailySchedule(now);
+  const next = schedule.find((pooja) => pooja.status === "next");
+  const nextPooja = next ?? schedule[0];
+  const date = [now.getFullYear(), now.getMonth() + 1, now.getDate()]
+    .map((part) => String(part).padStart(2, "0"))
+    .join("-");
+  const dateLabel = now.toLocaleDateString(lang === "ta" ? "ta-IN" : "en-IN", {
+    weekday: "long",
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+  });
+
+  return (
+    <section className="section home-section" id="daily-schedule" aria-labelledby="home-schedule-title">
+      <div className="container">
+        <SectionHeader
+          id="home-schedule-title"
+          align="split"
+          eyebrow={t("தினசரி வழிபாடு", "Daily worship")}
+          title={t("இன்றைய அட்டவணை", "Today's Schedule")}
+          subtitle={t("அனைத்து நேரங்களும் இந்திய நேரப்படி (IST).", "All timings are in Indian Standard Time (IST).")}
+          actions={
+            <time className="home-schedule__date" dateTime={date}>
+              <LuCalendarDays aria-hidden="true" />
+              {dateLabel}
+            </time>
+          }
+        />
+        <div className="home-schedule__grid">
+          <div className="home-schedule__table-wrap card card--static">
+            <table className="home-schedule__table">
+              <caption className="sr-only">{t("இன்றைய தினசரி பூஜை நேரங்கள்", "Today's daily pooja timings")}</caption>
+              <thead>
+                <tr>
+                  <th scope="col">{t("நேரம் · IST", "Time · IST")}</th>
+                  <th scope="col">{t("பூஜை / வழிபாடு", "Pooja / Ritual")}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {schedule.map((pooja) => (
+                  <tr key={pooja.en} className={pooja.status === "next" ? "home-schedule__row--next" : undefined}>
+                    <th scope="row">
+                      <time dateTime={`${date}T${pooja.time}:00+05:30`}>{to12h(pooja.time)}</time>
+                    </th>
+                    <td>
+                      <span>{t(pooja.ta, pooja.en)}</span>
+                      {pooja.status === "next" && <Badge tone="gold">{t("அடுத்து", "Next")}</Badge>}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <aside className="home-schedule__visit card card--static" aria-label={t("தரிசன நேரங்கள்", "Darshan timings")}>
+            <p className="home-schedule__label"><LuClock aria-hidden="true" />{t("அடுத்த பூஜை", "Next scheduled pooja")}</p>
+            <p className="home-schedule__next">{t(nextPooja.ta, nextPooja.en)}</p>
+            <p className="home-schedule__next-time">
+              {!next && <span>{t("நாளை", "Tomorrow")} · </span>}
+              {to12h(nextPooja.time)} IST
+            </p>
+            <h3 className="home-schedule__hours-title">{t("கோயில் திறந்திருக்கும் நேரம்", "Temple opening hours")}</h3>
+            <dl className="home-schedule__hours">
+              {TEMPLE_HOURS.map(({ open, close }, index) => (
+                <div key={open[0]}>
+                  <dt>{index === 0 ? t("காலை", "Morning") : t("மாலை", "Evening")}</dt>
+                  <dd>{to12h(open.join(":"))} – {to12h(close.join(":"))}</dd>
+                </div>
+              ))}
+            </dl>
+            <Button to="/sevas" variant="primary" icon={<LuFlower2 aria-hidden="true" />}>{t("சேவை பதிவு", "Book a Seva")}</Button>
+          </aside>
+        </div>
+        <p className="home-schedule__note">
+          {t("வழக்கமான தினசரி அட்டவணை. திருவிழா நாட்களில் நேரங்கள் மாறலாம். ", "Regular daily schedule. Timings may change on festival days. ")}
+          <Link to="/contact">{t("கோயில் அலுவலகத்தில் உறுதிப்படுத்துங்கள்.", "Confirm with the temple office.")}</Link>
+        </p>
+      </div>
+    </section>
+  );
+}
+
 export default function Home() {
   const [announcements, setAnnouncements] = useState([]);
   const [events, setEvents] = useState([]);
@@ -870,6 +954,8 @@ export default function Home() {
           </div>
         </div>
       )}
+
+      <DailySchedule now={istNow} lang={lang} t={t} />
 
       {/* ── Live darshan: LIVE NOW, the next darshan with its countdown, or nothing at all ── */}
       <LiveHomeSection now={liveOverview.now} next={liveOverview.next} serverOffset={liveOverview.serverOffset} />

@@ -43,6 +43,10 @@ It does not call YouTube. `live-sync.mjs` separately exercises the HTTP stand-in
 
 ## The suites
 
+The database-free schedule regression checks run with `node --test tests/temple-time.mjs`.
+They cover all six regular poojas, next-pooja boundaries, tomorrow's rollover,
+IST date rollover, temple opening hours and parity with the PHP pulse schedule.
+
 | Script | What it proves |
 | ------ | -------------- |
 | `admin-smoke.mjs` | All 16 admin pages return 200 with no PHP notice, warning or fatal |
