@@ -1177,6 +1177,11 @@ a.home-tile__value--link:hover {
   }
 }
 @media (max-width: 640px) {
+  .home-hero {
+    /* The tall stacked content must not zoom past the portrait's outer faces. */
+    background-size: 100% auto;
+    background-position: center top;
+  }
   .home-schedule__table th,
   .home-schedule__table td {
     padding: var(--space-3);
