@@ -85,3 +85,28 @@ No external secrets are needed for a disposable local setup. Obtain authorized l
 
 ## Devin Secrets Needed
 - No new secret names are required. Use the session-authorized local test owner/database credentials; never write production credentials into the skill or commit temporary login helpers.
+
+## Defect-hunt notes (chatbot, media selectors, Back races)
+
+## Chat and search are separate
+- Ctrl+K opens site search. The floating “Open temple assistant” control opens chat.
+- Exercise built-in responses without an AI key separately from provider-backed responses. Tamil-script input takes precedence over the language selector. Acronyms, phone numbers and URLs do not alone constitute a second-language translation.
+- Do not claim `.env.local` loading was verified when the file is absent. Coordinate isolated configuration fixtures before changing configuration used by concurrent suites.
+
+## Media and list controls
+- Completed live recordings keep their poster until “Watch the recording” is clicked; absence of an iframe before that click is expected.
+- Distinguish iframe mounting/bounds from provider playback. An unavailable YouTube video does not prove an application player defect.
+- Admin Online Payments lives at `/admin/payments.php`. Click its **Transactions** tab to get the searchable transaction list; the default view is Overview.
+- Admin pagination links have accessible names **Next page** and **Previous page**.
+- Videos can contain separate main and category tables; scope row assertions to the intended table.
+- Gallery upload validation is shown as field errors and a toast, not necessarily `.alert--error`.
+
+## Browser Back during payment initiation
+- With Playwright, use `page.goBack()` for actual browser-history navigation. Page keyboard events for Alt+ArrowLeft may not activate the browser's shortcut.
+- To make the in-flight race observable, temporarily use CDP Network latency (for example 1.8 seconds), without mocking the backend response. Record the request, Back start/return, response and final-navigation timestamps.
+- Restore latency/throughput and detach the CDP session afterward.
+- Count creation requests and exact owned database rows. Back may change the form step while an already initiated payment still proceeds to the gateway; report that behavior explicitly rather than claiming that Back cancels a payment.
+
+## Devin Secrets Needed
+- None for rules-only chat and simulator payments.
+- A valid provider credential is required for real AI integration testing; use an approved secret binding and never record or print its value.
