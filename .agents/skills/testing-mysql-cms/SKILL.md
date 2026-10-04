@@ -99,6 +99,8 @@ No external secrets are needed for a disposable local setup. Obtain authorized l
 - Admin Online Payments lives at `/admin/payments.php`. Click its **Transactions** tab to get the searchable transaction list; the default view is Overview.
 - Admin pagination links have accessible names **Next page** and **Previous page**.
 - Videos can contain separate main and category tables; scope row assertions to the intended table.
+- `tests/videos.mjs` asserts `sort_order 1 lists first` against the shared `videos` table; an active video created by a concurrent browser run that sorts ahead of the fixture (`sort_order` 0, or 1 with a newer `published_on`) makes it fail. Run it when no other client is creating videos — it passes 118/118 in isolation.
+- At 360 px the gallery lightbox opens from `.gallery-grid img`, the video player from the `/videos` card button, and archive recordings from the **Watch the recording** button; mobile live/archive filter controls stay in the DOM, not behind a drawer.
 - Gallery upload validation is shown as field errors and a toast, not necessarily `.alert--error`.
 
 ## Browser Back during payment initiation
