@@ -43,8 +43,19 @@ export const NALLA_NERAM = [
 ];
 
 /** Current wall-clock time in Asia/Kolkata regardless of the visitor's zone. */
-export function getISTNow() {
-  return new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Kolkata" }));
+export function getISTNow(instant = new Date()) {
+  return new Date(instant.toLocaleString("en-US", { timeZone: "Asia/Kolkata" }));
+}
+
+/** Today's scheduled start times; elapsed times do not imply a pooja was performed. */
+export function getDailySchedule(now = getISTNow()) {
+  const minutes = now.getHours() * 60 + now.getMinutes();
+  const nextIndex = POOJA_SCHEDULE.findIndex((pooja) => pooja.h * 60 + pooja.m > minutes);
+  return POOJA_SCHEDULE.map((pooja, index) => ({
+    ...pooja,
+    time: `${pad(pooja.h)}:${pad(pooja.m)}`,
+    status: index === nextIndex ? "next" : pooja.h * 60 + pooja.m <= minutes ? "earlier" : "upcoming",
+  }));
 }
 
 export function isTempleOpen(now = getISTNow()) {

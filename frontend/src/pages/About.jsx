@@ -26,20 +26,12 @@ import PageHero from "../components/ui/PageHero";
 import Button from "../components/ui/Button";
 import Seo from "../components/Seo";
 import ShareButton from "../components/Share/ShareButton";
+import { POOJA_SCHEDULE, to12h } from "../lib/templeTime";
 import HistoryTimeline from "../components/HistoryTimeline/HistoryTimeline";
 import TrustDetails from "../components/TrustDetails/TrustDetails";
 import CommitteeGrid from "../components/CommitteeGrid/CommitteeGrid";
 import "./PageCommon.css";
 import "./About.css";
-
-/* Existing daily pooja schedule (also used by the live "Next Pooja" widget). */
-const DAILY_POOJAS = [
-  ["Thiruvanandal", "திருவனந்தல்", "6:00 AM"],
-  ["Kaalaasanthi", "காலசந்தி", "8:00 AM"],
-  ["Uchikalam", "உச்சிகால பூஜை", "12:00 PM"],
-  ["Sayarakshai", "சாயரக்‍ஷை", "6:00 PM"],
-  ["Arthajama Pooja", "அர்த்தஜாம பூஜை", "8:30 PM"],
-];
 
 /* In-page section nav — ids match the h2 anchors below (deep-linked from
    the navbar live pill (#timings), Donations (#trust) and Contact). */
@@ -282,11 +274,11 @@ export default function About() {
               <tbody>
                 {/* Column 1 follows the active language; column 2 shows the other,
                     so neither mode repeats the same text in both columns. */}
-                {DAILY_POOJAS.map(([en, ta, time]) => (
+                {POOJA_SCHEDULE.map(({ en, ta, h, m }) => (
                   <tr key={en}>
                     <td lang={lang}>{t(ta, en)}</td>
                     <td lang={lang === "ta" ? "en" : "ta"}>{lang === "ta" ? en : ta}</td>
-                    <td>{time}</td>
+                    <td>{to12h(`${h}:${m}`)} IST</td>
                   </tr>
                 ))}
               </tbody>
