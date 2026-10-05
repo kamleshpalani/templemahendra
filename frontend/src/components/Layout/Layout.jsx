@@ -22,7 +22,7 @@ import BottomNav from "../BottomNav/BottomNav";
 import Chatbot from "../Chatbot/Chatbot";
 import TemplePulseHeader from "../TemplePulseHeader/TemplePulseHeader";
 import { useLang } from "../../context/LangContext";
-import { TEMPLE, PRIMARY_CONTACT, telHref, formatPhone } from "../../data/temple";
+import { TEMPLE, TEMPLE_PHONE } from "../../data/temple";
 import { getISTNow, getNextPooja, isTempleOpen } from "../../lib/templeTime";
 import "./Layout.css";
 
@@ -165,13 +165,13 @@ export default function Layout() {
                   Here it is in the sticky header, so it is reachable from every
                   page at every scroll position. */}
               <a
-                href={telHref(PRIMARY_CONTACT.phone)}
+                href={TEMPLE_PHONE.href}
                 className="navbar__icon-btn navbar__call"
-                aria-label={`${t("கோயிலை அழைக்கவும்", "Call the temple")} — ${formatPhone(PRIMARY_CONTACT.phone)}`}
-                title={formatPhone(PRIMARY_CONTACT.phone)}
+                aria-label={`${t("கோயிலை அழைக்கவும்", "Call the temple")} — ${TEMPLE_PHONE.display}`}
+                title={TEMPLE_PHONE.display}
               >
                 <LuPhone aria-hidden="true" />
-                <span className="navbar__call-num">{formatPhone(PRIMARY_CONTACT.phone)}</span>
+                <span className="navbar__call-num">{TEMPLE_PHONE.display}</span>
               </a>
 
               <button
@@ -323,10 +323,10 @@ export default function Layout() {
             </button>
           </div>
           <a
-            href={telHref(PRIMARY_CONTACT.phone)}
+            href={TEMPLE_PHONE.href}
             className="btn btn-outline btn--block"
             tabIndex={menuOpen ? 0 : -1}
-            aria-label={`${t("கோயிலை அழைக்க", "Call Temple")} — ${formatPhone(PRIMARY_CONTACT.phone)}`}
+            aria-label={`${t("கோயிலை அழைக்க", "Call Temple")} — ${TEMPLE_PHONE.display}`}
           >
             <LuPhone aria-hidden="true" /> {t("கோயிலை அழைக்க", "Call Temple")}
           </a>

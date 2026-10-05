@@ -23,6 +23,13 @@ export const formatPhone = (digits) =>
 /** "9443002296" → "tel:+919443002296" */
 export const telHref = (digits) => `tel:+91${digits}`;
 
+/** The one number shown for calling in the navbar and on the Contact page. */
+export const TEMPLE_PHONE = {
+  digits: "6379227382",
+  display: "+91 6379 227 382",
+  href: "tel:+916379227382",
+};
+
 // ── Temple identity ─────────────────────────────────────────────────────────
 
 export const TEMPLE = {
