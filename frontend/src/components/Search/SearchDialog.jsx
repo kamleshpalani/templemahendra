@@ -248,7 +248,10 @@ export default function SearchDialog({ open, onClose }) {
           )}
 
           {total > 0 && (
-            <div id="cmdk-list" role="listbox" aria-label={t("தேடல் முடிவுகள்", "Search results")}>
+            // The listbox, not the body around it, is what scrolls: it is the
+            // popup the combobox controls, walked with the arrow keys, so a
+            // scrollable region with no tab stop inside is by design there.
+            <div id="cmdk-list" className="cmdk__list" role="listbox" aria-label={t("தேடல் முடிவுகள்", "Search results")}>
               {groups.map((g) => {
                 const Icon = GROUP_ICONS[g.type] ?? LuFileText;
                 return (

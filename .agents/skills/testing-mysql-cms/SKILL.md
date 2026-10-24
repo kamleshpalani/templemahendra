@@ -60,3 +60,55 @@ No external secrets are needed for a disposable local setup. Obtain authorized l
 - Viewer denial of the page and CSV generates expected browser403 resource messages. Separate those intentional RBAC responses from unexpected console/page/PHP errors.
 - For scoped cleanup, retain the initial audit maximum ID, record exact newly owned subjects/IDs, delete fixtures through their CMS confirmations, then remove only those owned audit IDs. Preserve unrelated audit history and compare original account/content hashes.
 - Sign in as the env owner by exporting ADMIN_USERNAME and ADMIN_PASS_HASH to the PHP server; do not assume that account also exists in `admin_users`. `tests/audit-log.mjs` shows the exact server invocation (it also sets TRUSTED_PROXIES=127.0.0.1 so `X-Forwarded-For` becomes the audited IP).
+
+## Full-cycle browser testing notes
+
+## Browser harness isolation
+- If trusted-proxy test IPs isolate contact/payment/login limits, add X-Forwarded-For only to local application requests. A context-wide extra header also reaches Google Fonts and third-party players and can manufacture CORS failures. Separate harness noise from product errors and rerun affected checks after correcting instrumentation.
+- Record response status for permission checks: a valid HTTP 403 page may say "You do not have access" without the literal number 403.
+- Inspect actual row menu labels: Committee Accounts uses "Delete account", unlike generic "Delete". The confirmation overlay is `[role=alertdialog]` with `[data-act=ok]`.
+- Pooja list filters use `when=all`, not the generic `f=all`; include past rows before fixture cleanup.
+- Video pages can contain only a featured card and no grid. Target the visible owned title instead of assuming `.videos__grid` exists.
+
+## Full-cycle scope
+- Confirm canonical routes from the current router; `/live-darshan` and `/panchangam` are not `/live` and `/calendar`.
+- Distinguish unsupported Pages CMS, album editing and recurrence controls from defects in implemented single-photo/widget workflows.
+- For linked calendar widgets test both configured and empty widget titles, linked CMS dates/times, synthesized calendar cards and both languages. Widget fallback fields can hide bugs that the explicit-title case misses.
+- Check ordinary reload/navigation after CMS edits; a hard refresh can conceal public API cache staleness. Clear an old long-lived cache entry once after a cache-header fix, then use normal navigation for retesting.
+
+## Exact scoped cleanup
+- Capture created IDs, original homepage switches, payment references, contact IDs and isolated IP/time windows incrementally in a durable evidence ledger.
+- Delete through CMS first. Some stream deletion is soft deletion; distinguish disappearance from physical cleanup.
+- Where no UI deletion exists, inspect current foreign keys and use transactional exact-ID cleanup with ownership guards. Payment audit/transaction rows precede their donation; notification delivery/event dependencies may cascade. Never reset receipt counters or truncate shared tables.
+- Do not remove concurrent automated-suite E2E fixtures. A separate browser prefix makes ownership unambiguous. Avoid global baseline-count claims while concurrent writers run.
+- After a restart use saved evidence to resume remaining work, not recreate already-tested fixtures. Stop/finalize recordings; explicitly disclose any recording recovered from interrupted raw segments.
+
+## Devin Secrets Needed
+- No new secret names are required. Use the session-authorized local test owner/database credentials; never write production credentials into the skill or commit temporary login helpers.
+
+## Defect-hunt notes (chatbot, media selectors, Back races)
+
+## Chat and search are separate
+- Ctrl+K opens site search. The floating “Open temple assistant” control opens chat.
+- Exercise built-in responses without an AI key separately from provider-backed responses. Tamil-script input takes precedence over the language selector. Acronyms, phone numbers and URLs do not alone constitute a second-language translation.
+- Do not claim `.env.local` loading was verified when the file is absent. Coordinate isolated configuration fixtures before changing configuration used by concurrent suites.
+
+## Media and list controls
+- Completed live recordings keep their poster until “Watch the recording” is clicked; absence of an iframe before that click is expected.
+- Distinguish iframe mounting/bounds from provider playback. An unavailable YouTube video does not prove an application player defect.
+- Admin Online Payments lives at `/admin/payments.php`. Click its **Transactions** tab to get the searchable transaction list; the default view is Overview.
+- Admin pagination links have accessible names **Next page** and **Previous page**.
+- Videos can contain separate main and category tables; scope row assertions to the intended table.
+- `tests/videos.mjs` asserts `sort_order 1 lists first` against the shared `videos` table; an active video created by a concurrent browser run that sorts ahead of the fixture (`sort_order` 0, or 1 with a newer `published_on`) makes it fail. Run it when no other client is creating videos — it passes 118/118 in isolation.
+- At 360 px the gallery lightbox opens from `.gallery-grid img`, the video player from the `/videos` card button, and archive recordings from the **Watch the recording** button; mobile live/archive filter controls stay in the DOM, not behind a drawer.
+- Gallery upload validation is shown as field errors and a toast, not necessarily `.alert--error`.
+
+## Browser Back during payment initiation
+- With Playwright, use `page.goBack()` for actual browser-history navigation. Page keyboard events for Alt+ArrowLeft may not activate the browser's shortcut.
+- To make the in-flight race observable, temporarily use CDP Network latency (for example 1.8 seconds), without mocking the backend response. Record the request, Back start/return, response and final-navigation timestamps.
+- Restore latency/throughput and detach the CDP session afterward.
+- Count creation requests and exact owned database rows. Back may change the form step while an already initiated payment still proceeds to the gateway; report that behavior explicitly rather than claiming that Back cancels a payment.
+
+## Devin Secrets Needed
+- None for rules-only chat and simulator payments.
+- A valid provider credential is required for real AI integration testing; use an approved secret binding and never record or print its value.

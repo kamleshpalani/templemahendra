@@ -135,7 +135,7 @@ try {
   let r = await api("/api/deities");
   check(r.status === 200 && Array.isArray(r.json) && r.json.length >= 1, "GET /api/deities answers a list", `${r.status} ${r.text.slice(0, 80)}`);
   check(r.json.every((d) => typeof d.name_ta === "string" && typeof d.name_en === "string" && typeof d.slug === "string" && "description_en" in d && "image_url" in d), "each deity has both names, slug, descriptions and image");
-  check(/max-age=/.test(r.headers.get("cache-control") ?? "") && /charset=utf-8/i.test(r.headers.get("content-type") ?? ""), "feed is cacheable UTF-8 JSON");
+  check(/max-age=0/.test(r.headers.get("cache-control") ?? "") && /charset=utf-8/i.test(r.headers.get("content-type") ?? ""), "feed is revalidated UTF-8 JSON (CMS edits appear immediately)");
   const seeded = r.json.find((d) => d.slug === "lingammal");
   check(!seeded || seeded.name_ta === "ஸ்ரீ லிங்கம்மாள்", "E2E-003 seeded Tamil name reaches the API intact", seeded?.name_ta);
 

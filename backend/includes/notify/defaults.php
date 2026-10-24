@@ -1024,6 +1024,50 @@ function notifyTemplateBuiltIn(): array
         ],
     ];
 
+    /* ── The temple office ───────────────────────────────────────────────── */
+
+    // Sent to the committee's mailbox, not to a family: the recipient's name is
+    // "Temple office" and the message is quoted as the visitor typed it
+    // (interpolation escapes it, so it can never carry markup into the email).
+    $t['contact_received'] = [
+        'category'    => 'office',
+        'description' => 'Sent to the temple office (CONTACT_NOTIFY_EMAIL) when a visitor sends a message through the website contact form. senderName, senderPhone and message are what the visitor typed; receivedAt is the temple time it arrived.',
+        'variables'   => ['devoteeName', 'senderName', 'senderPhone', 'message', 'receivedAt', 'ctaUrl'],
+        'cta_path'    => '/admin/contact_messages.php',
+        'langs' => [
+            'ta' => [
+                'any' => [
+                    'title'     => '{{senderName}} அனுப்பிய புதிய செய்தி',
+                    'body'      => "வணக்கம் {{devoteeName}},\n\nஇணையதளத்தின் தொடர்பு படிவம் வழியாக {{receivedAt}} அன்று ஒரு பக்தர் கோயிலுக்கு எழுதியுள்ளார்.\n\nஅனுப்பியவர்: {{senderName}}\nதொலைபேசி: {{senderPhone}}\n\nசெய்தி:\n{{message}}\n\nநிர்வாகப் பக்கத்தில் செய்திகள் பகுதியில் இதைப் படித்து, கையாண்டதாகக் குறிக்கவும்.",
+                    'cta_label' => 'செய்திகளைத் திற',
+                ],
+                'sms' => [
+                    'title' => '',
+                    'body'  => '{{templeShortName}}: {{senderName}} ({{senderPhone}}) இணையதளம் வழியாக செய்தி அனுப்பியுள்ளார். நிர்வாகப் பக்கத்தில் படிக்கவும்.',
+                ],
+                'whatsapp' => [
+                    'title' => '',
+                    'body'  => "வணக்கம் {{devoteeName}},\n\nஇணையதள தொடர்பு படிவம் வழியாக ஒரு பக்தர் எழுதியுள்ளார்.\n\n*அனுப்பியவர்:* {{senderName}}\n*தொலைபேசி:* {{senderPhone}}\n*பெறப்பட்டது:* {{receivedAt}}\n\n{{message}}",
+                ],
+            ],
+            'en' => [
+                'any' => [
+                    'title'     => 'New website message from {{senderName}}',
+                    'body'      => "Vanakkam {{devoteeName}},\n\nA visitor wrote to the temple through the website's contact form on {{receivedAt}}.\n\nFrom: {{senderName}}\nPhone: {{senderPhone}}\n\nMessage:\n{{message}}\n\nOpen Messages in the admin to read it and mark it as handled.",
+                    'cta_label' => 'Open messages',
+                ],
+                'sms' => [
+                    'title' => '',
+                    'body'  => '{{templeShortName}}: new website message from {{senderName}} ({{senderPhone}}). Read it in the admin under Messages.',
+                ],
+                'whatsapp' => [
+                    'title' => '',
+                    'body'  => "Vanakkam {{devoteeName}},\n\nA visitor wrote through the website's contact form.\n\n*From:* {{senderName}}\n*Phone:* {{senderPhone}}\n*Received:* {{receivedAt}}\n\n{{message}}",
+                ],
+            ],
+        ],
+    ];
+
     /* ── Announcements, emergencies, campaigns ───────────────────────────── */
 
     $t['announcement'] = [

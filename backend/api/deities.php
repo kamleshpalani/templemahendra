@@ -32,5 +32,5 @@ foreach ($stmt->fetchAll() as $r) {
     ];
 }
 
-header('Cache-Control: public, max-age=300');
+header('Cache-Control: public, max-age=0, must-revalidate');
 sendJson($rows);

@@ -93,10 +93,20 @@
 
 /* ── Results ─────────────────────────────────────────────────────── */
 .cmdk__body {
+  display: flex;
+  flex-direction: column;
   overflow-y: auto;
   overscroll-behavior: contain;
   padding: var(--space-3) var(--space-3) var(--space-4);
   flex: 1;
+  min-height: 0;
+}
+/* With results the listbox is the scrolling region — the popup the combobox
+   controls and the arrow keys walk — rather than the body around it, which
+   would be a scrollable area nothing in the Tab order can reach. */
+.cmdk__list {
+  overflow-y: auto;
+  overscroll-behavior: contain;
   min-height: 0;
 }
 
