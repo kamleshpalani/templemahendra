@@ -5,6 +5,11 @@ MySQL-only (no SQLite fallback; see `.gitignore`). This page is the map; the
 column-level truth is `database/schema.sql` plus `database/migrations/*.sql`,
 each of which is commented at the top.
 
+The separate [Node.js/Supabase staging foundation](NODE-SUPABASE.md) has its
+own PostgreSQL migrations under `database/postgres/`, currently covering only
+five public content tables. They are not replacements for the MySQL baseline
+or migrations below, and they do not import existing data.
+
 ## Creating and upgrading
 
 ```bash

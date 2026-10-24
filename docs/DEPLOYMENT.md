@@ -6,6 +6,10 @@ walk-through and every environment variable; this page is the operational
 checklist that sits on top of it. Payments and live streaming have their own
 pages: `CCAvenue-INTEGRATION.md`, `LIVE-STREAMING.md`.
 
+For the separate, incomplete Node.js + Supabase staging backend, see
+[NODE-SUPABASE.md](NODE-SUPABASE.md). The PHP/MySQL production instructions
+below remain unchanged; do not cut over production to the Node foundation.
+
 ## Environments
 
 | Environment | Where | Database | Payments mode | YouTube automation | Purpose |

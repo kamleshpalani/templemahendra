@@ -3,6 +3,11 @@
 **Stack:** React 18 + Vite · PHP 8 · MySQL 8 · Custom PHP Admin CMS  
 **Hosting:** Hostinger India — Standard Web Hosting
 
+**Node.js + Supabase migration:** An isolated, staging-only Node foundation is
+available at the repository root. It does not replace the PHP application or
+migrate production data. See [Node staging setup and migration gates](docs/NODE-SUPABASE.md)
+before using it on Hostinger Web Apps.
+
 **Documentation:** [DEPLOYMENT.md](docs/DEPLOYMENT.md) (environments, Hostinger
 release steps, cron, backups and restore) · [DATABASE.md](docs/DATABASE.md)
 (schema, migrations, conventions) · [TESTING.md](docs/TESTING.md) (suites and

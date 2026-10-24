@@ -7,6 +7,7 @@ frontend/.env.local
 .env.local
 frontend/.env.*.local
 .env
+.env.node.local
 
 # Uploaded files (manage via Hostinger, not git)
 backend/uploads/*
