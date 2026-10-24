@@ -364,6 +364,7 @@ const apiCallsFor = (orderId) => mock.requests.filter((q) => q.kind === "api" &&
 function cleanup() {
   const removed = fixture("cleanup", { name_prefix: PREFIX, ips: [...usedIps] });
   sql("DELETE FROM sevas WHERE name_en LIKE ?", [`${PREFIX}%`]);
+  sql("DELETE FROM poojas WHERE name_en LIKE ?", [`${PREFIX}%`]);
   sql("DELETE FROM rate_limits WHERE bucket REGEXP ?", [BUCKETS_REGEXP]);
   return removed;
 }
@@ -417,7 +418,9 @@ try {
   check(show(r.data?.currencies) === show([{ code: "INR", decimals: 2 }, { code: "USD", decimals: 2 }]) && r.data?.defaultCurrency === "INR" && r.data?.international === true, "currencies INR and USD with decimals, default INR, international on", show(r.data?.currencies));
   check(r.data?.min === 1 && r.data?.max === 500000 && r.data?.maxForeign === 10000 && show(r.data?.presets) === show([500, 1000, 2500, 5000, 10000]), "min, max, maxForeign and presets are numbers", show([r.data?.min, r.data?.max, r.data?.maxForeign, r.data?.presets]));
   const cats = r.data?.categories ?? [];
-  check(cats.length === 13 && cats.every((c) => typeof c.slug === "string" && c.name?.ta && c.name?.en && "description" in c && "suggestedAmount" in c) && cats[0].slug === "general", "13 categories with slug, bilingual name and description, suggestedAmount", show(cats.slice(0, 2)));
+  check(cats.length === 14 && cats.every((c) => typeof c.slug === "string" && c.name?.ta && c.name?.en && "description" in c && "suggestedAmount" in c) && cats[0].slug === "general", "14 categories with slug, bilingual name and description, suggestedAmount", show(cats.slice(0, 2)));
+  const pournamiCat = cats.find((c) => c.slug === "pournami_pooja");
+  check(pournamiCat?.name?.en === "Pournami Pooja" && pournamiCat?.name?.ta === "பௌர்ணமி பூஜை" && cats.indexOf(pournamiCat) === cats.findIndex((c) => c.slug === "pooja_seva") + 1, "the Pournami Pooja purpose (migration 023) follows Pooja / Seva, Tamil intact", show(pournamiCat));
   check(r.data?.sevaOnline === true && r.data?.holdMinutes === 30, "sevaOnline and holdMinutes follow the settings", show([r.data?.sevaOnline, r.data?.holdMinutes]));
   check(!r.text.includes(KEYS.merchantId) && !r.text.includes(KEYS.accessCode) && !r.text.includes(KEYS.workingKey), "no merchant id, access code or working key in the config");
   check(noStore(r) && (r.headers.get("cache-control") ?? "").includes("private"), "Cache-Control: no-store, private", r.headers.get("cache-control"));
@@ -429,6 +432,8 @@ try {
   check(r.status === 404, "an unknown payments route → 404");
   r = await http("POST", "/api/payments/simulator", { form: { encRequest: "00", access_code: "x" }, ip: IP.methods });
   check(r.status === 404, "the simulator route answers 404 in TEST mode");
+  r = await http("POST", "/api/payments/simulator/api", { form: { enc_request: "00", access_code: "SIMULATORACCESS", command: "orderStatusTracker" }, ip: IP.methods });
+  check(r.status === 404, "the simulator's server API answers 404 in TEST mode too");
   r = await http("GET", "/api/payments-cron", { ip: IP.methods });
   check(r.status === 404, "the HTTP cron is off without PAYMENTS_CRON_KEY → 404");
 
@@ -570,7 +575,7 @@ try {
 
   section("4b. status and receipt");
   const stA = await status(numA, tokA);
-  const STATUS_KEYS = ["kind", "number", "status", "amount", "currency", "amountRefunded", "createdAt", "paidAt", "receiptNumber", "donorName", "purpose", "seva", "preferredDate", "trackingId", "bankRefNo", "paymentMode", "failureMessage", "canRetry", "attempts", "simulator", "testMode", "email"];
+  const STATUS_KEYS = ["kind", "number", "status", "amount", "currency", "amountRefunded", "createdAt", "paidAt", "receiptNumber", "donorName", "purpose", "pooja", "seva", "preferredDate", "trackingId", "bankRefNo", "paymentMode", "failureMessage", "canRetry", "attempts", "simulator", "testMode", "email"];
   check(stA.status === 200 && keysOf(stA.data) === JSON.stringify(STATUS_KEYS), "status: 200 with exactly the SPEC keys", `${stA.status} ${keysOf(stA.data)}`);
   check(stA.data?.kind === "donation" && stA.data?.status === "SUCCESS" && stA.data?.amount === 1001 && stA.data?.currency === "INR" && stA.data?.amountRefunded === 0 && stA.data?.receiptNumber === dA2?.receipt_number && stA.data?.donorName === A.name, "status values: kind, SUCCESS, amount 1001, receipt, donor", show(stA.data));
   check(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/.test(stA.data?.createdAt ?? "") && /Z$/.test(stA.data?.paidAt ?? ""), "createdAt and paidAt are ISO-8601 UTC", show([stA.data?.createdAt, stA.data?.paidAt]));
@@ -765,6 +770,94 @@ try {
   check(r.status === 303 && r.headers.get("location") === `${BASE}/payment/result?state=unknown` && txn(numW)?.status === "INITIATED", "a response under a key this server does not have → state=unknown, nothing changed");
 
   /* ── 5. Hostile returns and an unreachable status API ────────────────── */
+  /* ── 4m. A donation for a pooja (brief §13, migration 023) ────────────── */
+  section("4m. a donation for a pooja creates exactly one sponsor (brief §13)");
+  const poojaDate = (days) => new Date(Date.now() + days * 86400 * 1000 + 5.5 * 3600 * 1000).toISOString().slice(0, 10);
+  const mkPooja = (label, days, active = 1) => {
+    sql("INSERT INTO poojas (name_ta, name_en, pooja_date, pooja_time, pooja_type, is_active) VALUES (?, ?, ?, '18:00', 'pournami', ?)", [`${NAME} பௌர்ணமி ${label}`, `${NAME} Pournami ${label}`, poojaDate(days), active]);
+    return Number(one("SELECT id FROM poojas WHERE name_en = ?", [`${NAME} Pournami ${label}`])?.id);
+  };
+  const poojaOpen = mkPooja("open", 12);
+  const poojaPast = mkPooja("past", -3);
+  const poojaHidden = mkPooja("hidden", 20, 0);
+  await expectField("a pooja that is over", donation("pooja past", { pooja_id: poojaPast }), "pooja_id");
+  await expectField("a hidden pooja", donation("pooja hidden", { pooja_id: poojaHidden }), "pooja_id");
+  await expectField("an unknown pooja", donation("pooja unknown", { pooja_id: 99999999 }), "pooja_id");
+  await expectField("a pooja_id that is not a number", donation("pooja text", { pooja_id: "abc" }), "pooja_id");
+  await expectField("a pooja_id as an array", donation("pooja array", { pooja_id: [poojaOpen] }), "pooja_id");
+  check(!one("SELECT id FROM donations WHERE name LIKE ?", [`${NAME} pooja %`]), "none of those refused donations was created");
+  const sponsorsOf = (id) => rows("SELECT * FROM sponsors WHERE donation_id = ?", [id ?? 0]);
+  const PJ = await pay("pooja paid", "success", { pooja_id: poojaOpen, category: "pournami_pooja", amount: "2500", showNamePublicly: true });
+  const dPJ = don(PJ.number);
+  const tPJ = txn(PJ.number);
+  check(PJ.r2?.status === 303 && dPJ?.status === "SUCCESS" && Number(dPJ?.pooja_id) === poojaOpen && dPJ?.purpose === "pournami_pooja", "a donation for an open pooja is created with pooja_id, paid, under the Pournami Pooja purpose", show([PJ.r2?.status, dPJ?.status, dPJ?.pooja_id, dPJ?.purpose]));
+  let sp = sponsorsOf(dPJ?.id);
+  check(sp.length === 1, "exactly one sponsor row, keyed on the donation", show(sp));
+  const s0 = sp[0] ?? {};
+  check(s0.name === `${NAME} pooja paid` && s0.phone === `+${PHONE}` && s0.email === `${EMAIL}-pooja-paid@example.test` && Number(s0.pooja_id) === poojaOpen && s0.amount === "2500.00", "sponsor: name, dialable phone, email, pooja and amount from the donation", show(s0));
+  check(s0.payment_status === "PAID" && s0.payment_ref === dPJ?.receipt_number && Number(s0.transaction_id) === Number(tPJ?.id) && Number(s0.donation_id) === Number(dPJ?.id), "sponsor: PAID, payment_ref = the receipt number, linked to the attempt and the donation", show(s0));
+  check(Number(s0.publish_consent) === 1 && Number(s0.is_active) === 1 && s0.family_name === null && s0.note === `Online donation ${PJ.number}`, "sponsor: consent mirrors the thank-you-list tick, active, no family name, the note names the donation", show(s0));
+  check(payableAudits("donation", dPJ?.id).filter((e) => e === "sponsor_assigned").length === 1, "audit: one sponsor_assigned");
+  const stP = await status(PJ.number, PJ.token);
+  check(stP.data?.pooja?.id === poojaOpen && stP.data.pooja.en === `${NAME} Pournami open` && stP.data.pooja.ta === `${NAME} பௌர்ணமி open` && stP.data.pooja.date === poojaDate(12) && stP.data.purpose?.en === "Pournami Pooja", "status carries the pooja in both languages with its date, and the purpose", show(stP.data?.pooja));
+  check((await receipt(PJ.number, PJ.token)).data?.pooja?.en === `${NAME} Pournami open`, "so does the receipt");
+  const replayP = await gatewayPost("response", { encResp: PJ.fields.encResp });
+  await gatewayPost("notify", { encResp: PJ.fields.encResp });
+  check(replayP.status === 303 && Number(txn(PJ.number)?.response_count) === 3 && sponsorsOf(dPJ?.id).length === 1, "a replayed response and a duplicate DEN notification add no second sponsor", `responses ${txn(PJ.number)?.response_count}, sponsors ${sponsorsOf(dPJ?.id).length}`);
+  // Brief §20 sponsor confirmation: exactly one, to the donor, keyed on the
+  // sponsor — the replayed response and the duplicate DEN above sent no second.
+  const conf = notes("sponsor", Number(s0.id)).filter((n) => n.event === "sponsor.confirmed");
+  check(conf.length >= 1 && new Set(conf.map((n) => n.dedupe_key)).size === conf.length && conf.every((n) => String(n.dedupe_key).startsWith(`sponsor:${s0.id}:confirmed`)), "one sponsor.confirmed per channel, deduplicated on the sponsor", show(conf));
+  check(conf.some((n) => n.to_email === s0.email) && conf.every((n) => !n.to_email || n.to_email === s0.email), "…addressed to the donor, nobody else", show(conf.map((n) => n.to_email)));
+  const sweepP = await sweep({ order_ids: [PJ.number] });
+  check(sponsorsOf(dPJ?.id).length === 1 && payableAudits("donation", dPJ?.id).filter((e) => e === "sponsor_assigned").length === 1, "a re-run of the sweep adds neither a sponsor nor a second audit row", show(sweepP));
+  const N2 = await pay("pooja anonymous", "success", { pooja_id: poojaOpen, showNamePublicly: false });
+  const s2 = sponsorsOf(don(N2.number)?.id)[0];
+  check(s2 && Number(s2.publish_consent) === 0 && s2.payment_status === "PAID" && s2.name === `${NAME} pooja anonymous`, "a donor who did not tick the list becomes a sponsor without publish consent", show(s2));
+  check(sponsorsOf(dPJ?.id).length === 1 && sponsorsOf(don(N2.number)?.id).length === 1, "two paid donations for one pooja are two sponsor rows, one each");
+  const G = await pay("pooja general", "success");
+  check(sponsorsOf(don(G.number)?.id).length === 0 && don(G.number)?.pooja_id === null && (await status(G.number, G.token)).data?.pooja === null, "a general donation creates no sponsor and shows no pooja");
+  // What the public sees: a sponsor who ticked the thank-you list is named on /api/donors
+  // (sponsorPublicSql), by name only and with the pooja as the label — never the
+  // receipt note; the one who did not tick is not there at all.
+  const donorsNow = (await http("GET", "/api/donors", { ip: IP.legacy })).data ?? [];
+  const publicSponsor = donorsNow.find((x) => x.type === "sponsor" && x.name === `${NAME} pooja paid`); // the SUCCESS donation is listed as a donor too
+  check(publicSponsor?.type === "sponsor" && !("phone" in publicSponsor) && !("email" in publicSponsor) && !("amount" in publicSponsor), "a consented online sponsor is listed on /api/donors by name only", show(publicSponsor));
+  check(publicSponsor && publicSponsor.label !== `Online donation ${PJ.number}` && publicSponsor.pooja?.en === `${NAME} Pournami open`, "the public label is the pooja, never the receipt note", show(publicSponsor));
+  // The same row seen through the pooja feed the Sevas and Sponsorship pages
+  // read: named, but its bookkeeping note (donation number, foreign amount)
+  // never leaves the server.
+  const poojaFeed = (await http("GET", "/api/poojas?all=1&limit=100", { ip: IP.legacy })).data ?? [];
+  const openItem = (Array.isArray(poojaFeed) ? poojaFeed : []).find((p) => Number(p.id) === Number(poojaOpen));
+  check(openItem && !JSON.stringify(openItem).includes(PJ.number) && (openItem.sponsor == null || openItem.sponsor.note == null), "/api/poojas never publishes an online sponsor's note (the donation number)", show(openItem?.sponsor));
+  check(!donorsNow.some((x) => x.name === `${NAME} pooja anonymous`), "a sponsor without publish consent is never listed");
+  const refundP = fixture("refund", { order_id: PJ.number, kind: "full", method: "manual", reason: "E2E pooja refund" });
+  check(refundP.refund?.ok === true && don(PJ.number)?.status === "REFUNDED", "a full manual refund makes the donation REFUNDED", show(refundP.refund));
+  sp = sponsorsOf(dPJ?.id);
+  check(sp.length === 1 && sp[0].payment_status === "REFUNDED" && Number(sp[0].pooja_id) === poojaOpen, "its sponsor is marked REFUNDED, never deleted", show(sp));
+  check(payableAudits("donation", dPJ?.id).includes("sponsor_refunded"), "audit: sponsor_refunded");
+  const donorsAfterRefund = (await http("GET", "/api/donors", { ip: IP.legacy })).data ?? [];
+  check(!donorsAfterRefund.some((x) => x.type === "sponsor" && x.name === `${NAME} pooja paid`), "a refunded sponsorship is no longer thanked on /api/donors (the row stays for the office)");
+  sql("DELETE FROM poojas WHERE id = ?", [poojaOpen]);
+  check(don(PJ.number)?.pooja_id === null && sponsorsOf(dPJ?.id).length === 1 && sponsorsOf(dPJ?.id)[0].pooja_id === null && don(PJ.number)?.status === "REFUNDED" && (await status(PJ.number, PJ.token)).data?.pooja === null,
+    "deleting the pooja nulls the links on the donation and the sponsor and keeps both rows");
+  // These two sponsor rows are this section's; they go now so section 7's donors check keeps proving what it always did.
+  sql("DELETE FROM sponsors WHERE donation_id IN (?, ?)", [dPJ?.id ?? 0, don(N2.number)?.id ?? 0]);
+
+  /* ── 4n. Timeout (§2.3, brief §31) ────────────────────────────────────── */
+  section("4n. a gateway response of Timeout is FAILED with the failure email (§2.3)");
+  const T = await create(donation("timeout"));
+  await openCheckout(T);
+  const timeoutResp = mock.response(T.data.number, "failure", { order_status: "Timeout", failure_message: "Transaction timed out at the bank", status_message: "Timeout" });
+  const tRes = await gatewayPost("response", { encResp: timeoutResp.encResp });
+  const dT = don(T.data.number);
+  const tT = txn(T.data.number);
+  check(tRes.status === 303 && tRes.headers.get("location") === resultUrl(T.data.number, T.data.token), "Timeout → 303 to the result page", `${tRes.status} ${tRes.headers.get("location")}`);
+  check(dT?.status === "FAILED" && tT?.status === "FAILED" && tT?.gateway_status === "Timeout" && tT?.failure_message === "Transaction timed out at the bank" && !dT?.receipt_number, "donation and attempt are FAILED with gateway_status Timeout, no receipt", show([dT?.status, tT?.status, tT?.gateway_status, tT?.failure_message]));
+  const nT = notes("payment", tT?.id);
+  check(nT.length === 1 && nT[0].event === "payment.failed" && channelsOf(nT[0].id) === "email" && nT[0].to_email === `${EMAIL}-timeout@example.test`, "one payment.failed, email only, to the donor", show(nT));
+  check((await status(T.data.number, T.data.token)).data?.canRetry === true && (await status(T.data.number, T.data.token)).data?.failureMessage === "Transaction timed out at the bank", "the donor may try again and sees the reason");
+
   section("5a. hostile gateway returns never answer 500");
   const before5 = Number(one("SELECT COUNT(*) c FROM payment_audit_log WHERE ip = ? AND transaction_id IS NULL AND payable_id IS NULL", [IP.gateway])?.c);
   r = await gatewayPost("response", { encResp: mock.encrypt({ order_id: "DON-20200101-99999999", order_status: "Success", amount: "1.00", currency: "INR" }) });
@@ -827,6 +920,22 @@ try {
   check(sweepU.checked === 0, "a verified SUCCESS is not checked again");
 
   /* ── 6. Seva payables ────────────────────────────────────────────────── */
+  /* ── 5c. A stale INITIATED attempt and a stale link (§9.1, brief §31) ── */
+  section("5c. a stale INITIATED attempt is closed by the sweep after 3 hours; a stale link is a 404");
+  const stale = fixture("create-donation", { name: `${NAME} stale`, email: `${EMAIL}-stale@example.test`, age_minutes: 200, ip: IP.gateway });
+  const fresh = fixture("create-donation", { name: `${NAME} fresh`, age_minutes: 100, ip: IP.gateway });
+  const sw = await sweep({ order_ids: [stale.order_id, fresh.order_id] });
+  const tStale = txn(stale.order_id);
+  check(tStale?.status === "CANCELLED" && don(stale.number)?.status === "CANCELLED", "an INITIATED attempt older than 3 hours that CCAvenue has no record of becomes CANCELLED", show([sw, tStale?.status]));
+  const staleDetail = rows("SELECT detail FROM payment_audit_log WHERE transaction_id = ? AND event = 'status_changed'", [tStale?.id ?? 0]).map((r) => r.detail).join(" | ");
+  check(staleDetail.includes(`Closed: no payment reached CCAvenue within 3 hours (${stale.order_id})`), "the status_changed audit says why it was closed", staleDetail);
+  check(tStale?.verification === "status_api" && tStale?.last_checked_at, "closed on the status API's word, last_checked_at set", show([tStale?.verification, tStale?.last_checked_at]));
+  check(txn(fresh.order_id)?.status === "INITIATED", "an attempt younger than 3 hours is left INITIATED", txn(fresh.order_id)?.status);
+  check(notes("payment", tStale?.id).length === 0 && notes("donation", don(stale.number)?.id).length === 0, "no message on a closed attempt");
+  const rotated = fixture("token", { number: stale.number }, { PAYMENTS_SECRET: `rotated-secret-${RUN}-0123456789abcdef` }).token;
+  check(rotated !== stale.token && isNotFound(await status(stale.number, rotated)), "a token issued under another secret (a stale link) → 404 not_found, which the result page shows as 'could not read'");
+  check((await status(stale.number, stale.token)).data?.status === "CANCELLED" && (await status(stale.number, stale.token)).data?.canRetry === true, "the genuine link shows CANCELLED and offers a retry");
+
   section("6a. a seva payable: the price comes from the database");
   const seva = one("SELECT id, amount, name_en FROM sevas WHERE id = 1 AND is_active = 1 AND amount > 0");
   check(Boolean(seva), "seva 1 is active with a price to test against", show(seva));

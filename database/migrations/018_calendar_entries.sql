@@ -22,6 +22,10 @@
 --   mysql --default-character-set=utf8mb4 -u <user> -p <db> < database/migrations/018_calendar_entries.sql
 -- ============================================================
 
+-- The connection's character set, whatever client applies this file: without
+-- it a latin1 client (the Windows mysql default) stores Tamil text as '?'.
+SET NAMES utf8mb4;
+
 CREATE TABLE IF NOT EXISTS `calendar_entries` (
   `id`             INT UNSIGNED NOT NULL AUTO_INCREMENT,
   `mode`           ENUM('add','hide') NOT NULL DEFAULT 'add',

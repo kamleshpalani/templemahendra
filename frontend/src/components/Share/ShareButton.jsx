@@ -54,6 +54,11 @@ export default function ShareButton({
     // Share buttons sit inside clickable cards (a seva tile opens its booking
     // form). Opening the sheet must not also fire the card underneath.
     e?.stopPropagation?.();
+    // Safari (and iOS) do not focus a button that is clicked, so the dialog
+    // would record <body> as its opener and hand focus back to the top of the
+    // page on close. Focusing the trigger here makes every browser return the
+    // keyboard to this button when the sheet closes (WCAG 2.4.3).
+    e?.currentTarget?.focus?.({ preventScroll: true });
     const resolvedUrl = url || (to ? absoluteUrl(to) : currentUrl());
     setPayload({
       title: title || (typeof document === "undefined" ? "" : document.title),

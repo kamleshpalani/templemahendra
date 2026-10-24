@@ -6,6 +6,10 @@ walk-through and every environment variable; this page is the operational
 checklist that sits on top of it. Payments and live streaming have their own
 pages: `CCAvenue-INTEGRATION.md`, `LIVE-STREAMING.md`.
 
+For the separate, incomplete Node.js + Supabase staging backend, see
+[NODE-SUPABASE.md](NODE-SUPABASE.md). The PHP/MySQL production instructions
+below remain unchanged; do not cut over production to the Node foundation.
+
 ## Environments
 
 | Environment | Where | Database | Payments mode | YouTube automation | Purpose |
@@ -65,7 +69,13 @@ Do this on staging first, then repeat on production.
    into the *production* database *before* uploading the PHP that needs them
    — every migration is idempotent (`CREATE TABLE IF NOT EXISTS`, guarded
    `ALTER`s), and the app tells the admin which one is missing rather than
-   crashing. See `DATABASE.md` → *Migrations*.
+   crashing. See `DATABASE.md` → *Migrations*. This release needs
+   `020_bilingual_content_events.sql` through `025_cms_pages_settings.sql`,
+   applied in that order with a `utf8mb4` client (`mysql
+   --default-character-set=utf8mb4`, or phpMyAdmin, which does the same) —
+   a `latin1` client stores the Tamil literals as `?`. `025` seeds the About
+   page's `mission` and `history` pages with empty bodies, so the built-in
+   text stays until the committee writes its own.
 5. **Upload** in this order so a half-finished upload degrades gracefully:
    `includes/`, `config/`, `bin/`, `api/`, `admin/`, then the contents of
    `frontend/dist/`. Never upload `uploads/` from a machine — it is the site's
@@ -73,9 +83,14 @@ Do this on staging first, then repeat on production.
    hides dotfiles.
 6. **Environment variables**: add any new variable the release introduced
    (`backend/.env.example` is the annotated list; the PR description names
-   them). This release adds `CONTACT_NOTIFY_EMAIL` (the office mailbox that
-   receives contact-form messages; optional `CONTACT_NOTIFY_LANG`).
-   Changing a variable in hPanel takes effect on the next PHP request.
+   them). Changing a variable in hPanel takes effect on the next PHP request.
+   This release introduces `APP_ENV` — set `APP_ENV=production` (the default
+   when unset) on production and `staging` on staging — and production should
+   set `CORS_ORIGIN` to the site's own origin (`docs/SECURITY-REVIEW.md`).
+   Upload the three `deploy/htaccess_*` files to their folders
+   (`public_html/.htaccess`, `public_html/api/.htaccess`,
+   `public_html/uploads/.htaccess`) and run `node tests/deploy-config.mjs`
+   against the release beforehand.
 7. **Cron**: confirm the three jobs are still scheduled (below).
 8. **Smoke test** from the deployed URL, not localhost:
    - `/` loads in both languages; `/about`, `/events`, `/live-darshan`, `/donate`
@@ -85,9 +100,14 @@ Do this on staging first, then repeat on production.
    - `/admin/` sign-in works; the dashboard's *Live Darshan* card and
      *Online Payments* KPIs render (they fail loudly if a migration is missing).
    - Upload one gallery image, view it publicly, then delete it.
-   - `curl -I https://<domain>/` shows `X-Content-Type-Options`, `X-Frame-Options`,
-     `Referrer-Policy`; `http://` redirects to `https://` (Hostinger's *Force
-     HTTPS* switch; the app itself does not redirect).
+   - `curl -I https://<domain>/` shows `Strict-Transport-Security`,
+     `Content-Security-Policy`, `X-Content-Type-Options`, `X-Frame-Options`,
+     `Referrer-Policy` and `Permissions-Policy`; `curl -I http://<domain>/`
+     answers 301 to `https://` and `curl -I http://<domain>/api/settings`
+     answers 308; `/includes/db.php`, `/config/config.php` and `/logs/` answer 403.
+   - Open the site in the browser console: no Content-Security-Policy
+     violation on /, /live-darshan (the YouTube embed), /contact (the map) and
+     /donate (the CCAvenue form post).
    - Payments: `/donate` in TEST mode on staging completes one CCAvenue test
      transaction; on production only *Test connection* on Admin → Payment
      Gateway (no money moves).
@@ -120,14 +140,37 @@ nightly backup (next section) as a fourth job.
 
 ## Security headers and TLS
 
-`deploy/htaccess_public_html` sets `X-Content-Type-Options: nosniff`,
-`X-Frame-Options: SAMEORIGIN` and `Referrer-Policy: strict-origin-when-cross-origin`,
-disables directory listings and turns on gzip and long-lived caching for
-images. TLS and the HTTP→HTTPS redirect come from Hostinger (free Let's Encrypt
-certificate + *Force HTTPS*); the admin session cookie is `Secure` whenever the
-request arrived over HTTPS or `X-Forwarded-Proto: https`, `HttpOnly` and
-`SameSite=Lax`. HSTS is left to the hosting panel so a certificate mishap
-cannot lock devotees out.
+TLS comes from Hostinger (free Let's Encrypt certificate; switch on *Force
+HTTPS* too). The `.htaccess` files do not rely on it:
+
+- **HTTPS**: `http://` is redirected to `https://` in the root (301), in
+  `api/` (308, so a POST — a donation, the contact form, the CCAvenue
+  server notification — stays a POST) and in `uploads/`. The rule is skipped
+  on `localhost`/`127.0.0.1` and when a proxy in front already terminated TLS
+  and says so in `X-Forwarded-Proto`.
+- **HSTS**: `max-age=31536000; includeSubDomains`, sent only on a response
+  that went over TLS. No `preload`: add it only after the certificate has
+  renewed cleanly for a few months, because it cannot be undone quickly.
+- **Headers**: `X-Content-Type-Options: nosniff`, `X-Frame-Options: SAMEORIGIN`,
+  `Referrer-Policy: strict-origin-when-cross-origin`, `Permissions-Policy`
+  (no camera, microphone, location, payment, USB), `X-Powered-By` removed.
+- **Content-Security-Policy**: strict for the React site and the API (no
+  inline script; YouTube and Google Maps may be framed; the donation form may
+  post to `secure.ccavenue.com` and `test.ccavenue.com`), relaxed (inline
+  script allowed) only for `/admin/` and `api/og.php`.
+- **Private paths**: `includes/ config/ bin/ logs/ database/ tests/ vendor/
+  node_modules/` answer 403, and dotfiles, `.sql`, `.log`, `.sh`, `.bak`,
+  `.ini`, `.env`, `.md` files and `router.php` are never served. `uploads/`
+  cannot execute PHP and is served sandboxed.
+- **Caching**: content-hashed assets a year (`immutable`); `index.html`,
+  `sw.js`, `registerSW.js` and the manifest are always revalidated.
+- **Errors**: `APP_ENV=production` keeps error detail off every page; errors
+  go to the host's PHP error log, else `backend/logs/php-error.log`.
+
+The admin session cookie is `Secure` whenever the request arrived over HTTPS
+or `X-Forwarded-Proto: https`, `HttpOnly` and `SameSite=Lax`.
+`tests/deploy-config.mjs` checks every rule above; `docs/SECURITY-REVIEW.md`
+has the full OWASP review.
 
 ## Backups and restore
 
@@ -228,7 +271,15 @@ MySQL 8 database that runs the full test suites (47 tables, migrations
    exit 3; `--keep 1` pruned the older folder; `--env-file` archived the file
    as `config.tar.gz` with mode 600.
 
-Repeat the same six steps on the Hostinger staging database before the
+Since 2026-09-26 the rehearsal is automated: `node tests/backup-restore.mjs`
+runs `backup.sh`, proves `restore.sh` refuses a copy with one flipped byte
+(exit 3, nothing restored), restores into a scratch database
+`templemahendra_restore_<run>` and compares it with the source — the same
+51 tables, the same row count in every table, the same 41 foreign keys, a
+Tamil row byte for byte, the uploads by SHA-256 — then removes everything.
+Its last local run: 20 passed, 0 failed.
+
+Repeat the same steps on the Hostinger staging database before the
 production handover and write the date next to the release in the release log.
 A backup that has never been restored is a hope, not a backup.
 

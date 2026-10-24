@@ -19,7 +19,7 @@ $db = getDB();
 $str = static fn(array $src, string $key): string => is_scalar($src[$key] ?? null) ? (string) $src[$key] : '';
 
 if (!calendarEntriesTableExists()) {
-    adminHeader('Temple Calendar', 'Worship');
+    adminHeader('Temple Calendar', 'Temple');
     echo '<p class="alert alert--warning" role="alert">Calendar entries are not installed on this site yet: apply database migration <code>018_calendar_entries.sql</code> and reload.</p>';
     adminFooter();
     exit;
@@ -234,7 +234,7 @@ $invalid    = static fn(string $f): string => isset($errors[$f]) ? ' aria-invali
 $fieldError = static fn(string $f, string $text): string => isset($errors[$f]) ? '<span class="field__error" id="err-' . $f . '">' . adminIcon('alert-circle') . h($text) . '</span>' : '';
 $typeLabel  = static fn(string $t): string => CALENDAR_TYPE_LABELS[$t]['en'] ?? $t;
 
-adminHeader('Temple Calendar', 'Worship', [
+adminHeader('Temple Calendar', 'Temple', [
     'actions' => '<a href="/panchangam" target="_blank" rel="noopener" class="btn btn-ghost btn--sm">' . adminIcon('external') . 'View on site</a>',
 ]);
 echo $msg;

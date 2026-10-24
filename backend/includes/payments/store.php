@@ -117,6 +117,12 @@ function payCreateDonation(PDO $db, array $values, array $cfg, string $ip): arra
             $db->prepare('UPDATE donations SET live_stream_id = :stream WHERE id = :id')
                ->execute([':stream' => $streamId, ':id' => $id]);
         }
+        // The pooja this donation sponsors (validated by payValidateDonation; the
+        // column exists once migration 023 is in, which that validation checked).
+        $poojaId = isset($values['pooja_id']) && (int) $values['pooja_id'] > 0 ? (int) $values['pooja_id'] : null;
+        if ($poojaId !== null) {
+            $db->prepare('UPDATE donations SET pooja_id = :pooja WHERE id = :id')->execute([':pooja' => $poojaId, ':id' => $id]);
+        }
         $number = payNumberFor('donation', $id, payIstDate());
         $db->prepare('UPDATE donations SET donation_number = :n WHERE id = :id')->execute([':n' => $number, ':id' => $id]);
 
@@ -125,8 +131,9 @@ function payCreateDonation(PDO $db, array $values, array $cfg, string $ip): arra
             'payable_id'   => $id,
             'actor'        => 'donor',
             'ip'           => $ip,
-            'detail'       => "Online donation {$number} created for " . payMoneyLabel((string) $values['amount'], (string) $values['currency']) . '.',
-            'data'         => ['number' => $number, 'amount' => $values['amount'], 'currency' => $values['currency'], 'category' => $values['category']],
+            'detail'       => "Online donation {$number} created for " . payMoneyLabel((string) $values['amount'], (string) $values['currency'])
+                . ($poojaId !== null ? ' (sponsoring ' . (string) ($values['pooja_name']['en'] ?? "pooja #{$poojaId}") . ')' : '') . '.',
+            'data'         => ['number' => $number, 'amount' => $values['amount'], 'currency' => $values['currency'], 'category' => $values['category'], 'pooja_id' => $poojaId],
         ]);
         $payable = payLoadPayableById($db, 'donation', $id);
         $attempt = payCreateAttempt($db, 'donation', $payable, $cfg['mode'], (string) $values['lang'], $ip);
@@ -315,20 +322,34 @@ function payLoadPayableById(PDO $db, string $type, int $id, bool $lock = false):
         if ($l->fetchColumn() === false) return null;
     }
     if ($type === 'donation') {
+        // The pooja join only once migration 023 is in; without it the payable
+        // simply carries no pooja.
+        $withPooja = payPoojaLinksReady();
         $stmt = $db->prepare(
-            "SELECT d.*, c.slug AS cat_slug, c.name_ta AS cat_ta, c.name_en AS cat_en
-               FROM donations d
-               LEFT JOIN donation_categories c ON c.id = d.category_id
-              WHERE d.id = :id AND d.source = 'online'"
+            'SELECT d.*, c.slug AS cat_slug, c.name_ta AS cat_ta, c.name_en AS cat_en'
+            . ($withPooja ? ', p.id AS pooja_row_id, p.name_ta AS pooja_ta, p.name_en AS pooja_en, p.pooja_date AS pooja_date, p.pooja_time AS pooja_time, p.pooja_type AS pooja_type, p.is_active AS pooja_active' : '')
+            . ' FROM donations d
+               LEFT JOIN donation_categories c ON c.id = d.category_id'
+            . ($withPooja ? ' LEFT JOIN poojas p ON p.id = d.pooja_id' : '')
+            . " WHERE d.id = :id AND d.source = 'online'"
         );
         $stmt->execute([':id' => $id]);
         $r = $stmt->fetch(PDO::FETCH_ASSOC);
         if (!$r || $r['donation_number'] === null) return null;
         $category = $r['cat_slug'] !== null ? ['slug' => $r['cat_slug'], 'ta' => $r['cat_ta'], 'en' => $r['cat_en']] : null;
+        $pooja = null;
+        if ($withPooja && $r['pooja_row_id'] !== null) {
+            $pooja = payPoojaShape([
+                'id' => $r['pooja_row_id'], 'name_ta' => $r['pooja_ta'], 'name_en' => $r['pooja_en'], 'pooja_date' => $r['pooja_date'],
+                'pooja_time' => $r['pooja_time'], 'pooja_type' => $r['pooja_type'], 'is_active' => $r['pooja_active'],
+            ]);
+        }
         $attempts = payAttemptsFor($db, 'donation', (int) $r['id']);
         return [
             'type'               => 'donation',
             'live_stream_id'      => isset($r['live_stream_id']) ? (int) $r['live_stream_id'] : null,
+            'pooja_id'           => isset($r['pooja_id']) ? (int) $r['pooja_id'] : null,
+            'pooja'              => $pooja,
             'id'                 => (int) $r['id'],
             'number'             => (string) $r['donation_number'],
             'status'             => $r['status'],
@@ -372,6 +393,8 @@ function payLoadPayableById(PDO $db, string $type, int $id, bool $lock = false):
     $attempts = payAttemptsFor($db, 'seva_booking', (int) $r['id']);
     return [
         'type'               => 'seva_booking',
+        'pooja_id'           => null,
+        'pooja'              => null,
         'id'                 => (int) $r['id'],
         'number'             => (string) $r['order_number'],
         'status'             => $r['payment_status'],
@@ -710,5 +733,154 @@ function payDerivePayable(PDO $db, string $type, int $id, string $actor): array
             'detail' => 'The booking had been cancelled when its payment hold expired; payment arrived, so it is pending again.',
         ]);
     }
+    // A donation made for a pooja becomes its sponsor record on the first
+    // SUCCESS — here, in the transaction that assigned the receipt, so the two
+    // can never disagree — and is marked REFUNDED when the money all goes back.
+    if ($type === 'donation' && $firstSuccess) {
+        paySponsorAssign($db, $id, (string) $receipt, (int) $receiptAttempt['id'], $actor);
+    }
+    if ($type === 'donation' && $to === 'REFUNDED' && $to !== $from) {
+        paySponsorRefunded($db, $id, $actor);
+    }
     return ['from' => $from, 'to' => $to, 'changed' => $to !== $from, 'firstSuccess' => $firstSuccess, 'receipt_number' => $receipt];
+}
+
+/* ── Sponsor records from paid pooja donations (brief §13, migration 023) ── */
+
+/** True once migration 023 has linked sponsors to donations and payment attempts. */
+function paySponsorLinksReady(): bool
+{
+    return payPoojaLinksReady() && publicGuardHasColumn('sponsors', 'donation_id') && publicGuardHasColumn('sponsors', 'transaction_id');
+}
+
+/**
+ * The sponsor row a paid donation created — id, name, pooja_id, amount,
+ * payment_status, payment_ref, transaction_id, donation_id, publish_consent,
+ * is_active — or null. $lock takes the row lock (inside a transaction).
+ */
+function paySponsorForDonation(PDO $db, int $donationId, bool $lock = false): ?array
+{
+    if ($donationId <= 0 || !paySponsorLinksReady()) return null;
+    $stmt = $db->prepare(
+        'SELECT id, name, pooja_id, amount, payment_status, payment_ref, transaction_id, donation_id, publish_consent, is_active
+           FROM sponsors WHERE donation_id = :d' . ($lock ? ' FOR UPDATE' : '')
+    );
+    $stmt->execute([':d' => $donationId]);
+    $row = $stmt->fetch(PDO::FETCH_ASSOC);
+    if (!$row) return null;
+    foreach (['id', 'pooja_id', 'transaction_id', 'donation_id'] as $k) $row[$k] = $row[$k] !== null ? (int) $row[$k] : null;
+    $row['amount'] = $row['amount'] !== null ? payAmountFormat((string) $row['amount'], 'INR') : null;
+    $row['publish_consent'] = (int) $row['publish_consent'] === 1;
+    $row['is_active'] = (int) $row['is_active'] === 1;
+    return $row;
+}
+
+/**
+ * The one sponsor row for a donation made for a pooja, written on the
+ * donation's first SUCCESS inside the transaction that assigned its receipt.
+ * Keyed on donations.id: a replayed callback, a duplicate DEN notification or
+ * a re-run sweep never reaches a first SUCCESS twice (the receipt is already
+ * assigned), an existing row is only brought up to date, and the UNIQUE key on
+ * sponsors.donation_id is the last guard. A donation without a pooja, or whose
+ * pooja has since been deleted, creates nothing. Never throws: a sponsor row
+ * that cannot be written is logged and audited, and the payment stays paid.
+ *
+ * Fields: name, phone (dialable, +CC…), email from the donation; pooja_id;
+ * amount when the donation is in rupees (a foreign amount goes in the note);
+ * payment_status PAID; payment_ref = the receipt number; transaction_id,
+ * donation_id; publish_consent = the donor's thank-you-list consent; active;
+ * no family name; note "Online donation <number>".
+ */
+function paySponsorAssign(PDO $db, int $donationId, string $receipt, int $transactionId, string $actor): ?int
+{
+    if (!paySponsorLinksReady()) return null;
+    $ctx = ['payable_type' => 'donation', 'payable_id' => $donationId, 'transaction_id' => $transactionId, 'actor' => $actor];
+    try {
+        $stmt = $db->prepare(
+            'SELECT d.donation_number, d.name, d.phone, d.phone_country, d.email, d.amount, d.currency, d.show_name_publicly, d.pooja_id, d.lang,
+                    p.name_en AS pooja_en, p.pooja_date
+               FROM donations d JOIN poojas p ON p.id = d.pooja_id
+              WHERE d.id = :id'
+        );
+        $stmt->execute([':id' => $donationId]);
+        $d = $stmt->fetch(PDO::FETCH_ASSOC);
+        if (!$d) return null; // a general donation, or the pooja is gone (FK set the link to NULL)
+
+        $ref = mb_substr($receipt, 0, 100);
+        $existing = paySponsorForDonation($db, $donationId, true);
+        if ($existing !== null) {
+            $db->prepare("UPDATE sponsors SET payment_status = 'PAID', payment_ref = :ref, transaction_id = :t WHERE id = :id")
+               ->execute([':ref' => $ref, ':t' => $transactionId, ':id' => $existing['id']]);
+            payAudit($db, 'sponsor_assigned', $ctx + [
+                'detail' => "Sponsor #{$existing['id']} already exists for {$d['donation_number']}; no second sponsorship was created.",
+                'data'   => ['sponsor_id' => $existing['id'], 'pooja_id' => (int) $d['pooja_id'], 'receipt_number' => $receipt, 'duplicate' => true],
+            ]);
+            return $existing['id'];
+        }
+
+        $inr = strtoupper((string) $d['currency']) === 'INR';
+        $money = payMoneyLabel((string) $d['amount'], (string) $d['currency']);
+        $consent = (int) $d['show_name_publicly'] === 1 ? 1 : 0;
+        $db->prepare(
+            "INSERT INTO sponsors
+                (name, family_name, phone, email, note, pooja_id, event_id, amount, payment_ref, payment_status,
+                 transaction_id, donation_id, publish_consent, is_active, created_at)
+             VALUES (:name, NULL, :phone, :email, :note, :pooja, NULL, :amount, :ref, 'PAID', :t, :d, :consent, 1, NOW())"
+        )->execute([
+            ':name'    => mb_substr((string) $d['name'], 0, 200),
+            ':phone'   => mb_substr('+' . devoteeIntlPhone((string) $d['phone'], $d['phone_country']), 0, 30),
+            ':email'   => $d['email'] !== null && $d['email'] !== '' ? mb_substr((string) $d['email'], 0, 190) : null,
+            ':note'    => "Online donation {$d['donation_number']}" . ($inr ? '' : " ({$money})"),
+            ':pooja'   => (int) $d['pooja_id'],
+            ':amount'  => $inr ? payAmountFormat((string) $d['amount'], 'INR') : null,
+            ':ref'     => $ref,
+            ':t'       => $transactionId,
+            ':d'       => $donationId,
+            ':consent' => $consent,
+        ]);
+        $sponsorId = (int) $db->lastInsertId();
+        payAudit($db, 'sponsor_assigned', $ctx + [
+            'detail' => "Sponsor #{$sponsorId} recorded for {$d['pooja_en']} ({$d['pooja_date']}) from {$d['donation_number']}, receipt {$receipt}, {$money}"
+                . ($consent ? ', may be named on the website.' : ', not to be named on the website.'),
+            'data'   => ['sponsor_id' => $sponsorId, 'pooja_id' => (int) $d['pooja_id'], 'receipt_number' => $receipt, 'publish_consent' => $consent === 1],
+        ]);
+        // Brief §20: the sponsor's confirmation, in the donor's language, on
+        // this transaction's connection so it commits with the sponsorship.
+        // Its dedupe key (sponsor:{id}:confirmed) makes a replay a no-op.
+        require_once __DIR__ . '/../sponsor_notify.php';
+        sponsorNotifyConfirmed($sponsorId, (string) ($d['lang'] ?? 'ta'), $db);
+        return $sponsorId;
+    } catch (Throwable $e) {
+        error_log("[payments] sponsor for donation {$donationId} could not be recorded: " . get_class($e) . ': ' . $e->getMessage());
+        payAudit($db, 'sponsor_assigned', $ctx + [
+            'detail' => 'The sponsor record for this pooja donation could not be written; add it by hand in Admin → Sponsors.',
+            'data'   => ['error' => get_class($e)],
+        ]);
+        return null;
+    }
+}
+
+/**
+ * When a pooja donation is refunded in full, its sponsor is marked REFUNDED —
+ * never deleted: whether the pooja still goes ahead is the office's call, and
+ * the row keeps the donor's details for that conversation. Never throws.
+ */
+function paySponsorRefunded(PDO $db, int $donationId, string $actor): void
+{
+    if (!paySponsorLinksReady()) return;
+    try {
+        $stmt = $db->prepare("UPDATE sponsors SET payment_status = 'REFUNDED' WHERE donation_id = :d AND payment_status = 'PAID'");
+        $stmt->execute([':d' => $donationId]);
+        if ($stmt->rowCount() === 0) return;
+        $sponsor = paySponsorForDonation($db, $donationId);
+        payAudit($db, 'sponsor_refunded', [
+            'payable_type' => 'donation',
+            'payable_id'   => $donationId,
+            'actor'        => $actor,
+            'detail'       => 'Sponsor #' . (int) ($sponsor['id'] ?? 0) . ' marked REFUNDED: the donation was refunded in full. The record is kept for the office.',
+            'data'         => ['sponsor_id' => $sponsor['id'] ?? null],
+        ]);
+    } catch (Throwable $e) {
+        error_log("[payments] sponsor for donation {$donationId} could not be marked refunded: " . get_class($e) . ': ' . $e->getMessage());
+    }
 }

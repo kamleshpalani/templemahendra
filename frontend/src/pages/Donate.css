@@ -153,6 +153,32 @@
   min-height: 1.5em;
 }
 
+/* ── The pooja this donation is for (?pooja=<id>) ─────────────────── */
+.don-pooja {
+  display: inline;
+}
+.don-pooja:focus {
+  outline: none;
+}
+.don-pooja__label {
+  font-weight: var(--weight-semibold);
+}
+.don-pooja__name {
+  color: var(--maroon-800);
+  font-weight: var(--weight-semibold);
+}
+.don-pooja__error {
+  display: block;
+  margin-top: var(--space-1);
+}
+.don-pooja__link {
+  display: inline-block;
+  min-height: 44px;
+  margin-top: var(--space-1);
+  line-height: 44px;
+  font-weight: var(--weight-semibold);
+}
+
 /* ── Consent ──────────────────────────────────────────────────────── */
 .don-consent {
   margin-top: var(--space-2);

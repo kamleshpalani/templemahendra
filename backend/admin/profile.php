@@ -91,9 +91,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 }
 
-adminHeader('My profile', 'People', [
+adminHeader('My profile', 'System', [
     'actions' => adminCan('users.manage')
-        ? '<a href="/admin/users.php" class="btn btn--sm">' . adminIcon('users') . 'Committee accounts</a>'
+        ? '<a href="/admin/users.php" class="btn btn--sm">' . adminIcon('users') . 'Users</a>'
         : '',
 ]);
 echo $msg;
@@ -127,7 +127,7 @@ echo adminPageIntro('Your sign-in details and password for the temple control ce
              environment variables. It exists so the committee can never be locked out, so its name and password are changed
              in the hosting panel rather than here.
              <?php if (adminCan('users.manage')): ?>
-               For everyday use, create a personal account under <a href="/admin/users.php">Committee accounts</a>.
+               For everyday use, create a personal account under <a href="/admin/users.php">Users</a>.
              <?php endif; ?>
           </p>
         </div>

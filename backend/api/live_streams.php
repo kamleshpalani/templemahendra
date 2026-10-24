@@ -16,10 +16,13 @@
  *   GET /api/live-streams/<id>       { stream: {...}, server_time }
  *   GET /api/live-streams/<slug>     { stream: {...}, server_time }
  *
- * `now` is the featured live broadcast and `next` the first upcoming one (or
- * null), so the homepage and the main page need one call; both, and every
- * schedule item, carry `day_bucket` and `starts_in_seconds` on top of the
- * public shape (docs/live/SPEC-PHASE2.md §1.1).
+ * `now` and `next` are the homepage's: the featured live broadcast and the
+ * first upcoming one among the rows whose "Show on homepage" switch is on
+ * (brief §6; liveHomeNow() / liveHomeNext()), or null. Both carry
+ * `day_bucket` and `starts_in_seconds` on top of the public shape, as every
+ * schedule item does (docs/live/SPEC-PHASE2.md §1.1). The Live Darshan page
+ * itself reads `live` and `upcoming`, which list every public broadcast
+ * whatever the switch says — a featured one first among the upcoming.
  *
  * A DRAFT, deleted or unknown stream is a 404 {"error":"Not found"}. Before
  * migration 011 the lists are empty and the lookups 404 — never a 500.
@@ -106,8 +109,8 @@ function liveApiLimit(int $default, int $max): int
 
 if ($liveRouteName === 'index') {
     if ($liveDb === null) sendJson(['live' => [], 'upcoming' => [], 'now' => null, 'next' => null, 'server_time' => $liveServerTime]);
-    $liveNow  = liveFeatured($liveDb);
-    $liveNext = liveNextUpcoming($liveDb);
+    $liveNow  = liveHomeNow($liveDb);
+    $liveNext = liveHomeNext($liveDb);
     sendJson([
         'live'        => array_map('liveShapePublic', liveListLive($liveDb)),
         'upcoming'    => array_map('liveShapePublic', liveListUpcoming($liveDb, 10)),

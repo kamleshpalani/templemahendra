@@ -19,6 +19,7 @@
  *   backdate  {order_ids?, number?, minutes?, hold_minutes?, clear_checked?}
  *   sweep     {order_ids?, limit?, expire_holds?}          payReconcileSweep()
  *   expire-holds {order_ids?}                  payExpireHolds()
+ *   refund    {order_id, kind?, amount?, method?, reason?, gateway_ref?, actor?}   payRefundCreate() (default: full, manual)
  *   receipt-race {prefix, year, count?, sleep_ms?}         two processes racing for receipt numbers
  *   sql       {query, params}                  one statement, rows back
  *   cleanup   {name_prefix, ips?}              every row a suite's names created
@@ -235,6 +236,25 @@ try {
         case 'expire-holds':
             payFixtureOut(['expired' => payExpireHolds($db, isset($args['order_ids']) ? (array) $args['order_ids'] : null)]);
 
+        case 'refund': {
+            // A refund through the real path (payRefundCreate); manual by default,
+            // so no gateway is asked and the payable is re-derived at once.
+            $orderId = (string) ($args['order_id'] ?? '');
+            $payable = payLoadPayable($db, $orderId);
+            $attempt = null;
+            foreach ($payable['attempts'] ?? [] as $a) {
+                if ($a['order_id'] === $orderId) $attempt = $a;
+            }
+            if ($payable === null || $attempt === null) payFixtureOut(['error' => 'no such attempt'], 1);
+            $result = payRefundCreate(
+                $db, $payable, $attempt,
+                (string) ($args['kind'] ?? 'full'), (string) ($args['amount'] ?? ''),
+                (string) ($args['reason'] ?? 'E2E fixture refund'), (string) ($args['method'] ?? 'manual'),
+                isset($args['gateway_ref']) ? (string) $args['gateway_ref'] : null, (string) ($args['actor'] ?? 'e2e-fixture')
+            );
+            payFixtureOut(['refund' => $result, 'payable' => payLoadPayable($db, $orderId)]);
+        }
+
         case 'receipt-race': {
             // Take $count receipt numbers inside one transaction, holding the
             // counter lock for $sleep_ms between them: a second process running
@@ -267,7 +287,7 @@ try {
                 payFixtureOut(['error' => 'name_prefix must be at least eight plain characters'], 1);
             }
             $like = addcslashes($prefix, '%_') . '%';
-            $counts = ['donations' => 0, 'bookings' => 0, 'attempts' => 0, 'refunds' => 0, 'audit' => 0, 'notifications' => 0, 'counters' => 0, 'buckets' => 0];
+            $counts = ['donations' => 0, 'bookings' => 0, 'attempts' => 0, 'refunds' => 0, 'audit' => 0, 'notifications' => 0, 'counters' => 0, 'buckets' => 0, 'sponsors' => 0];
 
             $donationIds = $db->prepare('SELECT id FROM donations WHERE name LIKE :p');
             $donationIds->execute([':p' => $like]);
@@ -304,6 +324,21 @@ try {
                      OR (payable_type = 'donation' AND payable_id IN ({$din}))
                      OR (payable_type = 'seva_booking' AND payable_id IN ({$sin}))"
             );
+            // Sponsor rows a paid pooja donation created (migration 023) — by the
+            // donation link and by name, before the donations go (the FK would
+            // only null the link and leave the row behind).
+            if (publicGuardHasColumn('sponsors', 'donation_id')) {
+                // Their confirmations first (brief §20 sponsor.confirmed), keyed on the sponsor.
+                if (payFixtureHasTable($db, 'notifications')) {
+                    $n = $db->prepare("DELETE FROM notifications WHERE entity_type = 'sponsor' AND entity_id IN
+                        (SELECT id FROM (SELECT id FROM sponsors WHERE donation_id IN ({$din}) OR transaction_id IN ({$tin}) OR name LIKE :p) s)");
+                    $n->execute([':p' => $like]);
+                    $counts['notifications'] += $n->rowCount();
+                }
+                $stmt = $db->prepare("DELETE FROM sponsors WHERE donation_id IN ({$din}) OR transaction_id IN ({$tin}) OR name LIKE :p");
+                $stmt->execute([':p' => $like]);
+                $counts['sponsors'] = $stmt->rowCount();
+            }
             $counts['refunds'] = $db->exec("DELETE FROM payment_refunds WHERE transaction_id IN ({$tin})");
             $counts['attempts'] = $db->exec("DELETE FROM payment_transactions WHERE id IN ({$tin})");
             foreach ($orderIds as $orderId) {

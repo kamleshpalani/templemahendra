@@ -30,7 +30,7 @@ import { TRUST } from "../data/temple";
 import { countryName } from "../lib/familyRegistration";
 import { formatInternational, subdivisionLabel, subdivisionsOf } from "../lib/phone";
 import { currencySymbol, formatMoney, parseAmountInput } from "../lib/money";
-import { paymentsUsable, postJson, usePaymentsConfig, writeLastPayment } from "../lib/payments";
+import { formatPlainDate, paymentsUsable, postJson, usePaymentsConfig, useSponsoredPooja, writeLastPayment } from "../lib/payments";
 import { streamTitle, useStream } from "../lib/live";
 import {
   DONATE_FORM_STEPS,
@@ -141,12 +141,19 @@ export default function Donate() {
   const streamSlug = params.get("stream");
   const broadcast = useStream(streamSlug);
   const streamAllowed = !streamSlug || (!broadcast.loading && !broadcast.error && broadcast.stream?.flags?.donations && broadcast.stream.status !== "CANCELLED");
+  // ?pooja=<id>: this donation sponsors a pooja (brief §13). The id rides on
+  // every step's URL like the stream does, is shown on the page, and is sent
+  // as pooja_id; the server decides whether the pooja is still open.
+  const poojaParam = params.get("pooja") ?? "";
+  const poojaId = /^\d{1,10}$/.test(poojaParam) && Number(poojaParam) > 0 ? Number(poojaParam) : null;
+  const sponsored = useSponsoredPooja(poojaId);
   const stepParams = useCallback((key) => {
     const next = new URLSearchParams();
     if (streamSlug) next.set("stream", streamSlug);
+    if (poojaId) next.set("pooja", String(poojaId));
     if (key) next.set("step", key);
     return next;
-  }, [streamSlug]);
+  }, [streamSlug, poojaId]);
 
   const [draft] = useState(readDraft);
   const [form, setForm] = useState(() => (draft ? restoreForm(draft.form, lang, null) : initialDonationForm(lang, null)));
@@ -191,6 +198,18 @@ export default function Donate() {
     const codes = config.currencies.map((c) => c.code);
     setForm((f) => (codes.includes(f.currency) ? f : { ...f, currency: config.defaultCurrency || "INR" }));
   }, [loading, config]);
+
+  // A donation for a pooja starts on the matching purpose (Pournami Pooja for
+  // a pournami, else Pooja / Seva) when the donor has not chosen one yet.
+  useEffect(() => {
+    if (loading || !poojaId || sponsored.loading) return;
+    const slugs = config.categories.map((c) => c.slug);
+    const wanted = [sponsored.pooja?.type === "pournami" ? "pournami_pooja" : null, "pournami_pooja", "pooja_seva"].find(
+      (s) => s && slugs.includes(s),
+    );
+    if (!wanted) return;
+    setForm((f) => (f.category ? f : { ...f, category: wanted }));
+  }, [loading, poojaId, sponsored.loading, sponsored.pooja, config.categories]);
 
   const validSteps = useMemo(
     () => DONATE_FORM_STEPS.map((key) => Object.keys(validateDonationStep(key, form, (ta, en) => en, config)).length === 0),
@@ -387,7 +406,11 @@ export default function Donate() {
 
     sending.current = true;
     setStatus("sending");
-    const res = await postJson("/api/payments/donations", { ...toDonationPayload(form), ...(streamSlug ? { stream: streamSlug } : {}) });
+    const res = await postJson("/api/payments/donations", {
+      ...toDonationPayload(form),
+      ...(streamSlug ? { stream: streamSlug } : {}),
+      ...(poojaId ? { pooja_id: poojaId } : {}),
+    });
 
     if (res.ok && res.body?.success && res.body.gateway) {
       writeLastPayment({ number: res.body.number, token: res.body.token, kind: "donation" });
@@ -453,6 +476,13 @@ export default function Donate() {
 
   const amountLabel = amountValue !== null ? formatMoney(amountValue, currency, lang) : "";
   const purposeLabel = category ? t(category.name.ta, category.name.en) : "";
+  // What the pooja line says: the pooja's name and date when the widgets know
+  // it, else its number — the server names it on the receipt either way.
+  const poojaLabel = poojaId
+    ? sponsored.pooja
+      ? `${t(sponsored.pooja.name.ta, sponsored.pooja.name.en)}${sponsored.pooja.date ? ` · ${formatPlainDate(sponsored.pooja.date, lang)}` : ""}`
+      : t(`பூஜை #${poojaId}`, `Pooja #${poojaId}`)
+    : "";
 
   if (gateway) {
     return (
@@ -603,6 +633,27 @@ export default function Donate() {
             {t("இந்த தரிசனத்திற்கான நன்கொடை: ", "Donation for this darshan: ")}
             <Link to={`/live-darshan/${broadcast.stream.slug}`}>{streamTitle(broadcast.stream, lang)}</Link>
           </Alert>}
+          {poojaId && (
+            <Alert tone={errors.purpose.pooja_id ? "error" : undefined}>
+              <span className="don-pooja" id="don-pooja" tabIndex={-1}>
+                <span className="don-pooja__label">{t("இதற்காக:", "For:")}</span>{" "}
+                <span className="don-pooja__name">{sponsored.loading ? t("பூஜையைத் தேடுகிறோம்…", "Finding the pooja…") : poojaLabel}</span>
+                {errors.purpose.pooja_id && <span className="don-pooja__error">{errors.purpose.pooja_id}</span>}
+                {!errors.purpose.pooja_id && sponsored.pooja && (sponsored.pooja.isPast || sponsored.pooja.sponsorshipAvailable === false) && (
+                  <span className="don-pooja__error" role="status">
+                    {sponsored.pooja.isPast
+                      ? t("இந்தப் பூஜை முடிந்துவிட்டது; உபயம் ஏற்க இயலாது.", "This pooja has already taken place, so it cannot be sponsored.")
+                      : t("இந்தப் பூஜைக்கு உபயம் தற்போது ஏற்கப்படுவதில்லை.", "This pooja is not open for sponsorship.")}
+                  </span>
+                )}
+                {(errors.purpose.pooja_id || (sponsored.pooja && (sponsored.pooja.isPast || sponsored.pooja.sponsorshipAvailable === false))) && (
+                  <Link to="/donate" className="don-pooja__link">
+                    {t("பொது நன்கொடை வழங்கவும்", "Make a general donation instead")}
+                  </Link>
+                )}
+              </span>
+            </Alert>
+          )}
 
           <div ref={stepperRef} className="don__stepper">
             <FormStepper
@@ -1029,6 +1080,7 @@ export default function Donate() {
                     >
                       <dl className="don-review__list">
                         <Row label={t("நோக்கம்", "Purpose")}>{purposeLabel || notGiven}</Row>
+                        {poojaId && <Row label={t("இதற்காக", "For")}>{poojaLabel}</Row>}
                         <Row label={t("தொகை", "Amount")}>
                           {amountLabel} ({currency})
                         </Row>

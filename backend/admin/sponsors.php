@@ -4,6 +4,7 @@ require_once __DIR__ . '/../includes/auth.php';
 requireAdminAuth();
 require_once __DIR__ . '/../includes/db.php';
 require_once __DIR__ . '/../includes/helpers.php';
+require_once __DIR__ . '/../includes/sponsor_notify.php';
 require_once __DIR__ . '/includes/admin_layout.php';
 
 $db = getDB();
@@ -15,6 +16,18 @@ $hasConsent = (function () use ($db): bool {
     try {
         $stmt = $db->prepare('SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = ?');
         $stmt->execute(['sponsors', 'publish_consent']);
+        return (int) $stmt->fetchColumn() > 0;
+    } catch (Throwable) {
+        return false;
+    }
+})();
+
+// Migration 023 links a sponsor to the online donation that created it
+// (donation_id, transaction_id); the list and the form then link to the payment.
+$hasOnline = $hasConsent && (function () use ($db): bool {
+    try {
+        $stmt = $db->prepare('SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = ?');
+        $stmt->execute(['sponsors', 'donation_id']);
         return (int) $stmt->fetchColumn() > 0;
     } catch (Throwable) {
         return false;
@@ -138,11 +151,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         if (!$chk->fetchColumn()) $redirect($alert('warning', 'That sponsor no longer exists.'));
                     }
                     adminAudit('sponsor_updated', 'sponsor:' . $id, $detail);
-                    $redirect($alert('success', 'Sponsor updated.'));
+                    // A sponsorship the committee marks PAID is confirmed to the
+                    // sponsor once (brief §20); saving it again sends nothing.
+                    $told = $hasConsent && $payment_status === 'PAID' && sponsorNotifyConfirmed($id);
+                    $redirect($alert('success', 'Sponsor updated.' . ($told ? ' A confirmation is on its way to the sponsor.' : '')));
                 } else {
                     $db->prepare('INSERT INTO sponsors SET ' . $cols)->execute($params);
-                    adminAudit('sponsor_created', 'sponsor:' . (int) $db->lastInsertId(), $detail);
-                    $redirect($alert('success', 'Sponsor added.'));
+                    $newId = (int) $db->lastInsertId();
+                    adminAudit('sponsor_created', 'sponsor:' . $newId, $detail);
+                    $told = $hasConsent && $payment_status === 'PAID' && sponsorNotifyConfirmed($newId);
+                    $redirect($alert('success', 'Sponsor added.' . ($told ? ' A confirmation is on its way to the sponsor.' : '')));
                 }
             }
         } elseif ($action === 'delete') {
@@ -203,6 +221,14 @@ $blank = ['id' => 0, 'name' => '', 'family_name' => '', 'phone' => '', 'email' =
 $form = ($old ?? $editing ?? []) + $blank;
 $isEditing = (int) ($form['id'] ?? 0) > 0;
 
+// The online donation this sponsor came from (migration 023), for a link in the form.
+$onlineDonation = null;
+if ($hasOnline && $isEditing && !empty($editing['donation_id'])) {
+    $stmt = $db->prepare('SELECT donation_number, receipt_number FROM donations WHERE id = :id');
+    $stmt->execute([':id' => (int) $editing['donation_id']]);
+    $onlineDonation = $stmt->fetch() ?: null;
+}
+
 // Poojas for the dropdown (active, latest first) — plus the currently linked one if it is not in that list
 $poojas = $db->query(
     "SELECT id, name_ta, name_en, pooja_date FROM poojas
@@ -258,9 +284,11 @@ if ($status !== '') $where[] = $statusSql[$status];
 if ($poojaId > 0)   { $where[] = 's.pooja_id = ?'; $params[] = $poojaId; }
 $sql = 'SELECT s.*, p.name_en AS pooja_name_en, p.name_ta AS pooja_name_ta, p.pooja_date, p.pooja_type'
      . ($hasConsent ? ', e.title_en AS event_title_en, e.title_ta AS event_title_ta, e.event_date' : '')
+     . ($hasOnline ? ', d.donation_number AS online_number, d.receipt_number AS online_receipt' : '')
      . ' FROM sponsors s
           LEFT JOIN poojas p ON p.id = s.pooja_id'
      . ($hasConsent ? ' LEFT JOIN events e ON e.id = s.event_id' : '')
+     . ($hasOnline ? ' LEFT JOIN donations d ON d.id = s.donation_id' : '')
      . ($where ? ' WHERE ' . implode(' AND ', $where) : '')
      . ' ORDER BY ' . $sortCols[$sort] . ' ' . strtoupper($dir) . ', s.id DESC';
 $list = adminPaginate($db, $sql, $params, $page, $perPage);
@@ -283,7 +311,7 @@ $fieldError = fn(string $k): string => isset($errors[$k]) ? '<span class="field_
 $telHref = fn(string $phone): string => 'tel:' . (str_starts_with(trim($phone), '+') ? '+' : '') . preg_replace('/\D/', '', $phone);
 
 // ── Page ─────────────────────────────────────────────────────────────────────
-adminHeader('Sponsors', 'Worship', [
+adminHeader('Sponsors', 'Finance', [
     'actions' => '<a href="/admin/poojas.php" class="btn btn-ghost btn--sm">' . adminIcon('flame') . 'Poojas</a>',
 ]);
 echo $msg;
@@ -396,6 +424,11 @@ echo adminKpi([
                value="<?= h($form['payment_ref'] ?? '') ?>" placeholder="Receipt no, UPI / bank reference or CCAvenue order id" />
         <span class="field__hint">Private. Helps the finance team match the payment.</span>
       </label>
+      <?php if ($onlineDonation): ?>
+      <p class="field__hint" id="s-online"><?= adminIcon('banknote', 'ico--xs') ?> Created from online donation
+        <a href="/admin/payments.php?number=<?= rawurlencode((string) $onlineDonation['donation_number']) ?>"><?= h((string) $onlineDonation['donation_number']) ?></a><?= $onlineDonation['receipt_number'] ? ' · receipt ' . h((string) $onlineDonation['receipt_number']) : '' ?>.
+        The payment status follows the online payment; edit the rest freely.</p>
+      <?php endif; ?>
 
       <label class="switch">
         <input type="checkbox" name="publish_consent" value="1"<?= !empty($form['publish_consent']) ? ' checked' : '' ?> />
@@ -505,6 +538,9 @@ echo adminKpi([
                   <?php endif; ?>
                   <span class="cell-sub"><?= adminBadge($paymentStates[$row['payment_status']] ?? $row['payment_status'], $paymentTones[$row['payment_status']] ?? '') ?></span>
                   <?php if (($row['payment_ref'] ?? '') !== '' && $row['payment_ref'] !== null): ?><span class="cell-sub cell-clip"><?= h($row['payment_ref']) ?></span><?php endif; ?>
+                  <?php if ($hasOnline && !empty($row['online_number'])): ?>
+                    <span class="cell-sub"><a href="/admin/payments.php?number=<?= rawurlencode((string) $row['online_number']) ?>" title="Open the online payment"><?= adminIcon('banknote', 'ico--xs') ?> <?= h((string) $row['online_number']) ?></a></span>
+                  <?php endif; ?>
                 </td>
                 <?php endif; ?>
                 <td class="cell-date"><time datetime="<?= h($row['created_at']) ?>" data-tip="<?= h(adminFmtDate($row['created_at'], true)) ?>"><?= adminAgo($row['created_at']) ?></time></td>

@@ -1,0 +1,222 @@
+{
+  "generated": "2026-09-27T03:45:52.753Z",
+  "base": "http://127.0.0.1:4173",
+  "routes": [
+    "/",
+    "/sevas",
+    "/events",
+    "/donations",
+    "/live-darshan",
+    "/gallery"
+  ],
+  "presets": [
+    "mobile",
+    "desktop"
+  ],
+  "runs": [
+    {
+      "route": "/",
+      "preset": "mobile",
+      "scores": {
+        "performance": 75,
+        "accessibility": 100,
+        "best-practices": 100,
+        "seo": 100
+      },
+      "metrics": {
+        "fcp": "2.6 s",
+        "lcp": "4.3 s",
+        "tbt": "290 ms",
+        "cls": "0.002",
+        "si": "2.6 s"
+      }
+    },
+    {
+      "route": "/",
+      "preset": "desktop",
+      "scores": {
+        "performance": 97,
+        "accessibility": 100,
+        "best-practices": 100,
+        "seo": 100
+      },
+      "metrics": {
+        "fcp": "0.7 s",
+        "lcp": "1.1 s",
+        "tbt": "20 ms",
+        "cls": "0.032",
+        "si": "0.8 s"
+      }
+    },
+    {
+      "route": "/sevas",
+      "preset": "mobile",
+      "scores": {
+        "performance": 83,
+        "accessibility": 100,
+        "best-practices": 100,
+        "seo": 100
+      },
+      "metrics": {
+        "fcp": "2.0 s",
+        "lcp": "4.5 s",
+        "tbt": "60 ms",
+        "cls": "0",
+        "si": "2.0 s"
+      }
+    },
+    {
+      "route": "/sevas",
+      "preset": "desktop",
+      "scores": {
+        "performance": 99,
+        "accessibility": 100,
+        "best-practices": 100,
+        "seo": 100
+      },
+      "metrics": {
+        "fcp": "0.7 s",
+        "lcp": "0.9 s",
+        "tbt": "0 ms",
+        "cls": "0.001",
+        "si": "0.7 s"
+      }
+    },
+    {
+      "route": "/events",
+      "preset": "mobile",
+      "scores": {
+        "performance": 82,
+        "accessibility": 100,
+        "best-practices": 100,
+        "seo": 100
+      },
+      "metrics": {
+        "fcp": "2.1 s",
+        "lcp": "4.5 s",
+        "tbt": "60 ms",
+        "cls": "0.011",
+        "si": "2.1 s"
+      }
+    },
+    {
+      "route": "/events",
+      "preset": "desktop",
+      "scores": {
+        "performance": 98,
+        "accessibility": 100,
+        "best-practices": 100,
+        "seo": 100
+      },
+      "metrics": {
+        "fcp": "0.7 s",
+        "lcp": "1.0 s",
+        "tbt": "0 ms",
+        "cls": "0.02",
+        "si": "0.7 s"
+      }
+    },
+    {
+      "route": "/donations",
+      "preset": "mobile",
+      "scores": {
+        "performance": 78,
+        "accessibility": 100,
+        "best-practices": 100,
+        "seo": 100
+      },
+      "metrics": {
+        "fcp": "2.0 s",
+        "lcp": "4.6 s",
+        "tbt": "240 ms",
+        "cls": "0",
+        "si": "2.0 s"
+      }
+    },
+    {
+      "route": "/donations",
+      "preset": "desktop",
+      "scores": {
+        "performance": 98,
+        "accessibility": 100,
+        "best-practices": 100,
+        "seo": 100
+      },
+      "metrics": {
+        "fcp": "0.7 s",
+        "lcp": "1.0 s",
+        "tbt": "0 ms",
+        "cls": "0.001",
+        "si": "0.7 s"
+      }
+    },
+    {
+      "route": "/live-darshan",
+      "preset": "mobile",
+      "scores": {
+        "performance": 84,
+        "accessibility": 100,
+        "best-practices": 100,
+        "seo": 100
+      },
+      "metrics": {
+        "fcp": "2.0 s",
+        "lcp": "4.3 s",
+        "tbt": "50 ms",
+        "cls": "0",
+        "si": "2.0 s"
+      }
+    },
+    {
+      "route": "/live-darshan",
+      "preset": "desktop",
+      "scores": {
+        "performance": 99,
+        "accessibility": 100,
+        "best-practices": 100,
+        "seo": 100
+      },
+      "metrics": {
+        "fcp": "0.7 s",
+        "lcp": "0.9 s",
+        "tbt": "0 ms",
+        "cls": "0.001",
+        "si": "0.7 s"
+      }
+    },
+    {
+      "route": "/gallery",
+      "preset": "mobile",
+      "scores": {
+        "performance": 85,
+        "accessibility": 100,
+        "best-practices": 100,
+        "seo": 100
+      },
+      "metrics": {
+        "fcp": "2.0 s",
+        "lcp": "4.2 s",
+        "tbt": "50 ms",
+        "cls": "0.001",
+        "si": "2.0 s"
+      }
+    },
+    {
+      "route": "/gallery",
+      "preset": "desktop",
+      "scores": {
+        "performance": 99,
+        "accessibility": 100,
+        "best-practices": 100,
+        "seo": 100
+      },
+      "metrics": {
+        "fcp": "0.7 s",
+        "lcp": "0.9 s",
+        "tbt": "0 ms",
+        "cls": "0.001",
+        "si": "0.7 s"
+      }
+    }
+  ]
+}

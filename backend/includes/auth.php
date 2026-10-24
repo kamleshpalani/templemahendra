@@ -48,16 +48,35 @@ function adminIdleMinutes(): int
 const ADMIN_LOCKOUT_ATTEMPTS = 10;
 const ADMIN_LOCKOUT_MINUTES  = 15;
 
+/**
+ * Failed sign-ins per client address, across every username, before that
+ * address is refused for ADMIN_IP_LOGIN_MINUTES (brief §18 "login rate
+ * limiting"). The per-account lock above cannot see password spraying — one
+ * address trying nine passwords against each of many accounts — so this one
+ * counts by address. ADMIN_IP_LOGIN_ATTEMPTS overrides the default of 30.
+ */
+const ADMIN_IP_LOGIN_MINUTES = 15;
+function adminIpLoginAttempts(): int
+{
+    $v = (int) readEnv('ADMIN_IP_LOGIN_ATTEMPTS', '30');
+    return $v > 0 ? min($v, 1000) : 30;
+}
+
 // One safety net for every admin page: errors are logged, never printed.
 require_once __DIR__ . '/errors.php';
 
-// Load .env.local for local development if it exists
+// Load .env.local for local development if it exists. It only fills gaps: a
+// variable the server was started with (the hosting panel, a test server on a
+// scratch database or another SITE_URL) always wins, exactly as the public API
+// sees it — otherwise admin pages and the API could read different databases.
 $_envFile = __DIR__ . '/../../.env.local';
 if (file_exists($_envFile)) {
     foreach (file($_envFile, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES) as $_line) {
         if (str_starts_with(trim($_line), '#') || !str_contains($_line, '=')) continue;
         [$_k, $_v] = explode('=', $_line, 2);
-        putenv(trim($_k) . '=' . trim($_v));
+        $_k = trim($_k);
+        if ($_k === '' || getenv($_k) !== false) continue;
+        putenv($_k . '=' . trim($_v));
     }
 }
 unset($_envFile, $_line, $_k, $_v);
@@ -79,6 +98,10 @@ function adminPageCapability(string $file): string
         'sevas.php'            => 'content.edit',
         'events.php'           => 'content.edit',
         'calendar_entries.php' => 'content.edit',
+        'pages.php'            => 'content.edit',
+        'nalla_neram.php'      => 'content.edit',
+        'seo.php'              => 'settings.edit',
+        'languages.php'        => 'settings.edit',
         'sponsors.php'         => 'finance.edit',
         'bulk_upload.php'      => 'import',
         'settings.php'         => 'settings.edit',
@@ -89,6 +112,7 @@ function adminPageCapability(string $file): string
         'notification_templates.php' => 'notifications.view',
         'notification_analytics.php' => 'notifications.view',
         'payments.php'               => 'payments.view',
+        'receipts.php'               => 'payments.view',
         'payment_settings.php'       => 'payments.settings',
         'donation_categories.php'    => 'finance.edit',
         'live_streams.php'           => 'live.view',
@@ -120,6 +144,7 @@ function adminPageWriteCapability(string $file): string
         'notification_analytics.php' => 'notifications.compose', // requeue
         // The refund actions on payments.php additionally require payments.refund.
         'payments.php'               => 'payments.manage',
+        'receipts.php'               => 'payments.manage', // resend a receipt
         'payment_settings.php'       => 'payments.settings',
         'donation_categories.php'    => 'finance.edit',
         // The status buttons on live_streams.php additionally require live.publish.
@@ -205,9 +230,16 @@ function adminLogin(string $username, string $password): ?array
 /**
  * Seconds remaining on an account lock, or 0. Lockout is per account name so
  * a guessing run against one login cannot be dodged by changing IP, and it
- * cannot lock out other committee members; the per-IP throttle in login.php
- * still applies on top. Counted in `rate_limits`, so the environment admin is
- * covered too and nothing is needed in `admin_users`.
+ * cannot lock out other committee members; the per-address throttle
+ * (adminIpThrottledFor()) applies on top of it. Counted in `rate_limits`, so
+ * nothing is needed in `admin_users`.
+ *
+ * The environment account is the exception: nobody can issue it a new
+ * password to lift a lock, so a lock keyed on its name alone would let any
+ * stranger keep the recovery login shut with ten requests every fifteen
+ * minutes. Its lock is therefore keyed on name AND address (adminLockWho()):
+ * an attacker locks it only for themselves, and the per-address throttle
+ * still caps them.
  */
 function adminAccountLockedFor(string $username): int
 {
@@ -228,17 +260,65 @@ function adminAccountLockedFor(string $username): int
     }
 }
 
+/** True when the name is the environment (recovery) account's, case-insensitively. */
+function adminIsEnvUsername(string $username): bool
+{
+    $u = mb_strtolower(trim($username));
+    return $u !== '' && $u === mb_strtolower(trim(readEnv('ADMIN_USERNAME', 'admin')));
+}
+
+/** The identity a failed sign-in is counted against: the lowercased name, plus the address for the environment account. */
+function adminLockWho(string $username): string
+{
+    $u = mb_strtolower(trim($username));
+    return adminIsEnvUsername($u) ? $u . '@' . clientIp() : $u;
+}
+
 function adminLockBucket(string $username): string
 {
-    return mb_substr('admin-login:' . mb_strtolower(trim($username)), 0, 190);
+    return mb_substr('admin-login:' . adminLockWho($username), 0, 190);
 }
 
 function adminRecordFailedLogin(string $username): void
 {
     require_once __DIR__ . '/rate_limit.php';
     // The window is the lockout period: the counter resets once it has passed.
-    $allowed = rateLimitAllow('admin-login', ADMIN_LOCKOUT_ATTEMPTS - 1, ADMIN_LOCKOUT_MINUTES * 60, mb_strtolower(trim($username)));
+    $allowed = rateLimitAllow('admin-login', ADMIN_LOCKOUT_ATTEMPTS - 1, ADMIN_LOCKOUT_MINUTES * 60, adminLockWho($username));
     if (!$allowed) adminAudit('account_locked', $username, ADMIN_LOCKOUT_ATTEMPTS . ' failed sign-ins', $username);
+}
+
+/**
+ * Seconds remaining on the per-address sign-in throttle, or 0. Read before the
+ * credentials are looked at, so a throttled address learns nothing about which
+ * usernames exist.
+ */
+function adminIpThrottledFor(): int
+{
+    require_once __DIR__ . '/rate_limit.php';
+    if (!rateLimitTableExists()) return 0;
+    try {
+        $stmt = getDB()->prepare(
+            'SELECT hits, TIMESTAMPDIFF(SECOND, NOW(), window_start + INTERVAL ' . ADMIN_IP_LOGIN_MINUTES . ' MINUTE) AS remaining
+               FROM rate_limits WHERE bucket = :b'
+        );
+        $stmt->execute([':b' => mb_substr('admin-login-ip:' . clientIp(), 0, 190)]);
+        $row = $stmt->fetch();
+        if (!$row || (int) $row['hits'] < adminIpLoginAttempts()) return 0;
+        return max(0, (int) $row['remaining']);
+    } catch (Throwable $e) {
+        error_log('[auth] address throttle check: ' . $e->getMessage());
+        return 0;
+    }
+}
+
+/** Count one failed sign-in against the caller's address; audits the moment the address is refused. */
+function adminRecordFailedLoginIp(string $username): void
+{
+    require_once __DIR__ . '/rate_limit.php';
+    $allowed = rateLimitAllow('admin-login-ip', adminIpLoginAttempts() - 1, ADMIN_IP_LOGIN_MINUTES * 60);
+    if (!$allowed) {
+        adminAudit('login_throttled', $username, adminIpLoginAttempts() . ' failed sign-ins from ' . clientIp() . ' within ' . ADMIN_IP_LOGIN_MINUTES . ' minutes', $username);
+    }
 }
 
 function adminClearFailedLogins(string $username): void

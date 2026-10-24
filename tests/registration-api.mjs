@@ -513,9 +513,10 @@ try {
   // The message is the notification service's to send, and the registration
   // must never depend on it: whatever state that service is in (not installed,
   // failing to load, or working), a consenting family is registered all the
-  // same. Whether the message itself was queued is asserted only when asked
-  // (NOTIFY_ASSERT_MESSAGES=1) and the service reports itself ready, and — when
-  // NOTIFY_READY_FILE is set — once that hand-off marker exists.
+  // same. The service ships with the site, so it must report itself ready and
+  // the queued message is asserted; NOTIFY_ASSERT_MESSAGES=0 skips those checks
+  // for a deliberately broken service (and, when NOTIFY_READY_FILE is set, until
+  // that hand-off marker exists).
   section("7. registration.received");
   const serviceReady = (() => {
     try {
@@ -526,6 +527,7 @@ try {
     }
   })();
   console.log(`  the notification service is ${serviceReady ? "ready" : "unavailable"}`);
+  if (process.env.NOTIFY_ASSERT_MESSAGES !== "0") check(serviceReady, "the notification service loads and reports itself ready");
 
   const consenting = uniqueName("consent message");
   const cr = await send("POST", valid({ name: consenting, email: `e2e-reg-yes-${RUN}@example.test`, consent: true, members: [member(), member({ name: "K. Arun", relationship: "son" })] }));
@@ -540,10 +542,10 @@ try {
   check(dr.status === 201 && dr.text === SUCCESS && Boolean(stored(declining)), "a family that did not tick consent is registered", `${dr.status} ${dr.text}`);
 
   const readyFile = process.env.NOTIFY_READY_FILE;
-  const assertMessages = process.env.NOTIFY_ASSERT_MESSAGES === "1" && serviceReady && !(readyFile && !existsSync(readyFile));
+  const assertMessages = process.env.NOTIFY_ASSERT_MESSAGES !== "0" && serviceReady && !(readyFile && !existsSync(readyFile));
   if (!assertMessages) {
     skipped += 3;
-    console.log("- skipped 3 checks on the queued registration.received notification (set NOTIFY_ASSERT_MESSAGES=1 once the notification service loads)");
+    console.log("- skipped 3 checks on the queued registration.received notification (NOTIFY_ASSERT_MESSAGES=0, or the service is not ready)");
   } else {
     const messagesFor = (id) => rows("SELECT event, template_key, JSON_UNQUOTE(JSON_EXTRACT(vars, '$.familyCount')) AS family_count FROM notifications WHERE devotee_id = ?", [id]);
     const cm = messagesFor(cRow?.id ?? 0);

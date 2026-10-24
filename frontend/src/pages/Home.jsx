@@ -35,6 +35,7 @@ import {
 import api from "../services/api";
 import { useLang } from "../context/LangContext";
 import { paymentsUsable, usePaymentsConfig } from "../lib/payments";
+import { paragraphs, siteHours, siteNallaNeram, siteOfficeDigits, siteText, siteValue, useSiteSettings } from "../lib/siteSettings";
 import {
   TEMPLE,
   ADDRESS,
@@ -83,10 +84,17 @@ function nextDarshanLine(stream, lang, t, serverOffset) {
 }
 
 /* ─── Derived temple facts (never invented — see data/temple.js, lib/templeTime.js) ─── */
-/** "6:00 AM – 12:30 PM", "4:00 PM – 9:00 PM" from the shared TEMPLE_HOURS table. */
-const HOURS = TEMPLE_HOURS.map(
+/**
+ * "6:00 AM – 12:30 PM", "4:00 PM – 9:00 PM": the committee's opening hours
+ * (Admin → System → Settings) when set, else the shared TEMPLE_HOURS table.
+ */
+const HOURS_BUILTIN = TEMPLE_HOURS.map(
   ({ open, close }) => `${to12h(`${open[0]}:${open[1]}`)} – ${to12h(`${close[0]}:${close[1]}`)}`,
 );
+const hoursLabels = (site) => {
+  const own = siteHours(site);
+  return own ? own.map((w) => `${to12h(w.open)} – ${to12h(w.close)}`) : HOURS_BUILTIN;
+};
 
 /** Tiny proof chips under the hero actions — every line is a booklet fact. */
 const PROOF = [
@@ -161,14 +169,14 @@ function Tile({ icon, tone, label, index = 0, className = "", children, ...rest 
 /* ─── Mode content blocks ─────────────────────────────────── */
 const BLESSING_KEY = "temple_blessing_hidden";
 
-function DevoteeContent({ t, pulseData, nallaTime, pournami }) {
+function DevoteeContent({ t, pulseData, nallaTime, pournami, HOURS = HOURS_BUILTIN }) {
   const [blessingHidden, setBlessingHidden] = useState(() => {
-    const today = new Date().toISOString().slice(0, 10);
+    const today = todayIST();
     return store.get(BLESSING_KEY) === today;
   });
 
   const hideBlessing = () => {
-    const today = new Date().toISOString().slice(0, 10);
+    const today = todayIST();
     store.set(BLESSING_KEY, today);
     setBlessingHidden(true);
   };
@@ -188,8 +196,7 @@ function DevoteeContent({ t, pulseData, nallaTime, pournami }) {
           <p className="home-tile__value">{nextPoojaName}</p>
         </Tile>
         <Tile index={1} icon={<LuClock />} label={t("கோயில் நேரம்", "Temple Hours")}>
-          <p className="home-tile__value">{HOURS[0]}</p>
-          <p className="home-tile__value">{HOURS[1]}</p>
+          {HOURS.map((h) => <p key={h} className="home-tile__value">{h}</p>)}
         </Tile>
         {nextEvent && (
           <Tile index={2} icon={<LuPartyPopper />} label={t("அடுத்த திருவிழா", "Next Festival")}>
@@ -253,7 +260,7 @@ function DevoteeContent({ t, pulseData, nallaTime, pournami }) {
   );
 }
 
-function FirstVisitContent({ t }) {
+function FirstVisitContent({ t, HOURS = HOURS_BUILTIN }) {
   const steps = [
     { num: "01", title: t("கோயிலை பற்றி", "About the Temple"), body: t(HISTORY.summary.ta, HISTORY.summary.en) },
     {
@@ -264,7 +271,7 @@ function FirstVisitContent({ t }) {
         "Wear clean attire. Silence your phone. Remove footwear at the entrance.",
       ),
     },
-    { num: "03", title: t("வருகை நேரம்", "Visiting Hours"), body: `${HOURS[0]}  |  ${HOURS[1]}` },
+    { num: "03", title: t("வருகை நேரம்", "Visiting Hours"), body: HOURS.join("  |  ") },
     {
       num: "04",
       title: t("உடை விதிமுறை", "Dress Code"),
@@ -301,7 +308,7 @@ function FirstVisitContent({ t }) {
   );
 }
 
-function NriContent({ t, payOnline = false }) {
+function NriContent({ t, payOnline = false, youtubeUrl = TEMPLE.youtube.channelUrl }) {
   return (
     <div className="home-visit__block">
       <div className="home-visit__grid">
@@ -314,7 +321,7 @@ function NriContent({ t, payOnline = false }) {
             {t("நேரடி தரிசனம் பார்க்க", "Watch live darshan")}
           </Button>
           <Button
-            href={TEMPLE.youtube.channelUrl}
+            href={youtubeUrl}
             target="_blank"
             rel="noopener noreferrer"
             variant="ghost"
@@ -369,7 +376,7 @@ function NriContent({ t, payOnline = false }) {
   );
 }
 
-function ElderContent({ t, pulseData }) {
+function ElderContent({ t, pulseData, HOURS = HOURS_BUILTIN, phone = PRIMARY_CONTACT.phone }) {
   const isOpen = pulseData?.open ?? null;
   return (
     <div className="home-visit__block">
@@ -392,16 +399,15 @@ function ElderContent({ t, pulseData }) {
           label={`${t("தொடர்பு கொள்ள", "Call Temple")} — ${t(PRIMARY_CONTACT.role.ta, PRIMARY_CONTACT.role.en)}`}
         >
           <a
-            href={telHref(PRIMARY_CONTACT.phone)}
+            href={telHref(phone)}
             className="home-tile__value home-tile__value--link"
-            aria-label={`${formatPhone(PRIMARY_CONTACT.phone)} — ${t(PRIMARY_CONTACT.name.ta, PRIMARY_CONTACT.name.en)}, ${t(PRIMARY_CONTACT.role.ta, PRIMARY_CONTACT.role.en)}`}
+            aria-label={`${formatPhone(phone)} — ${t(PRIMARY_CONTACT.name.ta, PRIMARY_CONTACT.name.en)}, ${t(PRIMARY_CONTACT.role.ta, PRIMARY_CONTACT.role.en)}`}
           >
-            {formatPhone(PRIMARY_CONTACT.phone)}
+            {formatPhone(phone)}
           </a>
         </Tile>
         <Tile index={2} icon={<LuClock />} label={t("கோயில் நேரம்", "Temple Hours")}>
-          <p className="home-tile__value">{HOURS[0]}</p>
-          <p className="home-tile__value">{HOURS[1]}</p>
+          {HOURS.map((h) => <p key={h} className="home-tile__value">{h}</p>)}
         </Tile>
         <Tile index={3} icon={<LuConstruction />} label={t(FACILITIES.label.ta, FACILITIES.label.en)}>
           <p className="home-tile__value">{t(FACILITIES.status.ta, FACILITIES.status.en)}</p>
@@ -590,6 +596,9 @@ export default function Home() {
   const [pournami, setPournami] = useState(null);
   const [pournamis, setPournamis] = useState([]);
   const [donors, setDonors] = useState([]);
+  // The gallery preview strip (brief §6 Home): the newest shown photos, or
+  // nothing at all until the committee has uploaded some.
+  const [gallery, setGallery] = useState([]);
   // Nalla Neram by IST weekday (0=Sun … 6=Sat) — same table as backend (lib/templeTime)
   const istWeekday = new Date(
     new Date().toLocaleString("en-US", { timeZone: "Asia/Kolkata" }),
@@ -603,6 +612,24 @@ export default function Home() {
   });
   const { lang, t } = useLang();
   const [mode, setMode] = useState(() => detectInitialMode(lang));
+  // The committee's words and figures (Admin → System → Settings): each one
+  // replaces the built-in value only when it has been typed.
+  const { site } = useSiteSettings();
+  const HOURS = hoursLabels(site);
+  const youtubeUrl = siteValue(site, "social_youtube") || TEMPLE.youtube.channelUrl;
+  const officePhone = siteOfficeDigits(site, PRIMARY_CONTACT.phone);
+  const templeName = siteText(site, "temple_name", lang) || t(TEMPLE.name.ta, TEMPLE.name.en);
+  const templeDescriptor = siteText(site, "temple_descriptor", lang) || t(TEMPLE.descriptor.ta, TEMPLE.descriptor.en);
+  const templeAddress = siteText(site, "temple_address", lang) || t(ADDRESS.printed.ta, ADDRESS.printed.en);
+  const heroTitle = siteText(site, "hero_title", lang) || templeName;
+  const intro = paragraphs(siteText(site, "intro", lang));
+  // The committee's Nalla Neram table (Admin → Temple → Nalla Neram) replaces
+  // the built-in one; keyed on its text so the effect runs once per change.
+  const ownNallaKey = JSON.stringify(siteNallaNeram(site, istWeekday) ?? null);
+  useEffect(() => {
+    const own = JSON.parse(ownNallaKey);
+    if (own) setNallaTime(own);
+  }, [ownNallaKey]);
   // The "Online Donation" tile only says "online" once online giving really
   // works; until then it points at the bank details (docs/payments/SPEC.md §7.8).
   const { config: paymentsConfig } = usePaymentsConfig();
@@ -619,6 +646,11 @@ export default function Home() {
     liveOverview.serverOffset,
   );
   const liveStarting = !liveIsOn && Boolean(liveStream) && (liveStartPassed || startHasPassed(liveStream, liveOverview.serverOffset));
+  // The pooja the broadcast belongs to (migration 022), in the reading
+  // language or the other one; "" when the stream is not linked to a pooja.
+  const livePoojaName = liveStream?.pooja
+    ? (lang === "ta" ? liveStream.pooja.name_ta || liveStream.pooja.name_en : liveStream.pooja.name_en || liveStream.pooja.name_ta) || ""
+    : "";
 
   // Live IST clock — ticks every second
   useEffect(() => {
@@ -640,6 +672,10 @@ export default function Home() {
       .then((r) => setSevas(Array.isArray(r.data) ? r.data : []))
       .catch(() => {})
       .finally(() => setSevasLoading(false));
+    api
+      .get("/gallery?limit=6")
+      .then((r) => setGallery(Array.isArray(r.data) ? r.data.filter((g) => g && g.id && (g.thumb_url || g.url)) : []))
+      .catch(() => {});
     api
       .get("/pulse")
       .then((r) =>
@@ -664,8 +700,12 @@ export default function Home() {
       .catch(() => {});
 
     // Find next 3 Pournami dates across 3 months from calendar
-    const todayStr = new Date().toISOString().slice(0, 10);
-    const now = new Date();
+    // The temple's own day (IST): between midnight and 05:30 IST the UTC date is
+    // still yesterday, which used to keep an expired Pournami on the page.
+    const todayStr = todayIST();
+    // The months counted from the temple's month too, not the browser's: on
+    // the 1st before 05:30 IST a visitor abroad is still in last month.
+    const now = getISTNow();
     const monthsToFetch = [0, 1, 2].map((offset) => {
       const d = new Date(now.getFullYear(), now.getMonth() + offset, 1);
       return { year: d.getFullYear(), month: d.getMonth() + 1 };
@@ -728,7 +768,7 @@ export default function Home() {
 
   // The hero's one-line description of the temple, and the sentence a shared
   // link to the site shows.
-  const heroLead = t(
+  const heroLead = siteText(site, "hero_lead", lang) || t(
     "பக்தி, பாரம்பரியம் மற்றும் சமூகம் — ஒரு புனிதத் தலம்",
     "A sacred place of devotion, tradition, and community",
   );
@@ -753,10 +793,10 @@ export default function Home() {
               <span>{t(TEMPLE.invocation.ta, TEMPLE.invocation.en)}</span>
             </p>
             <h1 id="home-hero-title" className="home-hero__title">
-              {t(TEMPLE.name.ta, TEMPLE.name.en)}
+              {heroTitle}
             </h1>
             <p className="home-hero__meta">
-              {t(TEMPLE.descriptor.ta, TEMPLE.descriptor.en)} · {t(ADDRESS.printed.ta, ADDRESS.printed.en)}
+              {templeDescriptor} · {templeAddress}
             </p>
             <p className="home-hero__lead">{heroLead}</p>
             <div className="home-hero__actions">
@@ -775,7 +815,7 @@ export default function Home() {
               <ShareButton
                 variant="outline-light"
                 size="lg"
-                title={t(TEMPLE.name.ta, TEMPLE.name.en)}
+                title={templeName}
                 text={heroLead}
                 to="/"
               />
@@ -830,7 +870,18 @@ export default function Home() {
                             ? t("விரைவில் தொடங்கும்", "Starting shortly")
                             : nextDarshanLine(liveStream, lang, t, liveOverview.serverOffset)}
                       </span>
-                      <small>{streamTitle(liveStream, lang)}</small>
+                      {/* The pooja the broadcast belongs to and its consented
+                          sponsor (migration 022; brief §12): named when the
+                          stream carries them, silent otherwise. */}
+                      <small>
+                        {[
+                          streamTitle(liveStream, lang),
+                          livePoojaName && livePoojaName !== streamTitle(liveStream, lang) ? livePoojaName : "",
+                          liveStream.sponsor?.name ? `${t("ஸ்பான்சர்", "Sponsor")}: ${liveStream.sponsor.name}` : "",
+                        ]
+                          .filter(Boolean)
+                          .join(" · ")}
+                      </small>
                     </Link>
                   </dd>
                 </div>
@@ -863,6 +914,16 @@ export default function Home() {
         </div>
       </section>
 
+      {/* ── Temple introduction (Admin → System → Settings → Homepage words) ── */}
+      {intro.length > 0 && (
+        <section className="section section--tight home-intro reveal" aria-labelledby="home-intro-title" data-source="cms">
+          <div className="container page-prose home-intro__prose">
+            <h2 id="home-intro-title" className="sr-only">{t("அறிமுகம்", "Introduction")}</h2>
+            {intro.map((p) => <p key={p}>{p}</p>)}
+          </div>
+        </section>
+      )}
+
       {/* ── Live band: notices · nalla neram · donors ── */}
       {(showNotices || showNalla || showDonors) && (
         <div className="live-band" role="region" aria-label={t("நேரலை தகவல்", "Live updates")}>
@@ -889,7 +950,7 @@ export default function Home() {
                           className={`live-band__item${dup ? " live-band__item--dup" : ""}`}
                           aria-hidden={dup || undefined}
                         >
-                          {a.title}
+                          {t(a.title_ta, a.title_en) || a.title}
                         </span>
                       );
                     })}
@@ -1023,11 +1084,12 @@ export default function Home() {
                 pulseData={pulseData}
                 nallaTime={nallaTime}
                 pournami={pournami}
+                HOURS={HOURS}
               />
             )}
-            {mode === "first-visit" && <FirstVisitContent t={t} />}
-            {mode === "nri" && <NriContent t={t} payOnline={payOnline} />}
-            {mode === "elder" && <ElderContent t={t} pulseData={pulseData} />}
+            {mode === "first-visit" && <FirstVisitContent t={t} HOURS={HOURS} />}
+            {mode === "nri" && <NriContent t={t} payOnline={payOnline} youtubeUrl={youtubeUrl} />}
+            {mode === "elder" && <ElderContent t={t} pulseData={pulseData} HOURS={HOURS} phone={officePhone} />}
             {mode === "volunteer" && <VolunteerContent t={t} />}
             {mode === "sponsor" && <SponsorContent t={t} />}
           </div>
@@ -1059,18 +1121,38 @@ export default function Home() {
               {sevas.length > 0
                 ? sevas.map((s, i) => {
                     const Icon = SEVA_ICONS[i % SEVA_ICONS.length];
+                    // Only an explicit "no" from the API locks a seva (migration
+                    // 020 is_bookable); a bookable one links straight to its
+                    // booking form, an office-only one to the list and its note.
+                    const bookable = !(s.is_bookable === false || s.is_bookable === 0 || s.is_bookable === "0");
+                    const desc = t(s.description_ta, s.description_en) || s.description_en || s.description_ta || s.description || "";
+                    const timing = t(s.timing_ta, s.timing_en) || s.timing_en || s.timing_ta || "";
+                    const Card = bookable ? Link : "a";
+                    const target = bookable ? { to: `/sevas?seva=${s.id}` } : { href: telHref(officePhone), "aria-label": `${(lang === "ta" ? s.name_ta : s.name_en) || s.name_en || s.name_ta} — ${t("அலுவலகத்தை அழைக்க", "Call the temple office")} ${formatPhone(officePhone)}` };
                     return (
-                      <Link to="/sevas" key={s.id} className="home-seva card card--interactive rise" style={{ "--i": i }}>
+                      <Card
+                        {...target}
+                        key={s.id}
+                        className={`home-seva card card--interactive rise${bookable ? "" : " home-seva--office"}`}
+                        style={{ "--i": i }}
+                        data-seva-id={s.id}
+                      >
                         <span className="card__icon" aria-hidden="true">
                           <Icon />
                         </span>
-                        <h3 className="home-seva__name">{lang === "ta" ? s.name_ta : s.name_en}</h3>
+                        <h3 className="home-seva__name">{(lang === "ta" ? s.name_ta : s.name_en) || s.name_en || s.name_ta}</h3>
+                        {desc && <p className="home-seva__desc">{desc}</p>}
+                        {timing && (
+                          <p className="home-seva__timing">
+                            <LuClock aria-hidden="true" /> {timing}
+                          </p>
+                        )}
                         {s.amount != null && <p className="home-seva__price text-gradient">₹{s.amount}</p>}
                         <span className="home-seva__cta">
-                          {t("பதிவு", "Book")}
-                          <LuArrowRight aria-hidden="true" />
+                          {bookable ? t("பதிவு", "Book") : t("அலுவலகத்தை அணுக", "Contact the office")}
+                          {bookable ? <LuArrowRight aria-hidden="true" /> : <LuPhone aria-hidden="true" />}
                         </span>
-                      </Link>
+                      </Card>
                     );
                   })
                 : FALLBACK_SEVAS.map(([ta, en], i) => {
@@ -1124,8 +1206,15 @@ export default function Home() {
                         </span>
                       </time>
                       <div className="home-event__body">
-                        <h3>{lang === "ta" ? e.title_ta : e.title_en}</h3>
-                        {e.description && <p>{e.description}</p>}
+                        <h3>
+                          <Link to={`/events/${e.id}`} className="home-event__link">
+                            {t(e.title_ta, e.title_en) || e.title_en || e.title_ta}
+                          </Link>
+                          {e.is_featured ? <Badge tone="gold" className="home-event__badge">{t("சிறப்பு", "Featured")}</Badge> : null}
+                        </h3>
+                        {(t(e.description_ta, e.description_en) || e.description) && (
+                          <p>{t(e.description_ta, e.description_en) || e.description}</p>
+                        )}
                       </div>
                     </article>
                   );
@@ -1147,6 +1236,51 @@ export default function Home() {
           </div>
         </div>
       </section>
+
+      {/* ── Gallery preview (brief §6 Home) — the newest photographs, lazily
+          loaded; no section at all until the committee has uploaded some ── */}
+      {gallery.length > 0 && (
+        <section className="section home-section home-gallery reveal" aria-labelledby="home-gallery-title">
+          <div className="container">
+            <SectionHeader
+              id="home-gallery-title"
+              align="split"
+              eyebrow={t("படத் தொகுப்பு", "Gallery")}
+              title={t("கோயில் புகைப்படங்கள்", "Temple photographs")}
+              subtitle={t("சமீபத்திய திருவிழாக்களும் நிகழ்வுகளும்", "Recent festivals and events")}
+              actions={
+                <Button to="/gallery" variant="outline" size="sm" icon={<LuImages aria-hidden="true" />}>
+                  {t("அனைத்து படங்களும் →", "View gallery →")}
+                </Button>
+              }
+            />
+            <ul className="home-gallery__strip" role="list">
+              {gallery.map((img, i) => {
+                // The committee's alt text (migration 021) in the reading
+                // language, the caption when there is none, a plain label last.
+                const alt = t(img.alt_ta, img.alt_en) || img.alt_en || img.alt_ta || img.caption || t("கோயில் புகைப்படம்", "Temple photo");
+                const w = img.thumb_width || img.width || null;
+                const h = w && img.width && img.height ? Math.round((w * img.height) / img.width) : null;
+                return (
+                  <li key={img.id} className="home-gallery__item rise" style={{ "--i": i }}>
+                    {/* ?photo=<id> opens this photograph in the gallery's lightbox */}
+                    <Link to={`/gallery?photo=${img.id}`} className="home-gallery__link" aria-label={`${alt} — ${t("பெரிதாக்கு", "Enlarge")}`}>
+                      <img
+                        src={img.thumb_url || img.url}
+                        alt={alt}
+                        width={w || undefined}
+                        height={h || undefined}
+                        loading="lazy"
+                        decoding="async"
+                      />
+                    </Link>
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
+        </section>
+      )}
 
       {/* ── Quick actions ── */}
       <section className="section home-section reveal" aria-label={t("விரைவு இணைப்புகள்", "Quick links")}>

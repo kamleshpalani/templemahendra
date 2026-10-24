@@ -30,6 +30,7 @@ import { POOJA_SCHEDULE, to12h } from "../lib/templeTime";
 import HistoryTimeline from "../components/HistoryTimeline/HistoryTimeline";
 import TrustDetails from "../components/TrustDetails/TrustDetails";
 import CommitteeGrid from "../components/CommitteeGrid/CommitteeGrid";
+import { paragraphs } from "../lib/siteSettings";
 import "./PageCommon.css";
 import "./About.css";
 
@@ -76,6 +77,27 @@ export default function About() {
     };
   }, []);
   const deityList = deities ?? TEMPLE.deities.map((d) => ({ name_ta: d.ta, name_en: d.en }));
+  // The mission and history the committee writes (Admin → Content → Pages,
+  // slugs "mission" and "history"): shown when they have a body, above the
+  // built-in timeline; nothing is invented when they are empty or absent.
+  const [cmsPages, setCmsPages] = useState({});
+  useEffect(() => {
+    let alive = true;
+    Promise.all(["mission", "history"].map((slug) => api.get(`/pages/${slug}`).then((r) => [slug, r.data]).catch(() => [slug, null])))
+      .then((pairs) => { if (alive) setCmsPages(Object.fromEntries(pairs)); });
+    return () => { alive = false; };
+  }, []);
+  const cmsBody = (slug) => {
+    const p = cmsPages[slug];
+    if (!p) return [];
+    return paragraphs(lang === "ta" ? p.body_ta || p.body_en : p.body_en || p.body_ta);
+  };
+  const cmsTitle = (slug, fallback) => {
+    const p = cmsPages[slug];
+    return p ? (lang === "ta" ? p.title_ta || p.title_en : p.title_en || p.title_ta) || fallback : fallback;
+  };
+  const mission = cmsBody("mission");
+  const historyBody = cmsBody("history");
 
   const facts = HERO_FACTS.map((f) => {
     const m = HISTORY.timeline.find((x) => x.key === f.key);
@@ -168,7 +190,19 @@ export default function About() {
           )}
 
           {/* ── History ─────────────────────────────────────────── */}
-          <h2 id="history">{t("வரலாறு", "History")}</h2>
+          {mission.length > 0 && (
+            <>
+              <h2 id="mission" data-source="cms">{cmsTitle("mission", t("நோக்கம்", "Our mission"))}</h2>
+              {mission.map((p) => <p key={p}>{p}</p>)}
+            </>
+          )}
+
+          <h2 id="history">{historyBody.length > 0 ? cmsTitle("history", t("வரலாறு", "History")) : t("வரலாறு", "History")}</h2>
+          {historyBody.length > 0 && (
+            <div data-source="cms">
+              {historyBody.map((p) => <p key={p}>{p}</p>)}
+            </div>
+          )}
           <HistoryTimeline />
 
           {/* ── Deities ─────────────────────────────────────────── */}
@@ -211,6 +245,9 @@ export default function About() {
           <p className="about-link">
             <Button variant="soft" size="sm" to="/events" icon={<LuCalendarDays aria-hidden="true" />}>
               {t("பௌர்ணமி தேதிகள் →", "Pournami dates →")}
+            </Button>{" "}
+            <Button variant="soft" size="sm" to="/deities">
+              {t("அனைத்து தெய்வங்கள் →", "All deities →")}
             </Button>
           </p>
 

@@ -11,30 +11,32 @@
  *   • how each class of answer (success, 429 with Retry-After, 5xx, network
  *     failure, each permanent error group, bad credentials) becomes a
  *     NotifyResult: sent, retry (with its wait), rejected, skipped;
- *   • the mailer's extra headers over SMTP and in the log transport, and the
+ *   • web push and FCM are gone with devotee sign-in (NOTIFY_RETIRED_CHANNELS):
+ *     asking the service for a push or in-app provider, whatever driver and keys
+ *     are configured, gives the "unavailable" provider that skips every send,
+ *     no retired provider class loads, and nothing reaches the stand-in push
+ *     and FCM services, which still listen so an attempt would be seen;
+ *   • the mailer's new extra headers over SMTP and in the log transport, and the
  *     refusal of header injection;
  *   • the webhook endpoint over HTTP (two PHP servers with different drivers):
  *     Meta verification and signatures, Twilio signatures computed exactly as
- *     Twilio does, the MSG91 token, the test driver, what is refused, and that
- *     a verified update reaches notification_deliveries;
- *   • backend/bin/notify_keys.php check: the three live channels, no secret
- *     printed, exit 1 on a broken setting, and the retired vapid command gone.
- *
- * The temple sends on email, WhatsApp and SMS only. Web push and FCM went with
- * devotee sign-in (docs/registration/SPEC.md §1, §6): there is no push channel,
- * no push provider and no VAPID/FCM key check any more.
+ *     Twilio does, the MSG91 token, the test driver (on the email channel), what
+ *     is refused, and verified updates applied to notification_deliveries;
+ *   • backend/bin/notify_keys.php check: each channel's readiness and named
+ *     problems, no secret printed, the retired push keys never mentioned.
  *
  * Ports 8020–8029 (the providers agent's range): 8020 and 8028 PHP webhook
- * servers, 8021 Meta, 8022 Twilio, 8023 MSG91, 8024 SMTP, 8029 deliberately
- * closed. Requests to the PHP servers carry X-Forwarded-For 10.20.0.1. Creates
- * e2e-providers-<run>-… rows and removes them.
+ * servers, 8021 Meta, 8022 Twilio, 8023 MSG91, 8024 SMTP, 8025 and 8026 the
+ * retired push and FCM services (listening only to catch a stray request),
+ * 8029 deliberately closed. Requests to the PHP servers carry
+ * X-Forwarded-For 10.20.0.1. Creates e2e-providers-<run>-… rows and removes them.
  */
 
 import http from "node:http";
 import net from "node:net";
 import crypto from "node:crypto";
 import { spawn, spawnSync } from "node:child_process";
-import { readFileSync, existsSync } from "node:fs";
+import { readFileSync, readdirSync, existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
 
@@ -47,7 +49,7 @@ const EMAIL_PREFIX = `e2e-providers-${RUN}`;
 const MAIL_LOG = resolve(ROOT, "backend/logs/mail.log");
 const SITE = "https://temple.example";
 
-const PORT = { hookA: 8020, meta: 8021, twilio: 8022, msg91: 8023, smtp: 8024, hookB: 8028, closed: 8029 };
+const PORT = { hookA: 8020, meta: 8021, twilio: 8022, msg91: 8023, smtp: 8024, push: 8025, fcm: 8026, hookB: 8028, closed: 8029 };
 const LOCAL = (port) => `http://127.0.0.1:${port}`;
 
 let passed = 0;
@@ -83,7 +85,7 @@ function safeJson(input) {
 
 // Provider settings from the caller's shell must not leak into a case that
 // expects them unset; each case passes exactly what it needs.
-const PROVIDER_ENV = /^(NOTIFY_|WHATSAPP_|TWILIO_|MSG91_|MAIL_|SMTP_)/i;
+const PROVIDER_ENV = /^(NOTIFY_|WHATSAPP_|TWILIO_|MSG91_|VAPID_|FCM_|MAIL_|SMTP_)/i;
 function phpEnv(extra = {}) {
   const env = {};
   for (const [k, v] of Object.entries(process.env)) if (!PROVIDER_ENV.test(k)) env[k] = v;
@@ -311,6 +313,14 @@ function startSmtp(port) {
     server.once("error", fail);
     server.listen(port, "127.0.0.1", () => ok(server));
   });
+}
+
+/* Web push and FCM: retired with devotee sign-in. The two ports still answer
+   and record whatever arrives, so a regression that sent there would be seen. */
+const retired = { requests: [] };
+async function retiredHandler(req, res) {
+  retired.requests.push({ port: req.socket.localPort, method: req.method, url: req.url });
+  reply(res, 410, { error: "this service is not used by the temple" });
 }
 
 /* ── Shared message shapes ─────────────────────────────────────────────── */
@@ -547,6 +557,41 @@ async function testMsg91() {
   check(msg91.requests.length === 6 && !msg91.requests.some((r) => r.json?.template_id === undefined), "the case without a template never reached MSG91", `requests ${msg91.requests.length}`);
 }
 
+/* ── Web push and FCM: retired ────────────────────────────────────────── */
+
+async function testRetiredPush() {
+  section("Web push and FCM: retired with devotee sign-in");
+  // Every key they ever needed is set, pointing at the listening stand-ins, so
+  // only the absence of the providers can explain an empty request log.
+  const keys = {
+    NOTIFY_ALLOW_TEST_DRIVER: "1",
+    VAPID_PUBLIC_KEY: "BPublicKeyForARetiredChannelOnly0000000000000000000000000000000000000000000000000000000",
+    VAPID_PRIVATE_KEY: "privateKeyForARetiredChannel000000000000000",
+    VAPID_SUBJECT: "mailto:office@temple.example",
+    FCM_PROJECT_ID: "temple-e2e",
+    FCM_BASE_URL: LOCAL(PORT.fcm),
+    FCM_TOKEN_URL: `${LOCAL(PORT.fcm)}/token`,
+  };
+  retired.requests.length = 0;
+  const cases = [["push", "webpush"], ["push", "fcm"], ["push", "test"], ["inapp", "test"], ["inapp", "log"]];
+  const results = await batch(cases.map(([channel, driver]) => ({ command: "retired", channel, driver, env: keys, message: { title: "சேவை உறுதி", body: "BK-1042" } })));
+  cases.forEach(([channel, driver], i) => {
+    const r = results[i] ?? {};
+    check(
+      r.class === "NotifyUnavailableProvider" && r.configured === false && r.result?.status === "skipped" && r.result?.reason === "not configured: unknown channel",
+      `${channel} with driver "${driver}" (and every key set): the unavailable provider, the send skipped as an unknown channel`,
+      show(r),
+    );
+  });
+  const first = results[0] ?? {};
+  check(show(first.registry) === show(["email", "whatsapp", "sms"]) && show(first.channels) === show(["email", "whatsapp", "sms"]), "the provider registry and NOTIFY_CHANNELS are email, WhatsApp and SMS only", show([first.registry, first.channels]));
+  check(Array.isArray(first.retiredClasses) && first.retiredClasses.length === 0, "no web push, FCM or in-app provider class loads", show(first.retiredClasses));
+  const providerFiles = readdirSync(resolve(ROOT, "backend/includes/notify/providers"));
+  check(!providerFiles.some((f) => /push|fcm|vapid|inapp/i.test(f)), "no push, FCM or in-app provider file ships", providerFiles.join(", "));
+  await sleep(200);
+  check(retired.requests.length === 0, "nothing reached the push or FCM stand-in", show(retired.requests));
+}
+
 /* ── Webhooks through the endpoint ─────────────────────────────────────── */
 
 function startPhpServer(port, env) {
@@ -595,12 +640,12 @@ function twilioSignature(token, url, params) {
 
 async function testWebhooks() {
   const testSecret = `test-hook-secret-${RUN}`;
-  // Server A: WhatsApp and SMS both on twilio, email on the test driver (so the
-  // test driver's webhook has a channel to route to). Server B: meta and msg91.
   const envA = {
     SITE_URL: LOCAL(PORT.hookA),
     NOTIFY_WHATSAPP_DRIVER: "twilio",
     NOTIFY_SMS_DRIVER: "twilio",
+    // The test driver's callbacks need a channel that uses it: email here (push,
+    // which used to carry it, is retired).
     NOTIFY_EMAIL_DRIVER: "test",
     NOTIFY_ALLOW_TEST_DRIVER: "1",
     NOTIFY_TEST_WEBHOOK_SECRET: testSecret,
@@ -728,18 +773,18 @@ async function testWebhooks() {
     check(show(parsed91[3].result?.updates?.map((u) => [u.message_id, u.status])) === show([["R-SENT", "sent"], ["R-NDNC", "failed"]]), "a list of reports: sent, and numeric code 9 (NDNC) → failed", show(parsed91[3]));
     check(parsed91[4].result?.updates?.[0]?.message_id === "R-GET" && parsed91[4].result?.updates?.[0]?.status === "delivered", "a GET report reads the query string", show(parsed91[4]));
 
-    section("Webhook endpoint: test driver (on email), routing and refusals");
+    section("Webhook endpoint: test driver, routing and refusals");
     const testBody = JSON.stringify({ updates: [{ message_id: `test-e2e-${RUN}`, status: "delivered" }] });
     const testOk = await hook(PORT.hookA, "POST", "/api/notify-webhook/test", { headers: { "Content-Type": "application/json", "X-Test-Signature": crypto.createHmac("sha256", testSecret).update(testBody).digest("hex") }, body: testBody });
     check(testOk.status === 200 && testOk.type.startsWith("application/json") && safeJson(testOk.text)?.ok === true, "test driver with a valid X-Test-Signature → 200", show(testOk));
     const testBad = await hook(PORT.hookA, "POST", "/api/notify-webhook/test", { headers: { "Content-Type": "application/json", "X-Test-Signature": "0".repeat(64) }, body: testBody });
     check(testBad.status === 403 && testBad.text === "", "test driver with a bad signature → 403", show(testBad));
     const notHere = await hook(PORT.hookA, "POST", "/api/notify-webhook/meta", { body: "{}" });
-    const msg91Here = await hook(PORT.hookA, "POST", "/api/notify-webhook/msg91", { body: "{}" });
-    const retired = await hook(PORT.hookA, "POST", "/api/notify-webhook/webpush", { body: "{}" });
+    const fcmHere = await hook(PORT.hookA, "POST", "/api/notify-webhook/fcm", { body: "{}" });
+    const webpushHere = await hook(PORT.hookA, "POST", "/api/notify-webhook/webpush", { body: "{}" });
+    check(webpushHere.status === 404 && fcmHere.status === 404, "the retired push drivers have no webhook (webpush, fcm → 404)", show([webpushHere.status, fcmHere.status]));
     const badName = await hook(PORT.hookA, "POST", "/api/notify-webhook/Not_A_Driver", { body: "{}" });
-    check(notHere.status === 404 && msg91Here.status === 404 && badName.status === 404, "a driver not configured on this server, or a malformed name → 404", show([notHere.status, msg91Here.status, badName.status]));
-    check(retired.status === 404, "a retired push driver name is not an endpoint any more → 404", show(retired.status));
+    check(notHere.status === 404 && fcmHere.status === 404 && badName.status === 404, "a driver not configured on this server, or a malformed name → 404", show([notHere.status, fcmHere.status, badName.status]));
     const huge = await hook(PORT.hookA, "POST", "/api/notify-webhook/test", { headers: { "Content-Type": "application/json" }, body: "x".repeat(1024 * 1024 + 10) });
     check(huge.status === 413, "a body over 1 MB → 413", show(huge.status));
     const twilioGet = await hook(PORT.hookA, "GET", "/api/notify-webhook/twilio");
@@ -767,7 +812,7 @@ async function testWebhooks() {
       await hook(PORT.hookA, "POST", "/api/notify-webhook/test", { headers: { "Content-Type": "application/json", "X-Test-Signature": crypto.createHmac("sha256", testSecret).update(testBody).digest("hex") }, body: testBody });
       const rows = (await sql("SELECT channel, status FROM notification_deliveries WHERE notification_id = ?", [notificationId])).rows ?? [];
       const byChannel = Object.fromEntries(rows.map((r) => [r.channel, r.status]));
-      check(byChannel.sms === "delivered" && byChannel.email === "delivered", "verified updates reach notification_deliveries through notifyApplyProviderUpdate()", show(rows));
+      check(byChannel.sms === "delivered" && byChannel.email === "delivered", "verified updates reach notification_deliveries through notifyApplyProviderUpdate() (Twilio SMS, test-driver email)", show(rows));
     } else {
       const before = (serverA.log.match(/verified status update\(s\) not applied/g) ?? []).length;
       const p = { MessageSid: `SM${RUN}once`, MessageStatus: "delivered" };
@@ -787,35 +832,31 @@ async function testWebhooks() {
 
 async function testKeysCli() {
   section("backend/bin/notify_keys.php");
-  const smtpPass = `smtp-pass-${RUN}`;
   const fine = {
     SITE_URL: SITE,
-    MAIL_TRANSPORT: "smtp", SMTP_HOST: "smtp.example.test", SMTP_PORT: "587", SMTP_SECURE: "tls", SMTP_USER: "notify", SMTP_PASS: smtpPass, MAIL_FROM: "notify@temple.example",
+    MAIL_TRANSPORT: "smtp", SMTP_HOST: "smtp.temple.example", SMTP_PORT: "587", SMTP_SECURE: "tls", SMTP_USER: "office", SMTP_PASS: `smtp-pass-${RUN}`, MAIL_FROM: "office@temple.example",
     NOTIFY_WHATSAPP_DRIVER: "meta", WHATSAPP_META_TOKEN: META.token, WHATSAPP_META_PHONE_NUMBER_ID: META.phoneId, WHATSAPP_META_APP_SECRET: META.appSecret, WHATSAPP_META_VERIFY_TOKEN: META.verifyToken,
     NOTIFY_SMS_DRIVER: "msg91", MSG91_AUTH_KEY: MSG91.key, MSG91_WEBHOOK_TOKEN: MSG91.webhookToken,
+    // Set only to prove they are ignored: push is not a channel any more.
+    NOTIFY_PUSH_DRIVER: "webpush", VAPID_PUBLIC_KEY: "not-a-key", VAPID_PRIVATE_KEY: "not-a-key",
   };
   const ok = await runPhp(["backend/bin/notify_keys.php", "check"], { env: fine });
   notePhpNoise("notify_keys check", ok.stdout + ok.stderr);
-  check(ok.code === 0 && /email \(driver "mailer"\): ready/.test(ok.stdout) && /whatsapp \(driver "meta"\): ready/.test(ok.stdout) && /sms \(driver "msg91"\): ready/.test(ok.stdout), "check with good settings: every channel ready, exit 0", ok.stdout.slice(0, 1200));
-  check((ok.stdout.match(/^\S+ \(driver "[a-z0-9]+"\): /gm) ?? []).length === 3 && !/push|vapid|fcm/i.test(ok.stdout), "exactly the three live channels are reported; nothing about push, VAPID or FCM", ok.stdout.slice(0, 1200));
-  check(/MAIL_TRANSPORT=smtp/.test(ok.stdout) && /SMTP_PASS is set \(\d+ characters\)/.test(ok.stdout) && /MAIL_FROM is a valid address/.test(ok.stdout), "the mailer's SMTP settings are reported by presence and length", ok.stdout.slice(0, 1200));
-  check(![smtpPass, META.token, META.appSecret, MSG91.key, MSG91.webhookToken].some((s) => ok.stdout.includes(s) || ok.stderr.includes(s)), "check prints no secret");
+  check(ok.code === 0 && /email \(driver "mailer"\): ready/.test(ok.stdout) && /whatsapp \(driver "meta"\): ready/.test(ok.stdout) && /sms \(driver "msg91"\): ready/.test(ok.stdout) && /No problems found\./.test(ok.stdout), "check with good settings: email, WhatsApp and SMS ready, exit 0", ok.stdout.slice(0, 1400));
+  check(!/push|VAPID|FCM|in-app|inapp/i.test(ok.stdout), "check reports no push, VAPID, FCM or in-app channel (retired)", ok.stdout.slice(0, 600));
+  check(![fine.SMTP_PASS, META.token, META.appSecret, META.verifyToken, MSG91.key, MSG91.webhookToken].some((x) => ok.stdout.includes(x) || ok.stderr.includes(x)), "check prints no secret");
 
-  const broken = await runPhp(["backend/bin/notify_keys.php", "check"], { env: { ...fine, WHATSAPP_META_PHONE_NUMBER_ID: "+15550783881", NOTIFY_SMS_DRIVER: "twilio", TWILIO_ACCOUNT_SID: "AC123" } });
-  check(broken.code === 1 && /WHATSAPP_META_PHONE_NUMBER_ID must be the numeric phone number id/.test(broken.stdout) && /TWILIO_ACCOUNT_SID must be AC/.test(broken.stdout) && /set TWILIO_SMS_FROM or TWILIO_MESSAGING_SERVICE_SID/.test(broken.stdout), "check with a phone number for the Meta id and a bad SID: named problems, exit 1", broken.stdout.slice(0, 1500));
-  // Meta's isConfigured() only asks whether the token and id are set, so the
-  // channel line still says ready; the shape error is listed and counted anyway.
-  check(/whatsapp \(driver "meta"\): ready/.test(broken.stdout) && /sms \(driver "twilio"\): NOT READY/.test(broken.stdout) && /the provider reports it is not configured, so this channel will be skipped/.test(broken.stdout) && /5 problem\(s\) found\./.test(broken.stdout), "Twilio is NOT READY (and says it will be skipped); every problem is counted", broken.stdout.slice(-400));
-
-  const logDrivers = await runPhp(["backend/bin/notify_keys.php", "check"], { env: { SITE_URL: SITE } });
-  check(logDrivers.code === 0 && /whatsapp \(driver "log"\): ready/.test(logDrivers.stdout) && /sms \(driver "log"\): ready/.test(logDrivers.stdout) && /nothing reaches a devotee/.test(logDrivers.stdout), "with nothing set, WhatsApp and SMS fall back to the log driver with a warning, exit 0", logDrivers.stdout.slice(0, 1200));
+  const broken = await runPhp(["backend/bin/notify_keys.php", "check"], { env: { ...fine, NOTIFY_SMS_DRIVER: "twilio", TWILIO_ACCOUNT_SID: "AC123", WHATSAPP_META_PHONE_NUMBER_ID: "+91 98765 43210" } });
+  check(broken.code === 1 && /TWILIO_ACCOUNT_SID must be AC/.test(broken.stdout) && /WHATSAPP_META_PHONE_NUMBER_ID must be the numeric phone number id/.test(broken.stdout) && /sms \(driver "twilio"\): NOT READY/.test(broken.stdout), "check with a bad SID and a phone number for the Meta id: named problems, NOT READY, exit 1", broken.stdout.slice(0, 1500));
+  const unknownDriver = await runPhp(["backend/bin/notify_keys.php", "check"], { env: { ...fine, NOTIFY_WHATSAPP_DRIVER: "carrier-pigeon" } });
+  check(unknownDriver.code === 1 && /unknown driver: use log, test, meta, twilio/.test(unknownDriver.stdout), "an unknown driver is named with the ones that exist, exit 1", unknownDriver.stdout.slice(0, 900));
 
   const vapid = await runPhp(["backend/bin/notify_keys.php", "vapid"]);
-  check(vapid.code === 2 && /Unknown command "vapid"/.test(vapid.stderr) && vapid.stdout.trim() === "", "the retired vapid command is unknown: exit 2, no key printed", vapid.stdout + vapid.stderr);
+  check(vapid.code === 2 && /Unknown command "vapid"\. Use check\./.test(vapid.stderr) && vapid.stdout.trim() === "", "the retired vapid command is refused (exit 2) and prints no key", vapid.stdout + vapid.stderr);
   const unknown = await runPhp(["backend/bin/notify_keys.php", "rotate"]);
   check(unknown.code === 2, "an unknown command exits 2");
   const help = await runPhp(["backend/bin/notify_keys.php", "help"]);
-  check(help.code === 0 && /notify_keys\.php check/.test(help.stdout) && !/vapid|fcm/i.test(help.stdout), "help lists only check", help.stdout);
+  check(help.code === 0 && /notify_keys\.php check/.test(help.stdout) && !/vapid/i.test(help.stdout), "help lists check and nothing retired", help.stdout);
 }
 
 /* ── Run ───────────────────────────────────────────────────────────────── */
@@ -835,8 +876,10 @@ async function main() {
     servers.push(await startHttp(PORT.twilio, twilioHandler));
     servers.push(await startHttp(PORT.msg91, msg91Handler));
     servers.push(await startSmtp(PORT.smtp));
+    servers.push(await startHttp(PORT.push, retiredHandler));
+    servers.push(await startHttp(PORT.fcm, retiredHandler));
 
-    const suites = [testMailer, testMeta, testTwilio, testMsg91, testWebhooks, testKeysCli];
+    const suites = [testMailer, testMeta, testTwilio, testMsg91, testRetiredPush, testWebhooks, testKeysCli];
     for (const suite of suites) {
       try {
         await suite();

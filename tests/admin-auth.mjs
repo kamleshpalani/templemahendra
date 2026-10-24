@@ -1,25 +1,27 @@
 // Authentication hardening + four business roles (brief §17–18, E2E-011/012/013/046/050).
 //   node tests/admin-auth.mjs [base]
 //
-// Needs the PHP server with the usual env admin (admin / Admin@Test123). The
-// idle-expiry check waits for the timeout, so it only runs when the server
-// was started with ADMIN_IDLE_MINUTES=1 and the same value is exported here:
+// Needs the PHP server with the usual env admin (admin / Admin@Test123) and
+// TRUSTED_PROXIES=127.0.0.1, so the per-address checks can speak from their
+// own X-Forwarded-For. The idle-expiry check waits for the timeout, so it only
+// runs when the server was started with ADMIN_IDLE_MINUTES=1 and the same
+// value is exported here:
 //   ADMIN_IDLE_MINUTES=1 node tests/admin-auth.mjs
 const base = process.argv[2] || "http://127.0.0.1:8000";
 const BAD = /(<b>Warning<\/b>|<b>Fatal error<\/b>|<b>Deprecated<\/b>|<b>Notice<\/b>|Parse error|Uncaught)/;
 let pass = 0, fail = 0;
 const ok = (c, name, d = "") => { c ? pass++ : fail++; console.log(`${c ? "✓" : "✗"} ${name}${d ? " — " + d : ""}`); };
 
-function jar() {
+function jar(extra = {}) {
   let cookie = "", lastSet = [];
   const grab = (res) => {
     lastSet = res.headers.getSetCookie?.() ?? [];
     for (const c of lastSet) { const m = /^(PHPSESSID=[^;]+)/.exec(c); if (m) cookie = m[1]; }
   };
   return {
-    async get(path) { const r = await fetch(base + path, { headers: { cookie }, redirect: "manual" }); grab(r); return r; },
+    async get(path) { const r = await fetch(base + path, { headers: { cookie, ...extra }, redirect: "manual" }); grab(r); return r; },
     async post(path, body) {
-      const r = await fetch(base + path, { method: "POST", headers: { cookie, "content-type": "application/x-www-form-urlencoded" }, body: new URLSearchParams(body), redirect: "manual" });
+      const r = await fetch(base + path, { method: "POST", headers: { cookie, "content-type": "application/x-www-form-urlencoded", ...extra }, body: new URLSearchParams(body), redirect: "manual" });
       grab(r); return r;
     },
     get cookie() { return cookie; },
@@ -106,12 +108,19 @@ const matrix = [
   ["/admin/sponsors.php",           200,   200,    200,     403],  // sponsor PII: not for read-only viewers
   ["/admin/donation_categories.php",200,   200,    200,     403],
   ["/admin/payments.php",           200,   200,    200,     200],
+  ["/admin/receipts.php",           200,   200,    200,     200],  // payments.view, as Online Payments (which shows the same receipts)
   ["/admin/payment_settings.php",   403,   403,    403,     403],
   ["/admin/settings.php",           200,   403,    403,     403],
   ["/admin/users.php",              403,   403,    403,     403],
   ["/admin/live_streams.php",       200,   200,    200,     200],
   ["/admin/live_settings.php",      403,   403,    403,     403],
   ["/admin/notification_templates.php", 200, 200,  200,     200],
+  // Brief §15 pages (migration 025): content pages for editors, system pages for admins, the roles matrix for everyone.
+  ["/admin/pages.php",              200,   200,    403,     403],
+  ["/admin/nalla_neram.php",        200,   200,    403,     403],
+  ["/admin/seo.php",                200,   403,    403,     403],
+  ["/admin/languages.php",          200,   403,    403,     403],
+  ["/admin/roles.php",              200,   200,    200,     200],
 ];
 for (const [page, ...want] of matrix) {
   const got = [];
@@ -166,6 +175,34 @@ r = await owner.post("/admin/users.php", { _csrf: csrfOf(uh), action: "save", id
 ok(r.status === 303, "owner resets the locked account's password", `status ${r.status}`);
 r = await login(jar(), ACCOUNTS.locked.user, "Unlocked77Ab");
 ok(r.status === 302, "password reset by an owner lifts the lock", `status ${r.status}`);
+
+// ── per-address throttle: password spraying across usernames (brief §18) ────
+// Each attempt uses a fresh session (the per-session cool-down is a separate
+// limit) from its own X-Forwarded-For. A random octet keeps a re-run inside
+// the same quarter hour clear of the previous run's counters.
+const OCT = 1 + Math.floor(Math.random() * 250);
+const fromIp = (ip) => jar({ "X-Forwarded-For": ip });
+const IP_SPRAY = `10.95.${OCT}.1`, IP_OTHER = `10.95.${OCT}.2`, IP_ENV_A = `10.95.${OCT}.3`, IP_ENV_B = `10.95.${OCT}.4`;
+let sprayMsg = "";
+for (let i = 0; i < 30; i++) {
+  sprayMsg = await (await login(fromIp(IP_SPRAY), `nobody_${OCT}_${i}`, "wrong-" + i)).text();
+}
+ok(/Invalid username or password/.test(sprayMsg) && !/from your network/.test(sprayMsg), "30 failures across 30 usernames from one address are each a plain refusal");
+r = await login(fromIp(IP_SPRAY), ACCOUNTS.viewer.user, ACCOUNTS.viewer.pw);
+ok(r.status === 200 && /from your network/.test(await r.text()), "the 31st attempt from that address is refused even with the right password");
+r = await login(fromIp(IP_OTHER), ACCOUNTS.viewer.user, ACCOUNTS.viewer.pw);
+ok(r.status === 302, "the same account signs in from another address", `status ${r.status}`);
+uh = await usersHtml();
+ok(/30 failed sign-ins from 10\.95\./.test(uh), "the throttle is audited with the address (activity log)");
+
+// ── the recovery account locks only for the address that caused it ─────────
+let envMsg = "";
+for (let i = 0; i < 10; i++) envMsg = await (await login(fromIp(IP_ENV_A), "admin", "wrong-" + i)).text();
+ok(/temporarily locked/.test(envMsg), "ten failures lock the recovery account for that address");
+r = await login(fromIp(IP_ENV_A), "admin", "Admin@Test123");
+ok(r.status === 200 && /temporarily locked/.test(await r.text()), "…and the right password is refused from that address while locked");
+r = await login(fromIp(IP_ENV_B), "admin", "Admin@Test123");
+ok(r.status === 302, "the recovery account still signs in from another address (no remote lock-out)", `status ${r.status}`);
 
 // ── idle expiry (only when the server runs with a 1-minute idle timeout) ───
 const idleMin = Number(process.env.ADMIN_IDLE_MINUTES || 0);

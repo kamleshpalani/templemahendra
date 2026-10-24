@@ -1187,5 +1187,90 @@ function notifyTemplateBuiltIn(): array
         ],
     ];
 
+    /* ── Temple office ───────────────────────────────────────────────────── */
+
+    // Sent to the address(es) in CONTACT_NOTIFY_EMAIL when the public contact
+    // form is submitted (brief §20 and §21, test case E2E-040). The reader is
+    // the committee, so this is a briefing rather than a greeting to a devotee;
+    // senderEmail and subject read "not given" / "Website enquiry" when the
+    // visitor left them blank (contact_notify.php).
+    $t['sponsor_confirmed'] = [
+        'category'    => 'donation',
+        'description' => 'Sent once when a pooja sponsorship is paid (online, or recorded by the committee). creditLine says whether the family is named publicly.',
+        'variables'   => ['devoteeName', 'poojaName', 'poojaDate', 'sponsorAmount', 'paymentReference', 'creditLine', 'ctaUrl'],
+        'cta_path'    => '/sponsorship',
+        'langs' => [
+            'ta' => [
+                'any' => [
+                    'title'     => 'பூஜை உபயம் உறுதியானது: {{poojaName}}',
+                    'body'      => "வணக்கம் {{devoteeName}},\n\n{{poojaDate}} அன்று நடைபெறும் {{poojaName}} பூஜைக்கான உங்கள் உபயம் உறுதி செய்யப்பட்டது. மிக்க நன்றி.\n\nதொகை: {{sponsorAmount}}\nகுறிப்பு: {{paymentReference}}\n\n{{creditLine}}\n\nபூஜை நேரம் அல்லது விவரங்களுக்கு கோயில் அலுவலகத்தை {{supportPhone}} என்ற எண்ணில் அழைக்கவும். குலதெய்வங்களின் அருள் உங்கள் குடும்பத்திற்குத் துணை நிற்கட்டும்.",
+                    'cta_label' => 'பூஜை உபயங்களைப் பார்க்க',
+                ],
+                'sms' => [
+                    'title' => '',
+                    'body'  => '{{templeShortName}}: {{poojaDate}} {{poojaName}} பூஜை உபயம் உறுதியானது. நன்றி. குறிப்பு {{paymentReference}}.',
+                ],
+                'whatsapp' => [
+                    'title' => '',
+                    'body'  => "வணக்கம் {{devoteeName}},\n\nஉங்கள் பூஜை உபயம் *உறுதி செய்யப்பட்டது* 🙏\n\n*பூஜை:* {{poojaName}}\n*தேதி:* {{poojaDate}}\n*தொகை:* {{sponsorAmount}}\n*குறிப்பு:* {{paymentReference}}\n\n{{creditLine}}",
+                ],
+            ],
+            'en' => [
+                'any' => [
+                    'title'     => 'Pooja sponsorship confirmed: {{poojaName}}',
+                    'body'      => "Vanakkam {{devoteeName}},\n\nYour sponsorship of the {{poojaName}} on {{poojaDate}} is confirmed. Thank you.\n\nAmount: {{sponsorAmount}}\nReference: {{paymentReference}}\n\n{{creditLine}}\n\nFor the pooja timings or any detail, call the temple office on {{supportPhone}}. May the blessings of our kula deivams be with your family.",
+                    'cta_label' => 'See pooja sponsorships',
+                ],
+                'sms' => [
+                    'title' => '',
+                    'body'  => '{{templeShortName}}: your sponsorship of the {{poojaName}} on {{poojaDate}} is confirmed. Thank you. Ref {{paymentReference}}.',
+                ],
+                'whatsapp' => [
+                    'title' => '',
+                    'body'  => "Vanakkam {{devoteeName}},\n\nYour pooja sponsorship is *confirmed* 🙏\n\n*Pooja:* {{poojaName}}\n*Date:* {{poojaDate}}\n*Amount:* {{sponsorAmount}}\n*Reference:* {{paymentReference}}\n\n{{creditLine}}",
+                ],
+            ],
+        ],
+    ];
+
+    $t['contact_received'] = [
+        'category'    => 'office',
+        'description' => 'Sent to the temple office when a visitor submits the contact form. senderEmail and subject read "not given" / "Website enquiry" when the visitor left them blank.',
+        'variables'   => ['devoteeName', 'senderName', 'senderPhone', 'senderEmail', 'subject', 'message', 'receivedAt', 'ctaUrl'],
+        'cta_path'    => '/admin/contact_messages.php',
+        'langs' => [
+            'ta' => [
+                'any' => [
+                    'title'     => 'இணையதள விசாரணை: {{subject}}',
+                    'body'      => "வணக்கம்,\n\n{{templeName}} இணையதளத்தின் தொடர்பு படிவம் மூலம் ஒரு புதிய செய்தி வந்துள்ளது.\n\nபெயர்: {{senderName}}\nதொலைபேசி: {{senderPhone}}\nமின்னஞ்சல்: {{senderEmail}}\nபொருள்: {{subject}}\nபெறப்பட்ட நேரம்: {{receivedAt}}\n\nசெய்தி:\n{{message}}\n\nபதிலளிக்க அவர்களை அழைக்கவும், அல்லது நிர்வாகப் பக்கத்தில் செய்திகளைத் திறக்கவும்.",
+                    'cta_label' => 'செய்திகளைத் திற',
+                ],
+                'sms' => [
+                    'title' => '',
+                    'body'  => '{{templeShortName}}: விசாரணை {{senderName}} ({{senderPhone}}): {{subject}}',
+                ],
+                'whatsapp' => [
+                    'title' => '',
+                    'body'  => "*இணையதள விசாரணை*\n\n*பெயர்:* {{senderName}}\n*தொலைபேசி:* {{senderPhone}}\n*பொருள்:* {{subject}}\n\n{{message}}",
+                ],
+            ],
+            'en' => [
+                'any' => [
+                    'title'     => 'Website enquiry: {{subject}}',
+                    'body'      => "Vanakkam,\n\nA new message has arrived through the contact form on the {{templeName}} website.\n\nName: {{senderName}}\nPhone: {{senderPhone}}\nEmail: {{senderEmail}}\nSubject: {{subject}}\nReceived: {{receivedAt}}\n\nMessage:\n{{message}}\n\nCall them back, or open Messages in the admin to reply and file it.",
+                    'cta_label' => 'Open Messages',
+                ],
+                'sms' => [
+                    'title' => '',
+                    'body'  => '{{templeShortName}}: website enquiry from {{senderName}} ({{senderPhone}}): {{subject}}. See Messages in the admin.',
+                ],
+                'whatsapp' => [
+                    'title' => '',
+                    'body'  => "*Website enquiry*\n\n*Name:* {{senderName}}\n*Phone:* {{senderPhone}}\n*Subject:* {{subject}}\n\n{{message}}",
+                ],
+            ],
+        ],
+    ];
+
     return $t;
 }

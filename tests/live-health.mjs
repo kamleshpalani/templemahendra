@@ -123,7 +123,9 @@ async function startServer(name, extraEnv) {
   let ready = false;
   for (let i = 0; i < 50; i++) {
     if (server.exitCode !== null) throw new Error(logs[name]);
-    try { ready = (await fetch(`${base}/api/calendar`)).ok; } catch { /* starting */ }
+    // Drain the body: an unread response this large leaves undici's parser
+    // paused when the built-in server closes the socket, and Node aborts.
+    try { const probe = await fetch(`${base}/api/calendar`); await probe.text(); ready = probe.ok; } catch { /* starting */ }
     if (ready) break;
     await delay(100);
   }

@@ -1,3 +1,7 @@
+-- The connection's character set, whatever client applies this file: without
+-- it a latin1 client (the Windows mysql default) stores Tamil text as '?'.
+SET NAMES utf8mb4;
+
 SET @col := (
   SELECT COUNT(*) FROM information_schema.COLUMNS
    WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'donations' AND COLUMN_NAME = 'live_stream_id'

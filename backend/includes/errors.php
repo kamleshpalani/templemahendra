@@ -21,6 +21,10 @@ if (!function_exists('appDebug')) {
         if ($v === false || $v === '') {
             $v = $_ENV['APP_DEBUG'] ?? $_SERVER['APP_DEBUG'] ?? '';
         }
+        // Never outside development, whatever APP_DEBUG says (config.php, APP_ENV).
+        if (defined('APP_ENV') && APP_ENV !== 'development') return false;
+        $env = strtolower((string) (getenv('APP_ENV') ?: 'production'));
+        if (!defined('APP_ENV') && $env !== 'development') return false;
         return $v === '1' || strtolower((string) $v) === 'true';
     }
 }

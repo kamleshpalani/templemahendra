@@ -877,3 +877,12 @@
     max-width: 52px;
   }
 }
+
+/* The main area starts a screen tall: while a route's code and data load, the
+   footer waits below the fold instead of rendering high and being pushed down
+   (the largest layout shift Lighthouse found on /sevas, /events and /donations). */
+#main-content {
+  display: block;
+  min-height: 100vh;
+  min-height: 100svh;
+}

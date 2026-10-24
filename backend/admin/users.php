@@ -22,7 +22,7 @@ $self = $me['username'];
 
 // ── Guard: the accounts table must exist ────────────────────────────────────
 if (!adminUsersTableExists()) {
-    adminHeader('Committee accounts', 'People');
+    adminHeader('Users', 'System');
     echo adminPageIntro('Multi-user accounts are not set up on this database yet.');
     echo '<section class="card card--static"><div class="card__body">'
        . '<div class="alert alert--info" data-keep><span class="alert__icon">' . adminIcon('info') . '</span><div class="alert__body">'
@@ -203,7 +203,7 @@ try {
 } catch (Throwable) {
 }
 
-adminHeader('Committee accounts', 'People', [
+adminHeader('Users', 'System', [
     'actions' => '<a href="/admin/profile.php" class="btn btn--sm">' . adminIcon('user') . 'My profile</a>',
 ]);
 echo $msg;

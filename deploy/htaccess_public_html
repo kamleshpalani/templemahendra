@@ -1,15 +1,48 @@
 # public_html/.htaccess
-# Hostinger shared hosting — root rewrite rules
+# Hostinger shared hosting — root rewrite rules, transport security and the
+# response headers every page carries. docs/DEPLOYMENT.md → "Security headers
+# and TLS"; docs/SECURITY-REVIEW.md → A05.
+#
+# Three folders under public_html carry their own .htaccess (api/, uploads/ and
+# the denied includes/ config/ logs/). mod_rewrite rules are NOT inherited by a
+# folder that has its own rewrite block, so the HTTPS redirect and the TM_HTTPS
+# mark below are repeated in deploy/htaccess_uploads and deploy/htaccess_api.
+# Header, SetEnvIf, Expires and FilesMatch directives ARE inherited.
 
 Options -Indexes
 
-# ── React SPA fallback ─────────────────────────────────────
-# Serve index.html for all non-file, non-directory, non-api requests
+# ── Never web entry points ────────────────────────────────
+# The PHP library, configuration, cron entry points, logs and anything a
+# release might drag along. Each folder also has (or should have) its own
+# deny-all .htaccess; this is the layer that survives a forgotten upload.
 <IfModule mod_rewrite.c>
   RewriteEngine On
   RewriteBase /
 
-  # Pass /api/* and /admin/* straight through to PHP
+  RewriteRule ^(includes|config|bin|logs|database|tests|vendor|node_modules)(/|$) - [F,L]
+
+  # ── HTTPS ──────────────────────────────────────────────────
+  # Hostinger's "Force HTTPS" switch does this at the edge; this rule is for a
+  # host without one. Skipped on localhost / 127.0.0.1 (the dev and preview
+  # servers) and when a proxy in front has already terminated TLS and says so
+  # in X-Forwarded-Proto. 301: the address never changes back.
+  RewriteCond %{HTTPS} !=on
+  RewriteCond %{HTTP:X-Forwarded-Proto} !=https
+  RewriteCond %{HTTP_HOST} !^$
+  RewriteCond %{HTTP_HOST} !^(localhost|127\.0\.0\.1)(:[0-9]+)?$ [NC]
+  RewriteRule ^ https://%{HTTP_HOST}%{REQUEST_URI} [R=301,L]
+
+  # Mark a secure request for the HSTS header below: mod_headers cannot read
+  # %{HTTPS} itself. After an internal rewrite (the SPA fallback, the crawler
+  # preview) the mark survives as REDIRECT_TM_HTTPS, which is also honoured.
+  RewriteCond %{HTTPS} =on [OR]
+  RewriteCond %{HTTP:X-Forwarded-Proto} =https
+  RewriteRule ^ - [E=TM_HTTPS:1]
+
+  # ── React SPA fallback ─────────────────────────────────────
+  # Pass /api/*, /admin/* and /uploads/* straight through to PHP / the files.
+  # Keep in step with frontend/vite.config.js (server.proxy and
+  # workbox.navigateFallbackDenylist) — README → "Paths that belong to PHP".
   RewriteRule ^(api|admin|uploads)(/.*)?$ - [L]
 
   # ── Crawler files ──────────────────────────────────────────
@@ -43,24 +76,105 @@ Options -Indexes
   RewriteRule ^(.*)$ api/spa.php?path=/$1 [QSA,L]
 </IfModule>
 
+# Files that are never served, wherever a release leaves them: dotfiles,
+# dumps, logs, shell scripts, editor backups, lock files, the dev-server router.
+<FilesMatch "(^\.|\.(sql|log|sh|bak|ini|lock|env|md)$|^router\.php$)">
+  <IfModule mod_authz_core.c>
+    Require all denied
+  </IfModule>
+  <IfModule !mod_authz_core.c>
+    Order Allow,Deny
+    Deny from all
+  </IfModule>
+</FilesMatch>
+
+# ── Which Content-Security-Policy a request gets ──────────
+# The React site and the API get the strict policy (no inline script at all —
+# the Vite build has none, tests/deploy-config.mjs checks). The PHP admin still
+# carries a handful of inline scripts and two inline handlers, and api/og.php a
+# one-line redirect for a person who opened it directly, so those two get the
+# same policy with inline script allowed rather than a policy that breaks them.
+# SetEnvIf runs again after an internal rewrite, so the SPA fallback and the
+# crawler preview are classified by the address they end up at.
+<IfModule mod_setenvif.c>
+  SetEnvIf Request_URI "^/(admin(/|$)|api/og\.php$)" TM_CSP_RELAXED=1
+</IfModule>
+
 # ── Security headers ──────────────────────────────────────
 <IfModule mod_headers.c>
+  # HSTS, only on a response that went over TLS (a browser ignores it over
+  # plain HTTP anyway, and a mis-set header on a port-80 test host is noise).
+  # One year, all subdomains. Add "; preload" only after the certificate has
+  # renewed cleanly for a few months — preload cannot be undone quickly.
+  Header always set Strict-Transport-Security "max-age=31536000; includeSubDomains" env=TM_HTTPS
+  Header always set Strict-Transport-Security "max-age=31536000; includeSubDomains" env=REDIRECT_TM_HTTPS
+
   Header always set X-Content-Type-Options "nosniff"
   Header always set X-Frame-Options "SAMEORIGIN"
   Header always set Referrer-Policy "strict-origin-when-cross-origin"
+  # Nothing on the site uses a camera, microphone, location, USB or the
+  # Payment Request API (CCAvenue is a form POST). Fullscreen, autoplay and
+  # picture-in-picture are left at their defaults for the YouTube embeds.
+  Header always set Permissions-Policy "camera=(), microphone=(), geolocation=(), payment=(), usb=(), interest-cohort=()"
+  # PHP's version banner (expose_php cannot be switched off from a script);
+  # it sits in the success table, so the plain form is the one that matters.
+  Header unset X-Powered-By
+  Header always unset X-Powered-By
+
+  # Strict policy: the React app, the JSON API, uploads and every fallback.
+  #   script-src    the Vite bundles, registerSW.js, sw.js — nothing inline
+  #   style-src     the bundles and Google Fonts; 'unsafe-inline' because the
+  #                 CMS pages and third-party widgets set style attributes
+  #   font-src      Google Fonts (fonts.gstatic.com) and data: for icon fonts
+  #   img-src       own images and uploads, data:/blob: (QR codes, previews),
+  #                 https: for YouTube thumbnails and committee-pasted picture links
+  #   connect-src   the API, plus Google Fonts for the service worker's
+  #                 runtime cache (workbox fetches them from inside sw.js)
+  #   frame-src     YouTube embeds (youtube-nocookie first) and the Google Map
+  #   form-action   CCAvenue's checkout: the browser leaves the site with a
+  #                 form POST to secure/test.ccavenue.com (frontend/src/lib/payments.js)
+  #   frame-ancestors 'self' pairs with X-Frame-Options
+  Header always set Content-Security-Policy "default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'self'; form-action 'self' https://secure.ccavenue.com https://test.ccavenue.com; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; img-src 'self' data: blob: https:; connect-src 'self' https://fonts.googleapis.com https://fonts.gstatic.com; frame-src 'self' https://www.youtube-nocookie.com https://www.youtube.com https://maps.google.com https://www.google.com; worker-src 'self'; manifest-src 'self'; upgrade-insecure-requests" env=!TM_CSP_RELAXED
+
+  # Relaxed policy: /admin/ and api/og.php only (see SetEnvIf above). Same
+  # allow-list, inline script permitted, no CCAvenue form target.
+  Header always set Content-Security-Policy "default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'self'; form-action 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; img-src 'self' data: blob: https:; connect-src 'self'; frame-src 'self' https://www.youtube-nocookie.com https://www.youtube.com; worker-src 'self'; manifest-src 'self'; upgrade-insecure-requests" env=TM_CSP_RELAXED
 </IfModule>
 
 # ── Gzip compression ──────────────────────────────────────
 <IfModule mod_deflate.c>
-  AddOutputFilterByType DEFLATE text/html text/css text/javascript application/javascript application/json
+  AddOutputFilterByType DEFLATE text/html text/css text/javascript application/javascript application/json application/manifest+json image/svg+xml
 </IfModule>
 
-# ── Cache static assets ───────────────────────────────────
+# ── Caching ───────────────────────────────────────────────
 <IfModule mod_expires.c>
   ExpiresActive On
   ExpiresByType image/jpeg "access plus 1 year"
   ExpiresByType image/png  "access plus 1 year"
   ExpiresByType image/webp "access plus 1 year"
+  ExpiresByType image/svg+xml "access plus 1 month"
+  ExpiresByType font/woff2 "access plus 1 year"
   ExpiresByType text/css   "access plus 1 month"
   ExpiresByType application/javascript "access plus 1 month"
 </IfModule>
+
+# Vite names every built file after its content (index-CrJqmhY9.js,
+# workbox-469c66f6.js): a change is a new name, so the old one can be cached
+# for a year and never revalidated.
+<FilesMatch "-[A-Za-z0-9_-]{8}\.(js|css|woff2?|ttf|svg|png|jpe?g|webp)$">
+  <IfModule mod_headers.c>
+    Header set Cache-Control "public, max-age=31536000, immutable"
+  </IfModule>
+</FilesMatch>
+
+# The entry points are not hashed and must be revalidated on every load, or a
+# release is not picked up until the old copy expires (the service worker
+# script in particular: a month-old sw.js keeps serving a month-old site).
+<FilesMatch "^(index\.html|sw\.js|registerSW\.js|manifest\.webmanifest)$">
+  <IfModule mod_expires.c>
+    ExpiresActive Off
+  </IfModule>
+  <IfModule mod_headers.c>
+    Header set Cache-Control "no-cache"
+  </IfModule>
+</FilesMatch>

@@ -167,6 +167,12 @@ const CASES = [
   ["live_streams.php",     { action: XSS, id: "0" }],
 ];
 
+// The settings probe posts only one switch, which would leave the other two off
+// for every visitor: remember how the homepage switches stood and put them back.
+const SWITCHES = ["show_pournami_section", "show_nalla_strip", "show_donor_ticker"];
+const settingsBefore = await (await get("/admin/settings.php")).text();
+const switchesOn = SWITCHES.filter((k) => new RegExp(`name="${k}"[^>]*\\bchecked`).test(settingsBefore));
+
 for (const [page, body] of CASES) {
   const html = await (await get("/admin/" + page)).text();
   const csrf = csrfOf(html);
@@ -179,6 +185,15 @@ for (const [page, body] of CASES) {
   if (bad) {
     const m = out.match(/(SQLSTATE\[[^\]]+\][^<]{0,140}|Uncaught[^<]{0,140})/);
     if (m) console.log("     →", m[0].replace(/\s+/g, " ").slice(0, 170));
+  }
+}
+{
+  const html = await (await get("/admin/settings.php")).text();
+  const csrf = csrfOf(html);
+  if (csrf) {
+    const r = await post("/admin/settings.php", { _csrf: csrf, ...Object.fromEntries(switchesOn.map((k) => [k, "1"])) });
+    const after = await (await get("/admin/settings.php")).text();
+    ok((r.status === 303 || r.status === 302) && SWITCHES.every((k) => new RegExp(`name="${k}"[^>]*\\bchecked`).test(after) === switchesOn.includes(k)), "homepage switches are back as they were", `status ${r.status}`);
   }
 }
 
@@ -269,6 +284,13 @@ if (process.env.PHP_BIN) {
   const args = ["tests/support/notify_fixtures.php", "sql", JSON.stringify({ query: "DELETE FROM rate_limits WHERE bucket REGEXP ?", params: [":10[.]80[.]0[.]21[0-9]$"] })];
   const res = spawnSync(viaBash ? "bash" : PHP_BIN, viaBash ? [PHP_BIN, ...args] : args, { cwd: fileURLToPath(new URL("..", import.meta.url)), encoding: "utf8" });
   ok(res.status === 0 && !/error/.test(res.stdout), "its rate-limit buckets are removed", (res.stderr || res.stdout).slice(0, 160));
+  // The over-length announcement is accepted (the title is cut to its column
+  // width, which is correct), so it is a real row this run created: remove it.
+  // Every column that could hold the payload is matched on its 40-character prefix.
+  const prefix = LONG.slice(0, 40) + "%";
+  const del = ["tests/support/notify_fixtures.php", "sql", JSON.stringify({ query: "DELETE FROM announcements WHERE title LIKE ? OR title_ta LIKE ? OR title_en LIKE ?", params: [prefix, prefix, prefix] }).replace(/[\u0080-￿]/g, (c) => "\\u" + c.charCodeAt(0).toString(16).padStart(4, "0"))];
+  const delRes = spawnSync(viaBash ? "bash" : PHP_BIN, viaBash ? [PHP_BIN, ...del] : del, { cwd: fileURLToPath(new URL("..", import.meta.url)), encoding: "utf8" });
+  ok(delRes.status === 0 && !/error/.test(delRes.stdout), "the over-length announcement it created is removed", (delRes.stderr || delRes.stdout).slice(0, 160));
 } else {
   console.log("- rate-limit buckets for 10.80.0.211–219 were left to expire (set PHP_BIN to remove them)");
 }

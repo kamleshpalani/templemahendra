@@ -26,6 +26,10 @@
 --   mysql --default-character-set=utf8mb4 -u <user> -p <db> < database/migrations/016_sponsors_consent.sql
 -- ============================================================
 
+-- The connection's character set, whatever client applies this file: without
+-- it a latin1 client (the Windows mysql default) stores Tamil text as '?'.
+SET NAMES utf8mb4;
+
 SET @col := (SELECT COUNT(*) FROM information_schema.COLUMNS
               WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'sponsors' AND COLUMN_NAME = 'family_name');
 SET @sql := IF(@col = 0,

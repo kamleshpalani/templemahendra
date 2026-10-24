@@ -1,9 +1,24 @@
-import { LuCalendarDays, LuClock, LuFlame, LuHeart, LuHourglass, LuMegaphone, LuMoon, LuPartyPopper, LuPin } from "react-icons/lu";
+import {
+  LuCalendarDays,
+  LuClock,
+  LuFlame,
+  LuHeart,
+  LuHourglass,
+  LuMegaphone,
+  LuMoon,
+  LuPartyPopper,
+  LuPin,
+  LuRadio,
+  LuSparkles,
+} from "react-icons/lu";
 import { useLang } from "../../context/LangContext";
 import Badge from "../ui/Badge";
 import Button from "../ui/Button";
 import { SkeletonCards } from "../ui/Feedback";
 import "./HomepageWidgets.css";
+
+// The homepage renders this many cards at most; the API answers up to 15.
+const MAX_CARDS = 8;
 
 // ── Icon · badge tone · label per content_type ────────────────────────────────
 // Accent tone drives the left stripe (.hw-card--tone-*) and the Badge tone.
@@ -16,15 +31,18 @@ const TYPE_META = {
   calendar_pooja: { Icon: LuMoon, tone: "moon", ta: "பௌர்ணமி பூஜை", en: "Pournami Pooja" },
   nalla_neram: { Icon: LuClock, tone: "sage", ta: "நல்ல நேரம்", en: "Nalla Neram" },
   sponsor: { Icon: LuHeart, tone: "gold", ta: "ஸ்பான்சர்", en: "Sponsor" },
+  livestream: { Icon: LuRadio, tone: "default", ta: "நேரலை", en: "Live Stream" },
+  custom: { Icon: LuSparkles, tone: "default", ta: "", en: "" },
 };
 const STRIPE_TONE = { default: "maroon", gold: "gold", sage: "sage", moon: "moon" };
 
-function daysUntil(dateStr) {
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const target = new Date(dateStr + "T00:00:00");
-  return Math.max(0, Math.round((target - today) / 86400000));
-}
+const longDate = (iso, lang) =>
+  new Date(iso + "T00:00:00").toLocaleDateString(lang === "ta" ? "ta-IN" : "en-IN", {
+    weekday: "long",
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+  });
 
 // ── Individual card ───────────────────────────────────────────────────────────
 function WidgetCard({ widget, pournami, lang, index }) {
@@ -36,35 +54,37 @@ function WidgetCard({ widget, pournami, lang, index }) {
   const isUpcomingPooja =
     widget.content_type === "upcoming_pooja" ||
     widget.content_type === "coming_soon";
+  const isStream = widget.content_type === "livestream" && widget.stream;
+  const isCustom = widget.content_type === "custom";
   const isEventLike = isUpcomingEvent || isUpcomingPooja;
   const isFeatured = index === 0; // first card always gets featured treatment
-  // calendar_pooja cards show the CMS pooja's own date/time; panchangam data
-  // (tamil month, tithi) enriches the card only when it is for the same day.
-  const calDate = isCalPooja ? (widget.pooja?.date ?? pournami?.date ?? null) : null;
-  const richP =
-    isCalPooja && calDate
-      ? {
-          ...(pournami && pournami.date === calDate ? pournami : {}),
-          date: calDate,
-          daysLeft: daysUntil(calDate),
-          timing: widget.pooja?.time ?? null,
-        }
-      : null;
+  // Use panchangam pournami data to enrich calendar_pooja cards
+  const richP = isCalPooja && pournami ? pournami : null;
 
   const title = t(widget.title_ta, widget.title_en) || t(meta.ta, meta.en);
   const desc = t(widget.description_ta, widget.description_en);
 
-  // Resolve the display date: upcoming_event uses event_date; upcoming_pooja/coming_soon uses pooja.date
-  const rawDate = widget.event_date ?? widget.pooja?.date ?? null;
-  const displayDateStr =
-    isEventLike && rawDate
-      ? new Date(rawDate + "T00:00:00").toLocaleDateString(
-          lang === "ta" ? "ta-IN" : "en-IN",
-          { weekday: "long", day: "numeric", month: "long", year: "numeric" },
-        )
-      : null;
+  // Resolve the display date: a linked event, a typed event date, or the pooja
+  const rawDate = widget.event?.date ?? widget.event_date ?? widget.pooja?.date ?? null;
+  const displayDateStr = isEventLike && rawDate ? longDate(rawDate, lang) : null;
+  const poojaTime = widget.pooja?.time || null;
+  const eventTime = widget.event?.time || null;
+  const venue = widget.event ? t(widget.event.venue_ta, widget.event.venue_en) : "";
 
   const ctaVariant = isFeatured ? "outline-light" : "outline";
+  const eventHref = widget.event?.id ? `/events/${widget.event.id}` : "/events";
+
+  // Stream schedule in the visitor's own clock, from the UTC instant
+  const streamWhen =
+    isStream && widget.stream.scheduled_start_at
+      ? new Date(widget.stream.scheduled_start_at).toLocaleString(lang === "ta" ? "ta-IN" : "en-IN", {
+          weekday: "short",
+          day: "numeric",
+          month: "short",
+          hour: "numeric",
+          minute: "2-digit",
+        })
+      : null;
 
   return (
     <article
@@ -87,37 +107,75 @@ function WidgetCard({ widget, pournami, lang, index }) {
         </span>
       )}
 
-      {/* Type badge */}
-      <Badge tone={meta.tone} className="hw-card__badge">
-        <Icon aria-hidden="true" />
-        {t(meta.ta, meta.en)}
-        {widget.is_pinned && (
-          <>
-            <LuPin aria-hidden="true" />
-            <span className="sr-only">{t("பின் செய்யப்பட்டது", "Pinned")}</span>
-          </>
-        )}
-      </Badge>
+      {/* Type badge (a custom card carries none; a live stream says LIVE) */}
+      {!isCustom && (
+        <Badge tone={isStream && widget.stream.is_live ? "danger" : meta.tone} live={Boolean(isStream && widget.stream.is_live)} className="hw-card__badge">
+          <Icon aria-hidden="true" />
+          {isStream && widget.stream.is_live ? t("நேரலை", "LIVE") : t(meta.ta, meta.en)}
+          {widget.is_pinned && (
+            <>
+              <LuPin aria-hidden="true" />
+              <span className="sr-only">{t("பின் செய்யப்பட்டது", "Pinned")}</span>
+            </>
+          )}
+        </Badge>
+      )}
 
-      {/* Event-like rich display: upcoming_event, upcoming_pooja, coming_soon */}
-      {isEventLike ? (
+      {/* Picture (migration 024): a poster, a deity photo, a stream thumbnail */}
+      {widget.image_url && (
+        <img className="hw-card__img" src={widget.image_url} alt={title} loading="lazy" decoding="async" />
+      )}
+
+      {isStream ? (
+        /* Live Stream: follows the linked broadcast */
+        <div className="hw-stream">
+          <h3 className="hw-card__title">{title}</h3>
+          {streamWhen && (
+            <p className="hw-card__date">
+              <LuCalendarDays aria-hidden="true" />
+              {widget.stream.is_live ? t("இப்போது நேரலையில்", "On air now") : streamWhen}
+            </p>
+          )}
+          {desc && <p className="hw-card__desc">{desc}</p>}
+          <div className="hw-card__cta">
+            <Button to={widget.stream.url} variant={ctaVariant} size="sm">
+              {widget.stream.is_live ? t("நேரலை பார்க்க →", "Watch live →") : t("ஒளிபரப்பு விவரம் →", "Broadcast details →")}
+            </Button>
+          </div>
+        </div>
+      ) : isEventLike ? (
+        /* Event-like rich display: upcoming_event, upcoming_pooja, coming_soon */
         <div className="hw-event">
           <h3 className="hw-card__title">{title}</h3>
           {displayDateStr && (
             <p className="hw-card__date">
               <LuCalendarDays aria-hidden="true" />
               {displayDateStr}
+              {(isUpcomingPooja ? poojaTime : eventTime) && (
+                <>
+                  {" · "}
+                  {isUpcomingPooja ? poojaTime : eventTime}
+                </>
+              )}
             </p>
           )}
+          {venue && <p className="hw-card__meta">{venue}</p>}
           {desc && <p className="hw-card__desc">{desc}</p>}
+          {isUpcomingPooja && widget.pooja?.sponsorship_amount != null && (
+            <p className="hw-card__meta">
+              {widget.pooja.sponsorship_available
+                ? t(`ஸ்பான்சர்: ₹${widget.pooja.sponsorship_amount.toLocaleString("en-IN")}`, `Sponsor this pooja: ₹${widget.pooja.sponsorship_amount.toLocaleString("en-IN")}`)
+                : t("ஸ்பான்சர் நிறைவு", "Fully sponsored")}
+            </p>
+          )}
           <div className="hw-card__cta">
             {isUpcomingPooja ? (
               <Button to="/sevas" variant={ctaVariant} size="sm">
                 {t("சேவைகள் →", "View Sevas →")}
               </Button>
             ) : (
-              <Button to="/events" variant={ctaVariant} size="sm">
-                {t("அனைத்து நிகழ்வுகள் →", "All Events →")}
+              <Button to={eventHref} variant={ctaVariant} size="sm">
+                {widget.event?.id ? t("நிகழ்வு விவரம் →", "Event details →") : t("அனைத்து நிகழ்வுகள் →", "All Events →")}
               </Button>
             )}
           </div>
@@ -126,17 +184,7 @@ function WidgetCard({ widget, pournami, lang, index }) {
         /* Calendar Pooja: rich panchangam display */
         <div className="hw-pournami">
           <h3 className="hw-card__title">{title}</h3>
-          <p className="hw-pournami__date">
-            {new Date(richP.date + "T00:00:00").toLocaleDateString(
-              lang === "ta" ? "ta-IN" : "en-IN",
-              {
-                weekday: "long",
-                day: "numeric",
-                month: "long",
-                year: "numeric",
-              },
-            )}
-          </p>
+          <p className="hw-pournami__date">{longDate(richP.date, lang)}</p>
           {richP.tamil_month && (
             <p className="hw-pournami__meta">
               {t(richP.tamil_month.ta, richP.tamil_month.en)}
@@ -150,20 +198,18 @@ function WidgetCard({ widget, pournami, lang, index }) {
                 ? t("நாளை", "Tomorrow")
                 : t(`${richP.daysLeft} நாட்களில்`, `In ${richP.daysLeft} days`)}
           </Badge>
-          {richP.timing && (
-            <p className="hw-pournami__timing">
-              <LuClock aria-hidden="true" />
-              {t("நேரம்", "Timings")}: {richP.timing}
-            </p>
-          )}
+          <p className="hw-pournami__timing">
+            <LuClock aria-hidden="true" />
+            {t("நேரம்", "Timings")}: {poojaTime || "04:00 PM – 09:00 PM"}
+          </p>
         </div>
       ) : (
         /* Standard title for all other types */
         <h3 className="hw-card__title">{title}</h3>
       )}
 
-      {/* Description (only for non-event-like types — event renders desc inline) */}
-      {!isEventLike && desc && <p className="hw-card__desc">{desc}</p>}
+      {/* Description (only for types that did not render it inline) */}
+      {!isEventLike && !isStream && desc && <p className="hw-card__desc">{desc}</p>}
 
       {/* Sponsor */}
       {widget.sponsor?.name && (
@@ -240,6 +286,7 @@ export default function HomepageWidgets({
     .map((p, i) => ({
       id: `pournami-synth-${p.date}`,
       content_type: "calendar_pooja",
+      source_type: "system",
       title_ta: "பௌர்ணமி பூஜை",
       title_en: "Pournami Poojai",
       description_ta: null,
@@ -249,22 +296,21 @@ export default function HomepageWidgets({
       _pournami: p, // carry the panchangam data
     }));
 
-  const allWidgets = [...dbWidgets, ...synthCards].slice(0, 4);
+  const allWidgets = [...dbWidgets, ...synthCards].slice(0, MAX_CARDS);
   if (allWidgets.length === 0) return null;
 
   return (
     <div className={`bento hw-bento hw-bento--${allWidgets.length}`}>
       {allWidgets.map((w, idx) => {
         // Resolve which pournami object to pass for enrichment:
-        // synth cards carry _pournami; DB calendar_pooja cards match by date,
-        // and only fall back to the nearest pournami when they have no pooja.
+        // synth cards carry _pournami; DB calendar_pooja cards match by date
         const cardPournami =
           w._pournami ??
           calPournamis.find(
             (p) =>
               w.content_type === "calendar_pooja" && w.pooja?.date === p.date,
           ) ??
-          (w.content_type === "calendar_pooja" && !w.pooja?.date ? calPournamis[0] : null);
+          (w.content_type === "calendar_pooja" ? calPournamis[0] : null);
         return (
           <WidgetCard
             key={w.id ? String(w.id) : `${w.content_type}-${idx}`}

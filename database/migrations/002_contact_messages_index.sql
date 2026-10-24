@@ -13,6 +13,10 @@
 -- ============================================================
 
 -- MySQL has no "ADD KEY IF NOT EXISTS", so add it only when it is missing.
+-- The connection's character set, whatever client applies this file: without
+-- it a latin1 client (the Windows mysql default) stores Tamil text as '?'.
+SET NAMES utf8mb4;
+
 SET @sql = (
   SELECT IF(
     EXISTS(

@@ -24,9 +24,12 @@ import {
   MAPS_URL,
   MAPS_EMBED_URL,
   PRIMARY_CONTACT,
-  TEMPLE_PHONE,
+  SECONDARY_CONTACT,
+  formatPhone,
+  telHref,
 } from "../data/temple";
 import CommitteeGrid from "../components/CommitteeGrid/CommitteeGrid";
+import { siteOfficeDigits, siteText, siteValue, useSiteSettings } from "../lib/siteSettings";
 import PageHero from "../components/ui/PageHero";
 import Seo from "../components/Seo";
 import ShareButton from "../components/Share/ShareButton";
@@ -46,9 +49,9 @@ const WHATSAPP_HREF = `https://wa.me/91${PRIMARY_CONTACT.phone}?text=${encodeURI
 const EMAIL = "info@dhabbalavaartemple.in";
 
 export default function Contact() {
-  const { t } = useLang();
+  const { lang, t } = useLang();
   const toast = useToast();
-  const [form, setForm] = useState({ name: "", phone: "", phoneCountry: DEFAULT_COUNTRY, message: "", hp_token: "" });
+  const [form, setForm] = useState({ name: "", phone: "", phoneCountry: DEFAULT_COUNTRY, email: "", subject: "", message: "", hp_token: "" });
   const [errors, setErrors] = useState({});
   const [status, setStatus] = useState(null); // null | sending | success | error | limited
   // Kept as seconds, not as a sentence, so the notice follows a language switch.
@@ -65,6 +68,9 @@ export default function Contact() {
     if (form.name.trim().length < 2) next.name = t("பெயரை உள்ளிடவும்", "Please enter your name");
     const pe = phoneProblem(form.phone, form.phoneCountry, { required: true, t });
     if (pe) next.phone = pe;
+    const email = form.email.trim();
+    if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))
+      next.email = t("சரியான மின்னஞ்சலை உள்ளிடவும், அல்லது காலியாக விடவும்", "Enter a valid email address, or leave it blank");
     if (form.message.trim().length < 5)
       next.message = t("செய்தியை உள்ளிடவும்", "Please write a short message");
     setErrors(next);
@@ -93,7 +99,7 @@ export default function Contact() {
         throw new Error();
       }
       setStatus("success");
-      setForm((f) => ({ name: "", phone: "", phoneCountry: f.phoneCountry, message: "", hp_token: "" }));
+      setForm((f) => ({ name: "", phone: "", phoneCountry: f.phoneCountry, email: "", subject: "", message: "", hp_token: "" }));
       toast.success(
         t("செய்தி அனுப்பப்பட்டது. விரைவில் தொடர்பு கொள்வோம்.", "Message sent. We'll reach out soon."),
         t("நன்றி", "Thank you"),
@@ -104,26 +110,33 @@ export default function Contact() {
     }
   };
 
+  const phoneContacts = [PRIMARY_CONTACT, SECONDARY_CONTACT];
   const sending = status === "sending";
+  // Admin → System → Settings: the printed address and the office phone when
+  // the committee typed them; the booklet facts otherwise.
+  const { site } = useSiteSettings();
+  const printedAddress = siteText(site, "temple_address", lang) || t(ADDRESS.printed.ta, ADDRESS.printed.en);
+  const officePhone = siteOfficeDigits(site, PRIMARY_CONTACT.phone);
+  const officeEmail = siteValue(site, "email");
 
   return (
     <>
-      <Seo title={t("தொடர்பு", "Contact")} description={t(ADDRESS.printed.ta, ADDRESS.printed.en)} />
+      <Seo title={t("தொடர்பு", "Contact")} description={printedAddress} />
 
       <PageHero
         variant="contact"
         eyebrow={t("வரவேற்கிறோம்", "We'd love to hear from you")}
         title={t("தொடர்பு கொள்ளுங்கள்", "Contact Us")}
-        lead={t(ADDRESS.printed.ta, ADDRESS.printed.en)}
+        lead={printedAddress}
         crumbs={[{ label: t("தொடர்பு", "Contact") }]}
         actions={
           <>
             <Button
-              href={TEMPLE_PHONE.href}
+              href={telHref(officePhone)}
               variant="primary"
               className="contact-hero__btn"
               icon={<LuPhone aria-hidden="true" />}
-              aria-label={`${t("அழைக்கவும்", "Call")} — ${TEMPLE_PHONE.display}`}
+              aria-label={`${t("அழைக்கவும்", "Call")} — ${formatPhone(officePhone)}`}
             >
               {t("அழைக்கவும்", "Call")}
             </Button>
@@ -176,7 +189,8 @@ export default function Contact() {
                 <div className="contact-card__body">
                   <h3 className="contact-card__title">{t("முகவரி", "Address")}</h3>
                   <address className="contact-address">
-                    <span className="contact-address__name">{t(TEMPLE.fullName.ta, TEMPLE.fullName.en)}</span>
+                    <span className="contact-address__name">{siteText(site, "temple_name", lang) || t(TEMPLE.fullName.ta, TEMPLE.fullName.en)}</span>
+                    {officeEmail && <span><a href={`mailto:${officeEmail}`}>{officeEmail}</a></span>}
                     <span>
                       {t(ADDRESS.street.ta, ADDRESS.street.en)},{" "}
                       {t(ADDRESS.village.ta, ADDRESS.village.en)}
@@ -200,23 +214,26 @@ export default function Contact() {
                 <div className="contact-card__body">
                   <h3 className="contact-card__title">{t("தொலைபேசி & மின்னஞ்சல்", "Phone & email")}</h3>
                   <ul className="contact-tel" role="list">
-                    <li>
-                      <a
-                        className="contact-tel__row"
-                        href={TEMPLE_PHONE.href}
-                        aria-label={`${TEMPLE_PHONE.display} — ${t("கோயில் அலுவலகம்", "Temple office")}`}
-                      >
-                        <span className="contact-tel__body">
-                          <span className="contact-tel__num">{TEMPLE_PHONE.display}</span>
-                          <span className="contact-tel__meta">
-                            <Badge tone="gold">{t("கோயில் அலுவலகம்", "Temple office")}</Badge>
+                    {phoneContacts.map((c) => (
+                      <li key={c.phone}>
+                        <a
+                          className="contact-tel__row"
+                          href={telHref(c.phone)}
+                          aria-label={`${formatPhone(c.phone)} — ${t(c.name.ta, c.name.en)}, ${t(c.role.ta, c.role.en)}`}
+                        >
+                          <span className="contact-tel__body">
+                            <span className="contact-tel__num">{formatPhone(c.phone)}</span>
+                            <span className="contact-tel__meta">
+                              <Badge tone="gold">{t(c.role.ta, c.role.en)}</Badge>
+                              <span>{t(c.name.ta, c.name.en)}</span>
+                            </span>
                           </span>
-                        </span>
-                        <span className="contact-tel__cta" aria-hidden="true">
-                          <LuPhoneCall />
-                        </span>
-                      </a>
-                    </li>
+                          <span className="contact-tel__cta" aria-hidden="true">
+                            <LuPhoneCall />
+                          </span>
+                        </a>
+                      </li>
+                    ))}
                     {/* Email as one more row of the same card: it was a card of its own */}
                     <li>
                       <a className="contact-tel__row" href={`mailto:${EMAIL}`}>
@@ -364,6 +381,32 @@ export default function Contact() {
                     />
                   )}
                 </Field>
+                <Field label={t("மின்னஞ்சல்", "Email")} optional error={errors.email}>
+                  {(a11y) => (
+                    <input
+                      {...a11y}
+                      type="email"
+                      name="email"
+                      value={form.email}
+                      onChange={handleChange}
+                      autoComplete="email"
+                      inputMode="email"
+                    />
+                  )}
+                </Field>
+                <Field label={t("பொருள்", "Subject")} optional error={errors.subject}>
+                  {(a11y) => (
+                    <input
+                      {...a11y}
+                      type="text"
+                      name="subject"
+                      maxLength={200}
+                      value={form.subject}
+                      onChange={handleChange}
+                      autoComplete="off"
+                    />
+                  )}
+                </Field>
                 <Field label={t("செய்தி", "Message")} required error={errors.message}>
                   {(a11y) => (
                     <textarea
@@ -390,8 +433,8 @@ export default function Contact() {
 
               <div className="contact-form__alt">
                 <span>{t("அவசரமா?", "In a hurry?")}</span>
-                <Button href={TEMPLE_PHONE.href} variant="ghost" icon={<LuPhone aria-hidden="true" />}>
-                  {t("அழைக்கவும்", "Call")} {TEMPLE_PHONE.display}
+                <Button href={telHref(PRIMARY_CONTACT.phone)} variant="ghost" icon={<LuPhone aria-hidden="true" />}>
+                  {t("அழைக்கவும்", "Call")} {formatPhone(PRIMARY_CONTACT.phone)}
                 </Button>
               </div>
             </div>

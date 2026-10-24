@@ -18,7 +18,7 @@ $perPage = 50;
 const AUDIT_MODULES = [
     'signin'       => ['label' => 'Sign-in & sessions', 'like' => null,
                        'in' => ['login', 'login_failed', 'logout', 'session_expired', 'session_revoked', 'account_locked', 'password_change', 'profile_update']],
-    'user'         => ['label' => 'Committee accounts',  'like' => 'user_%'],
+    'user'         => ['label' => 'Users',  'like' => 'user_%'],
     'settings'     => ['label' => 'Settings',            'like' => 'settings_%'],
     'announcement' => ['label' => 'Announcements',       'like' => 'announcement_%'],
     'widget'       => ['label' => 'Homepage widgets',    'like' => 'widget_%'],
@@ -161,7 +161,7 @@ $ranges     = [
 ];
 
 // ── Page ─────────────────────────────────────────────────────────────────────
-adminHeader('Audit Logs', 'People');
+adminHeader('Audit Logs', 'System');
 echo $msg;
 echo adminPageIntro(
     'Who changed what, and when. Every sign-in, content change, payment action, sponsor change, account change and live-stream update is recorded here and cannot be edited or deleted from the CMS.',

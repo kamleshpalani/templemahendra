@@ -1,0 +1,22 @@
+{
+  "name": "temple-mahendra-node-staging",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22.12.0"
+  },
+  "scripts": {
+    "start": "node --env-file-if-exists=.env.node.local backend-node/src/server.mjs",
+    "build": "npm --prefix frontend ci --include=dev && npm --prefix frontend run build",
+    "db:migrate": "node --env-file-if-exists=.env.node.local backend-node/scripts/migrate.mjs",
+    "test": "node --test backend-node/test/*.test.mjs"
+  },
+  "dependencies": {
+    "express": "^5.1.0",
+    "pg": "^8.16.3"
+  },
+  "devDependencies": {
+    "@electric-sql/pglite": "^0.3.14"
+  }
+}

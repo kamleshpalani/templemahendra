@@ -38,6 +38,19 @@ if ($ph['error'] !== '') {
 if ($seva_name === '') {
     sendError('Please select a seva');
 }
+// A seva the committee lists for information only ("bookable" off, migration
+// 020) or has hidden takes no booking request (brief §6).
+if ($seva_id !== null) {
+    $sevaCheck = getDB()->prepare('SELECT is_active' . (publicGuardHasColumn('sevas', 'is_bookable') ? ', is_bookable' : ', 1 AS is_bookable') . ' FROM sevas WHERE id = :id');
+    $sevaCheck->execute([':id' => $seva_id]);
+    $sevaRow = $sevaCheck->fetch();
+    if (!$sevaRow || (int) $sevaRow['is_active'] !== 1) {
+        sendError('That seva is not available for booking', 422);
+    }
+    if ((int) $sevaRow['is_bookable'] !== 1) {
+        sendError('This seva is not booked online. Please contact the temple office.', 422);
+    }
+}
 
 // Validate and normalise preferred_date
 $dateValue = null;

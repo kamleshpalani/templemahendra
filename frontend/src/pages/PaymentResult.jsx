@@ -296,6 +296,7 @@ export default function PaymentResult() {
     [isDonation ? t("நன்கொடை எண்", "Donation ID") : t("பதிவு எண்", "Booking ID"), data.number],
     [t("தொகை", "Amount"), `${amountLabel} (${data.currency})`],
     purposeLabel && [isDonation ? t("நோக்கம்", "Purpose") : t("சேவை", "Seva"), purposeLabel],
+    data.pooja && [t("இதற்காக", "For"), `${t(data.pooja.ta, data.pooja.en)} · ${formatPlainDate(data.pooja.date, lang)}`],
     !isDonation && data.preferredDate && [t("விரும்பிய தேதி", "Preferred date"), formatPlainDate(data.preferredDate, lang)],
     data.donorName && [t("பெயர்", "Name"), data.donorName],
     data.paidAt && [t("செலுத்திய நேரம்", "Payment date"), formatIstDateTime(data.paidAt, lang)],

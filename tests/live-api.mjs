@@ -71,8 +71,9 @@ const EMBED = (id) => `https://www.youtube-nocookie.com/embed/${id}?rel=0&playsi
 const WATCH = (id) => `https://www.youtube.com/watch?v=${id}`;
 const THUMB = (id) => `https://i.ytimg.com/vi/${id}/hqdefault.jpg`;
 const PUBLIC_KEYS = ["id", "slug", "title_ta", "title_en", "description_ta", "description_en", "event_type", "event_type_label", "provider", "status", "is_live",
-  "temple", "deity", "scheduled_start_at", "scheduled_end_at", "actual_start_at", "actual_end_at", "timezone", "local", "thumbnail_url", "banner_url", "playback", "viewers", "flags"].sort();
-const ADMIN_KEYS = [...PUBLIC_KEYS, "created_by", "updated_by", "created_at", "updated_at", "deleted_at", "provider_broadcast_id", "playback_url_raw", "temple_id", "deity_id"].sort();
+  "temple", "deity", "scheduled_start_at", "scheduled_end_at", "actual_start_at", "actual_end_at", "timezone", "local", "thumbnail_url", "banner_url", "playback", "viewers", "flags",
+  "pooja", "event", "sponsor"].sort();
+const ADMIN_KEYS = [...PUBLIC_KEYS, "created_by", "updated_by", "created_at", "updated_at", "deleted_at", "provider_broadcast_id", "playback_url_raw", "temple_id", "deity_id", "pooja_id", "event_id"].sort();
 const ADMIN_TOLERATED_EXTRAS = ["thumbnail_url_raw"];
 const PRIVATE_KEYS = ["provider_stream_id", "viewer_count", "last_sync_ok_at", "sync_error", "next_sync_at", "created_by", "updated_by", "deleted_at", "temple_id", "deity_id", "provider_broadcast_id", "playback_url", "created_at", "updated_at", "recording_url"];
 const ISO_Z = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/;
@@ -296,7 +297,10 @@ try {
 
   /* ── Fixtures ──────────────────────────────────────────────────────── */
   section("Fixtures");
-  F.live = mk("Live now", { status: "LIVE", deity_slug: "renukadevi", scheduled_start_local: istLocal(-60), scheduled_end_local: istLocal(60), flags: { featured: true, showOnHomepage: true } });
+  // Captured once: the wall-clock check below compares against what the fixture was made with, not a clock read minutes later.
+  const liveStartLocal = istLocal(-60);
+  const liveEndLocal = istLocal(60);
+  F.live = mk("Live now", { status: "LIVE", deity_slug: "renukadevi", scheduled_start_local: liveStartLocal, scheduled_end_local: liveEndLocal, flags: { featured: true, showOnHomepage: true } });
   F.starting = mk("Starting soon", { status: "STARTING", scheduled_start_local: istLocal(10), scheduled_end_local: istLocal(70) });
   F.future = mk("Tomorrow evening", { status: "SCHEDULED", deity_slug: "lingammal", scheduled_start_local: `${istDate(1)} 18:00`, scheduled_end_local: `${istDate(1)} 19:30` });
   F.xss = mk("XSS", { status: "SCHEDULED", scheduled_start_local: `${istDate(1)} 20:00`, title_en: `${PREFIX} ${XSS} XSS`, title_ta: `${PREFIX} <img src=x onerror=alert(1)> தரிசனம்`, description_en: `<svg/onload=alert(1)>desc ${XSS}`, description_ta: `விளக்கம் ${XSS}` });
@@ -332,13 +336,13 @@ try {
   check(hasPublicShape(liveItem), "a live item has exactly the §4.3 keys and none of the private ones", keysOf(liveItem).join(","));
   check(liveItem?.is_live === true && liveItem?.status === "LIVE" && liveItem?.provider === "youtube", "is_live true, status LIVE, provider youtube");
   check(liveItem?.slug === F.live.slug && liveItem?.title_en === `${PREFIX} Live now` && /\p{Script=Tamil}/u.test(liveItem?.title_ta ?? ""), "slug and both titles", show([liveItem?.slug, liveItem?.title_en, liveItem?.title_ta]));
-  check(JSON.stringify(liveItem?.playback) === JSON.stringify({ kind: "iframe", embedUrl: EMBED(YT), watchUrl: WATCH(YT) }), "playback is {kind iframe, embedUrl nocookie …?rel=0&playsinline=1, watchUrl}", show(liveItem?.playback));
+  check(JSON.stringify(liveItem?.playback) === JSON.stringify({ kind: "iframe", embedUrl: EMBED(YT), watchUrl: WATCH(YT), unavailable: false, reason: null }), "playback is {kind iframe, embedUrl nocookie …?rel=0&playsinline=1, watchUrl, unavailable false, reason null}", show(liveItem?.playback));
   check(liveItem?.thumbnail_url === THUMB(YT) && liveItem?.banner_url === null, "thumbnail_url defaults to hqdefault.jpg; banner_url null", show([liveItem?.thumbnail_url, liveItem?.banner_url]));
   check(liveItem?.temple?.slug === "pudupatti" && sameKeys(liveItem?.temple, ["name_en", "name_ta", "short_name_en", "short_name_ta", "slug"]) && /\p{Script=Tamil}/u.test(liveItem?.temple?.name_ta ?? ""), "temple is {slug, name_ta, name_en, short_name_ta, short_name_en}", show(liveItem?.temple));
   check(liveItem?.deity?.slug === "renukadevi" && sameKeys(liveItem?.deity, ["name_en", "name_ta", "slug"]), "deity is {slug, name_ta, name_en}", show(liveItem?.deity));
   check(JSON.stringify(liveItem?.event_type_label) === JSON.stringify({ ta: "நேரடி தரிசனம்", en: "Live darshan" }) && liveItem?.event_type === "live_darshan", "event_type_label carries both languages", show(liveItem?.event_type_label));
   check(liveItem?.scheduled_start_at === utcIso(F.live.scheduled_start_at) && liveItem?.actual_start_at === utcIso(F.live.actual_start_at) && liveItem?.actual_end_at === null && ISO_Z.test(liveItem?.scheduled_end_at ?? ""), "instants are the stored UTC times as ISO-8601 Z, null when unset", show([liveItem?.scheduled_start_at, liveItem?.actual_start_at, liveItem?.actual_end_at]));
-  check(liveItem?.timezone === "Asia/Kolkata" && liveItem?.local?.date === istLocal(-60).slice(0, 10) && liveItem?.local?.start_time === istLocal(-60).slice(11, 16) && liveItem?.local?.end_time === istLocal(60).slice(11, 16), "local is the IST wall clock {date, start_time, end_time}", show(liveItem?.local));
+  check(liveItem?.timezone === "Asia/Kolkata" && liveItem?.local?.date === liveStartLocal.slice(0, 10) && liveItem?.local?.start_time === liveStartLocal.slice(11, 16) && liveItem?.local?.end_time === liveEndLocal.slice(11, 16), "local is the IST wall clock {date, start_time, end_time}", show(liveItem?.local));
   check(JSON.stringify(liveItem?.flags) === JSON.stringify({ featured: true, showOnHomepage: true, donations: true, notifications: true, sharing: true, archive: true }), "flags are booleans keyed featured, showOnHomepage, donations, notifications, sharing, archive", show(liveItem?.flags));
   check(liveItem?.viewers === null, "viewers is null when YouTube has not reported a figure (SPEC-PHASE4 §1)", show(liveItem?.viewers));
 
@@ -400,7 +404,7 @@ try {
   check(hasPublicShape(future) && future?.id === F.future.id && future?.status === "SCHEDULED" && future?.is_live === false, "the SCHEDULED stream has the public shape, is_live false", keysOf(future).join(","));
   check(future?.local?.date === istDate(1) && future?.local?.start_time === "18:00" && future?.local?.end_time === "19:30" && future?.scheduled_start_at === utcIso(F.future.scheduled_start_at), "its schedule: tomorrow 18:00–19:30 IST, stored as UTC", show([future?.local, future?.scheduled_start_at]));
   check(future?.deity?.slug === "lingammal" && future?.actual_start_at === null && future?.actual_end_at === null, "deity lingammal, no actual times yet");
-  check(JSON.stringify(future?.playback) === JSON.stringify({ kind: "iframe", embedUrl: EMBED(YT), watchUrl: WATCH(YT) }), "a scheduled stream already carries its playback descriptor (the page decides when to mount it)");
+  check(JSON.stringify(future?.playback) === JSON.stringify({ kind: "iframe", embedUrl: EMBED(YT), watchUrl: WATCH(YT), unavailable: false, reason: null }), "a scheduled stream already carries its playback descriptor (the page decides when to mount it)");
   r = await pub(`/api/live-streams/${F.future.slug.toUpperCase()}`);
   check(isNotFound(r), "a slug in capitals is not a route (the regex is lowercase) → 404", `${r.status} ${r.text.slice(0, 80)}`);
   for (const [label, path] of [
@@ -861,8 +865,12 @@ try {
   fixture("set-status", { id: F.cancelled.id, status: "CANCELLED", actor: "e2e" });
   r = await sched("filter=tomorrow&limit=100");
   check(itemOf(r, P2.tomorrow0.id)?.day_bucket === "tomorrow" && itemOf(r, P2.tomorrow0.id)?.local?.start_time === "00:00", "00:00 IST tomorrow is bucket tomorrow", show(itemOf(r, P2.tomorrow0.id)?.local));
-  const tomorrowStarts = (r.data?.streams ?? []).filter((s) => s.status !== "COMPLETED").map((s) => s.scheduled_start_at);
-  check(tomorrowStarts.every((t, i) => i === 0 || t >= tomorrowStarts[i - 1]), "tomorrow is in start order", show(tomorrowStarts));
+  // A featured broadcast leads its day (brief §12); the rest of the day is in start order.
+  const tomorrowRows = (r.data?.streams ?? []).filter((s) => s.status !== "COMPLETED");
+  const firstPlain = tomorrowRows.findIndex((s) => !s.flags?.featured);
+  const featuredLead = tomorrowRows.every((s, i) => firstPlain === -1 || (i < firstPlain) === Boolean(s.flags?.featured));
+  const tomorrowStarts = tomorrowRows.filter((s) => !s.flags?.featured).map((s) => s.scheduled_start_at);
+  check(featuredLead && tomorrowStarts.every((t, i) => i === 0 || t >= tomorrowStarts[i - 1]), "tomorrow is in start order, a featured broadcast first", show(tomorrowRows.map((s) => `${s.flags?.featured ? "*" : ""}${s.scheduled_start_at}`)));
 
   r = await sched("filter=week&limit=100");
   const weekIds = mineP2(r.data?.streams);
@@ -926,8 +934,20 @@ try {
   r = await pub("/api/live-streams");
   check(r.status === 200 && cache(r) === "no-store, private", "the index is still no-store");
   check(r.data?.now?.id === F.live.id && r.data?.now?.status === "LIVE" && r.data?.now?.day_bucket === "today" && r.data?.now?.starts_in_seconds === null, "now is the featured LIVE stream with the two schedule keys", show([r.data?.now?.id, r.data?.now?.status, r.data?.now?.day_bucket, r.data?.now?.starts_in_seconds]));
+  // now / next are the homepage's: only rows with Show on homepage on (brief §6). F.live has it; the upcoming ones are switched off here first.
+  const suiteIds = rows("SELECT id FROM live_streams WHERE title_en LIKE ?", [`${PREFIX}%`]).map((x) => Number(x.id));
+  sql("UPDATE live_streams SET show_on_homepage = 0 WHERE title_en LIKE ? AND status = 'SCHEDULED'", [`${PREFIX}%`]);
+  r = await pub("/api/live-streams");
+  check((r.data?.next === null || !suiteIds.includes(r.data?.next?.id)) && (r.data?.upcoming ?? []).some((s) => suiteIds.includes(s.id)), "next is null while no upcoming stream has Show on homepage on (they still fill the upcoming list)", show([r.data?.next?.id, (r.data?.upcoming ?? []).length]));
+  sql("UPDATE live_streams SET show_on_homepage = 1 WHERE id IN (?, ?)", [F.future.id, F.future2.id]);
+  r = await pub("/api/live-streams");
+  check(r.data?.next?.id === F.future.id && r.data?.next?.status === "SCHEDULED" && r.data?.next?.flags?.showOnHomepage === true, "next is the first upcoming stream (in time) among those with Show on homepage on", show([r.data?.next?.id, F.future.id]));
   check(hasScheduleShape(r.data?.now) && hasScheduleShape(r.data?.next), "now and next have the schedule shape (public keys + day_bucket + starts_in_seconds)", `${keysOf(r.data?.now).join(",")} | ${keysOf(r.data?.next).join(",")}`);
-  check(r.data?.next?.id === r.data?.upcoming?.[0]?.id && r.data?.next?.status === "SCHEDULED", "next is the first upcoming stream", show([r.data?.next?.id, r.data?.upcoming?.[0]?.id]));
+  sql("UPDATE live_streams SET show_on_homepage = 0 WHERE id = ?", [F.live.id]);
+  r = await pub("/api/live-streams");
+  check(r.data?.now === null && idsOf(r.data?.live).includes(F.live.id), "with its switch off the live stream leaves now but stays in the live list", show([r.data?.now, idsOf(r.data?.live)]));
+  sql("UPDATE live_streams SET show_on_homepage = 1 WHERE id = ?", [F.live.id]);
+  r = await pub("/api/live-streams");
   check(["today", "tomorrow", "later", "past"].includes(r.data?.next?.day_bucket) && (r.data?.next?.starts_in_seconds === null || Number.isInteger(r.data?.next?.starts_in_seconds)), "next carries a day_bucket and starts_in_seconds");
   check(hasPublicShape(r.data?.live?.[0]) && hasPublicShape(r.data?.upcoming?.[0]), "the live and upcoming items keep the plain public shape");
   const endLive = fixture("set-status", { id: F.live.id, status: "COMPLETED", actor: "e2e" });

@@ -14,6 +14,10 @@
 --   mysql -u <user> -p <db> < database/migrations/015_admin_roles.sql
 -- ============================================================
 
+-- The connection's character set, whatever client applies this file: without
+-- it a latin1 client (the Windows mysql default) stores Tamil text as '?'.
+SET NAMES utf8mb4;
+
 ALTER TABLE `admin_users`
   MODIFY `role` ENUM('owner','admin','editor','finance','viewer') NOT NULL DEFAULT 'editor';
 

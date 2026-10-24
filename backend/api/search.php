@@ -4,24 +4,51 @@
  *
  *   GET /api/search?q=abhishekam[&limit=20]
  *
- * Covers the database (sevas, events, poojas, announcements, gallery captions)
- * and the handful of static pages, which are indexed here by hand because they
- * are curated content rather than rows. Matching is deliberately plain LIKE:
- * the corpus is a few hundred short bilingual records, so a full-text index
- * would add operational weight for no gain, and MySQL full-text does not
- * tokenise Tamil usefully anyway.
+ * Covers the database (sevas, events, poojas, announcements, gallery captions
+ * and alt text, videos, the CMS pages of migration 025) and the handful of
+ * static pages, which are indexed here by hand because they are curated
+ * content rather than rows. Matching is deliberately plain LIKE: the corpus is
+ * a few hundred short bilingual records, so a full-text index would add
+ * operational weight for no gain, and MySQL full-text does not tokenise Tamil
+ * usefully anyway.
  *
- * Results carry both languages so the client renders in whichever is active.
+ * Every result carries both languages so the client renders in whichever is
+ * active: title_ta / title_en, sub_ta / sub_en (a price, a date, a category),
+ * snippet_ta / snippet_en (an excerpt of the matching text, ~160 characters
+ * around the term) and `url`, an in-site path. The old single `snippet` key
+ * (English, else Tamil) is kept for one release for the pages that still read
+ * it. `score` ranks within a group: 100 exact title, 80 title starts with the
+ * term, 50 title contains it, 40 only the body or a keyword matched.
+ *
+ * Where each hit points (the public site's deep links):
+ *   sevas          /sevas?seva=<id> when the seva can be booked online, else
+ *                  /sevas (Sevas.jsx opens the booking form for ?seva=)
+ *   events         /events/<id>
+ *   poojas         /panchangam
+ *   announcements  /
+ *   gallery        /gallery?photo=<id> (Gallery.jsx opens that photo)
+ *   videos         /videos[?category=<slug>]
+ *   pages          the About anchors for the CMS pages "mission" and "history",
+ *                  /about for any other CMS page, and the curated list below
+ *
+ * The bilingual columns of migrations 020 (announcements, events, sevas), 021
+ * (gallery alt text and albums) and the `pages` table of 025 are read only
+ * when publicGuardHasColumn() finds them, so a database without those
+ * migrations still answers, with the old single-language columns standing in.
+ * Announcements honour is_active and the start_date / end_date window exactly
+ * as /api/announcements does; photos in a hidden album and hidden CMS pages
+ * never match.
  */
 
 require_once __DIR__ . '/../includes/db.php';
 require_once __DIR__ . '/../includes/helpers.php';
+require_once __DIR__ . '/../includes/public_guard.php';
 
 if ($_SERVER['REQUEST_METHOD'] !== 'GET') {
     sendError('Method not allowed', 405);
 }
 
-$q     = trim((string) ($_GET['q'] ?? ''));
+$q     = is_string($_GET['q'] ?? null) ? trim((string) $_GET['q']) : '';
 $limit = max(1, min(50, (int) ($_GET['limit'] ?? 20)));
 
 if (mb_strlen($q) < 2) {
@@ -33,7 +60,7 @@ $db   = getDB();
 $out  = [];
 
 /** Rank: a title that starts with the term beats one that merely contains it. */
-function scoreOf(string $q, string ...$fields): int
+function scoreOf(string $q, ?string ...$fields): int
 {
     $q = mb_strtolower($q);
     $best = 0;
@@ -47,44 +74,118 @@ function scoreOf(string $q, string ...$fields): int
     return $best;
 }
 
+/**
+ * A short excerpt of $text for the result card: whitespace collapsed, at most
+ * $len characters, centred on the first occurrence of the term when the text
+ * is longer than that (a CMS page body can run to pages). Null for blank text.
+ */
+function excerptOf(?string $text, string $q, int $len = 160): ?string
+{
+    $text = trim((string) preg_replace('/\s+/u', ' ', (string) $text));
+    if ($text === '') return null;
+    $total = mb_strlen($text);
+    if ($total <= $len) return $text;
+    $pos   = mb_stripos($text, $q);
+    $start = $pos === false ? 0 : max(0, $pos - intdiv($len, 4));
+    if ($start > 0) {
+        // Back up to a word boundary so the excerpt never opens mid-word.
+        $space = mb_strrpos(mb_substr($text, 0, $start), ' ');
+        if ($space !== false && $start - $space < 30) $start = $space + 1;
+    }
+    if ($start + $len > $total) $start = max(0, $total - $len);
+    $piece = trim(mb_substr($text, $start, $len));
+    return ($start > 0 ? '…' : '') . $piece . ($start + $len < $total ? '…' : '');
+}
+
+/** The three snippet keys every result carries (the single `snippet` is English, else Tamil, for one release). */
+function snippetsOf(?string $ta, ?string $en, string $q): array
+{
+    $sta = excerptOf($ta, $q);
+    $sen = excerptOf($en, $q);
+    return ['snippet_ta' => $sta, 'snippet_en' => $sen, 'snippet' => $sen ?? $sta];
+}
+
+/** "(a LIKE :q0 OR b LIKE :q1 …)" with its bound values — PDO needs a distinct placeholder per use. */
+function likeAny(array $cols, string $like): array
+{
+    $parts = $params = [];
+    foreach (array_values($cols) as $i => $c) {
+        $parts[]           = $c . ' LIKE :q' . $i;
+        $params[':q' . $i] = $like;
+    }
+    return ['(' . implode(' OR ', $parts) . ')', $params];
+}
+
 $add = function (string $type, array $item) use (&$out) {
     $out[$type][] = $item;
 };
 
+// What this database has (migrations 020, 021, 025); each check is cached per request.
+$annBilingual = publicGuardHasColumn('announcements', 'title_ta') && publicGuardHasColumn('announcements', 'title_en')
+    && publicGuardHasColumn('announcements', 'body_ta') && publicGuardHasColumn('announcements', 'body_en');
+$annWindowed  = publicGuardHasColumn('announcements', 'start_date') && publicGuardHasColumn('announcements', 'end_date');
+$evBilingual  = publicGuardHasColumn('events', 'description_ta') && publicGuardHasColumn('events', 'description_en')
+    && publicGuardHasColumn('events', 'venue_ta') && publicGuardHasColumn('events', 'venue_en') && publicGuardHasColumn('events', 'end_date');
+$sevaBilingual = publicGuardHasColumn('sevas', 'description_ta') && publicGuardHasColumn('sevas', 'description_en')
+    && publicGuardHasColumn('sevas', 'timing_ta') && publicGuardHasColumn('sevas', 'timing_en') && publicGuardHasColumn('sevas', 'is_bookable');
+$galAlt    = publicGuardHasColumn('gallery', 'alt_ta') && publicGuardHasColumn('gallery', 'alt_en');
+$galAlbums = publicGuardHasColumn('gallery', 'album_id') && publicGuardHasColumn('gallery_albums', 'is_active');
+$cmsPages  = publicGuardHasColumn('pages', 'slug') && publicGuardHasColumn('pages', 'is_active')
+    && publicGuardHasColumn('pages', 'body_ta') && publicGuardHasColumn('pages', 'body_en');
+$videoTables = publicGuardHasColumn('videos', 'category_id') && publicGuardHasColumn('video_categories', 'slug');
+
+$cmsUrls = []; // CMS hits by URL, so the curated entry for the same anchor is not listed twice
+
 try {
     // ── Sevas ───────────────────────────────────────────────────────────────
-    $stmt = $db->prepare(
-        'SELECT id, name_ta, name_en, description, amount FROM sevas
-          WHERE is_active = 1 AND (name_ta LIKE :q1 OR name_en LIKE :q2 OR description LIKE :q3)
-          ORDER BY sort_order LIMIT 25'
+    $select = $sevaBilingual
+        ? 'id, name_ta, name_en, COALESCE(description_ta, description) AS description_ta,
+           COALESCE(description_en, description) AS description_en, timing_ta, timing_en, amount, is_bookable'
+        : 'id, name_ta, name_en, description AS description_ta, description AS description_en,
+           NULL AS timing_ta, NULL AS timing_en, amount, 1 AS is_bookable';
+    [$where, $params] = likeAny(
+        array_merge(['name_ta', 'name_en', 'description'], $sevaBilingual ? ['description_ta', 'description_en', 'timing_ta', 'timing_en'] : []),
+        $like
     );
-    $stmt->execute([':q1' => $like, ':q2' => $like, ':q3' => $like]);
+    $stmt = $db->prepare('SELECT ' . $select . ' FROM sevas WHERE is_active = 1 AND ' . $where . ' ORDER BY sort_order ASC, id ASC LIMIT 25');
+    $stmt->execute($params);
     foreach ($stmt->fetchAll() as $r) {
+        $price = $r['amount'] !== null ? '₹' . rtrim(rtrim(number_format((float) $r['amount'], 2), '0'), '.') : null;
         $add('sevas', [
             'title_ta' => $r['name_ta'], 'title_en' => $r['name_en'],
-            'sub_ta'   => $r['amount'] !== null ? '₹' . rtrim(rtrim(number_format((float) $r['amount'], 2), '0'), '.') : null,
-            'sub_en'   => $r['amount'] !== null ? '₹' . rtrim(rtrim(number_format((float) $r['amount'], 2), '0'), '.') : null,
-            'snippet'  => $r['description'],
-            'url'      => '/sevas',
-            'score'    => scoreOf($q, $r['name_ta'], $r['name_en']),
+            'sub_ta'   => $price, 'sub_en' => $price,
+            // The description, else the timing ("Daily 7–9 am") when that is all the seva says.
+            ...snippetsOf($r['description_ta'] ?: $r['timing_ta'], $r['description_en'] ?: $r['timing_en'], $q),
+            'url'      => (int) $r['is_bookable'] === 1 ? '/sevas?seva=' . (int) $r['id'] : '/sevas',
+            'score'    => scoreOf($q, $r['name_ta'], $r['name_en']) ?: 40, // matched in the description or timing only
         ]);
     }
 
     // ── Events ──────────────────────────────────────────────────────────────
-    $stmt = $db->prepare(
-        'SELECT id, title_ta, title_en, description, event_date FROM events
-          WHERE is_active = 1 AND (title_ta LIKE :q1 OR title_en LIKE :q2 OR description LIKE :q3)
-          ORDER BY event_date >= CURDATE() DESC, event_date ASC LIMIT 25'
+    $select = $evBilingual
+        ? 'id, title_ta, title_en, COALESCE(description_ta, description) AS description_ta,
+           COALESCE(description_en, description) AS description_en, event_date, end_date, venue_ta, venue_en'
+        : 'id, title_ta, title_en, description AS description_ta, description AS description_en,
+           event_date, NULL AS end_date, NULL AS venue_ta, NULL AS venue_en';
+    [$where, $params] = likeAny(
+        array_merge(['title_ta', 'title_en', 'description'], $evBilingual ? ['description_ta', 'description_en', 'venue_ta', 'venue_en'] : []),
+        $like
     );
-    $stmt->execute([':q1' => $like, ':q2' => $like, ':q3' => $like]);
+    $stmt = $db->prepare(
+        'SELECT ' . $select . ' FROM events WHERE is_active = 1 AND ' . $where
+        . ' ORDER BY ' . ($evBilingual ? 'COALESCE(end_date, event_date)' : 'event_date') . ' >= CURDATE() DESC, event_date ASC LIMIT 25'
+    );
+    $stmt->execute($params);
     foreach ($stmt->fetchAll() as $r) {
+        $when = (string) $r['event_date'] . ($r['end_date'] !== null && $r['end_date'] !== $r['event_date'] ? ' – ' . $r['end_date'] : '');
         $add('events', [
             'title_ta' => $r['title_ta'], 'title_en' => $r['title_en'],
-            'sub_ta'   => $r['event_date'], 'sub_en' => $r['event_date'],
-            'snippet'  => $r['description'],
-            'url'      => '/events',
+            'sub_ta'   => $when . ($r['venue_ta'] !== null && $r['venue_ta'] !== '' ? ' · ' . $r['venue_ta'] : ''),
+            'sub_en'   => $when . ($r['venue_en'] !== null && $r['venue_en'] !== '' ? ' · ' . $r['venue_en'] : ''),
+            ...snippetsOf($r['description_ta'], $r['description_en'], $q),
+            'url'      => '/events/' . (int) $r['id'],
             'date'     => $r['event_date'],
-            'score'    => scoreOf($q, $r['title_ta'], $r['title_en']),
+            'score'    => scoreOf($q, $r['title_ta'], $r['title_en']) ?: 40, // matched in the description or venue only
         ]);
     }
 
@@ -100,67 +201,125 @@ try {
             'title_ta' => $r['name_ta'], 'title_en' => $r['name_en'],
             'sub_ta'   => trim($r['pooja_date'] . ' ' . ($r['pooja_time'] ?? '')),
             'sub_en'   => trim($r['pooja_date'] . ' ' . ($r['pooja_time'] ?? '')),
-            'snippet'  => $r['description_en'] ?: $r['description_ta'],
+            ...snippetsOf($r['description_ta'], $r['description_en'], $q),
             'url'      => '/panchangam',
             'date'     => $r['pooja_date'],
-            'score'    => scoreOf($q, $r['name_ta'], $r['name_en']),
+            'score'    => scoreOf($q, $r['name_ta'], $r['name_en']) ?: 40, // matched in the description only
         ]);
     }
 
-    // ── Announcements ───────────────────────────────────────────────────────
-    $stmt = $db->prepare(
-        'SELECT id, title, body, created_at FROM announcements
-          WHERE is_active = 1 AND (title LIKE :q1 OR body LIKE :q2)
-          ORDER BY created_at DESC LIMIT 20'
+    // ── Announcements (migration 020: both languages, publish window) ───────
+    // The old column stands in when the new one was never filled, as
+    // /api/announcements does, so no notice is served with an empty title.
+    $select = $annBilingual
+        ? 'id, COALESCE(NULLIF(title_ta, \'\'), title) AS title_ta, COALESCE(NULLIF(title_en, \'\'), title) AS title_en,
+           COALESCE(body_ta, body) AS body_ta, COALESCE(body_en, body) AS body_en, created_at'
+        : 'id, title AS title_ta, title AS title_en, body AS body_ta, body AS body_en, created_at';
+    [$where, $params] = likeAny(
+        array_merge(['title', 'body'], $annBilingual ? ['title_ta', 'title_en', 'body_ta', 'body_en'] : []),
+        $like
     );
-    $stmt->execute([':q1' => $like, ':q2' => $like]);
+    $sql = 'SELECT ' . $select . ' FROM announcements WHERE is_active = 1 AND ' . $where;
+    if ($annWindowed) {
+        // Temple time, the same clock the homepage cards and /api/announcements use.
+        $today = (new DateTime('now', new DateTimeZone('Asia/Kolkata')))->format('Y-m-d');
+        $sql .= ' AND (start_date IS NULL OR start_date <= :from) AND (end_date IS NULL OR end_date >= :until)';
+        $params[':from']  = $today;
+        $params[':until'] = $today;
+    }
+    $stmt = $db->prepare($sql . ' ORDER BY created_at DESC, id DESC LIMIT 20');
+    $stmt->execute($params);
     foreach ($stmt->fetchAll() as $r) {
         $add('announcements', [
-            'title_ta' => $r['title'], 'title_en' => $r['title'],
+            'title_ta' => (string) $r['title_ta'], 'title_en' => (string) $r['title_en'],
             'sub_ta'   => null, 'sub_en' => null,
-            'snippet'  => $r['body'],
+            ...snippetsOf($r['body_ta'], $r['body_en'], $q),
             'url'      => '/',
             'date'     => $r['created_at'],
-            'score'    => scoreOf($q, $r['title']),
+            'score'    => scoreOf($q, $r['title_ta'], $r['title_en']) ?: 40, // matched in the body only
         ]);
     }
 
-    // ── Gallery captions ────────────────────────────────────────────────────
+    // ── Gallery: captions and alt text (migration 021); a hidden album hides its photos ──
+    $select = 'g.id, g.caption' . ($galAlt ? ', g.alt_ta, g.alt_en' : ', NULL AS alt_ta, NULL AS alt_en');
+    $from   = 'gallery g' . ($galAlbums ? ' LEFT JOIN gallery_albums a ON a.id = g.album_id' : '');
+    [$where, $params] = likeAny(array_merge(['g.caption'], $galAlt ? ['g.alt_ta', 'g.alt_en'] : []), $like);
     $stmt = $db->prepare(
-        'SELECT id, caption FROM gallery WHERE is_active = 1 AND caption LIKE :q ORDER BY created_at DESC LIMIT 12'
+        'SELECT ' . $select . ' FROM ' . $from . ' WHERE g.is_active = 1'
+        . ($galAlbums ? ' AND (g.album_id IS NULL OR a.is_active = 1)' : '')
+        . ' AND ' . $where . ' ORDER BY g.created_at DESC, g.id DESC LIMIT 12'
     );
-    $stmt->execute([':q' => $like]);
+    $stmt->execute($params);
     foreach ($stmt->fetchAll() as $r) {
+        // The caption is the visible label in both languages; the alt text is the
+        // fallback title and, when it says something the caption does not, the snippet.
+        $caption  = trim((string) $r['caption']);
+        $title_ta = $caption !== '' ? $caption : (trim((string) $r['alt_ta']) ?: trim((string) $r['alt_en']));
+        $title_en = $caption !== '' ? $caption : (trim((string) $r['alt_en']) ?: trim((string) $r['alt_ta']));
+        $alt_ta   = trim((string) $r['alt_ta']) !== $title_ta ? $r['alt_ta'] : null;
+        $alt_en   = trim((string) $r['alt_en']) !== $title_en ? $r['alt_en'] : null;
         $add('gallery', [
-            'title_ta' => $r['caption'], 'title_en' => $r['caption'],
-            'sub_ta'   => null, 'sub_en' => null, 'snippet' => null,
-            'url'      => '/gallery',
-            'score'    => scoreOf($q, (string) $r['caption']),
+            'title_ta' => $title_ta, 'title_en' => $title_en,
+            'sub_ta'   => null, 'sub_en' => null,
+            ...snippetsOf($alt_ta, $alt_en, $q),
+            'url'      => '/gallery?photo=' . (int) $r['id'],
+            'score'    => scoreOf($q, $caption, $r['alt_ta'], $r['alt_en']),
         ]);
+    }
+
+    // ── CMS pages (migration 025): what the committee wrote in Content → Pages ──
+    // Only shown pages with a body: the About page renders nothing for a page
+    // without one, so a hit would lead nowhere. "mission" and "history" are
+    // the About page's own sections; any other page lands on /about.
+    if ($cmsPages) {
+        [$where, $params] = likeAny(['title_ta', 'title_en', 'body_ta', 'body_en'], $like);
+        $stmt = $db->prepare(
+            'SELECT id, slug, title_ta, title_en, body_ta, body_en FROM pages
+              WHERE is_active = 1 AND (COALESCE(body_ta, \'\') <> \'\' OR COALESCE(body_en, \'\') <> \'\') AND ' . $where
+            . ' ORDER BY sort_order ASC, id ASC LIMIT 20'
+        );
+        $stmt->execute($params);
+        foreach ($stmt->fetchAll() as $r) {
+            $url   = match ((string) $r['slug']) { 'mission' => '/about#mission', 'history' => '/about#history', default => '/about' };
+            $score = scoreOf($q, $r['title_ta'], $r['title_en']) ?: 40;
+            $cmsUrls[$url] = true;
+            $add('pages', [
+                'title_ta' => (string) $r['title_ta'], 'title_en' => (string) $r['title_en'],
+                'sub_ta'   => 'பற்றி', 'sub_en' => 'About',
+                ...snippetsOf($r['body_ta'], $r['body_en'], $q),
+                'url'      => $url,
+                'score'    => $score,
+            ]);
+        }
     }
 
     // ── Videos (migration 017; hidden videos and hidden categories never match) ──
-    try {
-        $stmt = $db->prepare(
-            'SELECT v.id, v.title_ta, v.title_en, v.published_on, c.slug AS category_slug, c.name_ta AS category_ta, c.name_en AS category_en
-               FROM videos v LEFT JOIN video_categories c ON c.id = v.category_id
-              WHERE v.is_active = 1 AND (v.category_id IS NULL OR c.is_active = 1)
-                AND (v.title_ta LIKE :q1 OR v.title_en LIKE :q2)
-              ORDER BY v.sort_order ASC, v.published_on DESC LIMIT 12'
-        );
-        $stmt->execute([':q1' => $like, ':q2' => $like]);
-        foreach ($stmt->fetchAll() as $r) {
-            $add('videos', [
-                'title_ta' => $r['title_ta'], 'title_en' => $r['title_en'],
-                'sub_ta'   => $r['category_ta'], 'sub_en' => $r['category_en'], 'snippet' => null,
-                'url'      => '/videos' . ($r['category_slug'] !== null ? '?category=' . rawurlencode((string) $r['category_slug']) : ''),
-                'date'     => $r['published_on'],
-                'score'    => scoreOf($q, $r['title_ta'], $r['title_en']),
-            ]);
+    // Asked only when the tables exist, so a site without 017 answers without
+    // an error line in its log for every search.
+    if ($videoTables) {
+        try {
+            $stmt = $db->prepare(
+                'SELECT v.id, v.title_ta, v.title_en, v.published_on, c.slug AS category_slug, c.name_ta AS category_ta, c.name_en AS category_en
+                   FROM videos v LEFT JOIN video_categories c ON c.id = v.category_id
+                  WHERE v.is_active = 1 AND (v.category_id IS NULL OR c.is_active = 1)
+                    AND (v.title_ta LIKE :q1 OR v.title_en LIKE :q2)
+                  ORDER BY v.sort_order ASC, v.published_on DESC LIMIT 12'
+            );
+            $stmt->execute([':q1' => $like, ':q2' => $like]);
+            foreach ($stmt->fetchAll() as $r) {
+                $add('videos', [
+                    'title_ta' => $r['title_ta'], 'title_en' => $r['title_en'],
+                    'sub_ta'   => $r['category_ta'], 'sub_en' => $r['category_en'],
+                    'snippet_ta' => null, 'snippet_en' => null, 'snippet' => null,
+                    'url'      => '/videos' . ($r['category_slug'] !== null ? '?category=' . rawurlencode((string) $r['category_slug']) : ''),
+                    'date'     => $r['published_on'],
+                    'score'    => scoreOf($q, $r['title_ta'], $r['title_en']),
+                ]);
+            }
+        } catch (Throwable $e) {
+            // A videos table of another shape must not cost the other groups.
+            error_log('[search] videos skipped: ' . $e->getMessage());
         }
-    } catch (Throwable $e) {
-        // Videos are optional until migration 017 is applied.
-        error_log('[search] videos skipped: ' . $e->getMessage());
     }
 } catch (Throwable $e) {
     error_log('[search] ' . $e->getMessage());
@@ -209,8 +368,12 @@ $PAGES = [
      'sub_ta' => 'கொள்கைகள்', 'sub_en' => 'Policies', 'kw' => 'refund refunds cancel cancellation money back return duplicate payment failed payment seva cancellation 48 hours பணம் திருப்பி ரத்து திரும்பப் பெறுதல்'],
     ['url' => '/shipping-delivery-policy', 'ta' => 'அனுப்புதல் & விநியோகக் கொள்கை', 'en' => 'Shipping & Delivery Policy',
      'sub_ta' => 'கொள்கைகள்', 'sub_en' => 'Policies', 'kw' => 'shipping delivery courier post dispatch prasadam receipt delivery அனுப்புதல் விநியோகம் கூரியர் அஞ்சல் பிரசாதம்'],
+    ['url' => '/deities',             'ta' => 'குலதெய்வங்கள்', 'en' => 'Deities',
+     'sub_ta' => 'கோயில்', 'sub_en' => 'Temple', 'kw' => 'deities deity god goddess amman lingammal renukadevi chinnammal kula deivam clan deity தெய்வம் தெய்வங்கள் குலதெய்வம் அம்மன் லிங்கம்மாள் ரேணுகாதேவி சின்னம்மாள்'],
+    ['url' => '/sponsorship',         'ta' => 'பூஜை உபயம்', 'en' => 'Pooja sponsorship',
+     'sub_ta' => 'பூஜைகள்', 'sub_en' => 'Poojas', 'kw' => 'sponsorship sponsor sponsors ubayam pooja pournami donate உபயம் உபயதாரர் பூஜை பௌர்ணமி நன்கொடை'],
     ['url' => '/videos',              'ta' => 'காணொளிகள்', 'en' => 'Videos',
-     'sub_ta' => 'காணொளிகள்', 'sub_en' => 'Videos', 'kw' => 'videos video youtube recordings watch pooja festival discourse darshan recording காணொளி காணொளிகள் வீடியோ யூடியூப் பதிவுகள் சொற்பொழிவு'],
+     'sub_ta' => 'காணொளிகள்', 'sub_en' => 'Videos', 'kw' => 'videos video youtube recordings watch pooja festival discourse darshan recording காணொளி காணொளிகள் வீடியோ யூடியூப் பதிவுகள் சொற்பொழிவு'],
     // Live darshan (docs/live/SPEC-PHASE1.md §4.6). Title = the page's SEO title.
     ['url' => '/live-darshan',        'ta' => 'நேரடி தரிசனம்', 'en' => 'Live Darshan',
      'sub_ta' => 'நேரடி தரிசனம்', 'sub_en' => 'Live Darshan', 'kw' => 'live darshan stream streaming watch online video youtube pooja நேரடி தரிசனம் நேரடி ஒளிபரப்பு யூடியூப் நேரலை'],
@@ -219,13 +382,15 @@ $PAGES = [
      'sub_ta' => 'நேரடி தரிசனம்', 'sub_en' => 'Live Darshan', 'kw' => 'schedule timetable programme today tomorrow this week festivals countdown அட்டவணை கால அட்டவணை live darshan நேரடி தரிசனம் இன்று நாளை இந்த வாரம் திருவிழா'],
 ];
 foreach ($PAGES as $p) {
+    if (isset($cmsUrls[$p['url']])) continue; // the committee's own page for this anchor already matched
     $score = scoreOf($q, $p['ta'], $p['en']);
     if ($score === 0 && mb_stripos($p['kw'], $q) !== false) $score = 40;
     if ($score > 0) {
         $add('pages', [
             'title_ta' => $p['ta'], 'title_en' => $p['en'],
             'sub_ta'   => $p['sub_ta'], 'sub_en' => $p['sub_en'],
-            'snippet'  => null, 'url' => $p['url'], 'score' => $score,
+            'snippet_ta' => null, 'snippet_en' => null, 'snippet' => null,
+            'url' => $p['url'], 'score' => $score,
         ]);
     }
 }

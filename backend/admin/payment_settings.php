@@ -254,7 +254,7 @@ if (!empty($_SESSION['flash_pay_settings'])) {
     $msg  = '<p class="alert alert--' . $tone . '" role="' . ($tone === 'success' ? 'status' : 'alert') . '">' . h($fText) . '</p>';
 }
 
-adminHeader('Payment Gateway', 'Data & System', [
+adminHeader('Payment Gateway', 'Finance', [
     'actions' => '<a href="/admin/payments.php" class="btn btn-ghost btn--sm">' . adminIcon('landmark') . 'Online Payments</a>',
 ]);
 echo $msg;

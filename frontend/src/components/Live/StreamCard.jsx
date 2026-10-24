@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Link } from "react-router-dom";
 import { LuCalendarDays, LuLandmark } from "react-icons/lu";
 import { useLang } from "../../context/LangContext";
+import Badge from "../ui/Badge";
 import LiveStatusBadge from "./LiveStatusBadge";
 import StreamCountdown from "./StreamCountdown";
 import {
@@ -25,7 +26,9 @@ const COUNTDOWN_WINDOW_SECONDS = 24 * 3600;
  * and every row of the schedule (SPEC-PHASE1 §5.2, SPEC-PHASE2 §2.2). The
  * whole card is the link to its page. It carries the status badge, the day
  * ("Today", "Tomorrow", or the weekday and date) with the time, and — for a
- * scheduled broadcast within the next day — a short countdown in minutes.
+ * scheduled broadcast within the next day — a short countdown in minutes. A
+ * featured broadcast (the committee's is_featured switch, brief §12) carries
+ * a gold Featured badge; the API already lists it first.
  */
 export default function StreamCard({ stream, lang, index = 0, serverOffset = 0, recording = false }) {
   const { t } = useLang();
@@ -39,9 +42,15 @@ export default function StreamCard({ stream, lang, index = 0, serverOffset = 0, 
   const kind = eventTypeLabel(stream, lang);
   const left = stream.status === "SCHEDULED" ? startsInSeconds(stream, serverOffset) : null;
   const soon = left !== null && left < COUNTDOWN_WINDOW_SECONDS;
+  const featured = Boolean(stream.flags?.featured);
 
   return (
-    <Link to={`/live-darshan/${stream.slug}`} className="card card--interactive live-card rise" style={{ "--i": Math.min(index, 8) }}>
+    <Link
+      to={`/live-darshan/${stream.slug}`}
+      className={`card card--interactive live-card rise${featured ? " live-card--featured" : ""}`}
+      style={{ "--i": Math.min(index, 8) }}
+      data-featured={featured ? "1" : undefined}
+    >
       <div className="live-card__thumb">
         {thumb && !broken ? (
           <img className="live-card__thumb-img" src={thumb} alt="" loading="lazy" decoding="async" onError={() => setBroken(true)} />
@@ -49,6 +58,11 @@ export default function StreamCard({ stream, lang, index = 0, serverOffset = 0, 
           <img className="live-card__emblem" src="/logo.svg" alt="" width="120" height="120" />
         )}
         <LiveStatusBadge status={stream.status} onDark className="live-card__badge" />
+        {featured && (
+          <Badge tone="gold" className="live-card__featured">
+            {t("சிறப்பு", "Featured")}
+          </Badge>
+        )}
       </div>
       <div className="live-card__body">
         {kind && <span className="live-card__kind">{kind}</span>}

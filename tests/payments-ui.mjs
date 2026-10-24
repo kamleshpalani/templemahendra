@@ -56,6 +56,7 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(HERE, "..");
 const FRONTEND = resolve(ROOT, "frontend");
 const { chromium } = createRequire(import.meta.url)("../frontend/node_modules/playwright/index.js");
+import { ccavEncrypt, ccavDecrypt } from "./support/ccavenue_crypto.mjs";
 const axeSource = readFileSync(resolve(FRONTEND, "node_modules/axe-core/axe.min.js"), "utf8");
 
 const PHP_BIN = process.env.PHP_BIN || "php";
@@ -177,6 +178,9 @@ function nextIp() {
 function cleanup() {
   const r = fixtures("cleanup", { name_prefix: NAME_PREFIX, ips: [...usedIps] });
   if (r.error) throw new Error(`cleanup: ${r.error}`);
+  // The pooja card and pooja the sponsorship scenario made (the widget first: its FK would only null the link).
+  sql("DELETE FROM homepage_widgets WHERE title_en LIKE ?", [`${NAME_PREFIX}%`]);
+  sql("DELETE FROM poojas WHERE name_en LIKE ?", [`${NAME_PREFIX}%`]);
   return r;
 }
 
@@ -332,6 +336,14 @@ const shot = (page, name) => page.screenshot({ path: resolve(SHOTS, `${name}.png
 const overflow = (page) => page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth + 1);
 async function axe(page) {
   await page.addScriptTag({ content: axeSource });
+  // Alerts and cards fade in (opacity 0 → 1): a contrast check taken mid-fade
+  // reads a colour nobody ever sees, so wait for every running animation first.
+  // Only finite animations are awaited (a pulsing dot never finishes), and never
+  // for longer than a second and a half.
+  await page.evaluate(() => Promise.race([
+    Promise.all(document.getAnimations().filter((a) => Number.isFinite(a.effect?.getTiming?.().iterations ?? 1)).map((a) => a.finished.catch(() => {}))),
+    new Promise((resolve) => setTimeout(resolve, 1500)),
+  ])).catch(() => {});
   return page.evaluate(async () => {
     const res = await window.axe.run(document, {
       runOnly: { type: "tag", values: ["wcag2a", "wcag2aa", "best-practice"] },
@@ -499,6 +511,69 @@ async function closedState() {
   check((await page.locator('.page-hero a[href="/donate"]').count()) === 0, "off: /donations hero has no Donate-online action");
   check(page.errors().length === 0, "off: no console errors", page.errors().slice(0, 2).join(" | "));
   await page.context().close();
+}
+
+/**
+ * The simulator's server API over HTTP (POST /api/payments/simulator/api),
+ * the endpoint a verification or a refund reaches when the site runs in
+ * simulator mode: the paid order from the success scenario is looked up the
+ * way CCAvenue's orderStatusTracker answers, and every refusal is its own code.
+ */
+async function simulatorServerApi() {
+  const KEY = "simulator-working-key-not-secret"; // PAY_SIMULATOR_DEV_KEY: no PAYMENTS_SIMULATOR_KEY is set here
+  const URL_API = `${PHP_BASE}/api/payments/simulator/api`;
+  const post = async (fields) => {
+    const res = await fetch(URL_API, { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" }, body: new URLSearchParams(fields).toString() });
+    return { status: res.status, type: res.headers.get("content-type") ?? "", cache: res.headers.get("cache-control") ?? "", body: Object.fromEntries(new URLSearchParams(await res.text())) };
+  };
+  const ask = (payload, command = "orderStatusTracker", access_code = "SIMULATORACCESS") =>
+    post({ access_code, command, request_type: "JSON", response_type: "JSON", version: "1.2", enc_request: ccavEncrypt(JSON.stringify(payload), KEY) });
+  const open = (r) => { try { return JSON.parse(ccavDecrypt(r.body.enc_response ?? "", KEY) ?? "null"); } catch { return null; } };
+
+  const get = await fetch(URL_API);
+  check(get.status === 405 && get.headers.get("allow") === "POST", "simulator API: GET → 405, Allow: POST", `${get.status} ${get.headers.get("allow")}`);
+
+  const paid = sql(
+    "SELECT t.order_id, t.tracking_id, t.amount, t.currency FROM payment_transactions t JOIN donations d ON t.payable_type = 'donation' AND t.payable_id = d.id WHERE d.name = ? AND t.status = 'SUCCESS' AND t.environment = 'simulator' ORDER BY t.id DESC LIMIT 1",
+    [DONOR],
+  )[0];
+  check(!!paid, "simulator API: the success scenario left a paid simulator order to ask about", JSON.stringify(paid));
+  if (!paid) return;
+
+  let r = await ask({ order_no: paid.order_id });
+  let a = open(r);
+  check(r.status === 200 && r.body.status === "0" && r.body.enc_error_code === "" && r.type.includes("text/plain") && r.cache.includes("no-store"), "simulator API: orderStatusTracker → status=0, encrypted answer, not cached", JSON.stringify({ s: r.status, b: r.body.status, t: r.type, c: r.cache }));
+  check(a?.order_no === paid.order_id && a?.order_status === "Successful" && a?.reference_no === paid.tracking_id && Number(a?.order_amt) === Number(paid.amount) && a?.order_currncy === paid.currency, "simulator API: the paid order answers Successful with its reference, amount and currency", JSON.stringify(a));
+
+  r = await ask({ reference_no: paid.tracking_id });
+  a = open(r);
+  check(a?.order_no === paid.order_id && a?.order_status === "Successful", "simulator API: the same order found by its CCAvenue reference", JSON.stringify(a));
+
+  r = await ask({ order_no: "DON-19990101-00000000" });
+  a = open(r);
+  check(r.body.status === "0" && a?.status === 1 && a?.error_code === "51419", "simulator API: an unknown order → 51419 No records found", JSON.stringify(a));
+
+  r = await ask({ order_no: paid.order_id }, "orderStatusTracker", "WRONGACCESS");
+  check(r.body.status === "1" && r.body.enc_error_code === "51407" && !r.body.enc_response?.includes(paid.order_id), "simulator API: a wrong access code → 51407 and nothing about the order", JSON.stringify(r.body));
+
+  r = await post({ access_code: "SIMULATORACCESS", command: "orderStatusTracker", enc_request: "00zz" });
+  check(r.body.status === "1" && r.body.enc_error_code === "-1", "simulator API: an unreadable request → -1 Invalid Request", JSON.stringify(r.body));
+
+  r = await ask({ order_no: paid.order_id }, "deleteOrder");
+  check(r.body.status === "1" && r.body.enc_error_code === "51410", "simulator API: an unknown command → 51410", JSON.stringify(r.body));
+
+  // Refunds: never more than was paid; the .13 amount is the simulated refusal.
+  const refund = async (amount) => open(await ask({ reference_no: paid.tracking_id, refund_amount: amount, refund_ref_no: `E2E-${RUN}` }, "refundOrder"))?.Refund_Order_Result;
+  const over = await refund((Number(paid.amount) + 1).toFixed(2));
+  check(over?.refund_status === 1 && over?.error_code === "52020", "simulator API: a refund above the paid amount → 52020", JSON.stringify(over));
+  const refused = await refund("10.13");
+  check(refused?.refund_status === 1 && refused?.reason === "Simulated refusal", "simulator API: the .13 amount is refused (the simulated refusal)", JSON.stringify(refused));
+  const ok = await refund("10.00");
+  check(ok?.refund_status === 0, "simulator API: a refund within the paid amount is accepted", JSON.stringify(ok));
+  const unknown = open(await ask({ reference_no: "000000000000", refund_amount: "1.00" }, "refundOrder"))?.Refund_Order_Result;
+  check(unknown?.refund_status === 1 && unknown?.error_code === "51419", "simulator API: a refund for an unpaid reference → 51419", JSON.stringify(unknown));
+  const after = sql("SELECT status FROM payment_transactions WHERE order_id = ?", [paid.order_id])[0];
+  check(after?.status === "SUCCESS", "simulator API: asking changes nothing on the site's own record", JSON.stringify(after));
 }
 
 async function donationsPage() {
@@ -769,6 +844,15 @@ async function successFlow() {
   check(v.length === 0, "success: axe serious/critical violations", v.join("\n      "));
   await shot(page, "result-success-1440");
 
+  // Brief §31: a refresh of the result page shows the same paid state, and nothing is charged or issued twice.
+  await page.reload({ waitUntil: "domcontentloaded" });
+  await title.filter({ hasText: /Thank you for your contribution/ }).waitFor();
+  const fr = await facts(page, ".pay-result__facts");
+  check(fr["Receipt number"] === f["Receipt number"] && fr["Donation ID"] === number && fr["Payment status"] === "Paid" && fr["Amount"] === "₹5,000 (INR)", "reload: the same paid state and receipt number", JSON.stringify(fr));
+  check((await page.locator("button", { hasText: /^Try again$/ }).count()) === 0 && (await page.locator("button", { hasText: /Choose another payment method/ }).count()) === 0, "reload: no retry control on a paid result");
+  const afterReload = sql("SELECT (SELECT COUNT(*) FROM donations WHERE donation_number = ? AND receipt_number = ?) AS receipts, (SELECT response_count FROM payment_transactions WHERE order_id = ?) AS responses", [number, f["Receipt number"], number])[0];
+  check(Number(afterReload?.receipts) === 1 && Number(afterReload?.responses) === 1, "reload: one receipt, one gateway response — nothing was re-posted", JSON.stringify(afterReload));
+
   const row = sql("SELECT id, status, receipt_number, email, pan, show_name_publicly FROM donations WHERE donation_number = ?", [number])[0];
   check(row?.status === "SUCCESS" && row.receipt_number === f["Receipt number"], "DB: the donation is SUCCESS with that receipt number", JSON.stringify(row));
   check(row?.email === EMAIL && row.pan === "ABCDE1234F" && Number(row.show_name_publicly) === 0, "DB: email, PAN and consent stored as entered", JSON.stringify(row));
@@ -962,7 +1046,80 @@ async function cancelKeepsDraft() {
   check((await text(stranger.locator(".pay-result__title"))) === "We could not read the payment result", "a wrong token shows nothing about the payment");
   check((await stranger.locator("button", { hasText: /^Try again$/ }).count()) === 0, "a stranger gets no Try again");
   check(stranger.errors().length === 0, "wrong token: no console errors (fetch, not axios)", stranger.errors().slice(0, 3).join(" | "));
+  // A token of the right shape that no longer verifies (a stale or forged link) is the same card.
+  await stranger.goto(`${BASE}/payment/result?ref=${encodeURIComponent(number)}&t=${"A".repeat(22)}`, { waitUntil: "domcontentloaded" });
+  await stranger.locator(".pay-result__title").waitFor();
+  check((await text(stranger.locator(".pay-result__title"))) === "We could not read the payment result" && (await stranger.locator(".pay-result__facts").count()) === 0, "a stale token of the right shape: the 'could not read' card and no facts");
+  check((await stranger.locator("button", { hasText: /^Try again$/ }).count()) === 0 && (await stranger.locator('a[href="/contact"]').count()) >= 1, "stale token: no retry, a way to contact the office");
   await stranger.context().close();
+}
+
+async function poojaSponsor() {
+  section("A donation for a pooja (?pooja=<id>) creates its sponsor (brief §13)");
+  const poojaName = `${NAME_PREFIX}-${RUN} Pournami`;
+  sql("INSERT INTO poojas (name_ta, name_en, pooja_date, pooja_time, pooja_type, is_active) VALUES (?, ?, DATE_ADD(CURDATE(), INTERVAL 12 DAY), '18:00', 'pournami', 1)", [`${NAME_PREFIX}-${RUN} பௌர்ணமி`, poojaName]);
+  const poojaId = Number(sql("SELECT id FROM poojas WHERE name_en = ?", [poojaName])[0]?.id);
+  // The card that carries the sponsor link: /api/poojas?all=1 is where the page looks the pooja up (the widget below is no longer needed but harmless).
+  sql("INSERT INTO homepage_widgets (content_type, title_ta, title_en, source_type, linked_pooja_id, priority, is_pinned, is_active) VALUES ('upcoming_pooja', ?, ?, 'manual', ?, 1, 1, 1)", [`${NAME_PREFIX}-${RUN} பூஜை அட்டை`, `${NAME_PREFIX}-${RUN} Pooja card`, poojaId]);
+  const donor = `${DONOR} Pooja`;
+
+  const page = await newPage();
+  await page.goto(`${BASE}/donate?pooja=${poojaId}`, { waitUntil: "domcontentloaded" });
+  await page.locator(".form-stepper").waitFor();
+  const line = page.locator("#don-pooja");
+  await line.filter({ hasText: poojaName }).waitFor();
+  check((await text(line)).startsWith("For:") && (await text(line)).includes(poojaName), "the page says which pooja the donation is for", await text(line));
+  check(await page.isChecked('input[name="category"][value="pournami_pooja"]'), "the Pournami Pooja purpose is preselected");
+  await pickPreset(page, 2500);
+  await nextBtn(page).click();
+  await stepTitle(page).filter({ hasText: /Your details/ }).waitFor();
+  check(new RegExp(`pooja=${poojaId}`).test(page.url()) && /step=details/.test(page.url()), "the pooja stays in the URL from step to step", page.url());
+  await fillDetails(page, { name: donor, email: "" });
+  await nextBtn(page).click();
+  await stepTitle(page).filter({ hasText: /Review/ }).waitFor();
+  const review = await facts(page, ".don-review__list");
+  check(review["Purpose"] === "Pournami Pooja" && (review["For"] ?? "").includes(poojaName), "review: the purpose and the pooja it is for", JSON.stringify(review));
+  await page.check("#don-accept-terms");
+  await nextBtn(page).click();
+  await awaitHandoff(page);
+  const sim = await simulatorFacts(page);
+  const number = sim["Order ID"];
+  check(/^DON-/.test(number ?? "") && Number(sql("SELECT pooja_id FROM donations WHERE donation_number = ?", [number])[0]?.pooja_id) === poojaId, "DB: the donation carries the pooja before the gateway is even asked", number);
+  await simulatorPress(page, "upi");
+  await page.locator(".pay-result__title").filter({ hasText: /Thank you for your contribution/ }).waitFor();
+  const d = sql("SELECT id, status, receipt_number FROM donations WHERE donation_number = ?", [number])[0];
+  const sp = sql("SELECT * FROM sponsors WHERE donation_id = ?", [d?.id ?? 0]);
+  check(sp.length === 1 && sp[0].payment_status === "PAID" && sp[0].payment_ref === d?.receipt_number && Number(sp[0].pooja_id) === poojaId && Number(sp[0].publish_consent) === 0 && sp[0].name === donor,
+    "DB: exactly one sponsor — PAID, the receipt as its reference, the pooja, no consent (the box was left unticked)", JSON.stringify(sp));
+  await page.reload({ waitUntil: "domcontentloaded" });
+  await page.locator(".pay-result__title").filter({ hasText: /Thank you for your contribution/ }).waitFor();
+  check(Number(sql("SELECT COUNT(*) AS n FROM sponsors WHERE donation_id = ?", [d?.id ?? 0])[0]?.n) === 1, "reload of the result page: still one sponsor");
+  check(page.errors().length === 0, "pooja donation: no console errors", page.errors().slice(0, 3).join(" | "));
+
+  // The pooja is over by the time the donor pays: the server refuses it and the page says so on the purpose step.
+  // The 422 is the expected answer; Chromium logs every non-2xx fetch as a console error (as with the 404 above).
+  page.allowErrors(/status of 422/);
+  sql("UPDATE poojas SET pooja_date = DATE_SUB(CURDATE(), INTERVAL 2 DAY) WHERE id = ?", [poojaId]);
+  await page.goto(`${BASE}/donate?pooja=${poojaId}`, { waitUntil: "domcontentloaded" });
+  await page.locator(".form-stepper").waitFor();
+  await page.locator("#don-pooja").filter({ hasText: /For:/ }).waitFor();
+  await pickCategory(page, "pournami_pooja");
+  await pickPreset(page, 1000);
+  await nextBtn(page).click();
+  await stepTitle(page).filter({ hasText: /Your details/ }).waitFor();
+  await fillDetails(page, { name: `${donor} Late`, email: "" });
+  await nextBtn(page).click();
+  await stepTitle(page).filter({ hasText: /Review/ }).waitFor();
+  await page.check("#don-accept-terms");
+  await nextBtn(page).click();
+  await stepTitle(page).filter({ hasText: /Purpose and amount/ }).waitFor();
+  const refused = await text(page.locator("#don-pooja"));
+  check(/not open for sponsorship/.test(refused), "a pooja that is over: the server's refusal is shown on the pooja line", refused);
+  check((await page.locator("#don-pooja a", { hasText: /general donation/ }).count()) === 1, "and a way to make a general donation instead");
+  check(/Pooja/.test(await text(page.locator(".form-summary"))), "the error summary names the pooja");
+  check(!sql("SELECT id FROM donations WHERE name = ?", [`${donor} Late`])[0], "DB: nothing was created for the refused donation");
+  check(page.errors().length === 0, "refused pooja: no console errors", page.errors().slice(0, 3).join(" | "));
+  await page.context().close();
 }
 
 async function awaitedThenConfirmed() {
@@ -1201,9 +1358,11 @@ try {
   await scenario("donations", "/donations with payments on", donationsPage);
   await scenario("purpose", "Step 1", purposeStep);
   await scenario("success", "Success flow", successFlow);
+  await scenario("simapi", "Simulator server API", simulatorServerApi);
   await scenario("decline", "Decline and retry", declineAndRetry);
   await scenario("cancel", "Cancel", cancelKeepsDraft);
   await scenario("awaited", "Awaited", awaitedThenConfirmed);
+  await scenario("pooja", "Pooja sponsorship", poojaSponsor);
   await scenario("tamil", "Tamil and phone", tamilAndPhone);
   await scenario("seva", "Seva online", sevaOnline);
   await scenario("request", "Seva request", sevaRequest);

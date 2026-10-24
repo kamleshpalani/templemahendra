@@ -390,3 +390,27 @@
     width: 100%;
   }
 }
+
+/* ── Card picture and stream card (migration 024) ────────────────── */
+.hw-card__img {
+  display: block;
+  width: 100%;
+  height: auto;
+  aspect-ratio: 16 / 9;
+  object-fit: cover;
+  border-radius: var(--radius-md);
+  margin-bottom: var(--space-2);
+}
+.hw-card__meta {
+  margin: 0;
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+}
+.hw-card--featured .hw-card__meta {
+  color: var(--text-on-dark-2);
+}
+.hw-stream {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}

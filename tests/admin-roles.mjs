@@ -31,7 +31,7 @@ let r = await login(owner, "admin", "Admin@Test123");
 ok(r.status === 302, "env admin signs in", `status ${r.status}`);
 let dash = await (await owner.get("/admin/")).text();
 ok(!BAD.test(dash), "dashboard renders without PHP errors");
-ok(dash.includes("Committee Accounts"), "owner sees the Committee Accounts nav item");
+ok(/href="\/admin\/users\.php"[^>]*>[\s\S]{0,1500}?<span class="sidebar__link-label">Users<\/span>/.test(dash), "owner sees the Users nav item");
 
 // Accounts left by an earlier run that stopped before its cleanup would make
 // "create editor" fail as a duplicate, so the suite removes them first and
@@ -87,7 +87,7 @@ ok(r.status === 303, "password change succeeds", `status ${r.status}`);
 // now normal navigation works
 dash = await (await editor.get("/admin/")).text();
 ok(!BAD.test(dash) && dash.includes("Dashboard"), "editor reaches the dashboard after changing password");
-ok(!dash.includes("Committee Accounts"), "editor does NOT see Committee Accounts in the nav");
+ok(!dash.includes('href="/admin/users.php"'), "editor does NOT see Users in the nav");
 ok(!/Settings<\/span>/.test(dash) || !dash.includes("sidebar__link is-active"), "editor nav is filtered");
 r = await editor.get("/admin/users.php");
 const denied = await r.text();

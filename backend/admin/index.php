@@ -165,6 +165,44 @@ try {
     // table optional
 }
 
+// ── Brief §15 dashboard cards: next poojas, online payments needing attention,
+//    latest donations, recent CMS activity. Each is optional: a table that a
+//    migration has not created yet simply leaves its card empty.
+$next_poojas = [];
+try {
+    $pv2 = publicGuardHasColumn('poojas', 'start_time');
+    $next_poojas = $db->query("SELECT id, name_ta, name_en, pooja_date, pooja_type, is_active" . ($pv2 ? ", start_time, is_featured, live_stream_enabled" : ", NULL AS start_time, 0 AS is_featured, 0 AS live_stream_enabled")
+        . " FROM poojas WHERE is_active = 1 AND pooja_date >= CURDATE() ORDER BY pooja_date ASC, id ASC LIMIT 5")->fetchAll();
+} catch (Throwable) {
+    // poojas table optional
+}
+$pay7 = null;
+try {
+    $pay7 = $db->query("SELECT
+            COALESCE(SUM(status IN ('INITIATED','PENDING')), 0) AS pending,
+            COALESCE(SUM(status IN ('FAILED','CANCELLED')), 0)  AS failed,
+            COALESCE(SUM(status = 'SUCCESS'), 0)                AS success,
+            COALESCE(SUM(needs_review = 1), 0)                  AS review
+        FROM payment_transactions WHERE created_at >= DATE_SUB(NOW(), INTERVAL 7 DAY)")->fetch();
+} catch (Throwable) {
+    // payments not installed
+}
+$latest_donations = [];
+try {
+    $latest_donations = $db->query("SELECT id, name, {$netAmountSql} AS amount, COALESCE(NULLIF(purpose, ''), 'other') AS purpose, " . ($hasPayCols ? "COALESCE(source, 'pledge')" : "'pledge'") . " AS source, created_at
+        FROM donations WHERE {$countableSql} ORDER BY created_at DESC LIMIT 5")->fetchAll();
+} catch (Throwable) {
+    // donations table optional
+}
+$cms_activity = [];
+try {
+    $cms_activity = $db->query("SELECT actor, action, subject, detail, created_at FROM admin_activity
+        WHERE action NOT IN ('login', 'logout', 'login_failed') ORDER BY created_at DESC, id DESC LIMIT 8")->fetchAll();
+} catch (Throwable) {
+    // admin_activity is created by migration 014
+}
+$poojaTypeLabel = static fn(string $t): string => ucwords(str_replace('_', ' ', $t));
+
 $actions = '<a href="/admin/bulk_upload.php" class="btn btn-gold btn--sm">' . adminIcon('upload') . 'Bulk upload</a>';
 adminHeader('Dashboard', 'Overview', ['actions' => $actions]);
 
@@ -308,6 +346,91 @@ echo adminKpi($kpis);
         <a href="/" target="_blank" rel="noopener" class="btn btn--sm"><?= adminIcon('external') ?> Preview site</a>
       </div>
     </div>
+  </section>
+</div>
+
+<div class="dash-grid" id="cms-cards">
+  <section class="card card--static" aria-labelledby="next-poojas-title">
+    <div class="card__head">
+      <h2 id="next-poojas-title"><?= adminIcon('flame', 'ico--sm') ?> Next poojas</h2>
+      <a href="/admin/poojas.php" class="btn btn-ghost btn--sm">Manage <?= adminIcon('arrow-right', 'ico--sm') ?></a>
+    </div>
+    <?php if ($next_poojas): ?>
+      <div class="mini-list">
+        <?php foreach ($next_poojas as $p): $d = new DateTime((string) $p['pooja_date']); ?>
+          <div class="mini-list__item">
+            <div class="date-tile"><div class="date-tile__day"><?= $d->format('d') ?></div><div class="date-tile__month"><?= $d->format('M') ?></div></div>
+            <div>
+              <div class="mini-list__title"><?= h((string) ($p['name_en'] ?: $p['name_ta'])) ?><?php if ((int) $p['is_featured']): ?> <?= adminBadge('Featured', 'accent') ?><?php endif; ?><?php if ((int) $p['live_stream_enabled']): ?> <?= adminBadge('Live', 'info') ?><?php endif; ?></div>
+              <div class="mini-list__sub"><?= h($poojaTypeLabel((string) $p['pooja_type'])) ?><?= $p['start_time'] ? ' · ' . h(date('g:i A', strtotime((string) $p['start_time']))) : '' ?></div>
+            </div>
+          </div>
+        <?php endforeach; ?>
+      </div>
+    <?php else: ?>
+      <div class="card__body"><?= adminEmpty('flame', 'No pooja scheduled', 'Generate the Pournami and Amavasai dates from the Panchangam, or add one.', '<a href="/admin/poojas.php" class="btn btn-primary btn--sm">' . adminIcon('flame') . 'Poojas</a>', true) ?></div>
+    <?php endif; ?>
+  </section>
+
+  <section class="card card--static" aria-labelledby="pay7-title">
+    <div class="card__head">
+      <h2 id="pay7-title"><?= adminIcon('landmark', 'ico--sm') ?> Online payments · 7 days</h2>
+      <a href="/admin/payments.php" class="btn btn-ghost btn--sm">Open <?= adminIcon('arrow-right', 'ico--sm') ?></a>
+    </div>
+    <div class="card__body">
+      <?php if ($pay7 === null): ?>
+        <p class="muted">Online payments are not installed on this database yet (migration 017).</p>
+      <?php else: ?>
+        <dl class="dl-grid">
+          <dt>Successful</dt><dd><?= (int) $pay7['success'] ?></dd>
+          <dt>Pending</dt><dd><?= adminBadge((string) (int) $pay7['pending'], (int) $pay7['pending'] ? 'warning' : 'muted') ?> <a class="text-xs" href="/admin/payments.php?status=PENDING">pending</a></dd>
+          <dt>Failed or cancelled</dt><dd><?= adminBadge((string) (int) $pay7['failed'], (int) $pay7['failed'] ? 'danger' : 'muted') ?> <a class="text-xs" href="/admin/payments.php?status=FAILED">failed</a></dd>
+          <dt>Needs review</dt><dd><?= adminBadge((string) (int) $pay7['review'], (int) $pay7['review'] ? 'warning' : 'muted') ?> <a class="text-xs" href="/admin/payments.php?review=1">review</a></dd>
+        </dl>
+      <?php endif; ?>
+    </div>
+  </section>
+
+  <section class="card card--static" aria-labelledby="latest-donations-title">
+    <div class="card__head">
+      <h2 id="latest-donations-title"><?= adminIcon('banknote', 'ico--sm') ?> Latest donations</h2>
+      <a href="/admin/donations.php" class="btn btn-ghost btn--sm">All <?= adminIcon('arrow-right', 'ico--sm') ?></a>
+    </div>
+    <?php if ($latest_donations): ?>
+      <div class="mini-list">
+        <?php foreach ($latest_donations as $dn): ?>
+          <div class="mini-list__item">
+            <div>
+              <div class="mini-list__title"><?= h((string) $dn['name']) ?> · <?= adminFmtMoney((float) $dn['amount']) ?></div>
+              <div class="mini-list__sub"><?= h(ucfirst((string) $dn['purpose'])) ?> · <?= h((string) $dn['source']) ?> · <?= h(adminAgo((string) $dn['created_at'])) ?></div>
+            </div>
+          </div>
+        <?php endforeach; ?>
+      </div>
+    <?php else: ?>
+      <div class="card__body"><?= adminEmpty('banknote', 'No donations yet', 'Pledges and online donations appear here as they arrive.', '', true) ?></div>
+    <?php endif; ?>
+  </section>
+
+  <section class="card card--static" aria-labelledby="cms-activity-title">
+    <div class="card__head">
+      <h2 id="cms-activity-title"><?= adminIcon('history', 'ico--sm') ?> Recent CMS activity</h2>
+      <?php if (adminCan('audit.view')): ?><a href="/admin/audit_log.php" class="btn btn-ghost btn--sm">Audit log <?= adminIcon('arrow-right', 'ico--sm') ?></a><?php endif; ?>
+    </div>
+    <?php if ($cms_activity): ?>
+      <div class="mini-list">
+        <?php foreach ($cms_activity as $a): ?>
+          <div class="mini-list__item">
+            <div>
+              <div class="mini-list__title"><?= h(str_replace('_', ' ', (string) $a['action'])) ?><?= $a['subject'] ? ' · <span class="text-muted">' . h((string) $a['subject']) . '</span>' : '' ?></div>
+              <div class="mini-list__sub"><?= h((string) $a['actor']) ?> · <?= h(adminAgo((string) $a['created_at'])) ?><?= $a['detail'] ? ' · ' . h(mb_substr((string) $a['detail'], 0, 80)) : '' ?></div>
+            </div>
+          </div>
+        <?php endforeach; ?>
+      </div>
+    <?php else: ?>
+      <div class="card__body"><?= adminEmpty('history', 'Nothing changed yet', 'Every change made in the control center is listed here.', '', true) ?></div>
+    <?php endif; ?>
   </section>
 </div>
 
