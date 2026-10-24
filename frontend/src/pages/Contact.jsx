@@ -24,9 +24,7 @@ import {
   MAPS_URL,
   MAPS_EMBED_URL,
   PRIMARY_CONTACT,
-  SECONDARY_CONTACT,
-  formatPhone,
-  telHref,
+  TEMPLE_PHONE,
 } from "../data/temple";
 import CommitteeGrid from "../components/CommitteeGrid/CommitteeGrid";
 import PageHero from "../components/ui/PageHero";
@@ -106,7 +104,6 @@ export default function Contact() {
     }
   };
 
-  const phoneContacts = [PRIMARY_CONTACT, SECONDARY_CONTACT];
   const sending = status === "sending";
 
   return (
@@ -122,11 +119,11 @@ export default function Contact() {
         actions={
           <>
             <Button
-              href={telHref(PRIMARY_CONTACT.phone)}
+              href={TEMPLE_PHONE.href}
               variant="primary"
               className="contact-hero__btn"
               icon={<LuPhone aria-hidden="true" />}
-              aria-label={`${t("அழைக்கவும்", "Call")} — ${formatPhone(PRIMARY_CONTACT.phone)}`}
+              aria-label={`${t("அழைக்கவும்", "Call")} — ${TEMPLE_PHONE.display}`}
             >
               {t("அழைக்கவும்", "Call")}
             </Button>
@@ -203,26 +200,23 @@ export default function Contact() {
                 <div className="contact-card__body">
                   <h3 className="contact-card__title">{t("தொலைபேசி & மின்னஞ்சல்", "Phone & email")}</h3>
                   <ul className="contact-tel" role="list">
-                    {phoneContacts.map((c) => (
-                      <li key={c.phone}>
-                        <a
-                          className="contact-tel__row"
-                          href={telHref(c.phone)}
-                          aria-label={`${formatPhone(c.phone)} — ${t(c.name.ta, c.name.en)}, ${t(c.role.ta, c.role.en)}`}
-                        >
-                          <span className="contact-tel__body">
-                            <span className="contact-tel__num">{formatPhone(c.phone)}</span>
-                            <span className="contact-tel__meta">
-                              <Badge tone="gold">{t(c.role.ta, c.role.en)}</Badge>
-                              <span>{t(c.name.ta, c.name.en)}</span>
-                            </span>
+                    <li>
+                      <a
+                        className="contact-tel__row"
+                        href={TEMPLE_PHONE.href}
+                        aria-label={`${TEMPLE_PHONE.display} — ${t("கோயில் அலுவலகம்", "Temple office")}`}
+                      >
+                        <span className="contact-tel__body">
+                          <span className="contact-tel__num">{TEMPLE_PHONE.display}</span>
+                          <span className="contact-tel__meta">
+                            <Badge tone="gold">{t("கோயில் அலுவலகம்", "Temple office")}</Badge>
                           </span>
-                          <span className="contact-tel__cta" aria-hidden="true">
-                            <LuPhoneCall />
-                          </span>
-                        </a>
-                      </li>
-                    ))}
+                        </span>
+                        <span className="contact-tel__cta" aria-hidden="true">
+                          <LuPhoneCall />
+                        </span>
+                      </a>
+                    </li>
                     {/* Email as one more row of the same card: it was a card of its own */}
                     <li>
                       <a className="contact-tel__row" href={`mailto:${EMAIL}`}>
@@ -396,8 +390,8 @@ export default function Contact() {
 
               <div className="contact-form__alt">
                 <span>{t("அவசரமா?", "In a hurry?")}</span>
-                <Button href={telHref(PRIMARY_CONTACT.phone)} variant="ghost" icon={<LuPhone aria-hidden="true" />}>
-                  {t("அழைக்கவும்", "Call")} {formatPhone(PRIMARY_CONTACT.phone)}
+                <Button href={TEMPLE_PHONE.href} variant="ghost" icon={<LuPhone aria-hidden="true" />}>
+                  {t("அழைக்கவும்", "Call")} {TEMPLE_PHONE.display}
                 </Button>
               </div>
             </div>

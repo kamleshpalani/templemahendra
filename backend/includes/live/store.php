@@ -107,7 +107,11 @@ function liveListArchive(PDO $db, string $eventType, ?string $from, ?string $to,
     $date = 'COALESCE(s.actual_end_at, s.scheduled_start_at, s.created_at)';
     $where = ["s.deleted_at IS NULL", "s.status = 'COMPLETED'", 's.archive_enabled = 1',
         "s.provider = 'youtube'",
-        "REGEXP_LIKE(s.recording_url, '^https://www[.]youtube[.]com/watch[?]v=[A-Za-z0-9_-]{11}$', 'c')",
+        // The REGEXP operator rather than REGEXP_LIKE(): the latter is MySQL 8
+        // only, and shared hosts often serve MariaDB. Saved recording URLs are
+        // already canonical lower-case (liveSaveRecording), so the collation's
+        // case rule changes nothing here.
+        "s.recording_url REGEXP '^https://www[.]youtube[.]com/watch[?]v=[A-Za-z0-9_-]{11}$'",
         "s.recording_url <> 'https://www.youtube.com/watch?v=live_stream'"];
     $params = [];
     if ($eventType !== '') {

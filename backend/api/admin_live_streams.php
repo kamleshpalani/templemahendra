@@ -78,7 +78,13 @@ $liveAdminMethod = strtoupper((string) ($_SERVER['REQUEST_METHOD'] ?? 'GET'));
 
 // ── Who is asking ───────────────────────────────────────────────────────────
 adminRevalidateSession();
-if (empty($_SESSION['admin_logged_in'])) liveAdminJson(['error' => 'Sign in to the admin first', 'code' => 'unauthenticated'], 401);
+if (empty($_SESSION['admin_logged_in'])) {
+    // A stale cookie makes strict-mode sessions mint a fresh id; a 401 must
+    // not hand that out, so the empty session is dropped and its cookie withheld.
+    session_abort();
+    header_remove('Set-Cookie');
+    liveAdminJson(['error' => 'Sign in to the admin first', 'code' => 'unauthenticated'], 401);
+}
 if (!empty($_SESSION['admin_must_change'])) liveAdminJson(['error' => 'Choose a new password on your profile page first.', 'code' => 'password_change'], 403);
 
 $liveAdminMe    = currentAdmin() ?? [];
@@ -124,13 +130,26 @@ if ($liveAdminMethod === 'GET' || $liveAdminMethod === 'HEAD') {
     if ($liveAdminTarget === null) {
         $f = liveAdminFilters($_GET);
         $list = liveListAdmin($liveAdminDb, $f, $f['page'], 25);
-        liveAdminJson([
+        $out = [
             'streams' => array_map('liveShapeAdmin', $list['rows']),
             'total'   => $list['total'],
             'pages'   => $list['pages'],
             'page'    => $list['page'],
             'csrf'    => csrfToken(),
-        ]);
+        ];
+        // ?include=health: each row with its health verdict, plus the
+        // dashboard's monitoring summary (Live phase 10).
+        if (($_GET['include'] ?? '') === 'health') {
+            if (liveAutomationInstalled()) {
+                $automation = liveAutomationReady();
+                $cfg = liveAutomationConfig();
+                $out['streams'] = array_map(static fn(array $r): array => liveShapeHealth($r, $automation, $cfg), $list['rows']);
+                $out['health'] = liveHealthSummary($liveAdminDb);
+            } else {
+                $out['health'] = ['error' => 'Apply database migration 012_live_automation.sql first.', 'code' => 'not_installed'];
+            }
+        }
+        liveAdminJson($out);
     }
     $row = liveLoad($liveAdminDb, $liveAdminTarget, true);
     if ($row === null) liveAdminJson(['error' => 'Not found'], 404);

@@ -49,11 +49,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $msg = adminCsrfGuard();
     if ($msg === '') {
         $allowedKeys = ['show_pournami_section', 'show_nalla_strip', 'show_donor_ticker'];
+        $before = $db->query('SELECT key_name, val FROM homepage_settings')->fetchAll(PDO::FETCH_KEY_PAIR);
         $stmt = $db->prepare("UPDATE homepage_settings SET val=? WHERE key_name=?");
+        $changed = [];
         foreach ($allowedKeys as $key) {
             $val = isset($_POST[$key]) ? '1' : '0';
             $stmt->execute([$val, $key]);
+            if (($before[$key] ?? null) !== $val) $changed[] = $key . '=' . $val;
         }
+        adminAudit('settings_saved', 'homepage_settings', $changed ? implode(', ', $changed) : 'no changes');
         $_SESSION['admin_flash'] = ['type' => 'success', 'text' => 'Settings saved.'];
         header('Location: /admin/settings.php', true, 303);
         exit;
@@ -84,7 +88,7 @@ $user      = (string) ($me['username'] ?? 'admin');
 $name      = trim((string) ($me['display_name'] ?? '')) !== '' ? (string) $me['display_name'] : $user;
 $email     = trim((string) ($me['email'] ?? ''));
 $role      = (string) ($me['role'] ?? adminRole());
-$roleTone  = ['owner' => 'gold', 'editor' => 'info', 'viewer' => 'muted'][$role] ?? 'muted';
+$roleTone  = adminRoleTone($role);
 $isEnvUser = !empty($me['is_env']);
 $loginAt   = (int) ($_SESSION['admin_login_at'] ?? 0);
 
@@ -161,7 +165,7 @@ echo adminPageIntro(
             <?php endif; ?>
           </dd>
           <dt>Role</dt>
-          <dd><?= adminBadge(ucfirst($role), $roleTone) ?></dd>
+          <dd><?= adminBadge(adminRoleLabel($role), $roleTone) ?></dd>
         </dl>
         <div class="callout mt-4">
           <?= adminIcon('key') ?>

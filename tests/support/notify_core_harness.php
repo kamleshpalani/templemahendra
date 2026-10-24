@@ -5,7 +5,8 @@
  *
  *   php tests/support/notify_core_harness.php campaign-save '{"input":{…},"actor":{"username":"e2e","role":"editor"}}'
  *   php tests/support/notify_core_harness.php campaign-transition '{"id":9,"action":"submit","actor":{…}}'
- *   php tests/support/notify_core_harness.php bulk-devotees '{"prefix":"e2e-core-abc-bulk-","count":600,"tag":"e2e-core-abc"}'
+ *   php tests/support/notify_core_harness.php bulk-devotees '{"prefix":"e2e-core-abc-bulk-","count":600,"tag":"e2e-core-abc","consent":true}'
+ *   php tests/support/notify_core_harness.php unsubscribe '{"devotee_id":12}'
  *   php tests/support/notify_core_harness.php cleanup '{"email_prefix":"e2e-core-","run_ids":[1,2]}'
  *
  * Every command prints one JSON object and exits 0, or 1 with {"error": "…"}.
@@ -89,49 +90,26 @@ try {
             notifyRecordOpen((int) ($args['id'] ?? 0));
             harnessOut(['ok' => true]);
 
-        case 'register-device':
-            harnessOut(notifyRegisterDevice((int) ($args['devotee_id'] ?? 0), (array) ($args['subscription'] ?? []), (string) ($args['platform'] ?? 'web'), $args['user_agent'] ?? null));
-
-        case 'remove-device':
-            harnessOut(['ok' => notifyRemoveDevice((int) ($args['devotee_id'] ?? 0), (string) ($args['endpoint'] ?? ''))]);
-
-        case 'vapid':
-            $keys = notifyVapidKeys();
-            harnessOut(['public' => notifyVapidPublicKey(), 'source' => $keys['source'] ?? null, 'privateLength' => isset($keys['private']) ? strlen(notifyB64uDecode($keys['private'])) : null]);
-
-        case 'otp-issue':
-            harnessOut(notifyOtpIssue((int) ($args['devotee_id'] ?? 0), (string) ($args['phone'] ?? '')));
-
-        case 'otp-verify':
-            harnessOut(notifyOtpVerify((int) ($args['devotee_id'] ?? 0), (string) ($args['phone'] ?? ''), (string) ($args['code'] ?? '')));
-
-        case 'prefs':
-            harnessOut(notifyPrefs((int) ($args['devotee_id'] ?? 0)));
-
-        case 'prefs-save':
-            try {
-                harnessOut(['prefs' => notifySavePrefs((int) ($args['devotee_id'] ?? 0), (array) ($args['input'] ?? []))]);
-            } catch (InvalidArgumentException $e) {
-                harnessOut(['invalid' => $e->getMessage()]);
-            }
+        case 'unsubscribe':
+            harnessOut(['ok' => notifyUnsubscribe((int) ($args['devotee_id'] ?? 0))]);
 
         case 'bulk-devotees': {
-            // Hundreds of devotees in a few statements. One bcrypt hash is shared:
-            // these accounts are never signed in to.
+            // Hundreds of registrations in a few statements, with consent to
+            // temple updates when "consent" is true (an update reaches only those).
             $prefix = (string) ($args['prefix'] ?? '');
             $count  = max(1, min(2000, (int) ($args['count'] ?? 1)));
             if (!preg_match('/^e2e-[a-z0-9._-]{4,60}$/', $prefix)) harnessOut(['error' => 'prefix must start with e2e- and be safe'], 1);
-            $hash    = password_hash('Kolam99Deep', PASSWORD_BCRYPT, ['cost' => 4]);
             $country = normalizeCountry($args['country'] ?? 'IN') ?? 'IN';
             $now     = gmdate('Y-m-d H:i:s');
+            $consent = !empty($args['consent']) ? $now : null;
             for ($start = 0; $start < $count; $start += 200) {
                 $rows = [];
                 $params = [];
                 for ($i = $start; $i < min($count, $start + 200); $i++) {
                     $rows[] = '(?, ?, NULL, ?, ?, ?, ?, ?, ?)';
-                    array_push($params, 'E2E Bulk ' . $i, $prefix . $i . '@example.test', $country, 'TN', 'Pudupatti', $hash, !empty($args['verified']) ? $now : null, $now);
+                    array_push($params, 'E2E Bulk ' . $i, $prefix . $i . '@example.test', $country, 'TN', 'Pudupatti', 'ta', $consent, $now);
                 }
-                $db->prepare('INSERT INTO devotees (name, email, phone, country, state, city, pass_hash, email_verified_at, created_at) VALUES ' . implode(', ', $rows))
+                $db->prepare('INSERT INTO devotees (name, email, phone, country, state, city, lang, updates_consent_at, created_at) VALUES ' . implode(', ', $rows))
                    ->execute($params);
             }
             $like = addcslashes($prefix, '%_\\') . '%';
@@ -158,17 +136,6 @@ try {
             $like = addcslashes($prefix, '%_\\') . '%';
             $deleted = [];
 
-            $ids = $db->prepare('SELECT id FROM devotees WHERE email LIKE :p');
-            $ids->execute([':p' => $like]);
-            $devoteeIds = array_map('intval', $ids->fetchAll(PDO::FETCH_COLUMN));
-            if ($devoteeIds) {
-                $buckets = [];
-                foreach ($devoteeIds as $id) array_push($buckets, 'otp-issue-15m:d' . $id, 'otp-issue-day:d' . $id);
-                foreach (array_chunk($buckets, 500) as $chunk) {
-                    $db->prepare('DELETE FROM rate_limits WHERE bucket IN (' . implode(',', array_fill(0, count($chunk), '?')) . ')')->execute($chunk);
-                }
-            }
-
             $campaignIds = array_map('intval', $db->query(
                 "SELECT id FROM notification_campaigns WHERE name LIKE 'E2E-CORE-%' OR name LIKE 'Reminder: E2E-CORE-%'"
             )->fetchAll(PDO::FETCH_COLUMN));
@@ -183,7 +150,8 @@ try {
             if ($bookingIds) $where[] = "(entity_type = 'seva_booking' AND entity_id IN (" . implode(',', $bookingIds) . '))';
             $deleted['notifications'] = $db->exec('DELETE FROM notifications WHERE ' . implode(' OR ', $where));
 
-            $auditWhere = "campaign_name LIKE 'E2E-CORE-%' OR campaign_name LIKE 'Reminder: E2E-CORE-%'";
+            // Audit rows with no campaign (a requeue) are found by the suite's actor names.
+            $auditWhere = "campaign_name LIKE 'E2E-CORE-%' OR campaign_name LIKE 'Reminder: E2E-CORE-%' OR actor LIKE 'e2e-core-%'";
             if ($campaignIds) $auditWhere .= ' OR campaign_id IN (' . implode(',', $campaignIds) . ')';
             $deleted['audit'] = $db->exec("DELETE FROM notification_audit WHERE {$auditWhere}");
             $deleted['campaigns'] = $campaignIds ? $db->exec('DELETE FROM notification_campaigns WHERE id IN (' . implode(',', $campaignIds) . ')') : 0;

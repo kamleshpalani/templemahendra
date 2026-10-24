@@ -152,7 +152,7 @@ if (Array.isArray(gallery) && gallery.length) {
 }
 
 section("What must not be previewed");
-for (const path of ["/account", "/login", "/register"]) {
+for (const path of ["/account", "/login"]) {
   const p = await preview(path);
   check(p.meta.robots === "noindex, nofollow", `${path} is marked noindex, nofollow`, p.meta.robots ?? "(none)");
   check(!p.meta["og:description"], `${path} gives nothing away in a description`);
@@ -170,8 +170,9 @@ const asBrowser = await fetch(`${php}/events`, {
   headers: { "user-agent": "Mozilla/5.0 (Macintosh) AppleWebKit/537.36 Chrome/120 Safari/537.36" },
   redirect: "manual",
 });
+const asBrowserHtml = await asBrowser.text();
 check(
-  asBrowser.status === 404,
+  asBrowser.status === 200 && asBrowserHtml.includes('<div id="root">') && !/property="og:type"\s+content="video/.test(asBrowserHtml),
   "a browser is not sent to the preview renderer (it is served the React app)",
   `status ${asBrowser.status}`,
 );

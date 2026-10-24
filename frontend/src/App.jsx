@@ -11,6 +11,7 @@ const About = lazy(() => import("./pages/About"));
 const Sevas = lazy(() => import("./pages/Sevas"));
 const Events = lazy(() => import("./pages/Events"));
 const Gallery = lazy(() => import("./pages/Gallery"));
+const Videos = lazy(() => import("./pages/Videos"));
 const Donations = lazy(() => import("./pages/Donations"));
 const Contact = lazy(() => import("./pages/Contact"));
 const PanchangCalendar = lazy(() => import("./pages/PanchangCalendar"));
@@ -88,6 +89,7 @@ function App() {
             <Route path="sevas" element={<Sevas />} />
             <Route path="events" element={<Events />} />
             <Route path="gallery" element={<Gallery />} />
+            <Route path="videos" element={<Videos />} />
             <Route path="donations" element={<Donations />} />
             <Route path="contact" element={<Contact />} />
             <Route path="panchangam" element={<PanchangCalendar />} />

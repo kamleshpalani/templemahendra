@@ -47,13 +47,15 @@ if ($donations && publicGuardHasColumn('donations', 'category_id')) {
     }
 }
 
-// ── Active sponsors linked to poojas ─────────────────────────────────────────
+// ── Active sponsors who agreed to be named (migration 016) ───────────────────
+// Amount, phone, email and payment details stay in the admin.
+$sp       = sponsorPublicSql('s');
 $sponsors = $db->query(
-    "SELECT s.name, s.note,
+    "SELECT {$sp['name']} AS name, s.note,
             p.name_ta AS pooja_ta, p.name_en AS pooja_en, p.pooja_type
        FROM sponsors s
        LEFT JOIN poojas p ON p.id = s.pooja_id
-      WHERE s.is_active = 1
+      WHERE {$sp['where']}
       ORDER BY s.created_at DESC
       LIMIT 50"
 )->fetchAll(PDO::FETCH_ASSOC);

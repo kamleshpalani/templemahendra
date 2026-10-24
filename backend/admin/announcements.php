@@ -114,10 +114,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if ($id > 0) {
                 $db->prepare('UPDATE announcements SET title=:t, body=:b, is_active=:a WHERE id=:id')
                    ->execute([':t' => $title, ':b' => $body, ':a' => $is_active, ':id' => $id]);
+                adminAudit('announcement_updated', 'announcement:' . $id, $title);
                 $_SESSION['flash'] = '<p class="alert alert--success">Updated.</p>';
             } else {
                 $db->prepare('INSERT INTO announcements (title, body, is_active, created_at) VALUES (:t,:b,:a,CURRENT_TIMESTAMP)')
                    ->execute([':t' => $title, ':b' => $body, ':a' => $is_active]);
+                adminAudit('announcement_created', 'announcement:' . (int) $db->lastInsertId(), $title);
                 $_SESSION['flash'] = $notifyDevotees
                     ? announcementDraftNotification($title, $body)
                     : '<p class="alert alert--success">Created.</p>';
@@ -128,7 +130,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     } elseif ($msg === '' && $action === 'delete') {
         $id = (int) $str($_POST, 'id');
         if ($id > 0) {
+            $gone = $db->prepare('SELECT title FROM announcements WHERE id=:id');
+            $gone->execute([':id' => $id]);
+            $goneTitle = $gone->fetchColumn();
             $db->prepare('DELETE FROM announcements WHERE id=:id')->execute([':id' => $id]);
+            if ($goneTitle !== false) adminAudit('announcement_deleted', 'announcement:' . $id, (string) $goneTitle);
             $_SESSION['flash'] = '<p class="alert alert--success">Deleted.</p>';
         }
         header('Location: ' . $back, true, 303);

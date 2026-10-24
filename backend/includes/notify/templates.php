@@ -432,6 +432,10 @@ function notifyTemplateSample(string $key, string $lang): array
             'en' => 'Due to heavy rain the temple is closed today. Pooja resumes tomorrow at 6 am as usual.',
         ],
         'title'            => ['ta' => 'மஹா சிவராத்திரி ஏற்பாடுகள்', 'en' => 'Maha Shivaratri arrangements'],
+        // The office's copy of a contact-form message (contact_received).
+        'senderName'       => ['ta' => 'முருகன் செல்வம்', 'en' => 'Murugan Selvam'],
+        'senderPhone'      => '+91 98765 43210',
+        'receivedAt'       => ['ta' => '20 செப்டம்பர் 2026, 10:15 IST', 'en' => '20 Sep 2026, 10:15 IST'],
     ];
 
     $out = [];

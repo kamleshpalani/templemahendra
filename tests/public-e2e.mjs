@@ -58,7 +58,10 @@ async function newPage(width = 1440, height = 900) {
   const ctx = await browser.newContext({ viewport: { width, height }, locale: "en-IN" });
   const page = await ctx.newPage();
   const errors = [];
-  page.on("console", (m) => { if (m.type() === "error") errors.push(`[console] ${m.text()}`); });
+  // Chromium's "Failed to load resource" line names no URL in its text; the
+  // location carries it, so a third-party font or map that IGNORE already
+  // exempts (a sandbox that cannot reach fonts.googleapis.com) is exempt here too.
+  page.on("console", (m) => { if (m.type() === "error") errors.push(`[console] ${m.text()} ${m.location()?.url ?? ""}`.trimEnd()); });
   page.on("pageerror", (e) => errors.push(`[pageerror] ${e.message}`));
   page.on("requestfailed", (r) => { if (!IGNORE.test(r.url())) errors.push(`[requestfailed] ${r.url()} ${r.failure()?.errorText}`); });
   page.errors = () => errors.filter((e) => !IGNORE.test(e));
@@ -343,7 +346,10 @@ try {
   fail("Header fit (scenario threw)", String(e.message || e).split("\n")[0].slice(0, 160));
 }
 
-// Sign-in / Sign-up must be reachable from the header at every width.
+// The header's entry points at every width. Devotee accounts were retired
+// (/login → /register), so what must be reachable is Register family, the
+// Book Seva call to action where the row has room for it (1400 px and up), and
+// the menu button that carries the navigation once the links leave the bar.
 try {
   for (const w of [1920, 1440, 1024, 768, 390]) {
     const page = await newPage(w, 840);
@@ -355,19 +361,24 @@ try {
         const r = el.getBoundingClientRect();
         return r.width > 0 && r.height > 0 && r.right <= document.documentElement.clientWidth + 1;
       };
+      const reg = document.querySelector(".navbar__register");
       return {
-        signup: vis(document.querySelector(".navbar__signup")),
-        login: vis(document.querySelector(".navbar__login")),
+        register: vis(reg),
+        registerName: (reg?.textContent || "").trim() !== "",
+        cta: vis(document.querySelector(".navbar__cta")),
+        nav: vis(document.querySelector(".navbar__nav")),
         toggle: vis(document.querySelector(".navbar__toggle")),
+        login: Boolean(document.querySelector(".navbar__login, .navbar__signup, a[href='/login']")),
       };
     });
-    // Below 920px Login lives in the drawer, so the hamburger is what must show.
-    const ok = seen.signup && (seen.login || seen.toggle);
-    check(ok, `@${w}: sign-up is visible and sign-in is reachable`, JSON.stringify(seen));
+    const ok = seen.register && seen.registerName && !seen.login
+      && (w >= 1024 ? seen.nav && !seen.toggle : seen.toggle && !seen.nav)
+      && (w >= 1440 ? seen.cta : true);
+    check(ok, `@${w}: Register family is visible and named, the navigation or the menu button shows, no retired sign-in link`, JSON.stringify(seen));
     await page.context().close();
   }
 } catch (e) {
-  fail("Header auth entry points (scenario threw)", String(e.message || e).split("\n")[0].slice(0, 160));
+  fail("Header entry points (scenario threw)", String(e.message || e).split("\n")[0].slice(0, 160));
 }
 
 // The PHP paths must not be swallowed by the React router.
@@ -890,6 +901,34 @@ try {
   await page.context().close();
 } catch (e) {
   fail("HTTP 429 messages (scenario threw)", String(e.message || e).split("\n")[0].slice(0, 200));
+}
+
+// D-027: a Calendar Pooja card shows the CMS pooja's own date and time even
+// when that date is not one of the panchangam's computed Pournamis.
+try {
+  const page = await newPage();
+  const soon = new Date(); soon.setDate(soon.getDate() + 3);
+  const iso = `${soon.getFullYear()}-${String(soon.getMonth() + 1).padStart(2, "0")}-${String(soon.getDate()).padStart(2, "0")}`;
+  const card = {
+    id: 9901, content_type: "calendar_pooja", title_ta: "E2E பௌர்ணமி", title_en: "E2E Pournami", description_ta: "", description_en: "",
+    is_pinned: true, priority: 1, event_date: null,
+    pooja: { id: 9901, name_ta: "E2E பௌர்ணமி", name_en: "E2E Pournami", desc_ta: "", desc_en: "", date: iso, time: "07:15 AM", type: "pournami" },
+  };
+  await page.route("**/api/homepage_widgets", (r) => r.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify([card]) }));
+  await page.goto(base + "/", { waitUntil: "networkidle" });
+  await chooseLang(page, "en");
+  const el = page.locator(".hw-card--calendar_pooja").filter({ hasText: "E2E Pournami" }).first();
+  await el.waitFor({ timeout: 15000 });
+  const text = (await el.innerText()).replace(/\s+/g, " ");
+  const expectedDate = soon.toLocaleDateString("en-IN", { weekday: "long", day: "numeric", month: "long", year: "numeric" });
+  check(text.includes(expectedDate), "D-027: Calendar Pooja card shows the CMS pooja's own date", text.slice(0, 160));
+  check(/In 3 days/.test(text), "D-027: countdown is computed from the CMS pooja's date", text.slice(0, 160));
+  check(/Timings: 07:15 AM/.test(text), "D-027: the timing line is the CMS pooja's time, not a literal", text.slice(0, 160));
+  check(!/04:00 PM/.test(text), "D-027: no hardcoded 04:00 PM – 09:00 PM timing");
+  check(page.errors().length === 0, "D-027: no page errors", page.errors().slice(0, 2).join(" | "));
+  await page.context().close();
+} catch (e) {
+  fail("D-027 calendar pooja card date/time (scenario threw)", String(e.message || e).split("\n")[0].slice(0, 200));
 }
 
 await browser.close();

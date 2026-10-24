@@ -513,7 +513,13 @@ try {
     /* ── Catalogue and templates ────────────────────────────────────────── */
     section('Event catalogue and templates');
     $catalogue = notifyEventCatalogue();
-    eq(count($catalogue), 17, 'the catalogue has 17 events (15 plus donation.paid and payment.refunded)');
+    eq(count($catalogue), 18, 'the catalogue has 18 events (15 plus donation.paid, payment.refunded and contact.received)');
+    $contact = $catalogue['contact.received'] ?? [];
+    eq([$contact['template'] ?? null, $contact['channels'] ?? null, $contact['priority'] ?? null, $contact['dedupe'] ?? null, $contact['sync'] ?? null, $contact['entity_type'] ?? null],
+        ['contact_received', ['email'], 'important', 'contact:{entity_id}:received:{recipient}', false, 'contact_message'], 'contact.received is catalogued for the office (G-19)');
+    eq(notifyTemplateDefaults()['contact_received']['category'] ?? null, 'office', 'contact_received is in the transactional office category, so no consent is asked');
+    eq(notifyCategoryKind('office'), 'transactional', 'the office category (migration 019) is transactional');
+    eq(notifyTemplateDefaults()['contact_received']['cta_path'] ?? null, '/admin/contact_messages.php', 'contact_received links to the admin Messages page');
     foreach (['account.registered', 'account.email_verification', 'account.email_verified', 'account.profile_updated', 'security.password_reset',
               'security.password_changed', 'phone.otp', 'phone.verified', 'account.already_registered'] as $gone) {
         ok(!isset($catalogue[$gone]), "{$gone} is not in the catalogue");

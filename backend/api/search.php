@@ -138,6 +138,30 @@ try {
             'score'    => scoreOf($q, (string) $r['caption']),
         ]);
     }
+
+    // ── Videos (migration 017; hidden videos and hidden categories never match) ──
+    try {
+        $stmt = $db->prepare(
+            'SELECT v.id, v.title_ta, v.title_en, v.published_on, c.slug AS category_slug, c.name_ta AS category_ta, c.name_en AS category_en
+               FROM videos v LEFT JOIN video_categories c ON c.id = v.category_id
+              WHERE v.is_active = 1 AND (v.category_id IS NULL OR c.is_active = 1)
+                AND (v.title_ta LIKE :q1 OR v.title_en LIKE :q2)
+              ORDER BY v.sort_order ASC, v.published_on DESC LIMIT 12'
+        );
+        $stmt->execute([':q1' => $like, ':q2' => $like]);
+        foreach ($stmt->fetchAll() as $r) {
+            $add('videos', [
+                'title_ta' => $r['title_ta'], 'title_en' => $r['title_en'],
+                'sub_ta'   => $r['category_ta'], 'sub_en' => $r['category_en'], 'snippet' => null,
+                'url'      => '/videos' . ($r['category_slug'] !== null ? '?category=' . rawurlencode((string) $r['category_slug']) : ''),
+                'date'     => $r['published_on'],
+                'score'    => scoreOf($q, $r['title_ta'], $r['title_en']),
+            ]);
+        }
+    } catch (Throwable $e) {
+        // Videos are optional until migration 017 is applied.
+        error_log('[search] videos skipped: ' . $e->getMessage());
+    }
 } catch (Throwable $e) {
     error_log('[search] ' . $e->getMessage());
 }
@@ -185,6 +209,8 @@ $PAGES = [
      'sub_ta' => 'கொள்கைகள்', 'sub_en' => 'Policies', 'kw' => 'refund refunds cancel cancellation money back return duplicate payment failed payment seva cancellation 48 hours பணம் திருப்பி ரத்து திரும்பப் பெறுதல்'],
     ['url' => '/shipping-delivery-policy', 'ta' => 'அனுப்புதல் & விநியோகக் கொள்கை', 'en' => 'Shipping & Delivery Policy',
      'sub_ta' => 'கொள்கைகள்', 'sub_en' => 'Policies', 'kw' => 'shipping delivery courier post dispatch prasadam receipt delivery அனுப்புதல் விநியோகம் கூரியர் அஞ்சல் பிரசாதம்'],
+    ['url' => '/videos',              'ta' => 'காணொளிகள்', 'en' => 'Videos',
+     'sub_ta' => 'காணொளிகள்', 'sub_en' => 'Videos', 'kw' => 'videos video youtube recordings watch pooja festival discourse darshan recording காணொளி காணொளிகள் வீடியோ யூடியூப் பதிவுகள் சொற்பொழிவு'],
     // Live darshan (docs/live/SPEC-PHASE1.md §4.6). Title = the page's SEO title.
     ['url' => '/live-darshan',        'ta' => 'நேரடி தரிசனம்', 'en' => 'Live Darshan',
      'sub_ta' => 'நேரடி தரிசனம்', 'sub_en' => 'Live Darshan', 'kw' => 'live darshan stream streaming watch online video youtube pooja நேரடி தரிசனம் நேரடி ஒளிபரப்பு யூடியூப் நேரலை'],
@@ -212,6 +238,7 @@ $LABELS = [
     'poojas'        => ['ta' => 'பூஜைகள்',     'en' => 'Poojas'],
     'announcements' => ['ta' => 'அறிவிப்புகள்', 'en' => 'Announcements'],
     'gallery'       => ['ta' => 'படங்கள்',     'en' => 'Gallery'],
+    'videos'        => ['ta' => 'காணொளிகள்',   'en' => 'Videos'],
 ];
 
 $groups = [];

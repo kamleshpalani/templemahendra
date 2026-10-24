@@ -1,0 +1,1 @@
+import{u as a,j as r,B as u,bm as i}from"./index-7epIUO-7.js";function c({status:n,size:e,className:s=""}){const{t:o}=a(),t=i[n];return r.jsx(u,{tone:(t==null?void 0:t.tone)??"muted",size:e,className:s,children:t?o(...t.label):String(n??"—")})}export{c as S};

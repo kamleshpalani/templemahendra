@@ -69,10 +69,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if ($id > 0) {
                 $db->prepare('UPDATE events SET title_ta=:ta,title_en=:en,description=:d,event_date=:dt,is_active=:a WHERE id=:id')
                    ->execute([':ta' => $title_ta, ':en' => $title_en, ':d' => $desc, ':dt' => $event_date, ':a' => $active, ':id' => $id]);
+                adminAudit('event_updated', 'event:' . $id, $title_en . ' · ' . $event_date);
                 $_SESSION['flash'] = '<p class="alert alert--success">Updated.</p>';
             } else {
                 $db->prepare('INSERT INTO events (title_ta,title_en,description,event_date,is_active) VALUES (:ta,:en,:d,:dt,:a)')
                    ->execute([':ta' => $title_ta, ':en' => $title_en, ':d' => $desc, ':dt' => $event_date, ':a' => $active]);
+                adminAudit('event_created', 'event:' . (int) $db->lastInsertId(), $title_en . ' · ' . $event_date);
                 $_SESSION['flash'] = '<p class="alert alert--success">Created.</p>';
             }
             header('Location: ' . $back, true, 303);
@@ -81,7 +83,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     } elseif ($msg === '' && $action === 'delete') {
         $id = (int) $str($_POST, 'id');
         if ($id > 0) {
+            $gone = $db->prepare('SELECT title_en FROM events WHERE id=:id');
+            $gone->execute([':id' => $id]);
+            $goneTitle = $gone->fetchColumn();
             $db->prepare('DELETE FROM events WHERE id=:id')->execute([':id' => $id]);
+            if ($goneTitle !== false) adminAudit('event_deleted', 'event:' . $id, (string) $goneTitle);
             $_SESSION['flash'] = '<p class="alert alert--success">Deleted.</p>';
         }
         header('Location: ' . $back, true, 303);

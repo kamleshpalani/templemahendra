@@ -32,6 +32,17 @@
  *   • /live-darshan/<slug> loads directly, an unknown slug and a DRAFT slug show
  *     the not-found state, OFFLINE and COMPLETED show their poster text and no
  *     iframe; "Watch on YouTube" opens in a new tab with noopener;
+ *   • Phase 4/8: the viewer pill, the action row (Donate, Notify me, Share)
+ *     by flag and status, "About this pooja" with the description, Try again
+ *     on OFFLINE; a COMPLETED broadcast with the archive flag shows only the
+ *     ended poster until a recording_url is saved (SPEC-PHASE8: completion
+ *     alone proves no recording), then "Watch the recording" mounts that
+ *     recording — not the old live video — in the same 16:9 box, and with the
+ *     flag off a saved recording is not offered;
+ *   • Phase 6 (docs/live/SPEC-PHASE6.md): Notify me opens the "Remind me"
+ *     dialog with the email field, the consent tick, "Save reminder", the
+ *     "Full schedule" link and Close — a focus trap, axe clean, Escape closes
+ *     it and focus returns to the button;
  *   • Tamil by default (<html lang="ta">), English after the toggle and still
  *     English after a reload;
  *   • the header link, the drawer link, the footer link and the Home NRI tile
@@ -55,6 +66,11 @@
  *     three states — LIVE NOW card with Watch live reaching the broadcast,
  *     the next darshan with its countdown and View schedule, and nothing at
  *     all (no live section, no empty band) — plus the hero panel row.
+ *
+ * Dates and times the page renders through Intl ("Tuesday, 29 September 2026"
+ * or "Tuesday 29 September, 2026" — the punctuation is the engine's ICU/CLDR
+ * build) are expected as the browser under test formats them (`longDate`,
+ * `clockTime` run the same Intl call in the page), never as this Node does.
  *
  * Data: streams titled "E2E-LIVE-ui<run> …", X-Forwarded-For 10.84.0.200–249.
  * Rows are removed by title prefix at the start and in `finally`, with their
@@ -287,6 +303,13 @@ async function newPage({ width = 1440, height = 900, lang = "en", address = next
 const shot = (page, name) => page.screenshot({ path: resolve(SHOTS, `${name}.png`), fullPage: true }).catch(() => {});
 const overflow = (page) => page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth + 1);
 async function axe(page) {
+  // Entrance animations (.rise: opacity 0 → 1, staggered 60 ms per card by --i, 0.55 s each) settle
+  // first — bounded, and never waiting on an endless one such as the live dot's pulse — so a card
+  // still fading in is not scanned at a colour no devotee ever reads it in.
+  await page.evaluate(() => Promise.race([
+    Promise.all(document.getAnimations().filter((a) => Number.isFinite(a.effect?.getTiming?.().iterations)).map((a) => a.finished.catch(() => {}))),
+    new Promise((done) => setTimeout(done, 2500)),
+  ])).catch(() => {});
   await page.addScriptTag({ content: axeSource });
   return page.evaluate(async () => {
     const res = await window.axe.run(document, {
@@ -340,7 +363,26 @@ const dayAfterIst = (() => {
   const d = new Date(Date.now() + 5.5 * 3600 * 1000 + 48 * 3600 * 1000);
   return d.toISOString().slice(0, 10);
 })();
-const longDate = (ymd, lang = "en") => new Intl.DateTimeFormat(lang === "ta" ? "ta-IN" : "en-IN", { weekday: "long", day: "numeric", month: "long", year: "numeric", timeZone: "Asia/Kolkata" }).format(new Date(`${ymd}T12:00:00+05:30`));
+/**
+ * An instant as the browser under test renders it with the page's own Intl
+ * options (frontend/src/lib/live.js formatIn) — whitespace collapsed as
+ * `text()` does. The comma placement of a long date and the am/pm order of a
+ * Tamil time are the ICU/CLDR build of the engine that formats them, so the
+ * expectation comes from the page's engine, not from this Node's.
+ */
+const fmtIn = (page, iso, lang, options) =>
+  page.evaluate(
+    ([i, l, o]) => new Intl.DateTimeFormat(l === "ta" ? "ta-IN" : "en-IN", { ...o, timeZone: "Asia/Kolkata" }).format(new Date(i)).replace(/\s+/g, " "),
+    [iso, lang, options],
+  );
+/** "Tuesday, 29 September 2026" for 'YYYY-MM-DD', as formatStreamDate renders it in `page`. */
+const longDate = (page, ymd, lang = "en") => fmtIn(page, `${ymd}T12:00:00+05:30`, lang, { weekday: "long", day: "numeric", month: "long", year: "numeric" });
+/** "6:00 pm" for 'YYYY-MM-DDTHH:MM' IST, as formatStreamTime renders it in `page` (before the zone label). */
+const clockTime = (page, local, lang = "en") => fmtIn(page, `${local}:00+05:30`, lang, { hour: "numeric", minute: "2-digit" });
+/** The weekday, day, month(, year) tokens in order, whatever commas the engine puts between them. */
+const WEEKDAY = "(Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday)";
+const LONG_DATE_RE = new RegExp(`${WEEKDAY},? \\d{1,2} [A-Z][a-z]+,? \\d{4}`);
+const DAY_MONTH_RE = new RegExp(`${WEEKDAY},? \\d{1,2} [A-Z][a-z]+`);
 /** The IST calendar date some days from today ('YYYY-MM-DD'). */
 const istDate = (days = 0) => new Date(Date.now() + 5.5 * 3600 * 1000 + days * 24 * 3600 * 1000).toISOString().slice(0, 10);
 /** The title of the broadcast the list route features: the head's h2 while live, the next-darshan card's h2 otherwise (Phase 2). */
@@ -418,13 +460,17 @@ async function liveFacts() {
   check((await hero.count()) === 1 && /Live now/.test(await text(hero)) && /Started \d{1,2}:\d{2} (am|pm) IST/.test(await text(hero)), "the hero shows the Live now badge and when it started", await text(hero));
   check((await hero.locator(".badge").getAttribute("class"))?.includes("badge--live"), "the hero badge carries the live dot");
   check((await text(page.locator(".live-stream__title"))) === F.live.title_en, "the stream title is shown", await text(page.locator(".live-stream__title")));
-  check(/Test live darshan created by the test suite/.test(await text(page.locator(".live-stream__desc"))), "the description is shown");
+  // Both "About this pooja" and the Phase 7 donations box are a .live-about with a .live-stream__desc;
+  // the description is the About section's, the one labelled by #live-about-title.
+  const desc = page.locator('.live-about[aria-labelledby="live-about-title"] .live-stream__desc');
+  check((await desc.count()) === 1 && /Test live darshan created by the test suite/.test(await text(desc)), "the description is shown", await text(desc));
   const f = await facts(page);
   check(/Sri Lingammal/.test(f.Temple ?? ""), "details: Temple", JSON.stringify(f));
   check(/Sri Lingammal/.test(f.Deity ?? ""), "details: Deity", f.Deity);
   check(f.Programme === "Live darshan", "details: Programme (the API's English label)", f.Programme);
   check(/\d{4}/.test(f.Date ?? "") && /(Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday)/.test(f.Date ?? ""), "details: Date as a long date", f.Date);
-  check(f.Date === longDate(tomorrowIst), "details: Date is the scheduled date (the same instant as Time, not the day it actually started)", `${f.Date} vs ${longDate(tomorrowIst)}`);
+  const wantDate = await longDate(page, tomorrowIst);
+  check(f.Date === wantDate, "details: Date is the scheduled date (the same instant as Time, not the day it actually started)", `${f.Date} vs ${wantDate}`);
   check(/^6:00 pm – 7:00 pm IST/.test(f.Time ?? "") && /Started \d{1,2}:\d{2} (am|pm) IST$/.test(f.Time ?? ""), "details: Time is the scheduled window in IST with the actual start as the sub-line", f.Time);
   check(/Live now/.test(f.Status ?? ""), "details: Status badge", f.Status);
   check((await page.locator(".live-actions .share-btn").count()) === 1, "the share button is offered when sharing is enabled");
@@ -659,11 +705,12 @@ async function scheduledThenEmpty() {
     check((await mainTitle(page)) === F.sched.title_en, `SCHEDULED @${w}: the next broadcast is the one shown`, await mainTitle(page));
     check((await page.locator(".live-next").count()) === 1 && (await page.locator(".live-stream__head").count()) === 0, `SCHEDULED @${w}: the next-darshan card stands in for the plain head (Phase 2)`);
     const state = await text(page.locator(".live-player__state-text"));
-    check(state === `Starts ${longDate(tomorrowIst)} at 6:00 pm IST`, `SCHEDULED @${w}: "Starts <date> at <time> IST" as the wall clock in IST`, state);
+    const date = await longDate(page, tomorrowIst);
+    check(state === `Starts ${date} at 6:00 pm IST`, `SCHEDULED @${w}: "Starts <date> at <time> IST" as the wall clock in IST`, state);
     check(/The broadcast will appear here when it begins/.test(await text(page.locator(".live-player__state-sub"))), `SCHEDULED @${w}: the waiting note`);
-    check(/Scheduled/.test(await text(page.locator(".live-hero__status"))) && new RegExp(`${longDate(tomorrowIst)} · 6:00 pm IST`).test(await text(page.locator(".live-hero__status"))), `SCHEDULED @${w}: the hero shows Scheduled with the date and time`, await text(page.locator(".live-hero__status")));
+    check(/Scheduled/.test(await text(page.locator(".live-hero__status"))) && (await text(page.locator(".live-hero__status"))).includes(`${date} · 6:00 pm IST`), `SCHEDULED @${w}: the hero shows Scheduled with the date and time`, await text(page.locator(".live-hero__status")));
     const f = await facts(page);
-    check(f.Time === "6:00 pm – 7:00 pm IST" && f.Date === longDate(tomorrowIst), `SCHEDULED @${w}: details show the date and the 6:00–7:00 pm IST window`, `${f.Date} / ${f.Time}`);
+    check(f.Time === "6:00 pm – 7:00 pm IST" && f.Date === date, `SCHEDULED @${w}: details show the date and the 6:00–7:00 pm IST window`, `${f.Date} / ${f.Time}`);
     check(!(await overflow(page)), `SCHEDULED @${w}: no horizontal overflow`);
     if (w === 1440 || w === 390) {
       const v = await axe(page);
@@ -679,8 +726,10 @@ async function scheduledThenEmpty() {
   const ta = await newPage({ lang: null });
   await openLive(ta);
   const taState = await text(ta.locator(".live-player__state-text"));
-  const taTime = new Intl.DateTimeFormat("ta-IN", { hour: "numeric", minute: "2-digit", timeZone: "Asia/Kolkata" }).format(new Date(`${tomorrowIst}T18:00:00+05:30`)).replace(/\s+/g, " ");
-  check(taState === `${longDate(tomorrowIst, "ta")} அன்று ${taTime} IST தொடங்கும்`, "SCHEDULED: the Tamil poster sentence", `${taState} (expected …அன்று ${taTime} IST தொடங்கும்)`);
+  // The Tamil time is "6:00 PM" or "PM 6:00" by the engine's CLDR: the browser's own rendering is the expectation.
+  const taTime = await clockTime(ta, `${tomorrowIst}T18:00`, "ta");
+  const taDate = await longDate(ta, tomorrowIst, "ta");
+  check(taState === `${taDate} அன்று ${taTime} IST தொடங்கும்`, "SCHEDULED: the Tamil poster sentence", `${taState} (expected ${taDate} அன்று ${taTime} IST தொடங்கும்)`);
   check(!/மணிக்கு/.test(taState), "SCHEDULED: no மணிக்கு after the am/pm + zone token");
   check(/திட்டமிடப்பட்டது/.test(await text(ta.locator(".live-hero__status"))), "SCHEDULED: the Tamil badge");
   await ta.context().close();
@@ -800,8 +849,9 @@ async function premiumPage() {
     const row = await actionRow(page);
     check(Array.isArray(row) && row.length === 2 && row.some((b) => /^Donate$/.test(b.text) && b.href === `/donate?stream=${F.live.slug}`) && row.some((b) => /^Share$/.test(b.text)) && !row.some((b) => /Notify/.test(b.text)), `@${w}: LIVE offers Donate (to /donate?stream=<slug>) and Share, not Notify me`, JSON.stringify(row));
     check(Array.isArray(row) && row.every((b) => b.h >= 44 && b.fits), `@${w}: every action is 44 px tall and inside the viewport`, JSON.stringify(row));
-    const about = page.locator(".live-about");
-    check((await text(about.locator("h3"))) === "About this pooja" && /Test live darshan created by the test suite/.test(await text(about)), `@${w}: About this pooja carries the description`, await text(about));
+    // The Phase 7 donations box is a .live-about too; About this pooja is the one labelled by #live-about-title.
+    const about = page.locator('.live-about[aria-labelledby="live-about-title"]');
+    check((await about.count()) === 1 && (await text(about.locator("h3"))) === "About this pooja" && /Test live darshan created by the test suite/.test(await text(about.locator(".live-stream__desc"))), `@${w}: About this pooja carries the description`, await text(about));
     if (w === 390) {
       const order = await page.evaluate(() => {
         const y = (sel) => document.querySelector(sel)?.getBoundingClientRect().top ?? -1;
@@ -819,7 +869,8 @@ async function premiumPage() {
   // Tamil: the heading, the pill's sentence and the Tamil description.
   const ta = await newPage({ lang: null });
   await openLive(ta);
-  check((await text(ta.locator(".live-about h3"))) === "இந்த பூஜை பற்றி" && /சோதனை நேரடி தரிசனம்/.test(await text(ta.locator(".live-about"))), "Tamil: இந்த பூஜை பற்றி with the Tamil description", await text(ta.locator(".live-about")));
+  const taAbout = ta.locator('.live-about[aria-labelledby="live-about-title"]');
+  check((await text(taAbout.locator("h3"))) === "இந்த பூஜை பற்றி" && /சோதனை நேரடி தரிசனம்/.test(await text(taAbout.locator(".live-stream__desc"))), "Tamil: இந்த பூஜை பற்றி with the Tamil description", await text(taAbout));
   check(/42 பேர் பார்க்கிறார்கள்/.test(await text(ta.locator(".live-header__viewers"))), "Tamil: the pill's sentence", await text(ta.locator(".live-header__viewers")));
   check(/நன்கொடை/.test(await text(ta.locator(".live-actions"))) && /பங்கிடு/.test(await text(ta.locator(".live-actions"))), "Tamil: Donate and Share labels", await text(ta.locator(".live-actions")));
   await ta.context().close();
@@ -842,7 +893,8 @@ async function premiumPage() {
   await bare.context().close();
   setStatus(F.bare.id, "COMPLETED");
 
-  // SCHEDULED: Notify me opens the Phase 4 note — a dialog with a focus trap, Escape to close, focus back on the button.
+  // SCHEDULED: Notify me opens the Phase 6 reminder dialog (SPEC-PHASE6) — the email field, the consent
+  // tick, Save reminder, the schedule link — with a focus trap, Escape to close, focus back on the button.
   const sched = await newPage({ width: 390, height: 844 });
   await openLive(sched, `/live-darshan/${F.sched.slug}`);
   const row = await actionRow(sched);
@@ -853,8 +905,16 @@ async function premiumPage() {
   await notify.click();
   const dialog = sched.locator('[role="dialog"]');
   await dialog.waitFor();
-  check((await dialog.count()) === 1 && /Reminders are coming soon/.test(await text(dialog)) && /the schedule has every upcoming time/.test(await text(dialog)), "Notify me opens the reminders-are-coming note", await text(dialog));
-  check((await dialog.locator('a[href="/live-darshan/schedule"]').count()) === 1 && (await dialog.locator("input, textarea").count()) === 0, "…with the schedule as the way out and no email field (Phase 6 owns reminders)");
+  check((await dialog.count()) === 1 && (await text(dialog.locator("h2"))) === "Remind me" && (await text(dialog.locator(".modal__eyebrow"))) === F.sched.title_en && /Get an email reminder near this darshan’s scheduled start\./.test(await text(dialog)), "Notify me opens the Remind me dialog for this broadcast (Phase 6)", await text(dialog));
+  const form = dialog.locator("form.live-notify");
+  const emailField = form.locator('input[type="email"][name="email"][required]');
+  const consent = form.locator('input[type="checkbox"][required]');
+  check((await form.count()) === 1 && (await emailField.count()) === 1 && (await emailField.getAttribute("autocomplete")) === "email" && /Email/.test(await text(form.locator(`label[for="${await emailField.getAttribute("id")}"]`))), "…with a required, labelled email field", await form.innerHTML().catch(() => ""));
+  check((await consent.count()) === 1 && /I agree to an email reminder for this broadcast\./.test(await text(consent.locator("xpath=.."))) && /Unsubscribe using the link in the email\. No account is needed\./.test(await text(form)), "…the consent tick and the unsubscribe note", await text(form));
+  const hp = form.locator('input[name="hp_token"]');
+  check((await hp.count()) === 1 && (await hp.getAttribute("tabindex")) === "-1" && (await hp.evaluate((el) => el.closest('[aria-hidden="true"]') !== null && el.closest(".visually-hidden") !== null)), "…the honeypot is hidden from readers and the Tab order");
+  check((await form.locator('button[type="submit"]', { hasText: "Save reminder" }).count()) === 1, "…Save reminder submits the form");
+  check((await dialog.locator('a[href="/live-darshan/schedule"]', { hasText: "Full schedule" }).count()) === 1 && (await dialog.locator("button", { hasText: /^Close$/ }).count()) === 1, "…Full schedule and Close as the ways out");
   await sched.waitForTimeout(200);
   check((await dialog.getAttribute("aria-modal")) === "true" && (await sched.evaluate(() => document.activeElement?.closest('[role="dialog"]') !== null)), "…focus moved into the dialog");
   for (let i = 0; i < 8; i += 1) await sched.keyboard.press("Tab");
@@ -870,23 +930,32 @@ async function premiumPage() {
   check(sched.errors().length === 0, "scheduled: no console errors", sched.errors().slice(0, 2).join(" | "));
   await sched.context().close();
 
-  // COMPLETED with archive: the poster until "Watch the recording" is pressed, then the same 16:9 iframe.
+  // COMPLETED with archive (Phase 8): completion alone proves no recording — the poster has no button
+  // until the committee's recording_url is saved; then "Watch the recording" mounts that recording
+  // (never the old live video) in the same 16:9 box.
   const done = await newPage();
   await openLive(done, `/live-darshan/${F.done.slug}`);
+  check((await done.locator(".live-player__state button").count()) === 0 && (await done.locator(".live-player__iframe").count()) === 0 && (await text(done.locator(".live-player__state-text"))) === "This darshan has ended.", "COMPLETED (archived, no recording saved): the ended poster, no button, no iframe (Phase 8)", await text(done.locator(".live-player__state")));
+  const recordingUrl = `https://www.youtube.com/watch?v=${YT2}`;
+  sql("UPDATE live_streams SET recording_url = ? WHERE id = ?", [recordingUrl, F.done.id]);
+  const doneApi = await fetch(`${PHP_BASE}/api/live-streams/${F.done.slug}`).then((r) => r.json());
+  check(doneApi?.stream?.playback?.kind === "iframe" && (doneApi.stream.playback.embedUrl ?? "").includes(YT2) && doneApi.stream.playback.watchUrl === recordingUrl && !("recording_url" in doneApi.stream), "the API plays the saved recording (its embed and watch URLs), keeping recording_url itself private", JSON.stringify(doneApi?.stream?.playback));
+  await openLive(done, `/live-darshan/${F.done.slug}`);
   const watch = done.locator(".live-player__state button", { hasText: "Watch the recording" });
-  check((await watch.count()) === 1 && (await done.locator(".live-player__iframe").count()) === 0 && (await text(done.locator(".live-player__state-text"))) === "This darshan has ended.", "COMPLETED (archived): the ended poster offers Watch the recording, no iframe yet");
+  check((await watch.count()) === 1 && (await done.locator(".live-player__iframe").count()) === 0 && (await text(done.locator(".live-player__state-text"))) === "This darshan has ended.", "COMPLETED (archived, recording saved): the ended poster offers Watch the recording, no iframe yet", await text(done.locator(".live-player__state")));
   const before = await done.locator(".live-player__frame").boundingBox();
   await watch.click();
   await done.locator(".live-player__iframe").waitFor();
   const a = await iframeAttrs(done);
-  check(a && /^https:\/\/www\.youtube-nocookie\.com\/embed\/[A-Za-z0-9_-]{11}\?/.test(a.src) && /^Recording – /.test(a.title) && a.allowfullscreen, "…pressing it mounts the recording iframe (youtube-nocookie, titled Recording – …)", JSON.stringify(a));
+  check(a && new RegExp(`^https://www\\.youtube-nocookie\\.com/embed/${YT2}\\?`).test(a.src) && /^Recording – /.test(a.title) && a.allowfullscreen, "…pressing it mounts the recording iframe (youtube-nocookie, the saved recording's id — not the live video's — titled Recording – …)", JSON.stringify(a));
   check(a && Math.abs(a.frameH - (a.frameW * 9) / 16) <= 2 && before && Math.abs(before.height - a.frameH) <= 2, "…in the same 16:9 box, no layout shift", JSON.stringify({ before: before?.height, after: a?.frameH }));
   check((await done.locator(".live-actions").count()) === 1 && !/Notify/.test(await text(done.locator(".live-actions"))), "COMPLETED: Donate/Share remain, Notify me does not", await text(done.locator(".live-actions")));
   check(done.errors().length === 0, "completed: no console errors", done.errors().slice(0, 2).join(" | "));
-  // Without the archive flag the poster stays as it was.
+  // Without the archive flag a saved recording is not offered: the poster stays as it was.
   F.doneNoArchive = mkStream({ label: "Finished unarchived", status: "COMPLETED", archive_enabled: 0, scheduled_start_local: `${dayAfterIst} 11:00`, scheduled_end_local: `${dayAfterIst} 12:00` });
+  sql("UPDATE live_streams SET recording_url = ? WHERE id = ?", [recordingUrl, F.doneNoArchive.id]);
   await openLive(done, `/live-darshan/${F.doneNoArchive.slug}`);
-  check((await done.locator(".live-player__state button").count()) === 0 && (await done.locator(".live-player__iframe").count()) === 0 && (await text(done.locator(".live-player__state-text"))) === "This darshan has ended.", "COMPLETED without archive: the ended poster, no button, no iframe");
+  check((await done.locator(".live-player__state button").count()) === 0 && (await done.locator(".live-player__iframe").count()) === 0 && (await text(done.locator(".live-player__state-text"))) === "This darshan has ended.", "COMPLETED without archive: the ended poster, no button, no iframe (a saved recording is hidden)", await text(done.locator(".live-player__state")));
   await done.context().close();
 
   // OFFLINE: Try again asks the API for the broadcast once more.
@@ -995,7 +1064,8 @@ async function schedulePageChecks(S) {
   const headings = await page.locator(".live-schedule__day-title").allTextContents();
   check(/^Live now/.test(headings[0] ?? "") && (await page.locator(".live-schedule__day-title--live").count()) === 1, "the first day group is Live now, marked as live", headings.join(" | "));
   check(headings.some((h) => /^Today ·/.test(h)) && headings.some((h) => /^Tomorrow ·/.test(h)), "there are Today · and Tomorrow · headings", headings.join(" | "));
-  check(headings.some((h) => /(Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday), \d{1,2} \w+ \d{4}/.test(h)), "a later day is headed by its weekday and date", headings.join(" | "));
+  const laterHeading = await longDate(page, istDate(8));
+  check(headings.some((h) => LONG_DATE_RE.test(h)) && headings.some((h) => h.startsWith(laterHeading)), "a later day is headed by its weekday and date", `${headings.join(" | ")} (expected one to start with ${laterHeading})`);
   check(/\d+ programmes?/.test(headings[0] ?? ""), "a heading carries its programme count", headings[0]);
   for (const f of [F.live, S.todayLate, S.tomorrowEarly, S.festival, S.nextWeek]) {
     check((await page.locator(`.live-card[href="/live-darshan/${f.slug}"]`).count()) === 1, `the card for ${f.title_en.replace(PREFIX, "").trim()} links to its page`);
@@ -1007,7 +1077,8 @@ async function schedulePageChecks(S) {
   const soonPill = todayCard.locator(".live-countdown--compact");
   check((await soonPill.count()) === 1 && /in (\d+ h ?)?(\d+ min)?|in under a minute|Starting shortly/.test(await text(soonPill)), "a broadcast within the next day counts down in minutes on its card", await text(soonPill));
   const nextWeekCard = page.locator(`.live-card[href="/live-darshan/${S.nextWeek.slug}"]`);
-  check((await nextWeekCard.locator(".live-countdown--compact").count()) === 0 && /(Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday), \d{1,2} \w+ · 6:00 pm IST/.test(await text(nextWeekCard)), "a broadcast next week has no countdown and shows its weekday and date", await text(nextWeekCard));
+  const nextWeekDay = await fmtIn(page, `${istDate(8)}T12:00:00+05:30`, "en", { weekday: "long", day: "numeric", month: "long" });
+  check((await nextWeekCard.locator(".live-countdown--compact").count()) === 0 && DAY_MONTH_RE.test(await text(nextWeekCard)) && (await text(nextWeekCard)).includes(`${nextWeekDay} · 6:00 pm IST`), "a broadcast next week has no countdown and shows its weekday and date", `${await text(nextWeekCard)} (expected ${nextWeekDay} · 6:00 pm IST)`);
   check((await page.locator(".live-schedule__window").count()) === 1 && /IST/.test(await text(page.locator(".live-schedule__window"))), "the window's dates are shown with the zone", await text(page.locator(".live-schedule__window")));
 
   await tabs.nth(1).click();
@@ -1101,7 +1172,7 @@ async function schedulePageChecks(S) {
   const wantTaDay = taDayLabel(istDate(8));
   const nextWeekWhen = await text(ta.locator(`.live-card[href="/live-darshan/${S.nextWeek.slug}"] .live-card__when`));
   check(nextWeekWhen.startsWith(wantTaDay), "Tamil: a later day reads weekday, day month (as the heading does)", `${nextWeekWhen} (expected to start with ${wantTaDay})`);
-  const taFullDate = new Intl.DateTimeFormat("ta-IN", { timeZone: "Asia/Kolkata", weekday: "long", day: "numeric", month: "long", year: "numeric" }).format(new Date(`${istDate(8)}T12:00:00+05:30`));
+  const taFullDate = await longDate(ta, istDate(8), "ta");
   const taLaterHeading = (await ta.locator(".live-schedule__day-title").allTextContents()).find((h) => h.includes(taFullDate));
   check(Boolean(taLaterHeading) && taFullDate.startsWith(wantTaDay.split(",")[0]), "Tamil: its day heading is the same weekday-first date with the year", `${taLaterHeading ?? "no heading"} / ${taFullDate}`);
   await ta.context().close();

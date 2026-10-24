@@ -50,16 +50,11 @@ register_shutdown_function($cleanup);
 
 /* ── 1. Every SPEC key exists, bilingual, with channel variants ─────────── */
 
-// SPEC §5.2: key => [category, variables beyond devoteeName/templeName/ctaUrl]
+// SPEC §5.2: key => [category, variables beyond devoteeName/templeName/ctaUrl].
+// The devotee-account templates (welcome, email/phone verification, password
+// reset and change, profile update) went with the retired account system
+// (family registration is passwordless), so they are not expected here.
 $spec = [
-    'welcome'               => ['general', []],
-    'email_verification'    => ['security', ['verifyUrl', 'expiresHours']],
-    'email_verified'        => ['security', []],
-    'password_reset'        => ['security', ['resetUrl', 'expiresMinutes']],
-    'password_changed'      => ['security', ['changedAt']],
-    'profile_updated'       => ['security', ['changedFields']],
-    'phone_otp'             => ['security', ['otpCode', 'expiresMinutes']],
-    'phone_verified'        => ['security', ['phoneMasked']],
     'booking_received'      => ['booking', ['bookingNumber', 'sevaName', 'bookingDate']],
     'booking_confirmed'     => ['booking', ['bookingNumber', 'sevaName', 'bookingDate']],
     'booking_modified'      => ['booking', ['bookingNumber', 'sevaName', 'bookingDate', 'changes']],
@@ -82,6 +77,7 @@ $spec = [
     'announcement'          => ['announcement', ['headline', 'message']],
     'emergency'             => ['emergency', ['headline', 'message']],
     'campaign_generic'      => [null, ['title', 'message']],
+    'contact_received'      => ['office', ['senderName', 'senderPhone', 'message', 'receivedAt']],
 ];
 
 $defaults = notifyTemplateDefaults();
@@ -152,33 +148,22 @@ $taSegs = array_count_values(array_map(fn($i) => $i['segments'], $taSms));
 ksort($taSegs);
 echo '     Tamil SMS segments: ' . json_encode($taSegs) . " (segments => templates)\n";
 
-/* ── 3. Security copy rules ─────────────────────────────────────────────── */
+/* ── 3. Copy rules: links and receipts ──────────────────────────────────── */
 
-foreach (['email_verification' => 'verifyUrl', 'password_reset' => 'resetUrl'] as $key => $var) {
+// A link belongs in the email body, on its own line, and never in an SMS or
+// WhatsApp text, where it cannot be trusted. The templates that carry one are
+// the receipt and the reminder with its map.
+foreach (['donation_receipt' => 'ctaUrl', 'booking_reminder' => 'mapsUrl'] as $key => $var) {
     foreach (['ta', 'en'] as $l) {
-        $lines = explode("\n", $defaults[$key]['langs'][$l]['any']['body']);
-        check(in_array('{{' . $var . '}}', $lines, true), "$key $l body puts {{{$var}}} alone on its own line");
-        foreach (['sms', 'whatsapp'] as $c) {
+        foreach (['sms'] as $c) {
             check(!str_contains($defaults[$key]['langs'][$l][$c]['body'], '{{' . $var . '}}'), "$key $l $c never carries the link to a phone");
         }
     }
 }
-foreach (['ta', 'en'] as $l) {
-    foreach (['any', 'sms', 'whatsapp'] as $c) {
-        $b = $defaults['phone_otp']['langs'][$l][$c]['body'];
-        check((bool) preg_match('/^\*?\{\{otpCode\}\}/', $b) && str_contains($b, '{{expiresMinutes}}'), "phone_otp $l $c starts with the code and states the expiry");
-    }
-}
-check(str_contains($defaults['phone_otp']['langs']['en']['sms']['body'], 'Never share this code'), 'phone_otp en sms says never share this code');
-check(str_contains($defaults['phone_otp']['langs']['ta']['sms']['body'], 'பகிர வேண்டாம்'), 'phone_otp ta sms says never share this code');
-foreach (['password_changed', 'profile_updated', 'password_reset', 'phone_verified'] as $key) {
-    check(str_contains($defaults[$key]['langs']['en']['any']['body'], 'not'), "$key en says what to do if it was not the devotee");
-}
-$reset = notifyRender('password_reset', 'en', 'email', notifyTemplateSample('password_reset', 'en'));
-$resetUrl = notifyTemplateSample('password_reset', 'en')['resetUrl'];
-$text = notifyEmailText(['title' => $reset['title'], 'body' => $reset['body'], 'lang' => 'en', 'cta_url' => $resetUrl, 'cta_label' => $reset['cta_label']]);
-preg_match('~^(https?://\S+/reset-password\?token=[a-f0-9]+)$~m', $text, $m);
-check(($m[1] ?? null) === $resetUrl, 'the reset link can be read from the plain-text email on a line of its own');
+$receipt = notifyRender('donation_receipt', 'en', 'email', notifyTemplateSample('donation_receipt', 'en'));
+$receiptUrl = notifyTemplateSample('donation_receipt', 'en')['ctaUrl'];
+$text = notifyEmailText(['title' => $receipt['title'], 'body' => $receipt['body'], 'lang' => 'en', 'cta_url' => $receiptUrl, 'cta_label' => $receipt['cta_label']]);
+check(str_contains($text, $receipt['cta_label'] . ":\n" . $receiptUrl), 'the receipt link can be read from the plain-text email on a line of its own');
 
 /* ── 4. Temple facts ────────────────────────────────────────────────────── */
 
@@ -214,7 +199,7 @@ check(notifyTemplateRegister($key, [
                  'sms' => ['title' => '', 'body' => 'en default sms']],
     ],
 ]), 'a module can register its own template');
-check(notifyTemplateRegister('welcome', ['langs' => []]) === false, 'a built-in template cannot be replaced by registration');
+check(notifyTemplateRegister('booking_confirmed', ['langs' => []]) === false, 'a built-in template cannot be replaced by registration');
 notifyTemplateCacheClear();
 
 $r = notifyRender($key, 'en', 'any', ['devoteeName' => 'Kavitha']);
@@ -370,7 +355,7 @@ check(str_contains($slash, 'If the button does not work'), 'a short site-path CT
 $verifyLink = siteUrl('/verify-email?token=abc123');
 $inBody = notifyEmailHtml(['title' => 't', 'body' => "Open this link:\n\n$verifyLink\n\nThanks.", 'lang' => 'en', 'cta_url' => $verifyLink, 'cta_label' => 'Confirm']);
 check(!str_contains($inBody, 'If the button does not work') && str_contains($inBody, '>Confirm</a>'), 'the fallback link is not repeated when the body already shows the CTA URL on its own line');
-check(str_contains($good, 'Unsubscribe from these emails') && str_contains($good, 'u12.abcdefghijklmnop'), 'the unsubscribe link appears when given');
+check(str_contains($good, 'Stop temple updates') && str_contains($good, 'u12.abcdefghijklmnop'), 'the unsubscribe link appears when given');
 check(str_contains($good, 'src="https://temple.example/api/n/o/o34.abcdefghijklmnop" width="1" height="1"'), 'the open pixel appears when given');
 check(str_contains($good, 'role="alert"') && str_contains($good, '>Urgent</div>'), 'urgent priority shows the urgent banner');
 $em = notifyEmailHtml(['title' => 'Closed', 'body' => 'b', 'lang' => 'ta', 'priority' => 'emergency']);
@@ -378,8 +363,10 @@ check(str_contains($em, 'role="alert"') && str_contains($em, 'அவசர அ�
 check(str_contains($em, $facts['name']['ta']), 'the header shows the temple name in Tamil for a Tamil email');
 check(!preg_match('/<style|class="/i', $good . $em), 'no <style> element and no classes: inline styles only');
 check((bool) preg_match('/max-width:600px/', $good) && str_contains($good, '<!--[if mso]><table role="presentation" width="600"'), '600 px layout with an Outlook column');
-$sec = notifyEmailHtml(['title' => 't', 'body' => 'b', 'lang' => 'en', 'category' => 'security']);
-check(str_contains($sec, 'security message about your account'), 'security emails explain why they ignore preferences');
+$upd = notifyEmailHtml(['title' => 't', 'body' => 'b', 'lang' => 'en', 'category' => 'announcement', 'kind' => 'informational']);
+check(str_contains($upd, 'because you agreed to receive temple updates'), 'an update explains that the family agreed to temple updates');
+$trx = notifyEmailHtml(['title' => 't', 'body' => 'b', 'lang' => 'en', 'category' => 'booking']);
+check(str_contains($trx, 'because you booked a seva, made an offering or registered your family'), 'a transactional email explains why it arrived without a preferences link');
 
 $txt = notifyEmailText([
     'title' => 'Seva confirmed', 'body' => 'Body with https://example.org/in-body link.', 'lang' => 'en', 'priority' => 'emergency',
@@ -388,20 +375,20 @@ $txt = notifyEmailText([
 ]);
 check(str_contains($txt, "View booking:\n" . siteUrl('/account?tab=bookings')), 'the plain text writes out the CTA URL');
 check(str_contains($txt, 'https://example.org/in-body') && str_contains($txt, 'Seva: Abhishekam') && str_contains($txt, 'EMERGENCY NOTICE'), 'the plain text keeps body links, details and the banner');
-check(str_contains($txt, 'Notification settings: https://temple.example/account?tab=notifications') && str_contains($txt, 'Unsubscribe from these emails: https://temple.example/api/n/u/'), 'the plain text writes out preference and unsubscribe links');
+check(!str_contains($txt, 'account?tab=notifications') && str_contains($txt, 'Stop temple updates: https://temple.example/api/n/u/'), 'the plain text writes out the unsubscribe link and no retired preferences page');
 check(!str_contains(notifyEmailText(['title' => 't', 'body' => 'b', 'lang' => 'en', 'cta_url' => 'javascript:alert(1)']), 'javascript'), 'the plain text drops an unsafe CTA too');
 
 /* ── 10. Previews for a visual check ────────────────────────────────────── */
 
-$dir = 'C:/Users/nithp/AppData/Local/Temp/claude/email-previews';
+$dir = rtrim(getenv('EMAIL_PREVIEW_DIR') ?: sys_get_temp_dir() . '/email-previews', '/');
 if (!is_dir($dir)) @mkdir($dir, 0775, true);
-$categories = ['booking' => ['ta' => 'சேவை பதிவு', 'en' => 'Booking'], 'security' => ['ta' => 'பாதுகாப்பு', 'en' => 'Security'], 'emergency' => ['ta' => 'அவசரம்', 'en' => 'Emergency']];
+$categories = ['booking' => ['ta' => 'சேவை பதிவு', 'en' => 'Booking'], 'payment' => ['ta' => 'கட்டணம்', 'en' => 'Payment'], 'emergency' => ['ta' => 'அவசரம்', 'en' => 'Emergency']];
 // The last flag is the unsubscribe link. SPEC §5.10 gives one only to
-// informational and promotional emails; booking (transactional), security and
-// emergency (critical) carry the preferences link alone, so the previews do too.
+// informational and promotional emails; booking and payment (transactional) and
+// emergency (critical) carry none, so the previews do not either.
 $previews = [
     ['booking_confirmed', 'ta', 'important', [['சேவை', 'அபிஷேகம்'], ['தேதி', '20 செப்டம்பர் 2026'], ['பதிவு எண்', 'SB-1042']], false],
-    ['password_reset', 'en', 'urgent', [], false],
+    ['payment_failed', 'en', 'urgent', [], false],
     ['emergency', 'en', 'emergency', [], false],
 ];
 $written = 0;

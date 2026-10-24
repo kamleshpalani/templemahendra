@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import {
   LuCalendarDays,
@@ -11,6 +11,7 @@ import {
   LuSparkles,
   LuUsers,
 } from "react-icons/lu";
+import api from "../services/api";
 import { useLang } from "../context/LangContext";
 import {
   TEMPLE,
@@ -25,20 +26,12 @@ import PageHero from "../components/ui/PageHero";
 import Button from "../components/ui/Button";
 import Seo from "../components/Seo";
 import ShareButton from "../components/Share/ShareButton";
+import { POOJA_SCHEDULE, to12h } from "../lib/templeTime";
 import HistoryTimeline from "../components/HistoryTimeline/HistoryTimeline";
 import TrustDetails from "../components/TrustDetails/TrustDetails";
 import CommitteeGrid from "../components/CommitteeGrid/CommitteeGrid";
 import "./PageCommon.css";
 import "./About.css";
-
-/* Existing daily pooja schedule (also used by the live "Next Pooja" widget). */
-const DAILY_POOJAS = [
-  ["Thiruvanandal", "திருவனந்தல்", "6:00 AM"],
-  ["Kaalaasanthi", "காலசந்தி", "8:00 AM"],
-  ["Uchikalam", "உச்சிகால பூஜை", "12:00 PM"],
-  ["Sayarakshai", "சாயரக்‍ஷை", "6:00 PM"],
-  ["Arthajama Pooja", "அர்த்தஜாம பூஜை", "8:30 PM"],
-];
 
 /* In-page section nav — ids match the h2 anchors below (deep-linked from
    the navbar live pill (#timings), Donations (#trust) and Contact). */
@@ -66,6 +59,23 @@ export default function About() {
   // actually loaded so a missing file never reserves space above the anchors.
   const [photoOk, setPhotoOk] = useState(true);
   const [photoLoaded, setPhotoLoaded] = useState(false);
+  // Deities come from the CMS (/api/deities, admin → Worship → Deities); the
+  // built-in three stand in until the answer arrives or if it is empty.
+  const [deities, setDeities] = useState(null);
+  const [brokenImages, setBrokenImages] = useState({});
+  useEffect(() => {
+    let alive = true;
+    api
+      .get("/deities")
+      .then((r) => {
+        if (alive && Array.isArray(r.data) && r.data.length) setDeities(r.data);
+      })
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, []);
+  const deityList = deities ?? TEMPLE.deities.map((d) => ({ name_ta: d.ta, name_en: d.en }));
 
   const facts = HERO_FACTS.map((f) => {
     const m = HISTORY.timeline.find((x) => x.key === f.key);
@@ -169,20 +179,34 @@ export default function About() {
               "Our clan deities are three. Clan members gather for darshan every Maha Shivaratri, and special pooja and annadanam are held every month on Pournami.",
             )}
           </p>
-          <ul className="about-deities" role="list">
-            {TEMPLE.deities.map((d, i) => (
-              <li key={d.en} className="about-deities__item card card--static rise" style={{ "--i": i }}>
-                <span className="about-deities__glyph" aria-hidden="true">
-                  ✦
-                </span>
-                <span className="about-deities__ta" lang="ta">
-                  {d.ta}
-                </span>
-                <span className="about-deities__en" lang="en">
-                  {d.en}
-                </span>
-              </li>
-            ))}
+          <ul className={`about-deities${deityList.length !== 3 ? " about-deities--flow" : ""}`} role="list" data-source={deities ? "cms" : "builtin"}>
+            {deityList.map((d, i) => {
+              const desc = lang === "ta" ? d.description_ta || d.description_en : d.description_en || d.description_ta;
+              return (
+                <li key={d.id ?? d.name_en} className="about-deities__item card card--static rise" style={{ "--i": i }}>
+                  {d.image_url && !brokenImages[d.id] ? (
+                    <img
+                      className="about-deities__image"
+                      src={d.image_url}
+                      alt={lang === "ta" ? d.name_ta : d.name_en}
+                      loading="lazy"
+                      onError={() => setBrokenImages((b) => ({ ...b, [d.id]: true }))}
+                    />
+                  ) : (
+                    <span className="about-deities__glyph" aria-hidden="true">
+                      ✦
+                    </span>
+                  )}
+                  <span className="about-deities__ta" lang="ta">
+                    {d.name_ta}
+                  </span>
+                  <span className="about-deities__en" lang="en">
+                    {d.name_en}
+                  </span>
+                  {desc && <p className="about-deities__desc">{desc}</p>}
+                </li>
+              );
+            })}
           </ul>
           <p className="about-link">
             <Button variant="soft" size="sm" to="/events" icon={<LuCalendarDays aria-hidden="true" />}>
@@ -250,11 +274,11 @@ export default function About() {
               <tbody>
                 {/* Column 1 follows the active language; column 2 shows the other,
                     so neither mode repeats the same text in both columns. */}
-                {DAILY_POOJAS.map(([en, ta, time]) => (
+                {POOJA_SCHEDULE.map(({ en, ta, h, m }) => (
                   <tr key={en}>
                     <td lang={lang}>{t(ta, en)}</td>
                     <td lang={lang === "ta" ? "en" : "ta"}>{lang === "ta" ? en : ta}</td>
-                    <td>{time}</td>
+                    <td>{to12h(`${h}:${m}`)} IST</td>
                   </tr>
                 ))}
               </tbody>

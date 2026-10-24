@@ -518,6 +518,7 @@ try {
       await p.waitForSelector("#reg-errors");
       const focusIsSummary = await p.evaluate(() => document.activeElement?.id === "reg-errors");
       check(focusIsSummary, "after a Save with errors the summary receives focus");
+      await p.waitForTimeout(400);
       const v = await axe(p);
       check(v.length === 0 && !(await overflow(p)), "the form with errors has no serious axe violations and no overflow", v.slice(0, 5).join("\n      "));
     }

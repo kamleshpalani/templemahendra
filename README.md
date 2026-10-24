@@ -3,6 +3,14 @@
 **Stack:** React 18 + Vite · PHP 8 · MySQL 8 · Custom PHP Admin CMS  
 **Hosting:** Hostinger India — Standard Web Hosting
 
+**Documentation:** [DEPLOYMENT.md](docs/DEPLOYMENT.md) (environments, Hostinger
+release steps, cron, backups and restore) · [DATABASE.md](docs/DATABASE.md)
+(schema, migrations, conventions) · [TESTING.md](docs/TESTING.md) (suites and
+the E2E-001…050 matrix) · [CCAvenue-INTEGRATION.md](docs/CCAvenue-INTEGRATION.md) ·
+[LIVE-STREAMING.md](docs/LIVE-STREAMING.md) · [DEFECTS.md](docs/DEFECTS.md) ·
+[GAP-ANALYSIS.md](docs/GAP-ANALYSIS.md). Detailed specifications live under
+`docs/live/`, `docs/payments/`, `docs/notifications/` and `docs/registration/`.
+
 ---
 
 ## Project Structure
@@ -195,11 +203,16 @@ Upload via Hostinger File Manager or FTP:
 
 ### Step 3 — Database
 
-1. Create database in Hostinger hPanel → Databases → MySQL
-2. Import `database/schema.sql` via phpMyAdmin
-3. Run the migrations in `database/migrations/` in order. Each is additive and
-   safe to re-run on an existing database; a fresh `schema.sql` install already
-   contains them.
+1. Create the database and its user in Hostinger hPanel → Databases → MySQL.
+2. For a fresh installation, select that database in phpMyAdmin and import
+   `database/schema.sql`. Remove the complete `CREATE DATABASE ...;` and
+   `USE templemahendra;` statements from the import copy first: Hostinger uses
+   the database name assigned in hPanel, which must also be your `DB_NAME`.
+   Skip the schema import when upgrading an existing installation.
+3. Run **every** migration in `database/migrations/`, in filename order, against
+   the same database. This is required for both fresh installations and
+   upgrades: `schema.sql` provides the baseline and does not include all later
+   migrations.
 
 | Migration | What it adds |
 | --------- | ------------ |
@@ -214,6 +227,14 @@ Upload via Hostinger File Manager or FTP:
 | `009_family_registration.sql` | Family registration replaces devotee sign-in (`docs/registration/SPEC.md`): optional non-unique email, address, language, consent and `family_members`; `duplicate_of` marks a repeated phone number for the committee to merge. |
 | `010_payments.sql` | Online payments through CCAvenue (`docs/payments/SPEC.md`): `donation_categories`, `payment_transactions`, `payment_refunds`, `payment_audit_log`, `payment_settings` and `payment_counters`, plus the online-payment columns on `donations` and `seva_bookings`. Pledges and request-only bookings are untouched (`source='pledge'`, `payment_mode='offline'`). |
 | `011_live_streams.sql` | Live Darshan, phase 1 (`docs/live/SPEC-PHASE1.md`): seeded `temples` and `deities` tables and `live_streams`, the YouTube Live broadcasts the committee schedules in Admin → Live Streaming and the public sees at `/live-darshan`. |
+| `012_live_automation.sql` | YouTube automation settings and stream synchronization fields for the scheduled poller. |
+| `013_live_subscriptions.sql` | Per-stream email subscriptions and the live-reminder notification category. |
+| `014_live_donations.sql` | `donations.live_stream_id` and its index and foreign key for stream-linked checkout and totals. |
+| `015_admin_roles.sql` | Five committee roles (brief §17): widens `admin_users.role` to `owner` / `admin` / `editor` / `finance` / `viewer` and `admin_activity.action` to 60 characters for `session_expired` / `account_locked`. Existing rows keep their values. |
+| `016_sponsors_consent.sql` | Sponsor management (brief §11): `family_name`, `email`, `event_id` (FK, `ON DELETE SET NULL`), `amount`, `payment_ref`, `payment_status`, `publish_consent` (defaults to 0 — existing sponsors stay private until an admin grants consent) and `updated_at`. Public APIs only ever show `is_active = 1 AND publish_consent = 1` rows, under the family name when one is set. |
+| `017_videos.sql` | Videos module (brief §6): `video_categories` (bilingual names, slug, order, visibility; seeded Poojas / Festivals / Discourses / Darshan recordings) and `videos` (unique 11-character `youtube_id`, bilingual titles and descriptions, `category_id` FK `ON DELETE SET NULL`, optional `live_stream_id` FK to a completed broadcast `ON DELETE SET NULL`, `published_on`, `sort_order`, `is_featured`, `is_active`). Public: `GET /api/videos`, `/videos`. |
+| `018_calendar_entries.sql` | Temple Calendar entries (brief §6): `calendar_entries` (`mode` add/hide, `entry_type`, `entry_date`/`end_date` span, bilingual title and description, optional `pooja_id`/`event_id` FKs `ON DELETE SET NULL`, `sort_order`, `is_active`). Merged into `GET /api/calendar`: add-entries join a day's `special[]`, hide-entries remove a computed observance (Pournami, Pradosham, …) the temple does not follow that day. Admin: Worship → Temple Calendar. |
+| `019_contact_notifications.sql` | Contact-form notifications (brief §20, E2E-040, gap G-19): the transactional `office` notification category the `contact_received` template is filed under, so the office copy of a website message needs no devotee consent and can never be picked for a campaign. |
 
 ```bash
 for f in database/migrations/*.sql; do mysql -u <user> -p <db> < "$f"; done
@@ -231,8 +252,11 @@ No additional worker or migration is needed. See `docs/live/SPEC-PHASE8.md`.
 
 ### Step 4 — Environment variables
 
-Set via Hostinger hPanel → Advanced → PHP Config → Environment Variables,
-OR create `public_html/includes/.env` (outside public reach) and load with `putenv()`.
+Set via Hostinger hPanel → Advanced → PHP Config → Environment Variables. That
+is the only mechanism the public API reads in production; the repo-root
+`.env.local` file is a local-development convenience loaded by
+`backend/includes/auth.php` and is not read by the public endpoints. Never
+place a file with real credentials under `public_html`.
 
 Values needed:
 
@@ -245,7 +269,16 @@ Values needed:
 | `DB_PASS`         | Database password                                        |
 | `ADMIN_USERNAME`  | Admin panel login                                        |
 | `ADMIN_PASS_HASH` | bcrypt hash of the admin password (see Step 5)           |
+| `ADMIN_IDLE_MINUTES` | Optional. Admin sessions end after this many idle minutes (default 30, max 1440) |
 | `CORS_ORIGIN`     | Allowed origin, e.g. `https://www.templemahendra.in`     |
+| `CONTACT_NOTIFY_EMAIL` | Optional. The temple office mailbox(es), comma-separated, that receive a copy of every website contact-form message through the Notification Service (`contact.received`, migration 019). Blank: messages are only stored for Admin → Messages. |
+| `CONTACT_NOTIFY_LANG` | Optional. `en` (default) or `ta`: the language of the office copy. |
+
+Admin sign-in locks an account for 15 minutes after 10 failed attempts (any
+IP, case-insensitive username). A Super Admin issuing a new password from
+Committee accounts clears the lock. Roles: `owner` = Super Admin, `admin` =
+Temple Admin, `editor` = Content Editor, `finance` = Finance Admin, `viewer` =
+read-only; the capability matrix lives in `backend/includes/roles.php`.
 
 Devotee accounts need a few more. They are only read once migration 003 has
 been applied; see `backend/.env.example` for the annotated version.
@@ -265,7 +298,7 @@ app. **Three places encode that split, and all three must agree** — miss one a
 
 | Where | What it does |
 | ----- | ------------ |
-| `deploy/htaccess_public_html` | `RewriteRule ^(api\|admin\|uploads)(/.*)?$ - [L]` before the SPA fallback |
+| `deploy/htaccess_public_html` | `RewriteRule ^(api\|admin\|uploads)(/.*)?$ - [L]` before the SPA fallback; the fallback itself goes through `api/spa.php`, not straight to `index.html` |
 | `frontend/vite.config.js` → `server.proxy` | The same three paths proxied to the PHP dev server |
 | `frontend/vite.config.js` → `workbox.navigateFallbackDenylist` | Stops the service worker answering those navigations from the cached `index.html` |
 
@@ -273,6 +306,22 @@ The service-worker entry is the easy one to forget and the hardest to diagnose:
 without it the server is right, the `.htaccess` is right, and the committee still
 gets the React app at `/admin/`, because the request never leaves the browser.
 `tests/public-e2e.mjs` checks the behaviour end to end.
+
+### Crawlers: robots.txt, sitemap.xml and honest 404s
+
+`/robots.txt` and `/sitemap.xml` are generated by `api/robots.php` and
+`api/sitemap.php` (the `.htaccess` and `backend/router.php` both route them
+there). The sitemap lists every public page in `site_pages.php` except `/search`,
+plus one `/live-darshan/<slug>` entry per broadcast that is scheduled, starting,
+live or completed; robots disallows `/admin/`, `/api/`, `/search` and the
+`/payment/*` pages. Both use `SITE_URL` for the origin.
+
+The SPA fallback (`api/spa.php`) serves the built `index.html` unchanged, but
+with the status a crawler should see: `200` for a known page or public broadcast,
+`404 Not Found` + `X-Robots-Tag: noindex, nofollow` for anything else — so an
+unknown URL is no longer a "soft 404" that search engines index. Browsers still
+get the React app and its not-found page either way. `tests/seo-crawl.mjs`
+covers all three files against MySQL.
 
 ### Shared links and rich previews
 
@@ -338,6 +387,20 @@ Put the output as `ADMIN_PASS_HASH`.
 ```bash
 chmod 755 public_html/uploads
 ```
+
+### Step 7 — Take the first backup
+
+```bash
+DB_HOST=localhost DB_NAME=u123_temple DB_USER=u123_temple DB_PASS='…' \
+  deploy/backup.sh --site-root ~/public_html --keep 14
+```
+
+That writes a dated folder next to `public_html` (never inside it) holding the
+MySQL dump, the uploads folder, the configuration file when one was given with
+`--env-file`, and the release commit, with a checksum manifest that `deploy/restore.sh` verifies before it
+touches anything. Schedule it nightly and rehearse a restore into an empty
+database before handing the site over — the full procedure, and what to do when
+the host has no SSH, is in [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md#backups-and-restore).
 
 ---
 
@@ -765,11 +828,16 @@ Two kinds of sign-in exist, deliberately:
 2. **Committee accounts** in the `admin_users` table (see the migration above),
    created under *Committee Accounts*. Each has a role:
 
-| Role     | Can do                                                                 |
-| -------- | ---------------------------------------------------------------------- |
-| `viewer` | Read dashboards, lists and reports; download CSV exports. No changes.   |
-| `editor` | Everything a viewer can, plus content, poojas, bookings, donations, bulk imports. |
-| `owner`  | Everything, plus committee accounts and system settings.                |
+| Role      | Called          | Can do                                                                 |
+| --------- | --------------- | ---------------------------------------------------------------------- |
+| `viewer`  | Viewer          | Read dashboards, lists and reports; download CSV exports. No changes.   |
+| `finance` | Finance Admin   | Donations, sponsors, payments, refunds and receipts. |
+| `editor`  | Content Editor  | Content, poojas, bookings, imports, live streams and small notifications. |
+| `admin`   | Temple Admin    | Everything above plus settings, notification approval and the audit log — but not accounts or provider/merchant credentials. |
+| `owner`   | Super Admin     | Everything, including committee accounts, payment and YouTube credentials. |
+
+The capability matrix is `ADMIN_ROLE_GRANTS` in `backend/includes/roles.php`;
+there is no implied hierarchy, a role holds exactly the capabilities listed.
 
 Permissions are enforced centrally in `requireAdminAuth()` (`backend/includes/auth.php`),
 which checks the capability needed to *open* a page and, on POST, the capability
@@ -798,7 +866,8 @@ See `docs/live/SPEC-PHASE7.md`.
   reading a page and posting to it, so `viewer` accounts are genuinely read-only
 - Every admin form carries a per-session CSRF token, checked by `adminCsrfGuard()`
 - Sign-ins, failures and account changes are written to `admin_activity`
-- Sign-in throttles after 5 failures; `?next=` redirects are restricted to `/admin/`
+- Sign-in locks the account for 15 minutes after 10 failures; sessions end after
+  `ADMIN_IDLE_MINUTES` idle; `?next=` redirects are restricted to `/admin/`
 - All user input is sanitised with `strip_tags` + length limits before DB inserts
 - All DB queries use PDO prepared statements — no SQL injection risk
 - `config/` and `includes/` folders have `.htaccess` denying direct HTTP access

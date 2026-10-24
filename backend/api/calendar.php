@@ -2,9 +2,13 @@
 // backend/api/calendar.php
 // Hindu Panchangam Calendar API
 // Returns daily tithi, special days (Amavasai, Pournami, Ekadasi, etc.)
-// and auspicious/inauspicious timings for a given month.
+// and auspicious/inauspicious timings for a given month, merged with the
+// committee's own calendar entries (migration 018): custom festivals and
+// poojas are added, and computed observances the temple does not follow on
+// that day are removed.
 
 require_once __DIR__ . '/../includes/helpers.php';
+require_once __DIR__ . '/../includes/calendar_entries.php';
 
 setCorsHeaders();
 
@@ -225,6 +229,8 @@ for ($d = 1; $d <= $daysInMonth; $d++) {
         ],
     ];
 }
+
+$days = calendarApplyEntries($days, calendarEntriesBetween($days[0]['date'], $days[count($days) - 1]['date']));
 
 $todayStr  = $todayIST->format('Y-m-d');
 $todayData = null;

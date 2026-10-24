@@ -177,7 +177,7 @@ try {
   sql("INSERT INTO poojas (name_ta, name_en, pooja_date, pooja_time, pooja_type, is_active) VALUES (?, ?, ?, '06:00 PM', 'pournami', 1)",
     [`${MARK} பௌர்ணமி`, `${MARK} Pournami`, istToday]);
   const poojaId = Number(rows("SELECT id FROM poojas WHERE name_en = ?", [`${MARK} Pournami`])[0].id);
-  sql("INSERT INTO sponsors (name, phone, note, pooja_id, is_active) VALUES (?, ?, ?, ?, 1)",
+  sql("INSERT INTO sponsors (name, phone, note, pooja_id, is_active, publish_consent) VALUES (?, ?, ?, ?, 1, 1)",
     [`${MARK} Sponsor`, `+91 ${sponsorDigits.slice(0, 5)} ${sponsorDigits.slice(5)}`, `${MARK} note`, poojaId]);
   const sponsorId = Number(rows("SELECT id FROM sponsors WHERE name = ?", [`${MARK} Sponsor`])[0].id);
   sql("INSERT INTO homepage_widgets (content_type, title_ta, title_en, source_type, linked_pooja_id, linked_sponsor_id, show_sponsor, priority, is_pinned, is_active) VALUES ('sponsor', ?, ?, 'manual', ?, ?, 1, -100000, 1, 1)",

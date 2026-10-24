@@ -91,15 +91,26 @@ function bulkEntities(): array
         ],
         'sponsors' => [
             'icon' => 'heart-hands', 'label' => 'Sponsors', 'table' => 'sponsors',
-            'columns' => ['name', 'phone', 'note', 'is_active'],
+            // publish_consent is opt-in: blank or anything but yes/1/true imports as "not consented".
+            'columns' => ['name', 'family_name', 'phone', 'email', 'amount', 'payment_status', 'payment_ref', 'publish_consent', 'note', 'is_active'],
             'required' => ['name'],
             'rules' => ['phone' => [fn($v) => $v === '' || preg_match('/^[0-9+\-\s]{7,30}$/', $v), 'must be a phone number'],
+                        'email' => [fn($v) => $v === '' || filter_var($v, FILTER_VALIDATE_EMAIL) !== false, 'must be an email address'],
+                        'amount' => [fn($v) => $v === '' || (is_numeric($v) && (float) $v >= 0 && (float) $v <= 99999999), 'must be a number of rupees, 0 or more'],
+                        'payment_status' => [fn($v) => in_array(strtoupper($v), ['', 'PENDING', 'PAID', 'FAILED', 'REFUNDED', 'WAIVED'], true), 'must be PENDING, PAID, FAILED, REFUNDED or WAIVED'],
+                        'publish_consent' => [$isBool, 'must be yes/no'],
                         'is_active' => [$isBool, 'must be yes/no']],
             'dupKey' => ['name', 'phone'],
             'dupSql' => 'SELECT name, phone FROM sponsors',
-            'map' => fn(array $r) => [':a' => $r['name'], ':b' => $r['phone'] ?: null, ':c' => $r['note'] ?: null, ':d' => $toBool($r['is_active'])],
-            'insert' => 'INSERT INTO sponsors (name,phone,note,is_active) VALUES (:a,:b,:c,:d)',
-            'sample' => ['Murugan & Family', '9876543210', 'Annadanam sponsor', 'yes'],
+            'map' => fn(array $r) => [
+                ':a' => $r['name'], ':b' => $r['family_name'] ?: null, ':c' => $r['phone'] ?: null, ':d' => $r['email'] ?: null,
+                ':e' => $r['amount'] !== '' ? number_format((float) $r['amount'], 2, '.', '') : null,
+                ':f' => $r['payment_status'] !== '' ? strtoupper($r['payment_status']) : 'PENDING', ':g' => $r['payment_ref'] ?: null,
+                ':h' => in_array(strtolower($r['publish_consent']), ['1', 'yes', 'true'], true) ? 1 : 0,
+                ':i' => $r['note'] ?: null, ':j' => $toBool($r['is_active']),
+            ],
+            'insert' => 'INSERT INTO sponsors (name,family_name,phone,email,amount,payment_status,payment_ref,publish_consent,note,is_active) VALUES (:a,:b,:c,:d,:e,:f,:g,:h,:i,:j)',
+            'sample' => ['Murugan', 'Murugan & Family', '9876543210', 'murugan@example.com', '5000', 'PAID', 'UPI-2026-0001', 'yes', 'Annadanam sponsor', 'yes'],
         ],
         'donations' => [
             'icon' => 'banknote', 'label' => 'Donations', 'table' => 'donations',
@@ -244,8 +255,9 @@ function bulkReadCsv(string $path): array
  */
 function bulkReadXlsx(string $path): array
 {
-    if (!class_exists('ZipArchive')) {
-        throw new RuntimeException('This server cannot read Excel files (the PHP zip extension is missing). In Excel choose File → Save As → CSV UTF-8 and upload that file instead.');
+    if (!class_exists('ZipArchive') || !function_exists('simplexml_load_string')) {
+        $missing = !class_exists('ZipArchive') ? 'zip' : 'xml';
+        throw new RuntimeException('This server cannot read Excel files (the PHP ' . $missing . ' extension is missing). In Excel choose File → Save As → CSV UTF-8 and upload that file instead.');
     }
     $zip = new ZipArchive();
     if ($zip->open($path) !== true) {
@@ -392,6 +404,12 @@ function bulkHeaderCandidates(string $n): array
             'display_order' => ['sort_order'], 'sno' => ['sort_order'], 's_no' => ['sort_order'], 'sl_no' => ['sort_order'],
             'notes' => $notes, 'remark' => $notes, 'remarks' => $notes, 'comment' => $notes, 'comments' => $notes, 'note' => $notes, 'msg' => ['message', 'note', 'description'], 'message' => ['message', 'note', 'description'],
             'purpose' => ['purpose'], 'for' => ['purpose'], 'reason' => ['purpose'], 'towards' => ['purpose'], 'fund' => ['purpose'],
+            'family' => ['family_name'], 'family_name' => ['family_name'], 'public_name' => ['family_name'], 'display_name' => ['family_name'],
+            'email' => ['email'], 'e_mail' => ['email'], 'mail' => ['email'], 'email_address' => ['email'], 'email_id' => ['email'],
+            'consent' => ['publish_consent'], 'publish_consent' => ['publish_consent'], 'publish' => ['publish_consent'], 'can_publish' => ['publish_consent'], 'permission' => ['publish_consent'],
+            'payment_status' => ['payment_status'], 'paid' => ['payment_status'], 'payment' => ['payment_status'], 'pay_status' => ['payment_status'],
+            'payment_ref' => ['payment_ref'], 'payment_reference' => ['payment_ref'], 'reference' => ['payment_ref'], 'ref' => ['payment_ref'], 'ref_no' => ['payment_ref'],
+            'transaction' => ['payment_ref'], 'transaction_id' => ['payment_ref'], 'txn' => ['payment_ref'], 'txn_id' => ['payment_ref'], 'utr' => ['payment_ref'], 'receipt' => ['payment_ref'], 'receipt_no' => ['payment_ref'],
         ];
     }
     if (isset($table[$n])) return $table[$n];

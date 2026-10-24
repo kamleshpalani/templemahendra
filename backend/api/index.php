@@ -1,6 +1,23 @@
 <?php
 // backend/api/index.php — Simple front-controller router for the public API.
 
+// Load .env.local for local development if it exists — same fallback as
+// includes/auth.php, needed here too since public API requests never touch
+// auth.php. It only fills gaps: a variable the server was started with always
+// wins, so the API and the admin always see the same database. Must run
+// before helpers.php pulls in config/config.php, which reads CORS_ORIGIN once.
+$_envFile = __DIR__ . '/../../.env.local';
+if (file_exists($_envFile)) {
+    foreach (file($_envFile, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES) as $_line) {
+        if (str_starts_with(trim($_line), '#') || !str_contains($_line, '=')) continue;
+        [$_k, $_v] = explode('=', $_line, 2);
+        $_k = trim($_k);
+        if ($_k === '' || getenv($_k) !== false) continue;
+        putenv($_k . '=' . trim($_v));
+    }
+}
+unset($_envFile, $_line, $_k, $_v);
+
 require_once __DIR__ . '/../includes/helpers.php';
 
 // The API must answer with JSON even when something breaks: a PHP stack trace
@@ -66,7 +83,7 @@ if (str_starts_with($path, '/n/')) {
     sendError('Not found', 404);
 }
 
-// Delivery status callbacks from WhatsApp, SMS and push providers, any method.
+// Delivery status callbacks from WhatsApp and SMS providers, any method.
 // notify_webhook.php verifies the provider's signature and answers the body
 // and Content-Type that provider expects.
 if (preg_match('#^/notify-webhook/([a-z0-9]{2,16})$#', $path, $webhookMatch)) {
@@ -127,6 +144,8 @@ if (str_starts_with($path, '/admin/')) sendError('Not found', 404);
 $routes = [
     'GET'  => [
         '/announcements'   => 'announcements.php',
+        '/deities'         => 'deities.php',
+        '/videos'          => 'videos.php',
         '/search'          => 'search.php',
         '/sevas'           => 'sevas.php',
         '/events'          => 'events.php',

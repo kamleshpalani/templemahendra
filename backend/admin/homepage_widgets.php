@@ -5,6 +5,7 @@ require_once __DIR__ . '/../includes/auth.php';
 requireAdminAuth();
 require_once __DIR__ . '/../includes/db.php';
 require_once __DIR__ . '/../includes/helpers.php';
+require_once __DIR__ . '/../includes/public_guard.php';
 require_once __DIR__ . '/includes/admin_layout.php';
 
 $db   = getDB();
@@ -152,6 +153,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             is_active=:act
                         WHERE id=:id')
                            ->execute(array_merge($fields, [':id' => $id]));
+                        adminAudit('widget_updated', 'widget:' . $id, $content_type . ' · ' . $title_en);
                         $redirect('success', 'Widget updated.', $back);
                     } else {
                         $db->prepare('INSERT INTO homepage_widgets
@@ -163,6 +165,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             VALUES
                             (:ct,:src,:tta,:ten,:dta,:den,:pid,:sid,:ss,:sn,:sd,:ed,:pr,:pin,:act)')
                            ->execute($fields);
+                        adminAudit('widget_created', 'widget:' . (int) $db->lastInsertId(), $content_type . ' · ' . $title_en);
                         $redirect('success', 'Widget created.', $back);
                     }
                 } catch (PDOException $e) {
@@ -177,12 +180,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if ($id > 0) {
                 $db->prepare('UPDATE homepage_widgets SET is_active=:v WHERE id=:id')
                    ->execute([':v' => $val ? 0 : 1, ':id' => $id]);
+                adminAudit('widget_toggled', 'widget:' . $id, $val ? 'off' : 'on');
                 $redirect('success', $val ? 'Widget turned off — it is no longer shown on the homepage.' : 'Widget activated — it is now live on the homepage.', $back);
             }
         } elseif ($action === 'delete') {
             $id = (int) ($_POST['id'] ?? 0);
             if ($id > 0) {
+                $gone = $db->prepare('SELECT title_en FROM homepage_widgets WHERE id=:id');
+                $gone->execute([':id' => $id]);
+                $goneTitle = $gone->fetchColumn();
                 $db->prepare('DELETE FROM homepage_widgets WHERE id=:id')->execute([':id' => $id]);
+                if ($goneTitle !== false) adminAudit('widget_deleted', 'widget:' . $id, (string) $goneTitle);
                 $redirect('success', 'Deleted.', $back);
             }
         }
@@ -252,9 +260,12 @@ $stmt = $db->prepare(
 $stmt->execute([':cur' => $curPooja, ':cur2' => $curPooja]);
 $poojas = $stmt->fetchAll();
 
-$curSponsor = (int) ($editing['linked_sponsor_id'] ?? 0);
+// Sponsors are only published with consent (migration 016); the list shows who
+// would actually appear on the card, and marks the rest.
+$curSponsor  = (int) ($editing['linked_sponsor_id'] ?? 0);
+$consentCol  = publicGuardHasColumn('sponsors', 'publish_consent');
 $stmt = $db->prepare(
-    'SELECT id, name, is_active FROM sponsors
+    'SELECT id, name, is_active, ' . ($consentCol ? 'publish_consent' : '0 AS publish_consent') . ' FROM sponsors
       WHERE is_active = 1 OR id = :cur
       ORDER BY (id = :cur2) DESC, name ASC LIMIT 51'
 );
@@ -362,12 +373,12 @@ echo adminPageIntro(
             <select id="hw-sponsor" name="linked_sponsor_id">
               <option value="">— None —</option>
               <?php foreach ($sponsors as $sp): ?>
-                <option value="<?= (int) $sp['id'] ?>"<?= $sel($v('linked_sponsor_id'), $sp['id']) ?>><?= h($sp['name'] . ($sp['is_active'] ? '' : ' (inactive)')) ?></option>
+                <option value="<?= (int) $sp['id'] ?>"<?= $sel($v('linked_sponsor_id'), $sp['id']) ?>><?= h($sp['name'] . ($sp['is_active'] ? '' : ' (inactive)') . ((int) $sp['publish_consent'] ? '' : ' (no publish consent)')) ?></option>
               <?php endforeach; ?>
             </select>
           </div>
         </div>
-        <span class="field__hint">Active poojas are listed newest first; active sponsors alphabetically. A record this widget is already linked to stays in the list even when it is marked <em>(inactive)</em>, so saving never drops the link. Manage them under Worship.</span>
+        <span class="field__hint">Active poojas are listed newest first; active sponsors alphabetically. A record this widget is already linked to stays in the list even when it is marked <em>(inactive)</em>, so saving never drops the link. A sponsor marked <em>(no publish consent)</em> can be linked but is not shown on the website until consent is recorded under Worship → Sponsors.</span>
       </fieldset>
 
       <fieldset>

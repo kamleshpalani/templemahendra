@@ -53,7 +53,13 @@ const TYPE_ICONS = {
   festival: "🎊",
   chaturthi: "🐘",
   pratipada: "🌙",
+  pooja: "🙏",
+  holiday: "🏛️",
+  custom: "✦",
 };
+
+/** React key for an observance: committee entries carry an id, computed ones are unique per type. */
+const specialKey = (s) => (s.id ? `e${s.id}` : s.type);
 
 /* Badge tone per observance — lunar → moon, auspicious → sage, status tones otherwise */
 const TYPE_TONE = {
@@ -65,6 +71,9 @@ const TYPE_TONE = {
   festival: "danger",
   chaturthi: "info",
   pratipada: "moon",
+  pooja: "gold",
+  holiday: "muted",
+  custom: "info",
 };
 
 // Fallback calendar data computed client-side (for offline / API down)
@@ -348,7 +357,7 @@ function TodayCard({ today, loading, lang, t, onView }) {
       {today.special?.length > 0 && (
         <div className="panchang-today__special">
           {today.special.map((s) => (
-            <SpecialBadge key={s.type} s={s} t={t} onDark />
+            <SpecialBadge key={specialKey(s)} s={s} t={t} onDark />
           ))}
         </div>
       )}
@@ -438,8 +447,21 @@ function DayDetail({ day, lang, t, panelRef }) {
         {day.special.length > 0 && (
           <div className="panchang-detail__special">
             {day.special.map((s) => (
-              <SpecialBadge key={s.type} s={s} t={t} />
+              <SpecialBadge key={specialKey(s)} s={s} t={t} />
             ))}
+          </div>
+        )}
+        {day.special.some((s) => s.custom && (s.description_ta || s.description_en)) && (
+          <div className="panchang-detail__notes">
+            {day.special
+              .filter((s) => s.custom && (s.description_ta || s.description_en))
+              .map((s) => (
+                <p key={specialKey(s)} className="panchang-detail__note">
+                  <strong>{t(s.ta, s.en)}</strong>
+                  {" — "}
+                  {t(s.description_ta || s.description_en, s.description_en || s.description_ta)}
+                </p>
+              ))}
           </div>
         )}
 
@@ -630,6 +652,7 @@ export default function PanchangCalendar() {
     ["pradosham", "🔥", t("பிரதோஷம்", "Pradosham")],
     ["chaturthi", "🐘", t("சதுர்த்தி", "Chaturthi")],
     ["festival", "🎊", t("திருவிழா", "Festival")],
+    ["pooja", "🙏", t("பூஜை", "Pooja")],
   ];
 
   cellRefs.current = [];
@@ -790,7 +813,7 @@ export default function PanchangCalendar() {
                           <span className="panchang-cell__marks" aria-hidden="true">
                             {day.special.map((s) => (
                               <span
-                                key={s.type}
+                                key={specialKey(s)}
                                 className="panchang-cell__mark"
                                 data-type={s.type}
                                 title={s.en}
@@ -858,7 +881,7 @@ export default function PanchangCalendar() {
                           <span className="panchang-upcoming__body">
                             <span className="panchang-upcoming__badges">
                               {day.special.map((s) => (
-                                <SpecialBadge key={s.type} s={s} t={t} />
+                                <SpecialBadge key={specialKey(s)} s={s} t={t} />
                               ))}
                             </span>
                             <span className="panchang-upcoming__when">

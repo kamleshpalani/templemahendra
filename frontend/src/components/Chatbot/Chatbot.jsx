@@ -71,6 +71,7 @@ export default function Chatbot() {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             message: text,
+            lang,
             // A rate-limit notice carries no text of its own and is not part of
             // the conversation the model should see.
             history: updated.filter((m) => !m.limited).slice(-8).map((m) => ({
@@ -115,7 +116,7 @@ export default function Chatbot() {
         setLoading(false);
       }
     },
-    [input, loading, messages, t],
+    [input, loading, messages, t, lang],
   );
 
   const handleKeyDown = (e) => {

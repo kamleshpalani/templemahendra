@@ -15,12 +15,15 @@ function adminNavGroups(): array
             'homepage_widgets.php' => ['layers',      'Homepage Widgets', 'Cards shown on the public homepage'],
             'announcements.php'    => ['megaphone',   'Announcements',    'Notices in the homepage ticker'],
             'gallery.php'          => ['image',       'Gallery',          'Photos for the public gallery'],
+            'videos.php'           => ['play',        'Videos',           'YouTube videos by category'],
             'live_streams.php'     => ['tv',          'Live Streaming',   'Live darshan broadcasts and schedule'],
         ],
         'Worship' => [
+            'deities.php'          => ['sparkles',    'Deities',          'Deities shown on the About page'],
             'poojas.php'           => ['flame',       'Poojas',           'Pournami, Amavasai and special poojas'],
             'sevas.php'            => ['sparkles',    'Sevas',            'Bookable sevas and prices'],
             'events.php'           => ['calendar',    'Events',           'Festivals and temple events'],
+            'calendar_entries.php' => ['calendar',    'Temple Calendar',  'Custom entries on the Panchangam calendar'],
             'sponsors.php'         => ['heart-hands', 'Sponsors',         'Devotees sponsoring poojas'],
             'donation_categories.php' => ['heart-hands', 'Donation Categories', 'Purposes donors can give to'],
         ],
@@ -46,6 +49,7 @@ function adminNavGroups(): array
         'People' => [
             'users.php'            => ['users',       'Committee Accounts', 'Sign-ins and roles'],
             'profile.php'          => ['user',        'My Profile',         'Your details and password'],
+            'audit_log.php'        => ['history',     'Audit Logs',         'Who changed what, and when'],
         ],
     ];
 }
@@ -206,7 +210,7 @@ function adminHeader(string $pageTitle, string $crumb = 'Temple Admin', array $o
       <span class="avatar" aria-hidden="true"><?= h($initials) ?></span>
       <span class="sidebar__user-name">
         <?= h($name) ?>
-        <small class="sidebar__user-role"><?= h(ucfirst($role)) ?></small>
+        <small class="sidebar__user-role"><?= h(adminRoleLabel($role)) ?></small>
       </span>
       <a href="/admin/logout.php" class="sidebar__logout" data-tip="Sign out" aria-label="Sign out"><?= adminIcon('logout') ?></a>
     </div>
@@ -233,7 +237,7 @@ function adminHeader(string $pageTitle, string $crumb = 'Temple Admin', array $o
           <?= adminIcon('chevron-down', 'ico--sm') ?>
         </button>
         <div class="menu" id="user-menu" role="menu" hidden>
-          <div class="menu__label">Signed in as <?= h($user) ?> · <?= h(ucfirst($role)) ?></div>
+          <div class="menu__label">Signed in as <?= h($user) ?> · <?= h(adminRoleLabel($role)) ?></div>
           <a class="menu__item" role="menuitem" href="/admin/profile.php"><?= adminIcon('user') ?>My profile</a>
           <?php if (adminCan('users.manage')): ?>
             <a class="menu__item" role="menuitem" href="/admin/users.php"><?= adminIcon('users') ?>Committee accounts</a>
