@@ -91,6 +91,10 @@ function payPublicView(PDO $db, array $payable, bool $forReceipt = false): array
         'receiptNumber'  => $payable['receipt_number'],
         'donorName'      => $payable['name'],
         'purpose'        => $isDonation && $payable['category'] ? ['ta' => $payable['category']['ta'], 'en' => $payable['category']['en']] : null,
+        // The pooja a donation sponsors (brief §13): "For: <pooja>" on the result and receipt pages.
+        'pooja'          => $isDonation && !empty($payable['pooja'])
+            ? ['id' => $payable['pooja']['id'], 'ta' => $payable['pooja']['name']['ta'], 'en' => $payable['pooja']['name']['en'], 'date' => $payable['pooja']['date']]
+            : null,
         'seva'           => !$isDonation && $payable['seva'] ? ['ta' => $payable['seva']['ta'], 'en' => $payable['seva']['en']] : null,
         'preferredDate'  => $payable['preferred_date'],
         'trackingId'     => $ref['tracking_id'] ?? null,

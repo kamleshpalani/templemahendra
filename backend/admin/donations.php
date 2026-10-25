@@ -467,7 +467,7 @@ if ($badFrom || $badTo) {
     $msg .= '<p class="alert alert--warning" role="status">The date filter was ignored because it was not a valid date (use YYYY-MM-DD).</p>';
 }
 
-adminHeader('Donations', 'Devotees', [
+adminHeader('Donations', 'Finance', [
     'actions' => '<a href="/admin/bulk_upload.php?entity=donations" class="btn btn-gold btn--sm">' . adminIcon('upload') . 'Bulk import</a>',
 ]);
 echo $msg;

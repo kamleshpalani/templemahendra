@@ -343,6 +343,7 @@ function restoreShared() {
 }
 function cleanupRows() {
   fixtures("cleanup", { name_prefix: "E2E-PAY-ADM-", ips: ALL_IPS });
+  sql("DELETE FROM poojas WHERE name_en LIKE 'E2E-PAY-ADM-%'");
   sql("DELETE FROM donation_categories WHERE slug LIKE 'e2epay_%'");
   sql("DELETE FROM admin_activity WHERE id > ? AND (action LIKE 'payment_%' OR action LIKE 'donation_category_%' OR actor IN (?, ?) OR subject IN (?, ?))", [activityStart, EDITOR, VIEWER, EDITOR, VIEWER]);
   sql("DELETE FROM rate_limits WHERE bucket REGEXP ?", [BUCKETS_REGEXP]);
@@ -1034,6 +1035,29 @@ try {
   check(r.status === 403, "a viewer cannot upload a report", `status ${r.status}`);
 
   /* ── 10. Browser ─────────────────────────────────────────────────────── */
+  /* ── 9b. A donation for a pooja (brief §13, migration 023) ─────────────── */
+  // Made here, after the list, KPI and reconciliation checks, so the fixture set
+  // those count stays the 26 payables they were written against.
+  section("9b. a donation for a pooja: its sponsor, and the links between Online Payments and Sponsors");
+  sql("INSERT INTO poojas (name_ta, name_en, pooja_date, pooja_time, pooja_type, is_active) VALUES (?, ?, DATE_ADD(CURDATE(), INTERVAL 15 DAY), '18:00', 'pournami', 1)", [`${PREFIX} பௌர்ணமி`, `${PREFIX} Pournami`]);
+  const poojaId = Number(one("SELECT id FROM poojas WHERE name_en = ?", [`${PREFIX} Pournami`])?.id);
+  F.d14 = mkDonation({ who: "Pooja", amount: "1500", category: "pournami_pooja", pooja_id: poojaId, showNamePublicly: true });
+  await pay(F.d14, "success");
+  const sp14 = one("SELECT id, payment_status, publish_consent, payment_ref, pooja_id FROM sponsors WHERE donation_id = ?", [F.d14.payable_id]);
+  check(donation(F.d14.number)?.status === "SUCCESS" && sp14 && sp14.payment_status === "PAID" && Number(sp14.publish_consent) === 1 && sp14.payment_ref === donation(F.d14.number).receipt_number && Number(sp14.pooja_id) === poojaId && Number(donation(F.d14.number).pooja_id) === poojaId,
+    "D14: paying for a pooja created its sponsor row (PAID, consent, receipt as reference)", JSON.stringify(sp14));
+  p = await owner.html(`${PAGE}?number=${F.d14.number}`);
+  check(p.status === 200 && !BAD.test(p.html) && p.html.includes(`${PREFIX} Pournami`) && p.html.includes(`/admin/poojas.php?edit=${poojaId}`) && p.html.includes(`/admin/sponsors.php?edit=${sp14?.id}`) && p.html.includes(`Sponsor #${sp14?.id}`) && p.html.includes("Pournami Pooja"),
+    "D14's detail view links the pooja and the sponsor and names the Pournami Pooja purpose");
+  const spList = await owner.html(`/admin/sponsors.php?q=${encodeURIComponent(F.d14.number)}`);
+  check(spList.status === 200 && !BAD.test(spList.html) && spList.html.includes(`/admin/payments.php?number=${F.d14.number}`) && spList.html.includes(`${PREFIX} Pooja`), "Admin → Sponsors finds the sponsor by the donation number and links to the online payment");
+  const spEdit = await owner.html(`/admin/sponsors.php?edit=${sp14?.id}`);
+  check(spEdit.status === 200 && !BAD.test(spEdit.html) && spEdit.html.includes("Created from online donation") && spEdit.html.includes(`/admin/payments.php?number=${F.d14.number}`) && spEdit.html.includes(donation(F.d14.number).receipt_number),
+    "the sponsor's edit form says which online donation and receipt it came from");
+  check(spEdit.html.includes(`value="${poojaId}" selected`) && spEdit.html.includes('value="PAID" selected'), "with the pooja and PAID preselected");
+  const viewerSp = await viewer.html(`/admin/sponsors.php?edit=${sp14?.id}`);
+  check(viewerSp.status === 403 && !viewerSp.html.includes("Created from online donation"), "a viewer is refused the sponsor edit form (finance.edit), so the payment link never reaches them", `status ${viewerSp.status}`);
+
   section("10. browser: overflow and accessibility at 390 and 1440");
   browser = await chromium.launch();
   const origin = new URL(BASE).origin;

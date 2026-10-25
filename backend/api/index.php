@@ -34,9 +34,62 @@ if (!appDebug()) {
     ini_set('display_errors', '0');
 }
 ini_set('log_errors', '1');
+
+/**
+ * The safety net behind API_ENVELOPE (includes/helpers.php): an output buffer
+ * over the whole /api/v1 request that wraps a JSON answer printed without
+ * sendJson() — admin_live_streams.php's liveAdminJson() and its raw 401,
+ * reviews.php's cache file, a handler's own '{"error":"Not found"}', the 500
+ * handlers below — and leaves every other Content-Type alone: HTML, XML, text,
+ * a GIF or a redirect go out exactly as printed. An answer sendJson() already
+ * wrapped is recognised by its shape and never wrapped twice. Only the final
+ * flush is looked at; a clean (the 500 handlers) empties the buffer.
+ */
+function apiEnvelopeBuffer(string $buffer, int $phase): string
+{
+    if (!($phase & PHP_OUTPUT_HANDLER_FINAL)) {
+        return ($phase & PHP_OUTPUT_HANDLER_CLEAN) ? '' : $buffer;
+    }
+    $type = '';
+    foreach (headers_list() as $h) {
+        if (stripos($h, 'Content-Type:') === 0) $type = strtolower(trim(substr($h, 13)));
+    }
+    if (!str_starts_with($type, 'application/json')) return $buffer;
+    $raw = trim($buffer);
+    if ($raw === '') return $buffer;
+    $status  = (int) http_response_code();
+    $decoded = json_decode($raw, true);
+    if (json_last_error() !== JSON_ERROR_NONE) {
+        // Called JSON but not JSON (a notice printed ahead of the body): a
+        // well-formed 500 is more use to a client than a broken page.
+        if ($status < 400) { $status = 500; http_response_code(500); }
+        return json_encode(apiEnvelope(['error' => 'The server could not complete that request. Please try again.'], $status), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+    }
+    if (is_array($decoded) && isset($decoded['success']) && is_bool($decoded['success']) && (
+        $decoded['success']
+            ? array_key_exists('data', $decoded) && array_key_exists('message', $decoded) && count($decoded) === 3
+            : is_array($decoded['error'] ?? null) && isset($decoded['error']['code'], $decoded['error']['message']) && count($decoded) === 2
+    )) {
+        return $buffer;   // sendJson() wrapped it already
+    }
+    if ($status < 400) {
+        return '{"success":true,"data":' . $raw . ',"message":""}';   // the handler's own bytes, untouched
+    }
+    return json_encode(apiEnvelope($decoded, $status), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+}
+
+/** Under API_ENVELOPE, drop whatever the buffer holds so a 500 is the whole answer. */
+function apiEnvelopeDiscard(): void
+{
+    if (!defined('API_ENVELOPE_LEVEL')) return;
+    while (ob_get_level() > API_ENVELOPE_LEVEL) ob_end_clean();
+    if (ob_get_level() === API_ENVELOPE_LEVEL) ob_clean();
+}
+
 set_exception_handler(function (Throwable $e): void {
     $ref = strtoupper(substr(bin2hex(random_bytes(4)), 0, 8));
     error_log(sprintf('[api %s] %s: %s in %s:%d', $ref, get_class($e), $e->getMessage(), $e->getFile(), $e->getLine()));
+    apiEnvelopeDiscard();
     if (!headers_sent()) {
         http_response_code(500);
         header('Content-Type: application/json; charset=utf-8');
@@ -52,6 +105,7 @@ register_shutdown_function(function (): void {
     if ($e && in_array($e['type'], [E_ERROR, E_PARSE, E_CORE_ERROR, E_COMPILE_ERROR], true)) {
         $ref = strtoupper(substr(bin2hex(random_bytes(4)), 0, 8));
         error_log(sprintf('[api %s] fatal: %s in %s:%d', $ref, $e['message'], $e['file'], $e['line']));
+        apiEnvelopeDiscard();
         if (!headers_sent()) {
             http_response_code(500);
             header('Content-Type: application/json; charset=utf-8');
@@ -67,7 +121,46 @@ $method = $_SERVER['REQUEST_METHOD'];
 
 // Strip /api prefix if present
 $path = preg_replace('#^/api#', '', $uri);
+
+// ── /api/v1 (brief §26) ─────────────────────────────────────────────────────
+// /api/v1/<anything> is an alias of /api/<anything>: the version is stripped
+// here, before any route is looked at, so both prefixes share the one route
+// table and the same handlers. Under the prefix every JSON answer carries the
+// brief's envelope — API_ENVELOPE, applied by sendJson() and, for the few
+// handlers that print JSON themselves, by apiEnvelopeBuffer() above — while
+// the unversioned /api/* keeps today's shapes byte for byte. The brief's
+// resource names that differ from the routes below are aliased, under v1 only;
+// no unversioned route is renamed or changed:
+//   /api/v1/home        → /api/homepage_widgets   the homepage cards
+//   /api/v1/streams[/…] → /api/live-streams[/…]   live, upcoming, schedule, archive, <id|slug>[/donations]
+//   /api/v1/sponsors    → /api/poojas             sponsorship amount, availability, the consented sponsor
+// /pages, /deities, /poojas, /events, /calendar, /announcements, /gallery,
+// /donations, /payments/ccavenue/*, /contact and /settings already carry the
+// brief's name. There is no /auth resource: admin sign-in is the HTML form at
+// /admin/login.php, and the devotee account API was retired.
+$apiVersioned = preg_match('#^/v1(?=/|$)#', $path) === 1;
+if ($apiVersioned) {
+    $path = substr($path, 3);
+}
 $path = rtrim($path, '/') ?: '/';
+if ($apiVersioned) {
+    $apiAliases = ['/home' => '/homepage_widgets', '/sponsors' => '/poojas'];
+    if (isset($apiAliases[$path])) {
+        $path = $apiAliases[$path];
+    } elseif (preg_match('#^/streams(/.*)?$#', $path, $streamAlias)) {
+        $path = '/live-streams' . ($streamAlias[1] ?? '');
+    }
+}
+// The envelope is for API consumers. Answers a browser or a provider reads —
+// the CCAvenue return, cancel and server notification, the local simulator,
+// the notification providers' webhooks and the tracked links inside a
+// notification — keep the body those readers expect, versioned or not.
+$apiPassThrough = preg_match('#^/(payments/ccavenue/|payments/simulator|notify-webhook/|n/)#', $path) === 1;
+define('API_ENVELOPE', $apiVersioned && !$apiPassThrough);
+if (API_ENVELOPE) {
+    ob_start('apiEnvelopeBuffer');
+    define('API_ENVELOPE_LEVEL', ob_get_level());
+}
 
 // Signed links from inside a notification: tracked clicks, the email open
 // pixel and unsubscribe. They answer a redirect, a GIF or an HTML page rather
@@ -145,6 +238,11 @@ if ($path === '/live-subscriptions' || $path === '/live-subscriptions/unsubscrib
 if (preg_match('#^/admin/live-streams(?:/([0-9]{1,10}))?$#', $path, $liveAdminMatch)) { $liveAdminId = isset($liveAdminMatch[1]) ? (int) $liveAdminMatch[1] : null; require __DIR__ . '/admin_live_streams.php'; exit; }
 if (str_starts_with($path, '/admin/')) sendError('Not found', 404);
 
+// One event by id (brief §6): events.php answers the row, or 404 when it is hidden or absent.
+if ($method === 'GET' && preg_match('#^/events/([0-9]{1,10})$#', $path, $eventMatch)) { $eventId = (int) $eventMatch[1]; require __DIR__ . '/events.php'; exit; }
+// One CMS page by slug (brief §6, §15): pages.php answers the row, or 404 when it is hidden or absent.
+if ($method === 'GET' && preg_match('#^/pages/([a-z0-9][a-z0-9-]{0,118})$#', $path, $pageMatch)) { $pageSlug = $pageMatch[1]; require __DIR__ . '/pages.php'; exit; }
+
 $routes = [
     'GET'  => [
         '/announcements'   => 'announcements.php',
@@ -154,13 +252,16 @@ $routes = [
         '/sevas'           => 'sevas.php',
         '/events'          => 'events.php',
         '/gallery'         => 'gallery.php',
+        '/gallery/albums'  => 'gallery.php',
         '/pulse'           => 'pulse.php',
         '/donors'          => 'donors.php',
         '/reviews'         => 'reviews.php',
         '/calendar'        => 'calendar.php',
         '/pournamis'       => 'pournamis.php',
+        '/poojas'          => 'poojas.php',
         '/homepage_widgets'=> 'homepage_widgets.php',
         '/settings'        => 'settings.php',
+        '/pages'           => 'pages.php',
     ],
     'POST' => [
         '/donations'      => 'donations.php',

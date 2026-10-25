@@ -3,6 +3,9 @@
   "private": true,
   "version": "1.0.0",
   "type": "module",
+  "engines": {
+    "node": ">=20.0.0"
+  },
   "scripts": {
     "generate-panchangam": "node scripts/generate-panchangam.mjs",
     "sync-tokens": "node scripts/sync-tokens.mjs",
@@ -15,13 +18,13 @@
     "test": "node ../tests/public-e2e.mjs"
   },
   "dependencies": {
-    "axios": "^1.7.2",
+    "axios": "^1.20.0",
     "qrcode.react": "^4.2.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "react-helmet-async": "^2.0.4",
     "react-icons": "^5.2.1",
-    "react-router-dom": "^6.23.1"
+    "react-router-dom": "^6.30.6"
   },
   "devDependencies": {
     "astronomy-engine": "2.1.19",
@@ -30,8 +33,12 @@
     "@vitejs/plugin-react": "^4.3.1",
     "axe-core": "^4.10.2",
     "bcryptjs": "^3.0.3",
+    "lighthouse": "^13.5.0",
     "playwright": "^1.49.1",
     "vite": "^5.3.1",
     "vite-plugin-pwa": "^1.2.0"
+  },
+  "overrides": {
+    "serialize-javascript": "^7.0.3"
   }
 }

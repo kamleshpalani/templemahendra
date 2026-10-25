@@ -306,7 +306,7 @@ if (!empty($_SESSION['flash_live_settings'])) {
     $msg  = '<p class="alert alert--' . $tone . '" role="' . ($tone === 'success' ? 'status' : 'alert') . '">' . h($fText) . '</p>';
 }
 
-adminHeader('YouTube Automation', 'Content', [
+adminHeader('YouTube Automation', 'Media', [
     'actions' => '<a href="/admin/live_streams.php" class="btn btn-ghost btn--sm">' . adminIcon('video') . 'Live Streams</a>',
 ]);
 echo $msg;

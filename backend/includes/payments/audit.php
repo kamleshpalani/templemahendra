@@ -16,7 +16,7 @@ const PAY_AUDIT_EVENTS = [
     'status_changed', 'double_payment', 'receipt_assigned', 'notification_queued', 'notification_skipped',
     'receipt_emailed', 'retry_requested', 'hold_expired', 'refund_requested', 'refund_accepted', 'refund_refused',
     'refund_succeeded', 'refund_failed', 'refund_manual_recorded', 'reconcile_checked', 'reconcile_csv_mismatch',
-    'admin_marked_reviewed', 'settings_changed', 'booking_restored',
+    'admin_marked_reviewed', 'settings_changed', 'booking_restored', 'sponsor_assigned', 'sponsor_refunded',
 ];
 
 /**

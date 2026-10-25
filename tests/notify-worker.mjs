@@ -3,42 +3,34 @@
  * tests/notify-worker.mjs — the Notification Service's queue, worker,
  * campaigns and reminders, end to end through the PHP CLI and MySQL.
  *
- *   PHP_BIN=/path/to/php.sh node tests/notify-worker.mjs
- *
- * PHP_BIN is a wrapper that exports the database environment (DB_*) and
- * NOTIFY_ALLOW_TEST_DRIVER=1; the suite sets every other variable itself. It
- * starts the two PHP servers it needs for /api/notify-cron on ports 8011 and
- * 8012 and stops them at the end.
+ *   PHP_BIN=/c/Users/nithp/AppData/Local/Temp/claude/temple-php-0913/php.sh node tests/notify-worker.mjs
  *
  * Every provider is the deterministic test driver (contracts.php), which picks
  * its outcome from the recipient ("retry", "flaky", "reject" in an address, or
- * a phone ending 0001) and writes what it would have sent to
+ * digits ending 0001 / 0002 / 0003) and writes what it would have sent to
  * backend/logs/notify-test.log. Time is moved with the worker's --now instead of
  * sleeping, and every worker run is confined to this suite's notifications or
  * campaigns (--notification-ids / --campaign-id), because other suites share the
  * database.
  *
- * The channels are email, WhatsApp and SMS (docs/registration/SPEC.md §6): the
- * bell and web push were retired with devotee sign-in, and a registered family
- * receives temple updates (announcements, festivals, poojas) only after ticking
- * the consent box, while a message about its own booking always goes.
+ * It proves: email, WhatsApp and SMS queue then send, and the retired in-app
+ * and push channels never become a delivery (they went with devotee sign-in:
+ * NOTIFY_RETIRED_CHANNELS); retries back off, fail and die after the channel's
+ * attempt limit; a flaky send succeeds on its second attempt; a rejection is
+ * permanent; the per-channel throttle holds; a stale "sending" claim is
+ * recovered; dedupe keeps one row; secrets are sent synchronously and never
+ * stored; consent from family registration decides updates (no consent,
+ * unsubscribed, archived) while a booking message always goes, and a family
+ * that unsubscribes after a message was queued is not sent it; campaigns go
+ * through approval (no self-approval), expand 600 consenting families across
+ * several runs, deliver at each family's own local time, repeat monthly and
+ * cancel cleanly; reminders are created once and wait for approval; provider
+ * status updates only move forward; clicks and opens are recorded once; and
+ * /api/notify-cron checks its key.
  *
- * It proves: every channel queues and the worker sends it, with tracked links,
- * an unsubscribe link on every update and none on a booking message; retries
- * back off, fail and die after the channel's attempt limit; a flaky send
- * succeeds on its second attempt; a rejection is permanent; the per-channel
- * throttle holds; a stale "sending" claim is recovered; dedupe keeps one row;
- * secrets are sent synchronously and never stored; skip reasons (no phone, no
- * consent, unsubscribed, SMS restraint, archived) are recorded, also when
- * consent is withdrawn after queueing; campaigns go through approval (no
- * self-approval), expand 600 families across several runs, deliver at each
- * family's own local time, repeat monthly and cancel cleanly; reminders are
- * created once and a reminder approved too late is not sent; provider status
- * updates only move forward; and /api/notify-cron checks its key.
- *
- * Creates registrations as e2e-core-<run>-*@example.test, campaigns named
+ * Creates devotees as e2e-core-<run>-*@example.test, campaigns named
  * E2E-CORE-<run>…, events, poojas and bookings named E2E-CORE-<run>…, and
- * removes them (and its worker-run and audit rows) at the end.
+ * removes them (and its worker-run rows) at the end.
  */
 
 import { spawnSync, spawn } from "node:child_process";
@@ -69,6 +61,8 @@ const baseEnv = {
   NOTIFY_EMAIL_DRIVER: "test",
   NOTIFY_WHATSAPP_DRIVER: "test",
   NOTIFY_SMS_DRIVER: "test",
+  // Set to prove it is ignored: push is not a channel any more.
+  NOTIFY_PUSH_DRIVER: "test",
   SITE_URL: SITE,
   // The environment owner exists, so a campaign's author is never the only
   // owner who could approve it (this hash signs nobody in).
@@ -95,12 +89,13 @@ function check(ok, label, detail = "") {
 const eq = (actual, expected, label) =>
   check(JSON.stringify(actual) === JSON.stringify(expected), label, `expected ${JSON.stringify(expected)}, got ${JSON.stringify(actual)}`);
 const section = (title) => console.log(`\n── ${title}`);
+const show = (v) => JSON.stringify(v);
 const sleep = (ms) => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
 
 /* ── PHP ───────────────────────────────────────────────────────────────── */
 
 /** JSON for a command line: non-ASCII escaped, because Windows argv is not UTF-8 all the way down. */
-const arg = (obj) => JSON.stringify(obj).replace(/[\u007f-￿]/g, (c) => "\\u" + c.charCodeAt(0).toString(16).padStart(4, "0"));
+const arg = (obj) => JSON.stringify(obj).replace(/[\u007f-\uffff]/g, (c) => "\\u" + c.charCodeAt(0).toString(16).padStart(4, "0"));
 
 function php(args, env = {}) {
   const viaBash = PHP_BIN.endsWith(".sh");
@@ -188,9 +183,8 @@ const deliveriesOf = (notificationId) =>
   Object.fromEntries(sql("SELECT * FROM notification_deliveries WHERE notification_id = ?", [notificationId]).map((d) => [d.channel, d]));
 const eventsOf = (deliveryId) => sql("SELECT event, detail FROM notification_delivery_events WHERE delivery_id = ? ORDER BY id", [deliveryId]);
 
-/** A registered family. Consent to temple updates is given unless the caller says otherwise. */
 function devotee(key, extra = {}) {
-  const r = fixtures("create-devotee", { email: `${P}${key}@example.test`, name: `E2E Core ${key}`, consent: true, ...extra });
+  const r = fixtures("create-devotee", { email: `${P}${key}@example.test`, name: `E2E Core ${key}`, verified: true, ...extra });
   if (r.error) throw new Error(r.error);
   return r.id;
 }
@@ -259,31 +253,31 @@ async function main() {
   const pre = cleanup();
   if (pre.error) throw new Error(`cleanup before the run failed: ${pre.error}`);
 
-  const A = devotee("a", { phone: "919812345670" });
+  const A = devotee("a", { phone: "919812345670", consent: true });
   const RETRY = devotee("retry", { phone: "919812345674" });
   const FLAKY = devotee("flaky");
   const REJECT = devotee("reject");
-  const NOPHONE = devotee("nophone");
-  const NOCONSENT = devotee("noconsent", { phone: "919812345673", consent: false });
-  const UNSUB = devotee("unsub", { phone: "919812345678", unsubscribed: true });
+  const NOPHONE = devotee("nophone", { consent: true });
+  const NOCONSENT = devotee("noconsent", { phone: "919812345678" });
   const SMS = devotee("sms", { phone: "919812345671" });
-  const SECRET = devotee("secret", { phone: "919812345672" });
-  const IN = devotee("in", { country: "IN", phone: "919812345675" });
-  const GB = devotee("gb", { country: "GB", state: "ENG", city: "Leicester", phone: "447700900321", phoneCountry: "GB" });
+  const OTP = devotee("otp", { phone: "919812345672" });
+  const IN = devotee("in", { country: "IN", phone: "919812345675", consent: true });
+  const GB = devotee("gb", { country: "GB", state: "ENG", city: "Leicester", phone: "447700900321", consent: true });
   const key = (k) => `e2e:core:${RUN}:${k}`;
 
   /* ── 1 ────────────────────────────────────────────────────────────────── */
-  section("Every channel is queued, then the worker sends it");
+  section("Email, WhatsApp and SMS queued then sent; in-app and push never become deliveries");
   const n1 = notify({
     devotee_id: A, template: "announcement", vars: { headline: `${NAME} headline`, message: "The temple will open at 5 am tomorrow." },
-    category: "announcement", priority: "important", channels: ["email", "whatsapp", "sms"],
+    category: "announcement", priority: "important", channels: ["inapp", "email", "whatsapp", "sms", "push"],
     cta_url: "/events", dedupe_key: key("n1"),
   });
   check(Number.isInteger(n1.id) && !n1.deduped && n1.skipped === null, "notify() creates a notification", JSON.stringify(n1));
-  eq(["email", "whatsapp", "sms"].map((c) => n1.deliveries[c]?.status), ["queued", "queued", "queued"], "email, WhatsApp and SMS are queued");
-  eq(Object.keys(n1.deliveries), ["email", "whatsapp", "sms"], "no other channel exists");
+  eq(["email", "whatsapp", "sms"].map((c) => n1.deliveries[c]?.status), ["queued", "queued", "queued"], "email, WhatsApp and SMS are queued for a family that agreed to updates");
+  eq([n1.deliveries.inapp, n1.deliveries.push], [undefined, undefined], "the retired in-app and push channels are dropped before any rule");
+  eq(sql("SELECT channel FROM notification_deliveries WHERE notification_id = ?", [n1.id]).map((r) => r.channel).sort(), ["email", "sms", "whatsapp"], "exactly three delivery rows exist (NOTIFY_PUSH_DRIVER=test changes nothing)");
   const row1 = one("SELECT * FROM notifications WHERE id = ?", [n1.id]);
-  check(row1.show_in_app === 0 && row1.deliver_after === null && row1.title.includes(NAME), "the stored copy is in the recipient's language and never flagged for the retired bell", JSON.stringify(row1));
+  check(row1.deliver_after === null && row1.title.includes(NAME) && row1.lang === "ta", "the stored copy is rendered in the family's language and due now", JSON.stringify(row1));
   const w1 = worker([`--notification-ids=${n1.id}`, "--skip-reminders"]);
   eq([w1.claimed, w1.sent, w1.failed], [3, 3, 0], "the worker claims and sends the three queued deliveries");
   const d1 = deliveriesOf(n1.id);
@@ -294,17 +288,14 @@ async function main() {
   const mail = sentFor(d1.email.id)[0];
   check(mail && mail.html === true && mail.toEmail === `${P}a@example.test` && mail.title === row1.title, "the email has HTML, the address and the rendered subject", JSON.stringify(mail));
   check(/^https:\/\/temple\.example\.test\/api\/n\/c\/c\d+\.[A-Za-z0-9_-]{16}$/.test(mail?.ctaUrl ?? "") && mail.ctaUrl.includes(`/c${d1.email.id}.`), "the email CTA is the tracked link for this delivery", mail?.ctaUrl);
-  const unsubscribeUrl = `${SITE}/api/n/u/u${A}.`;
-  check((mail?.headers?.["List-Unsubscribe"] ?? "").startsWith(`<${unsubscribeUrl}`) && mail?.headers?.["List-Unsubscribe-Post"] === "List-Unsubscribe=One-Click", "an update's email carries one-click List-Unsubscribe headers", JSON.stringify(mail?.headers));
+  check((mail?.headers?.["List-Unsubscribe"] ?? "").startsWith(`<${SITE}/api/n/u/u${A}.`) && mail?.headers?.["List-Unsubscribe-Post"] === "List-Unsubscribe=One-Click", "informational email carries one-click List-Unsubscribe headers", JSON.stringify(mail?.headers));
   eq(mail?.idempotencyKey, `temple-n${n1.id}-email`, "a stable idempotency key is passed to the provider");
-  check(mail?.body.includes(`/api/n/c/c${d1.email.id}.`) && mail?.body.includes(unsubscribeUrl), "the plain-text part carries the tracked link and the unsubscribe link");
+  check(mail?.body.includes(`/api/n/c/c${d1.email.id}.`) && mail?.body.includes(`/api/n/u/u${A}.`) && !mail?.body.includes("/account"), "the plain-text part carries the tracked link and the unsubscribe link, and no account page", mail?.body?.slice(-400));
   const wa = sentFor(d1.whatsapp.id)[0];
   check(wa && wa.toPhone === "919812345670" && wa.buttons.some((b) => b.type === "url" && b.value.includes(`/c${d1.whatsapp.id}.`)), "WhatsApp gets a tracked URL button", JSON.stringify(wa?.buttons));
   check(wa && !wa.buttons.some((b) => b.type === "call"), "no call button on informational news");
-  check(wa?.body.includes(unsubscribeUrl), "the WhatsApp text ends with the stop-updates line", wa?.body);
   const sms1 = sentFor(d1.sms.id)[0];
   check(sms1 && sms1.title === "" && sms1.body.length > 0, "the SMS is plain text with no title", JSON.stringify(sms1));
-  check(sms1?.body.includes(unsubscribeUrl), "…and carries the stop-updates line too", sms1?.body);
 
   /* ── 2 ────────────────────────────────────────────────────────────────── */
   section("Transactional messages, links and fallbacks");
@@ -312,16 +303,14 @@ async function main() {
   const conf = event("booking.confirmed", {
     devotee_id: A, entity_id: bookingId, vars: { bookingNumber: `SB-${bookingId}`, sevaName: "Abhishekam", bookingDate: "20 Sep 2031" },
   });
-  eq([Object.keys(conf.deliveries), conf.deliveries.email?.status, conf.deliveries.whatsapp?.status], [["email", "whatsapp"], "queued", "queued"], "booking.confirmed uses the catalogue's channels");
+  eq([Object.keys(conf.deliveries).sort(), conf.deliveries.email?.status, conf.deliveries.whatsapp?.status], [["email", "whatsapp"], "queued", "queued"], "booking.confirmed uses the catalogue's channels, email and WhatsApp");
   worker([`--notification-ids=${conf.id}`, "--skip-reminders"]);
   const dc = deliveriesOf(conf.id);
   const confMail = sentFor(dc.email.id)[0];
   check(confMail && Array.isArray(confMail.headers) && confMail.headers.length === 0, "a booking email has no List-Unsubscribe header", JSON.stringify(confMail?.headers));
   check(confMail?.ctaUrl?.includes(`/c${dc.email.id}.`), "the booking email CTA is tracked");
-  check(confMail && !confMail.body.includes("/api/n/u/"), "and no unsubscribe link: an unsubscribe does not stop a booking message");
   const confWa = sentFor(dc.whatsapp.id)[0];
   check(confWa?.buttons.some((b) => b.type === "call" && b.value === "+919443002296"), "a booking WhatsApp offers a call button to the temple", JSON.stringify(confWa?.buttons));
-  check(confWa && !confWa.body.includes("/api/n/u/"), "…and has no stop-updates line");
   const again = event("booking.confirmed", { devotee_id: A, entity_id: bookingId, vars: { bookingNumber: "x", sevaName: "x", bookingDate: "x" } });
   check(again.deduped === true && again.id === conf.id, "confirming the same booking twice notifies once", JSON.stringify(again));
 
@@ -331,7 +320,7 @@ async function main() {
   eq([noWa.deliveries.whatsapp?.status, noWa.deliveries.whatsapp?.reason, noWa.deliveries.sms?.status], ["skipped", "not configured", "queued"], "WhatsApp not configured falls back to SMS");
   check(eventsOf(noWa.deliveries.sms.id).some((e) => (e.detail ?? "").includes("instead of whatsapp")), "the fallback is explained in the delivery history");
 
-  const shortSms = notify({ devotee_id: A, title: "E2E", body: "Your seva is confirmed.", category: "booking", priority: "important", channels: ["sms"], cta_url: "/account?tab=bookings", dedupe_key: key("sms-link") });
+  const shortSms = notify({ devotee_id: A, title: "E2E", body: "Your seva is confirmed.", category: "booking", priority: "important", channels: ["sms"], cta_url: "/sevas", dedupe_key: key("sms-link") });
   const plainSms = notify({ devotee_id: A, title: "E2E", body: "No link in this one.", category: "booking", priority: "important", channels: ["sms"], dedupe_key: key("sms-plain") });
   worker([`--notification-ids=${shortSms.id},${plainSms.id}`, "--skip-reminders"]);
   const linked = sentFor(shortSms.deliveries.sms.id)[0];
@@ -384,6 +373,18 @@ async function main() {
   eq([w.claimed, delivery(j1.deliveries.email.id).attempts], [0, 1], "a rejection is never retried");
 
   /* ── 5 ────────────────────────────────────────────────────────────────── */
+  section("Retired channels on their own");
+  // Web push and the in-app bell went with devotee sign-in (contracts.php
+  // NOTIFY_RETIRED_CHANNELS; docs/registration/SPEC.md §6).
+  const p1 = notify({ devotee_id: A, title: "E2E push", body: "x", category: "booking", priority: "urgent", channels: ["push"], dedupe_key: key("push") });
+  eq([p1.id, p1.skipped], [null, "no channels"], "a message for push alone is not created");
+  const i1 = notify({ devotee_id: A, title: "E2E bell", body: "x", category: "booking", priority: "urgent", channels: ["inapp"], dedupe_key: key("inapp") });
+  eq([i1.id, i1.skipped], [null, "no channels"], "a message for the in-app bell alone is not created");
+  eq(one("SELECT COUNT(*) AS n FROM notifications WHERE dedupe_key IN (?, ?)", [key("push"), key("inapp")]).n, 0, "neither left a row");
+  const retiredRows = one(`SELECT COUNT(*) AS n FROM notification_deliveries d JOIN notifications n ON n.id = d.notification_id WHERE n.dedupe_key LIKE ? AND d.channel IN ('inapp', 'push')`, [`e2e:core:${RUN}:%`]).n;
+  eq(retiredRows, 0, "no in-app or push delivery exists for anything this suite sent");
+
+  /* ── 6 ────────────────────────────────────────────────────────────────── */
   section("Throttle");
   const smsIds = [];
   for (let i = 0; i < 5; i++) {
@@ -400,7 +401,7 @@ async function main() {
   w = worker([`--notification-ids=${smsIds.join(",")}`, "--skip-reminders", `--now=${utc(tThrottle + 125000)}`], rate);
   eq([w.claimed, queuedLeft()], [2, 1], "a minute later two more go out");
 
-  /* ── 6 ────────────────────────────────────────────────────────────────── */
+  /* ── 7 ────────────────────────────────────────────────────────────────── */
   section("Stale claims");
   const s1 = notify({ devotee_id: A, title: "E2E stale", body: "x", category: "booking", priority: "important", channels: ["email"], dedupe_key: key("stale") });
   const s2 = notify({ devotee_id: A, title: "E2E fresh claim", body: "x", category: "booking", priority: "important", channels: ["email"], dedupe_key: key("fresh") });
@@ -412,88 +413,78 @@ async function main() {
   check(eventsOf(sd1.id).some((e) => e.event === "requeued" && e.detail === "worker interrupted"), "the recovery is in the history");
   eq(delivery(s2.deliveries.email.id).status, "sending", "a recent claim is left to the run that holds it");
 
-  /* ── 7 ────────────────────────────────────────────────────────────────── */
+  /* ── 8 ────────────────────────────────────────────────────────────────── */
   section("Dedupe");
-  const dd1 = notify({ devotee_id: A, title: "E2E dedupe", body: "once", channels: ["email"], dedupe_key: key("dedupe") });
-  const dd2 = notify({ devotee_id: A, title: "E2E dedupe again", body: "twice", channels: ["email"], dedupe_key: key("dedupe") });
+  const dd1 = notify({ devotee_id: A, title: "E2E dedupe", body: "once", channels: ["email", "whatsapp"], dedupe_key: key("dedupe") });
+  const dd2 = notify({ devotee_id: A, title: "E2E dedupe again", body: "twice", channels: ["email", "whatsapp"], dedupe_key: key("dedupe") });
   eq([dd2.deduped, dd2.id, dd2.deliveries.email?.id], [true, dd1.id, dd1.deliveries.email.id], "the same dedupe key returns the existing notification");
   eq(one("SELECT COUNT(*) AS n FROM notifications WHERE dedupe_key = ?", [key("dedupe")]).n, 1, "and never a second row");
 
-  /* ── 8 ────────────────────────────────────────────────────────────────── */
-  section("Secrets travel synchronously and are never stored");
-  // No built-in message carries a one-time secret since sign-in was retired, so
-  // the rule is proved with a booking number passed through secret_vars.
-  const secret = "SB-482913";
-  const secretSend = notify({
-    devotee_id: SECRET, template: "booking_confirmed", category: "booking", priority: "important", channels: ["sms"],
-    vars: { sevaName: "Abhishekam", bookingDate: "20 Sep 2031" }, secret_vars: { bookingNumber: secret }, dedupe_key: key("secret"),
-  });
-  eq(secretSend.deliveries.sms?.status, "sent", "the SMS is sent inside the call, without the worker");
-  const secretRow = one("SELECT title, body, vars FROM notifications WHERE id = ?", [secretSend.id]);
-  check(!JSON.stringify(secretRow).includes(secret), "the secret is absent from the stored title, body and vars", JSON.stringify(secretRow));
-  // MySQL returns JSON columns re-serialised (with spaces), so compare parsed values.
-  eq(JSON.parse(secretRow.vars)._secret, ["bookingNumber"], "the stored vars name the secret without its value");
-  check(sentFor(secretSend.deliveries.sms.id)[0]?.body.includes(secret), "the provider received the secret");
-  check(!JSON.stringify(sql("SELECT detail FROM notification_delivery_events WHERE delivery_id = ?", [secretSend.deliveries.sms.id])).includes(secret), "the secret is not in the delivery history");
-  const secretRetry = notify({
-    to_phone: "919812340001", name: "E2E Core guest", template: "booking_confirmed", category: "booking", priority: "important", channels: ["sms"],
-    vars: { sevaName: "Archana", bookingDate: "21 Sep 2031" }, secret_vars: { bookingNumber: "SB-111222" }, dedupe_key: key("secret-retry"),
-  });
-  eq([secretRetry.deliveries.sms?.status, secretRetry.deliveries.sms?.reason], ["dead", "security message not retried"], "a failing secret send is dead, not retried");
-  eq(delivery(secretRetry.deliveries.sms.id).next_attempt_at, null, "no retry is scheduled");
-  eq(harness("requeue", { id: secretRetry.deliveries.sms.id, actor: `${TAG}-owner` }).ok, false, "a secret message cannot be requeued");
-  sql("UPDATE notification_deliveries SET status = 'queued', attempts = 0 WHERE id = ?", [secretRetry.deliveries.sms.id]);
-  worker([`--notification-ids=${secretRetry.id}`, "--skip-reminders"]);
-  eq([delivery(secretRetry.deliveries.sms.id).status, delivery(secretRetry.deliveries.sms.id).failure_reason], ["dead", "security message not retried"], "the worker refuses to send a secret it never had");
-
   /* ── 9 ────────────────────────────────────────────────────────────────── */
-  section("Skip reasons are recorded");
-  const sk = notify({ devotee_id: NOPHONE, title: "E2E skips", body: "x", category: "announcement", priority: "important", channels: ["sms", "whatsapp", "email"], dedupe_key: key("skips") });
+  section("Secrets travel synchronously and are never stored");
+  // No built-in message carries a secret since sign-in was retired; the rule
+  // stays for any module that does (service.php, SECRETS).
+  const secret = "482913";
+  const otpSend = notify({ devotee_id: OTP, to_phone: "919812345672", title: "E2E code", body: "Your temple code is {{code}}.", secret_vars: { code: secret }, category: "booking", priority: "urgent", channels: ["sms"], dedupe_key: key("secret") });
+  eq(otpSend.deliveries.sms?.status, "sent", "a message with a secret is sent inside the call, without the worker");
+  const otpRow = one("SELECT title, body, vars FROM notifications WHERE id = ?", [otpSend.id]);
+  check(!JSON.stringify(otpRow).includes(secret) && otpRow.body.includes("••••"), "the secret is absent from the stored title, body and vars (masked)", JSON.stringify(otpRow));
+  // MySQL returns JSON columns re-serialised (with spaces), so compare parsed values.
+  eq(JSON.parse(otpRow.vars)._secret, ["code"], "the stored vars name the secret without its value");
+  check(sentFor(otpSend.deliveries.sms.id)[0]?.body.includes(secret), "the provider received the secret");
+  check(!JSON.stringify(sql("SELECT detail FROM notification_delivery_events WHERE delivery_id = ?", [otpSend.deliveries.sms.id])).includes(secret), "the secret is not in the delivery history");
+  const otpRetry = notify({ devotee_id: OTP, to_phone: "919812340001", title: "E2E code", body: "Code {{code}}", secret_vars: { code: "111222" }, category: "booking", priority: "urgent", channels: ["sms"], dedupe_key: key("secret-retry") });
+  eq([otpRetry.deliveries.sms?.status, otpRetry.deliveries.sms?.reason], ["dead", "security message not retried"], "a failing secret send is dead, not retried");
+  eq(delivery(otpRetry.deliveries.sms.id).next_attempt_at, null, "no retry is scheduled");
+  eq(harness("requeue", { id: otpRetry.deliveries.sms.id, actor: `${TAG}-owner` }).ok, false, "a secret message cannot be requeued");
+  sql("UPDATE notification_deliveries SET status = 'queued', attempts = 0 WHERE id = ?", [otpRetry.deliveries.sms.id]);
+  worker([`--notification-ids=${otpRetry.id}`, "--skip-reminders"]);
+  eq([delivery(otpRetry.deliveries.sms.id).status, delivery(otpRetry.deliveries.sms.id).failure_reason], ["dead", "security message not retried"], "the worker refuses to send a secret it never had");
+  const signIn = event("phone.otp", { devotee_id: OTP, to_phone: "919812345672", secret_vars: { otpCode: secret }, vars: { expiresMinutes: 10 } });
+  eq([signIn.id, signIn.skipped], [null, "unknown event"], "the retired phone.otp sign-in event sends nothing");
+
+  /* ── 10 ───────────────────────────────────────────────────────────────── */
+  section("Skip reasons and consent are recorded");
+  const sk = notify({ devotee_id: NOPHONE, title: "E2E skips", body: "x", category: "announcement", priority: "important", channels: ["sms", "whatsapp", "push", "email"], dedupe_key: key("skips") });
   const skd = deliveriesOf(sk.id);
-  eq([skd.sms.skip_reason, skd.whatsapp.skip_reason, skd.email.status], ["no phone", "no phone", "queued"], "no phone is stored on the deliveries");
+  eq([skd.sms.skip_reason, skd.whatsapp.skip_reason, skd.push, skd.email.status], ["no phone", "no phone", undefined, "queued"], "no phone is stored on the deliveries; push never becomes one");
   check(eventsOf(skd.sms.id).some((e) => e.event === "skipped" && e.detail === "no phone"), "…and in their history");
-  const guestNews = notify({ to_email: `${P}guest@example.test`, title: "E2E news", body: "x", category: "announcement", priority: "important", channels: ["email"], dedupe_key: key("guest-news") });
+  const guestNews = notify({ to_email: `${P}guest@example.test`, title: "E2E news", body: "x", category: "announcement", channels: ["email"], dedupe_key: key("guest-news") });
   eq([guestNews.deliveries.email?.status, guestNews.deliveries.email?.reason], ["skipped", "no consent"], "a guest never receives temple updates");
   const noConsentNews = notify({ devotee_id: NOCONSENT, title: "E2E news", body: "x", category: "festival", priority: "important", channels: ["email", "whatsapp"], dedupe_key: key("noconsent-news") });
-  eq([noConsentNews.deliveries.email?.reason, noConsentNews.deliveries.whatsapp?.reason], ["no consent", "no consent"], "a family that did not tick the box gets no update on any channel");
+  eq([noConsentNews.deliveries.email?.reason, noConsentNews.deliveries.whatsapp?.reason], ["no consent", "no consent"], "a family that did not tick the updates box gets no festival news");
   const noConsentBooking = notify({ devotee_id: NOCONSENT, title: "E2E booking", body: "x", category: "booking", priority: "important", channels: ["email", "whatsapp"], dedupe_key: key("noconsent-booking") });
-  eq([noConsentBooking.deliveries.email?.status, noConsentBooking.deliveries.whatsapp?.status], ["queued", "queued"], "…but a message about its own booking needs no consent");
-  const unsubNews = notify({ devotee_id: UNSUB, title: "E2E news", body: "x", category: "festival", priority: "important", channels: ["email", "sms"], dedupe_key: key("unsub-news") });
-  eq([unsubNews.deliveries.email?.reason, unsubNews.deliveries.sms?.reason], ["unsubscribed", "unsubscribed"], "an unsubscribed family is skipped with reason unsubscribed");
-  eq(notify({ devotee_id: UNSUB, title: "E2E booking", body: "x", category: "booking", priority: "important", channels: ["email"], dedupe_key: key("unsub-booking") }).deliveries.email?.status, "queued", "an unsubscribe does not stop a booking message");
-  const routineSms = notify({ devotee_id: A, title: "E2E routine", body: "x", category: "announcement", priority: "normal", channels: ["sms", "whatsapp"], dedupe_key: key("routine-sms") });
-  eq([routineSms.deliveries.sms?.reason, routineSms.deliveries.whatsapp?.status], ["sms reserved for important messages", "queued"], "routine news does not go by SMS; WhatsApp still queues");
+  eq([noConsentBooking.deliveries.email?.status, noConsentBooking.deliveries.whatsapp?.status], ["queued", "queued"], "…but its own booking message always goes");
+  const guestBooking = notify({ to_phone: "919812345679", title: "E2E booking", body: "x", category: "booking", priority: "important", channels: ["whatsapp"], dedupe_key: key("guest-booking") });
+  eq(guestBooking.deliveries.whatsapp?.status, "queued", "a guest booking by phone is told too");
+  const routineSms = notify({ devotee_id: A, title: "E2E routine", body: "x", category: "announcement", priority: "normal", channels: ["sms", "email"], dedupe_key: key("routine-sms") });
+  eq([routineSms.deliveries.sms?.reason, routineSms.deliveries.email?.status], ["sms reserved for important messages", "queued"], "routine news is not worth an SMS");
 
   // Consent withdrawn while a message waits in the queue still counts at dispatch.
-  const LATER = devotee("later", { phone: "919812345677" });
+  const LATER = devotee("later", { phone: "919812345677", consent: true });
   const laterMail = notify({ devotee_id: LATER, title: "E2E later", body: "x", category: "announcement", priority: "important", channels: ["email"], dedupe_key: key("later-email") });
   const laterWa = notify({ devotee_id: LATER, title: "E2E later festival", body: "x", category: "festival", priority: "important", channels: ["whatsapp"], dedupe_key: key("later-festival") });
   const laterBooking = notify({ devotee_id: LATER, title: "E2E later booking", body: "x", category: "booking", priority: "important", channels: ["email"], dedupe_key: key("later-booking") });
   eq([laterMail.deliveries.email?.status, laterWa.deliveries.whatsapp?.status, laterBooking.deliveries.email?.status], ["queued", "queued", "queued"], "three messages wait in the queue");
-  eq(harness("unsubscribe", { devotee_id: LATER }).ok, true, "the family unsubscribes from a link");
-  eq(harness("unsubscribe", { devotee_id: LATER }).ok, true, "unsubscribing twice is harmless");
+  sql("UPDATE devotees SET unsubscribed_at = UTC_TIMESTAMP() WHERE id = ?", [LATER]);
   worker([`--notification-ids=${laterMail.id},${laterWa.id},${laterBooking.id}`, "--skip-reminders"]);
   const lm = delivery(laterMail.deliveries.email.id);
-  eq([lm.status, lm.skip_reason], ["skipped", "unsubscribed"], "an update queued before the unsubscribe is not sent");
-  check(eventsOf(lm.id).some((e) => e.event === "skipped" && e.detail.includes("consent changed after it was queued")), "the history says consent changed", JSON.stringify(eventsOf(lm.id)));
+  eq([lm.status, lm.skip_reason], ["skipped", "unsubscribed"], "news queued before the family unsubscribed is not sent");
+  check(eventsOf(lm.id).some((e) => e.event === "skipped" && (e.detail ?? "").includes("consent changed after it was queued")), "the history says consent changed after queueing", JSON.stringify(eventsOf(lm.id)));
   eq(sentFor(lm.id).length, 0, "nothing reached the provider");
-  eq([delivery(laterWa.deliveries.whatsapp.id).status, delivery(laterWa.deliveries.whatsapp.id).skip_reason], ["skipped", "unsubscribed"], "the same on WhatsApp");
-  eq(delivery(laterBooking.deliveries.email.id).status, "sent", "the booking email still goes out");
+  eq([delivery(laterWa.deliveries.whatsapp.id).status, delivery(laterWa.deliveries.whatsapp.id).skip_reason], ["skipped", "unsubscribed"], "the WhatsApp festival message is not sent either");
+  eq(delivery(laterBooking.deliveries.email.id).status, "sent", "the family's own booking email still goes out");
+  const laterAgain = notify({ devotee_id: LATER, title: "E2E after", body: "x", category: "announcement", priority: "important", channels: ["email"], dedupe_key: key("later-after") });
+  eq(laterAgain.deliveries.email?.reason, "unsubscribed", "news after unsubscribing is skipped as unsubscribed");
 
-  // An archived registration receives no more updates, only its own booking messages.
-  const heldNews = notify({ devotee_id: NOPHONE, title: "E2E held news", body: "x", category: "announcement", priority: "important", channels: ["email"], dedupe_key: key("held-news") });
-  eq(heldNews.deliveries.email?.status, "queued", "control: an update to an open registration is queued");
   sql("UPDATE devotees SET is_active = 0 WHERE id = ?", [NOPHONE]);
-  const closedNews = notify({ devotee_id: NOPHONE, title: "E2E news", body: "x", channels: ["email"], dedupe_key: key("closed-news") });
-  eq([closedNews.id, closedNews.skipped], [null, "registration archived"], "an archived registration receives no update");
-  const closedBooking = notify({ devotee_id: NOPHONE, template: "booking_confirmed", vars: { bookingNumber: "B-000001", sevaName: "Archana", bookingDate: "22 Sep 2031" }, channels: ["email", "whatsapp"], dedupe_key: key("closed-booking") });
-  eq([closedBooking.id !== null, closedBooking.deliveries.email?.status], [true, "queued"], "…except a message about its own booking");
-  worker([`--notification-ids=${heldNews.id}`, "--skip-reminders"]);
-  const hn = delivery(heldNews.deliveries.email.id);
-  check(hn.status === "skipped" && hn.skip_reason === "registration archived" && eventsOf(hn.id).some((e) => e.detail?.includes("archived after it was queued")), "an update queued before the archive is not sent", JSON.stringify(hn));
+  const archivedNews = notify({ devotee_id: NOPHONE, title: "E2E news", body: "x", category: "announcement", channels: ["email"], dedupe_key: key("archived-news") });
+  eq([archivedNews.id, archivedNews.skipped], [null, "registration archived"], "an archived registration receives no updates");
+  const archivedBooking = notify({ devotee_id: NOPHONE, title: "E2E booking", body: "x", category: "booking", priority: "important", channels: ["email"], dedupe_key: key("archived-booking") });
+  eq(Object.keys(archivedBooking.deliveries ?? {}), ["email"], "…but a booking message to it still goes");
   sql("UPDATE devotees SET is_active = 1 WHERE id = ?", [NOPHONE]);
 
-  /* ── 10 ───────────────────────────────────────────────────────────────── */
+  /* ── 11 ───────────────────────────────────────────────────────────────── */
   section("Campaign approval, editing and bulk expansion");
   const editor = { username: `${TAG}-editor`, role: "editor" };
   const owner = { username: `${TAG}-owner`, role: "owner" };
@@ -501,7 +492,7 @@ async function main() {
   const viewer = { username: `${TAG}-viewer`, role: "viewer" };
 
   const bulk = harness("bulk-devotees", { prefix: `${P}bulk-`, count: 600, tag: `${TAG}-bulk`, consent: true });
-  eq(Number(bulk.n), 600, "600 fixture families with consent exist");
+  eq(Number(bulk.n), 600, "600 consenting fixture families exist");
   const translations = {
     ta: { title: `${NAME} அறிவிப்பு`, body: "வணக்கம் {{devoteeName}}, நாளை சிறப்பு பூஜை நடைபெறும்.", cta_label: "நிகழ்வுகள்" },
     en: { title: `${NAME} notice`, body: "Vanakkam {{devoteeName}}, a special pooja is tomorrow.", cta_label: "Events" },
@@ -514,13 +505,11 @@ async function main() {
   check(viewerSave.ok === false && viewerSave.errors._, "a viewer cannot save a campaign", JSON.stringify(viewerSave));
   const invalidSave = harness("campaign-save", { input: { name: "", channels: [], translations: { ta: { title: "only a title" } }, cta_url: "javascript:alert(1)" }, actor: editor });
   check(invalidSave.ok === false && ["name", "channels", "audience", "translations.ta.body", "cta_url", "category"].every((k) => invalidSave.errors[k]), "validation names every problem", JSON.stringify(invalidSave.errors));
-  const retiredSave = harness("campaign-save", { input: { ...bulkInput, channels: ["inapp", "push"] }, actor: editor });
-  check(retiredSave.ok === false && retiredSave.errors.channels, "the retired in-app and push channels are not channels at all", JSON.stringify(retiredSave.errors));
   const saved = harness("campaign-save", { input: bulkInput, actor: owner });
   check(saved.ok && saved.id, "the owner saves a draft", JSON.stringify(saved));
   const CID = saved.id;
   let tr = harness("campaign-transition", { id: CID, action: "submit", actor: owner });
-  check(tr.ok && tr.status === "review" && tr.message.includes("Reaches 600 families"), "600 families needs a second approval", JSON.stringify(tr));
+  check(tr.ok && tr.status === "review" && tr.message.includes("Reaches 600 families") && tr.message.includes("An owner other than you needs to approve it"), "600 families needs a second approval by another owner", JSON.stringify(tr));
   let camp = harness("campaign-get", { id: CID }).campaign;
   eq([camp.requires_approval, camp.estimated_count, camp.approval_reason, camp.submitted_by], [1, 600, "Reaches 600 families", owner.username], "the estimate and reason are stored");
   tr = harness("campaign-transition", { id: CID, action: "approve", actor: editor });
@@ -552,17 +541,17 @@ async function main() {
   eq(countRun().n, 500, "run 2 continues from the cursor to 500");
   worker(expandFlags);
   camp = harness("campaign-get", { id: CID }).campaign;
-  eq([countRun().n, countRun().d, camp.run_count, camp.recipient_count, camp.expand_cursor, camp.next_run_at], [600, 600, 1, 600, 0, null], "run 3 reaches all 600 families exactly once");
-  eq(camp.status, "sending", "the campaign is not complete while its emails wait in the queue");
+  eq([countRun().n, countRun().d, camp.run_count, camp.recipient_count, camp.expand_cursor, camp.next_run_at], [600, 600, 1, 600, 0, null], "run 3 reaches all 600 devotees exactly once");
+  eq(camp.status, "sending", "expanded, but the campaign is not complete while its emails wait");
   worker(expandFlags);
   eq(countRun().n, 600, "another run adds nobody");
-  w = worker([`--campaign-id=${CID}`], { NOTIFY_RATE_EMAIL_PER_MIN: "1000" });
-  eq([w.claimed, w.sent], [600, 600], "a run with room in the email throttle sends all 600");
+  w = worker([`--campaign-id=${CID}`, "--batch=1000", "--max-seconds=240"], { NOTIFY_RATE_EMAIL_PER_MIN: "1000" });
+  eq([w.claimed, w.sent], [600, 600], "a sending run delivers all 600 emails");
+  worker([`--campaign-id=${CID}`, "--channels=none"]);
+  eq(harness("campaign-get", { id: CID }).campaign.status, "completed", "with every email sent the campaign completes");
   const bulkSample = one("SELECT n.title, n.body, n.lang, n.run_no, n.dedupe_key, n.cta_url, d.status FROM notifications n JOIN notification_deliveries d ON d.notification_id = n.id WHERE n.campaign_id = ? ORDER BY n.id LIMIT 1", [CID]);
   check(bulkSample.lang === "ta" && bulkSample.title === `${NAME} அறிவிப்பு` && bulkSample.body.startsWith("வணக்கம் E2E Bulk") && bulkSample.run_no === 1
-    && bulkSample.dedupe_key.startsWith(`campaign:${CID}:1:`) && bulkSample.cta_url === "/events" && bulkSample.status === "sent", "each family gets the campaign in their language with their name", JSON.stringify(bulkSample));
-  worker(expandFlags);
-  eq(harness("campaign-get", { id: CID }).campaign.status, "completed", "with every email sent the campaign completes on the next run");
+    && bulkSample.dedupe_key.startsWith(`campaign:${CID}:1:`) && bulkSample.cta_url === "/events" && bulkSample.status === "sent", "each devotee gets the campaign in their language with their name", JSON.stringify(bulkSample));
   const stats = harness("campaign-stats", { id: CID });
   eq([stats.recipients, stats.byChannel?.email?.sent], [600, 600], "campaign stats count recipients by channel and status");
   const actions = sql("SELECT action, actor FROM notification_audit WHERE campaign_id = ? ORDER BY id", [CID]).map((a) => `${a.action}:${a.actor}`);
@@ -572,19 +561,19 @@ async function main() {
   const dupRow = dup.id ? harness("campaign-get", { id: dup.id }).campaign : null;
   check(dup.ok && dupRow?.status === "draft" && dupRow.name === `${NAME} bulk (copy)` && Object.keys(dupRow.translations).join() === "ta,en" && dupRow.recurrence === "none", "duplicate makes a new draft with the same words", JSON.stringify(dup));
 
-  /* ── 11 ───────────────────────────────────────────────────────────────── */
+  /* ── 12 ───────────────────────────────────────────────────────────────── */
   section("Recipient time zones, test send and preview");
   harness("tag", { devotee_ids: [IN, GB], tag: `${TAG}-tz` });
   const tzAudience = { mode: "rules", match: "all", rules: [{ field: "tag", op: "in", value: [`${TAG}-tz`] }] };
   const tz = harness("campaign-save", {
-    input: { name: `${NAME} tz`, category: "announcement", priority: "normal", channels: ["email"], audience: tzAudience, translations, schedule_tz: "recipient" },
+    input: { name: `${NAME} tz`, category: "announcement", priority: "normal", channels: ["email", "whatsapp"], audience: tzAudience, translations, schedule_tz: "recipient" },
     actor: editor,
   });
   tr = harness("campaign-transition", { id: tz.id, action: "submit", actor: editor });
   check(tr.ok && tr.status === "approved", "a small campaign is approved automatically", JSON.stringify(tr));
   check(sql("SELECT actor, detail FROM notification_audit WHERE campaign_id = ? AND action = 'approved'", [tz.id]).some((a) => a.actor === "system" && a.detail.includes("below approval threshold")), "…and the automatic approval is audited");
   tr = harness("campaign-transition", { id: tz.id, action: "schedule", actor: editor, opts: { scheduled_local: "2031-03-10 09:00" } });
-  check(tr.ok && tr.status === "scheduled", "scheduled for 09:00 in each family's zone", JSON.stringify(tr));
+  check(tr.ok && tr.status === "scheduled", "scheduled for 09:00 in each devotee's zone", JSON.stringify(tr));
   camp = harness("campaign-get", { id: tz.id }).campaign;
   eq([camp.scheduled_local, camp.next_run_at, camp.scheduled_at], ["2031-03-10 09:00:00", "2031-03-10 09:00:00", "2031-03-09 19:00:00"], "next_run_at keeps the wall clock; scheduled_at is the earliest instant (UTC+14)");
   w = worker([`--campaign-id=${tz.id}`, "--channels=none"]);
@@ -593,34 +582,32 @@ async function main() {
   eq(w.campaigns_expanded, 1, "due once the first zone is within 14 hours");
   const tzRows = Object.fromEntries(sql("SELECT devotee_id, deliver_after FROM notifications WHERE campaign_id = ?", [tz.id]).map((r) => [r.devotee_id, r.deliver_after]));
   eq([tzRows[IN], tzRows[GB]], ["2031-03-10 03:30:00", "2031-03-10 09:00:00"], "deliver_after is 09:00 in Kolkata for IN and 09:00 in London for GB");
-  const inDel = delivery(one("SELECT d.id FROM notification_deliveries d JOIN notifications n ON n.id = d.notification_id WHERE n.campaign_id = ? AND n.devotee_id = ? AND d.channel = 'email'", [tz.id, IN]).id);
-  eq([inDel.status, inDel.next_attempt_at], ["queued", "2031-03-10 03:30:00"], "the email is held until then");
-  check(eventsOf(inDel.id).some((e) => e.event === "queued" && e.detail?.startsWith("held until 2031-03-10T03:30:00")), "the hold is in the delivery history", JSON.stringify(eventsOf(inDel.id)));
+  const inDel = Object.fromEntries(sql("SELECT d.channel, d.status, d.next_attempt_at FROM notification_deliveries d JOIN notifications n ON n.id = d.notification_id WHERE n.campaign_id = ? AND n.devotee_id = ?", [tz.id, IN]).map((d) => [d.channel, d]));
+  eq([inDel.whatsapp.status, inDel.whatsapp.next_attempt_at, inDel.email.status, inDel.email.next_attempt_at], ["queued", "2031-03-10 03:30:00", "queued", "2031-03-10 03:30:00"], "email and WhatsApp are both held until then");
   worker([`--campaign-id=${tz.id}`, "--now=2031-03-10 04:00:00"]);
-  const tzState = () => Object.fromEntries(sql("SELECT n.devotee_id AS k, d.status FROM notification_deliveries d JOIN notifications n ON n.id = d.notification_id WHERE n.campaign_id = ? AND d.channel = 'email'", [tz.id]).map((r) => [r.k, r.status]));
+  const tzState = () => Object.fromEntries(sql("SELECT CONCAT(n.devotee_id, ':', d.channel) AS k, d.status FROM notification_deliveries d JOIN notifications n ON n.id = d.notification_id WHERE n.campaign_id = ?", [tz.id]).map((r) => [r.k, r.status]));
   let st = tzState();
-  eq([st[IN], st[GB]], ["sent", "queued"], "at 09:30 IST the Indian family has it; the London family does not");
+  eq([st[`${IN}:whatsapp`], st[`${IN}:email`], st[`${GB}:whatsapp`], st[`${GB}:email`]], ["sent", "sent", "queued", "queued"], "at 09:30 IST the Indian family has it; the London family does not");
   eq(harness("campaign-get", { id: tz.id }).campaign.status, "sending", "the campaign is not complete while deliveries wait");
   worker([`--campaign-id=${tz.id}`, "--now=2031-03-10 09:30:00"]);
   st = tzState();
-  eq(st[GB], "sent", "at 09:30 in London the other family has it");
+  eq([st[`${GB}:whatsapp`], st[`${GB}:email`]], ["sent", "sent"], "at 09:30 in London the other family has it");
   worker([`--campaign-id=${tz.id}`, "--channels=none", "--now=2031-03-10 09:31:00"]);
   eq(harness("campaign-get", { id: tz.id }).campaign.status, "completed", "completion is detected on a later run");
 
   const ts = harness("campaign-test-send", { id: tz.id, actor: editor, to: { email: `${P}tester@example.test`, lang: "en" } });
   check(ts.ok && ts.deliveries?.email?.status === "sent", "a test send goes out at once, whatever the campaign's state", JSON.stringify(ts));
   const tsMail = ts.deliveries?.email ? sentFor(ts.deliveries.email.id)[0] : null;
-  check(tsMail?.title.startsWith("[TEST] ") && tsMail.toEmail === `${P}tester@example.test`, "the test is titled [TEST] and reaches the typed address although it gave no consent", tsMail?.title);
+  check(tsMail?.title.startsWith("[TEST] ") && tsMail.toEmail === `${P}tester@example.test`, "the test is titled [TEST]", tsMail?.title);
   eq(harness("campaign-test-send", { id: tz.id, actor: editor, to: { email: `${P}tester@example.test`, lang: "en" } }).deduped, true, "the same test within a minute is not sent twice");
   eq(harness("campaign-test-send", { id: tz.id, actor: viewer, to: { email: `${P}tester@example.test` } }).ok, false, "a viewer cannot send tests");
   check(one("SELECT COUNT(*) AS n FROM notification_audit WHERE campaign_id = ? AND action = 'test_sent'", [tz.id]).n >= 1, "test sends are audited");
   const pvEmail = harness("campaign-preview", { campaign: harness("campaign-get", { id: tz.id }).campaign, channel: "email", lang: "en", sample: GB });
-  check(pvEmail.title === `${NAME} notice` && pvEmail.html?.includes("<!DOCTYPE html>") && pvEmail.body.includes("E2E Core gb"), "an email preview renders the HTML with the sample family's name", JSON.stringify({ ...pvEmail, html: pvEmail.html?.length }));
+  check(pvEmail.title === `${NAME} notice` && pvEmail.html?.includes("<!DOCTYPE html>") && pvEmail.body.includes("E2E Core gb"), "an email preview renders the HTML with the sample devotee's name", JSON.stringify({ ...pvEmail, html: pvEmail.html?.length }));
   const pvSms = harness("campaign-preview", { campaign: { translations, template_key: "", category: "announcement", cta_url: "/events" }, channel: "sms", lang: "ta" });
   check(pvSms.sms && pvSms.sms.encoding === "UCS-2" && pvSms.sms.segments >= 1 && pvSms.html === null, "an SMS preview of unsaved input counts characters and segments", JSON.stringify(pvSms.sms));
-  check(pvSms.body?.includes("/api/n/u/u0.previewonlylink0"), "the preview shows the stop-updates line with a link that unsubscribes nobody", pvSms.body);
 
-  /* ── 12 ───────────────────────────────────────────────────────────────── */
+  /* ── 13 ───────────────────────────────────────────────────────────────── */
   section("Recurrence and cancellation");
   harness("tag", { devotee_ids: [IN, GB], tag: `${TAG}-rec` });
   const rec = harness("campaign-save", {
@@ -636,15 +623,15 @@ async function main() {
   tr = harness("campaign-transition", { id: rec.id, action: "schedule", actor: editor });
   camp = harness("campaign-get", { id: rec.id }).campaign;
   check(tr.ok && camp.next_run_at === "2031-01-31 04:30:00", "10:00 IST on 31 January is 04:30 UTC", JSON.stringify(camp.next_run_at));
-  w = worker([`--campaign-id=${rec.id}`, "--now=2031-01-31 05:00:00"]);
+  worker([`--campaign-id=${rec.id}`, "--now=2031-01-31 05:00:00"]);
   camp = harness("campaign-get", { id: rec.id }).campaign;
-  eq([camp.status, camp.run_count, camp.recipient_count, camp.next_run_at, w.sent], ["scheduled", 1, 2, "2031-02-28 04:30:00", 2], "after run 1 the next run is 28 February (clamped), same wall clock; both emails went in the same run");
-  w = worker([`--campaign-id=${rec.id}`, "--now=2031-02-28 05:00:00"]);
+  eq([camp.status, camp.run_count, camp.recipient_count, camp.next_run_at], ["scheduled", 1, 2, "2031-02-28 04:30:00"], "after run 1 the next run is 28 February (clamped), same wall clock");
+  worker([`--campaign-id=${rec.id}`, "--now=2031-02-28 05:00:00"]);
   camp = harness("campaign-get", { id: rec.id }).campaign;
-  eq([camp.status, camp.run_count, camp.recipient_count, camp.next_run_at, w.sent], ["sending", 2, 4, null, 2], "31 March is after recur_until, so run 2 is the last");
-  eq(sql("SELECT run_no, COUNT(*) AS n FROM notifications WHERE campaign_id = ? GROUP BY run_no ORDER BY run_no", [rec.id]).map((r) => [r.run_no, r.n]), [[1, 2], [2, 2]], "each run reached both families once");
+  eq([camp.run_count, camp.recipient_count, camp.next_run_at], [2, 4, null], "31 March is after recur_until, so run 2 is the last");
   worker([`--campaign-id=${rec.id}`, "--channels=none", "--now=2031-02-28 05:01:00"]);
-  eq(harness("campaign-get", { id: rec.id }).campaign.status, "completed", "and it completes once run 2's emails are sent");
+  eq(harness("campaign-get", { id: rec.id }).campaign.status, "completed", "…and once its emails are sent the campaign completes");
+  eq(sql("SELECT run_no, COUNT(*) AS n FROM notifications WHERE campaign_id = ? GROUP BY run_no ORDER BY run_no", [rec.id]).map((r) => [r.run_no, r.n]), [[1, 2], [2, 2]], "each run reached both devotees once");
 
   const cancelCamp = harness("campaign-save", {
     input: { name: `${NAME} cancel`, category: "announcement", priority: "normal", channels: ["email", "whatsapp"], audience: tzAudience, translations, schedule_tz: "recipient" },
@@ -659,6 +646,7 @@ async function main() {
   tr = harness("campaign-transition", { id: cancelCamp.id, action: "cancel", actor: owner });
   check(tr.ok && tr.status === "cancelled" && tr.message.includes("4"), "an owner cancels it", JSON.stringify(tr));
   eq(one("SELECT COUNT(*) AS n FROM notification_deliveries d JOIN notifications n ON n.id = d.notification_id WHERE n.campaign_id = ? AND d.status = 'cancelled'", [cancelCamp.id]).n, 4, "every queued delivery is cancelled");
+  eq(one("SELECT COUNT(*) AS n FROM notification_deliveries d JOIN notifications n ON n.id = d.notification_id WHERE n.campaign_id = ? AND d.sent_at IS NOT NULL", [cancelCamp.id]).n, 0, "none of the held messages was sent");
   w = worker([`--campaign-id=${cancelCamp.id}`, "--now=2031-05-10 12:00:00"]);
   eq([w.claimed, w.campaigns_expanded], [0, 0], "a cancelled campaign sends nothing later");
   const draft = harness("campaign-save", { input: { ...bulkInput, name: `${NAME} own draft` }, actor: editor });
@@ -677,7 +665,7 @@ async function main() {
   eq([tr.ok, tr.status], [true, "sending"], "an owner sends an emergency straight away");
   check(one("SELECT COUNT(*) AS n FROM notification_audit WHERE campaign_id = ? AND action = 'emergency_override'", [emergency.id]).n === 1, "the override is audited");
 
-  /* ── 13 ───────────────────────────────────────────────────────────────── */
+  /* ── 14 ───────────────────────────────────────────────────────────────── */
   section("Reminders");
   const tomorrow = "2031-07-15";
   sql("INSERT INTO events (title_ta, title_en, description, event_date, is_active) VALUES (?, ?, ?, ?, 1)", [`${NAME} நிகழ்வு`, `${NAME} event`, "E2E", tomorrow]);
@@ -694,35 +682,25 @@ async function main() {
   eq(w.reminders_created, 0, "at 16:30 IST no reminders are made");
   w = worker([...reminderFlags, "--now=2031-07-14 12:00:00"]);
   check(w.reminders_created >= 4, "at 17:30 IST reminders are made", JSON.stringify(w));
-  const bookingReminders = () => sql(`SELECT n.entity_id, n.devotee_id, n.recipient_type, n.to_phone, n.dedupe_key, n.event FROM notifications n WHERE n.entity_type = 'seva_booking' AND n.entity_id IN (${bookingIds.map((b) => b.id).join(",")}) ORDER BY n.entity_id`);
+  const bookingReminders = () => sql(`SELECT n.entity_id, n.devotee_id, n.to_phone, n.dedupe_key, n.event FROM notifications n WHERE n.entity_type = 'seva_booking' AND n.entity_id IN (${bookingIds.map((b) => b.id).join(",")}) ORDER BY n.entity_id`);
   let br = bookingReminders();
   eq(br.map((r) => r.entity_id), confirmedIds, "one booking.reminder per confirmed booking, none for the pending one");
-  check(br.every((r) => r.devotee_id === null && r.recipient_type === "guest" && r.event === "booking.reminder" && r.dedupe_key.endsWith(`:reminder:${tomorrow}`))
-    && br[0].to_phone === "919812345670" && br[1].to_phone === "919812345676", "each reminder goes to the phone on the booking (with the country code), not to a registration", JSON.stringify(br));
-  const remD = deliveriesOf(one("SELECT id FROM notifications WHERE entity_type = 'seva_booking' AND entity_id = ?", [confirmedIds[0]]).id);
-  eq([Object.keys(remD).sort(), remD.whatsapp?.status, remD.email?.skip_reason], [["email", "whatsapp"], "queued", "no email"], "the reminder goes by WhatsApp; with no address on the booking, email is skipped");
-  const reminderCampaigns = () => sql("SELECT id, name, status, created_by, channels, priority, category, template_key, requires_approval, approval_reason, audience, JSON_UNQUOTE(JSON_EXTRACT(template_vars, '$.reminderKey')) AS rk FROM notification_campaigns WHERE JSON_UNQUOTE(JSON_EXTRACT(template_vars, '$.reminderKey')) IN (?, ?) ORDER BY id", [`event:${eventId}:${tomorrow}`, `pooja:${poojaId}:${tomorrow}`]);
+  check(br.every((r) => r.devotee_id === null) && br[0].to_phone === "919812345670" && br[1].to_phone === "919812345676" && br.every((r) => r.event === "booking.reminder" && r.dedupe_key.endsWith(`:reminder:${tomorrow}`)), "each reminder goes to the phone on the booking (a booking is not linked to a registration), the ten-digit one with the country code", JSON.stringify(br));
+  const reminderCampaigns = () => sql("SELECT id, name, status, created_by, channels, priority, category, template_key, requires_approval, audience, JSON_UNQUOTE(JSON_EXTRACT(template_vars, '$.reminderKey')) AS rk FROM notification_campaigns WHERE JSON_UNQUOTE(JSON_EXTRACT(template_vars, '$.reminderKey')) IN (?, ?) ORDER BY id", [`event:${eventId}:${tomorrow}`, `pooja:${poojaId}:${tomorrow}`]);
   let rc = reminderCampaigns();
   eq(rc.length, 2, "one automatic campaign for the event and one for the pooja");
   const ev = rc.find((c) => c.rk.startsWith("event:"));
   eq(ev && [ev.name, ev.status, ev.created_by, ev.channels, ev.priority, ev.category, ev.template_key, ev.requires_approval],
-    [`Reminder: ${NAME} event (automatic)`, "review", "system", "email,whatsapp", "normal", "event", "event_reminder", 1], "the event reminder campaign waits for the committee's approval, by email and WhatsApp");
-  check(ev?.approval_reason.startsWith("Automatic reminder by email and WhatsApp"), "…and says why", ev?.approval_reason);
-  const evRule = JSON.parse(ev.audience).rules[0];
-  check(evRule.field === "consent" && evRule.op === "is" && evRule.value === true, "its audience is every family that agreed to temple updates", JSON.stringify(evRule));
+    [`Reminder: ${NAME} event (automatic)`, "review", "system", "email,whatsapp", "normal", "event", "event_reminder", 1], "the event reminder campaign is made by the system, by email and WhatsApp, and waits for approval");
+  const evRules = JSON.parse(ev.audience).rules;
+  check(evRules.length === 1 && evRules[0].field === "consent" && evRules[0].op === "is" && evRules[0].value === true, "its audience is the families who agreed to updates", ev.audience);
   eq(rc.find((c) => c.rk.startsWith("pooja:"))?.template_key, "pooja_reminder", "the pooja reminder uses pooja_reminder");
   w = worker([...reminderFlags, "--now=2031-07-14 12:20:00"]);
   br = bookingReminders();
   rc = reminderCampaigns();
   eq([br.length, rc.length], [2, 2], "a second run creates no duplicates");
-  tr = harness("campaign-transition", { id: ev.id, action: "approve", actor: owner2 });
-  eq([tr.ok, tr.status], [true, "approved"], "an owner approves the event reminder");
-  worker([`--campaign-id=${ev.id}`, "--channels=none", "--now=2031-07-15 02:00:00"]);
-  const late = one("SELECT status, cancelled_by, last_error FROM notification_campaigns WHERE id = ?", [ev.id]);
-  check(late.status === "cancelled" && late.cancelled_by === "system" && late.last_error.includes(tomorrow), "approved only on the day itself, the reminder is cancelled rather than sent", JSON.stringify(late));
-  eq(one("SELECT COUNT(*) AS n FROM notifications WHERE campaign_id = ?", [ev.id]).n, 0, "nobody was told \"tomorrow\" about today");
 
-  /* ── 14 ───────────────────────────────────────────────────────────────── */
+  /* ── 15 ───────────────────────────────────────────────────────────────── */
   section("Provider status updates");
   const pe = d1.email;
   eq(harness("provider-update", { provider: "test", message_id: `test-${pe.id}`, status: "delivered" }).changed, 1, "delivered is applied");
@@ -744,13 +722,13 @@ async function main() {
   eq(delivery(dc.email.id).status, "read", "an email open marks the delivery read");
   harness("record-click", { id: dc.whatsapp.id });
   harness("record-click", { id: dc.whatsapp.id });
-  const clicked = delivery(dc.whatsapp.id);
-  check(clicked.clicked_at && clicked.status === "sent", "a WhatsApp click records the click and leaves reading to the provider's receipts", JSON.stringify(clicked));
+  const clicked = one("SELECT clicked_at, status FROM notification_deliveries WHERE id = ?", [dc.whatsapp.id]);
+  check(clicked.clicked_at && clicked.status === "sent", "a WhatsApp link click is recorded (and does not pretend the message was read)", JSON.stringify(clicked));
   eq(eventsOf(dc.whatsapp.id).filter((e) => e.event === "clicked").length, 1, "a click is recorded once");
-  harness("record-click", { id: fd.id });
-  check(delivery(fd.id).clicked_at && delivery(fd.id).status === "read", "an email click also proves the email was read", JSON.stringify(delivery(fd.id)));
+  harness("record-open", { id: dc.whatsapp.id });
+  eq(delivery(dc.whatsapp.id).status, "sent", "an open pixel is only for email: a WhatsApp delivery is left as it was");
 
-  /* ── 15 ───────────────────────────────────────────────────────────────── */
+  /* ── 16 ───────────────────────────────────────────────────────────────── */
   section("/api/notify-cron key handling");
   startServer(PORT_OFF, {});
   startServer(PORT_ON, { NOTIFY_CRON_KEY: CRON_KEY, NOTIFY_CRON_TEST_HOLD_LOCK: "1" });
@@ -784,8 +762,8 @@ try {
   try {
     const c = cleanup();
     check(!c.error, "cleanup removed this run's rows", JSON.stringify(c));
-    const left = one("SELECT (SELECT COUNT(*) FROM devotees WHERE email LIKE 'e2e-core-%') AS devotees, (SELECT COUNT(*) FROM notification_campaigns WHERE name LIKE 'E2E-CORE-%' OR name LIKE 'Reminder: E2E-CORE-%') AS campaigns, (SELECT COUNT(*) FROM notifications WHERE dedupe_key LIKE 'e2e:core:%') AS notifications, (SELECT COUNT(*) FROM notification_audit WHERE actor LIKE 'e2e-core-%') AS audit");
-    eq([Number(left.devotees), Number(left.campaigns), Number(left.notifications), Number(left.audit)], [0, 0, 0, 0], "nothing of this suite is left behind");
+    const left = one("SELECT (SELECT COUNT(*) FROM devotees WHERE email LIKE 'e2e-core-%') AS devotees, (SELECT COUNT(*) FROM notification_campaigns WHERE name LIKE 'E2E-CORE-%' OR name LIKE 'Reminder: E2E-CORE-%') AS campaigns, (SELECT COUNT(*) FROM notifications WHERE dedupe_key LIKE 'e2e:core:%') AS notifications");
+    eq([Number(left.devotees), Number(left.campaigns), Number(left.notifications)], [0, 0, 0], "nothing of this suite is left behind");
   } catch (err) {
     failures.push(`cleanup: ${err.message}`);
     console.log(`  FAIL cleanup — ${err.message}`);

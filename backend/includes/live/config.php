@@ -202,6 +202,34 @@ function liveAutomationInstalled(bool $refresh = false): bool
 }
 
 /**
+ * True when migration 022 is applied: live_streams has pooja_id and event_id,
+ * and the poojas, events and sponsors tables the links read answer. Cached
+ * per request; $refresh re-probes.
+ *
+ * Every read and write of the two links checks this first and degrades to
+ * the 011 behaviour when it is false: no join, `pooja`, `event` and `sponsor`
+ * answer null, the admin form shows no selects and nothing is written to the
+ * columns (database/migrations/022_live_links.sql).
+ */
+function liveLinksInstalled(bool $refresh = false): bool
+{
+    static $installed = null;
+    if ($refresh) $installed = null;
+    if ($installed !== null) return $installed;
+    try {
+        $db = getDB();
+        $db->query('SELECT pooja_id, event_id FROM live_streams LIMIT 0')->closeCursor();
+        $db->query('SELECT id, name_ta, name_en, pooja_date, pooja_time, is_active FROM poojas LIMIT 0')->closeCursor();
+        $db->query('SELECT id, title_ta, title_en, event_date, is_active FROM events LIMIT 0')->closeCursor();
+        $db->query('SELECT id, name, note, pooja_id, is_active FROM sponsors LIMIT 0')->closeCursor();
+        return $installed = true;
+    } catch (Throwable) {
+        error_log('[live] pooja/event links unavailable (apply database/migrations/022_live_links.sql)');
+        return $installed = false;
+    }
+}
+
+/**
  * The zone a new stream is scheduled in when none is given: LIVE_TEMPLE_TZ,
  * else the notification service's NOTIFY_TEMPLE_TZ, else Asia/Kolkata.
  */

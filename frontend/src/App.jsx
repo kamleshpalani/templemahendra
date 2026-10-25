@@ -11,8 +11,11 @@ const About = lazy(() => import("./pages/About"));
 const TrustCommittee = lazy(() => import("./pages/TrustCommittee"));
 const Sevas = lazy(() => import("./pages/Sevas"));
 const Events = lazy(() => import("./pages/Events"));
+const EventDetail = lazy(() => import("./pages/EventDetail"));
 const Gallery = lazy(() => import("./pages/Gallery"));
 const Videos = lazy(() => import("./pages/Videos"));
+const Deities = lazy(() => import("./pages/Deities"));
+const Sponsorship = lazy(() => import("./pages/Sponsorship"));
 const Donations = lazy(() => import("./pages/Donations"));
 const Contact = lazy(() => import("./pages/Contact"));
 const PanchangCalendar = lazy(() => import("./pages/PanchangCalendar"));
@@ -91,8 +94,13 @@ function App() {
             <Route path="trust-committee" element={<TrustCommittee />} />
             <Route path="sevas" element={<Sevas />} />
             <Route path="events" element={<Events />} />
+            <Route path="events/:id" element={<EventDetail />} />
             <Route path="gallery" element={<Gallery />} />
             <Route path="videos" element={<Videos />} />
+            {/* Brief §6: every shown deity, and the poojas open for sponsorship
+                with the sponsors who agreed to be named (§11). */}
+            <Route path="deities" element={<Deities />} />
+            <Route path="sponsorship" element={<Sponsorship />} />
             <Route path="donations" element={<Donations />} />
             <Route path="contact" element={<Contact />} />
             <Route path="panchangam" element={<PanchangCalendar />} />

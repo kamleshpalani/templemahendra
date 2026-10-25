@@ -9,49 +9,57 @@ function adminNavGroups(): array
 {
     return [
         'Overview' => [
-            'index.php'            => ['dashboard',   'Dashboard',        'KPIs, analytics and recent activity'],
+            'index.php'            => ['dashboard',   'Dashboard',        'KPIs, next poojas, payments and recent activity'],
         ],
         'Content' => [
-            'homepage_widgets.php' => ['layers',      'Homepage Widgets', 'Cards shown on the public homepage'],
+            'homepage_widgets.php' => ['layers',      'Homepage',         'Cards shown on the public homepage'],
+            'pages.php'            => ['pages',       'Pages',            'About, mission, history and other written pages'],
             'announcements.php'    => ['megaphone',   'Announcements',    'Notices in the homepage ticker'],
-            'gallery.php'          => ['image',       'Gallery',          'Photos for the public gallery'],
-            'videos.php'           => ['play',        'Videos',           'YouTube videos by category'],
-            'live_streams.php'     => ['tv',          'Live Streaming',   'Live darshan broadcasts and schedule'],
         ],
-        'Worship' => [
+        'Temple' => [
             'deities.php'          => ['sparkles',    'Deities',          'Deities shown on the About page'],
             'poojas.php'           => ['flame',       'Poojas',           'Pournami, Amavasai and special poojas'],
             'sevas.php'            => ['sparkles',    'Sevas',            'Bookable sevas and prices'],
             'events.php'           => ['calendar',    'Events',           'Festivals and temple events'],
             'calendar_entries.php' => ['calendar',    'Temple Calendar',  'Custom entries on the Panchangam calendar'],
             'panchangam.php'       => ['calendar',    'Daily Panchangam', 'Committee-verified local timings and lunar details'],
+            'nalla_neram.php'      => ['clock',       'Nalla Neram',      'Auspicious windows for each weekday'],
+        ],
+        'Media' => [
+            'gallery.php'          => ['image',       'Gallery',          'Albums and photos for the public gallery'],
+            'videos.php'           => ['play',        'Videos',           'YouTube videos by category'],
+            'live_streams.php'     => ['tv',          'Live Streaming',   'Live darshan broadcasts and schedule'],
+            'live_settings.php'    => ['refresh',     'YouTube Automation', 'API keys and automatic status updates'],
+        ],
+        'Finance' => [
+            'donations.php'        => ['banknote',    'Donations',        'Pledges, totals and CSV reports'],
+            'payments.php'         => ['landmark',    'Online Payments',  'Transactions, receipts, refunds, reconciliation'],
+            'receipts.php'         => ['clipboard',   'Receipts',         'Every receipt issued for an online payment'],
             'sponsors.php'         => ['heart-hands', 'Sponsors',         'Devotees sponsoring poojas'],
             'donation_categories.php' => ['heart-hands', 'Donation Categories', 'Purposes donors can give to'],
-        ],
-        'Devotees' => [
-            'devotees.php'         => ['users',       'Family Registrations', 'Registered families and their members'],
-            'matrimony.php'        => ['users',       'Matrimony', 'Private profile review and consent-based summaries'],
-            'seva_bookings.php'    => ['clipboard',   'Seva Bookings',    'Online seva requests'],
-            'donations.php'        => ['banknote',    'Donations',        'Pledges, totals and CSV reports'],
-            'payments.php'         => ['landmark',    'Online Payments',  'Donation and seva payments, refunds, reconciliation'],
-            'contact_messages.php' => ['mail',        'Messages',         'Enquiries from the contact form'],
+            'payment_settings.php' => ['shield',      'Payment Gateway',  'CCAvenue mode, keys, currencies and limits'],
         ],
         'Communication' => [
             'notifications.php'          => ['bell',     'Notifications',      'Campaigns, broadcasts and scheduling'],
             'notification_templates.php' => ['mail',     'Message Templates',  'Wording of every automated message'],
             'notification_segments.php'  => ['users',    'Audiences',          'Saved devotee segments'],
             'notification_analytics.php' => ['activity', 'Delivery Analytics', 'Sends, opens, clicks and failures'],
+            'contact_messages.php'       => ['mail',     'Messages',           'Enquiries from the contact form'],
         ],
-        'Data & System' => [
+        'Devotees' => [
+            'devotees.php'         => ['users',       'Family Registrations', 'Registered families and their members'],
+            'matrimony.php'        => ['users',       'Matrimony', 'Private profile review and consent-based summaries'],
+            'seva_bookings.php'    => ['clipboard',   'Seva Bookings',    'Online seva requests'],
             'bulk_upload.php'      => ['upload',      'Bulk Upload',      'Import CSV / Excel data'],
-            'payment_settings.php' => ['shield',      'Payment Gateway',  'CCAvenue mode, keys, currencies and limits'],
-            'live_settings.php'    => ['refresh',    'YouTube Automation', 'API keys and automatic status updates'],
-            'settings.php'         => ['settings',    'Settings',         'Homepage sections and account'],
         ],
-        'People' => [
-            'users.php'            => ['users',       'Committee Accounts', 'Sign-ins and roles'],
-            'profile.php'          => ['user',        'My Profile',         'Your details and password'],
-            'audit_log.php'        => ['history',     'Audit Logs',         'Who changed what, and when'],
+        'System' => [
+            'users.php'            => ['users',       'Users',            'Committee sign-ins and their roles'],
+            'roles.php'            => ['shield',      'Roles',            'What each role may do'],
+            'settings.php'         => ['settings',    'Settings',         'Temple details, hours, homepage and social links'],
+            'languages.php'        => ['globe',       'Languages',        'Languages offered and the default'],
+            'seo.php'              => ['search',      'SEO',              'Titles, descriptions and previews per page'],
+            'audit_log.php'        => ['history',     'Audit Logs',       'Who changed what, and when'],
+            'profile.php'          => ['user',        'My Profile',       'Your details and password'],
         ],
     ];
 }
@@ -76,8 +84,11 @@ function adminQuickActions(): array
         ['label' => 'Export families CSV',    'href' => '/admin/devotees.php?export=csv','icon' => 'download',   'can' => 'export'],
         ['label' => 'Export donations CSV',   'href' => '/admin/donations.php?export=csv','icon' => 'download',   'can' => 'export'],
         ['label' => 'Export payments CSV',    'href' => '/admin/payments.php?export=csv','icon' => 'download',    'can' => 'export'],
+        ['label' => 'Export receipts CSV',    'href' => '/admin/receipts.php?export=csv','icon' => 'download',    'can' => 'export'],
         ['label' => 'Export bookings CSV',    'href' => '/admin/seva_bookings.php?export=csv','icon' => 'download','can' => 'export'],
-        ['label' => 'Committee accounts',     'href' => '/admin/users.php',              'icon' => 'users',       'can' => 'users.manage'],
+        ['label' => 'Users',                  'href' => '/admin/users.php',              'icon' => 'users',       'can' => 'users.manage'],
+        ['label' => 'New page',               'href' => '/admin/pages.php#new',          'icon' => 'pages',       'can' => 'content.edit'],
+        ['label' => 'Temple settings',        'href' => '/admin/settings.php#site',      'icon' => 'settings',    'can' => 'settings.edit'],
         ['label' => 'My profile',             'href' => '/admin/profile.php',            'icon' => 'user',        'can' => 'view'],
         ['label' => 'View public site',       'href' => '/',                             'icon' => 'external',    'can' => 'view', 'external' => true],
         ['label' => 'Sign out',               'href' => '/admin/logout.php',             'icon' => 'logout',      'can' => 'view'],

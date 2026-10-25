@@ -4,6 +4,14 @@
    Composes .grid-auto / .card / .btn / .badge — tokens only.
    ══════════════════════════════════════════════════════════════════ */
 
+/* ── Album chips (composes .chip-row / .chip from components.css) ─── */
+.gallery-albums {
+  margin-bottom: var(--space-5);
+}
+.gallery-albums .chip {
+  min-height: 40px;
+}
+
 /* ── Grid ─────────────────────────────────────────────────────────── */
 .gallery-grid {
   --grid-min: 220px;

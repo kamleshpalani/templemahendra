@@ -9,6 +9,10 @@
 --   mysql -u <user> -p <db> < database/migrations/001_admin_users.sql
 -- ============================================================
 
+-- The connection's character set, whatever client applies this file: without
+-- it a latin1 client (the Windows mysql default) stores Tamil text as '?'.
+SET NAMES utf8mb4;
+
 CREATE TABLE IF NOT EXISTS `admin_users` (
   `id`            INT UNSIGNED  NOT NULL AUTO_INCREMENT,
   `username`      VARCHAR(60)   NOT NULL,

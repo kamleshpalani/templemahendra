@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Link, Navigate, useLocation } from "react-router-dom";
+import { Link, useLocation } from "react-router-dom";
 import {
   LuCalendarDays,
   LuFlower2,
@@ -23,12 +23,15 @@ import Button from "../components/ui/Button";
 import Seo from "../components/Seo";
 import ShareButton from "../components/Share/ShareButton";
 import HistoryTimeline from "../components/HistoryTimeline/HistoryTimeline";
+import CommitteeGrid from "../components/CommitteeGrid/CommitteeGrid";
+import { paragraphs } from "../lib/siteSettings";
 import "./PageCommon.css";
 import "./About.css";
 
 /* In-page navigation follows the story sections below. */
 const SECTIONS = [
   { id: "history", ta: "வரலாறு", en: "History", Icon: LuScrollText },
+  { id: "committee", ta: "கமிட்டி", en: "Committee", Icon: LuHeartHandshake },
   { id: "deities", ta: "குலதெய்வங்கள்", en: "Deities", Icon: LuSparkles },
   { id: "land-donation", ta: "இட நன்கொடை", en: "Land donation", Icon: LuLandmark },
 ];
@@ -65,6 +68,27 @@ export default function About() {
     };
   }, []);
   const deityList = deities ?? TEMPLE.deities.map((d) => ({ name_ta: d.ta, name_en: d.en }));
+  // The mission and history the committee writes (Admin → Content → Pages,
+  // slugs "mission" and "history"): shown when they have a body, above the
+  // built-in timeline; nothing is invented when they are empty or absent.
+  const [cmsPages, setCmsPages] = useState({});
+  useEffect(() => {
+    let alive = true;
+    Promise.all(["mission", "history"].map((slug) => api.get(`/pages/${slug}`).then((r) => [slug, r.data]).catch(() => [slug, null])))
+      .then((pairs) => { if (alive) setCmsPages(Object.fromEntries(pairs)); });
+    return () => { alive = false; };
+  }, []);
+  const cmsBody = (slug) => {
+    const p = cmsPages[slug];
+    if (!p) return [];
+    return paragraphs(lang === "ta" ? p.body_ta || p.body_en : p.body_en || p.body_ta);
+  };
+  const cmsTitle = (slug, fallback) => {
+    const p = cmsPages[slug];
+    return p ? (lang === "ta" ? p.title_ta || p.title_en : p.title_en || p.title_ta) || fallback : fallback;
+  };
+  const mission = cmsBody("mission");
+  const historyBody = cmsBody("history");
 
   const facts = HERO_FACTS.map((f) => {
     const m = HISTORY.timeline.find((x) => x.key === f.key);
@@ -76,9 +100,6 @@ export default function About() {
   // shared with. See <Seo>.
   const title = t("ஆலயம் பற்றி", "About the Temple");
   const lead = t(TEMPLE.fullName.ta, TEMPLE.fullName.en);
-  if (hash === "#committee" || hash === "#trust" || hash === "#trust-details") {
-    return <Navigate to={`/trust-committee${hash}`} replace />;
-  }
 
   return (
     <>
@@ -175,10 +196,27 @@ export default function About() {
           </div>
 
           {/* ── History ─────────────────────────────────────────── */}
+          {mission.length > 0 && (
+            <>
+              <h2 id="mission" data-source="cms">{cmsTitle("mission", t("நோக்கம்", "Our mission"))}</h2>
+              {mission.map((p) => <p key={p}>{p}</p>)}
+            </>
+          )}
+
           <section className="about-story" aria-labelledby="history">
           <p className="about-story__eyebrow">{t("01 · நம் வேர்கள்", "01 · Our roots")}</p>
-          <h2 id="history">{t("வரலாறு", "History")}</h2>
+          <h2 id="history">{historyBody.length > 0 ? cmsTitle("history", t("வரலாறு", "History")) : t("வரலாறு", "History")}</h2>
+          {historyBody.length > 0 && (
+            <div data-source="cms">
+              {historyBody.map((p) => <p key={p}>{p}</p>)}
+            </div>
+          )}
           <HistoryTimeline />
+          </section>
+
+          <section className="about-story" aria-labelledby="committee">
+            <h2 id="committee">{t("கமிட்டி", "Temple Committee")}</h2>
+            <CommitteeGrid showHeading={false} />
           </section>
 
           {/* ── Deities ─────────────────────────────────────────── */}
@@ -223,6 +261,9 @@ export default function About() {
           <p className="about-link">
             <Button variant="soft" size="sm" to="/events" icon={<LuCalendarDays aria-hidden="true" />}>
               {t("பௌர்ணமி தேதிகள் →", "Pournami dates →")}
+            </Button>{" "}
+            <Button variant="soft" size="sm" to="/deities">
+              {t("அனைத்து தெய்வங்கள் →", "All deities →")}
             </Button>
           </p>
           </section>

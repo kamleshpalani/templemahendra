@@ -26,11 +26,6 @@
  * failed attempt's order id. A receipt resend re-raises donation.paid or
  * payment.succeeded with its own dedupe_key.
  *
- * contact.received goes the other way: it is the temple office's own copy of
- * a website contact message, sent to the addresses in CONTACT_NOTIFY_EMAIL
- * (api/contact.php). Its category, office, is transactional, so no consent
- * is asked of the committee mailbox.
- *
  * event.registered, event.cancelled, volunteer.registered and
  * membership.renewal_due have no caller yet — the site has no event
  * registration, volunteer or membership module. They are complete, so the day
@@ -74,10 +69,15 @@ function notifyEventCatalogue(): array
         'event.cancelled'        => $e('event_cancelled', 'important', ['email', 'whatsapp', 'sms'], 'event:{entity_id}:cancelled:{recipient}', 'event', 'An event a devotee registered for is cancelled'),
         'volunteer.registered'   => $e('volunteer_registered', 'normal', ['email'], 'volunteer:{entity_id}:{recipient}', 'volunteer', 'A devotee signs up to volunteer'),
         'membership.renewal_due' => $e('membership_renewal', 'important', ['email', 'whatsapp'], 'membership:{entity_id}:renewal:{vars.renewalDate}', 'membership', 'A membership is due for renewal'),
-        // The committee's copy of a website contact message (brief §20, G-19).
-        // Raised by api/contact.php once per address in CONTACT_NOTIFY_EMAIL, so
-        // the recipient is part of the key; important so it is never held back.
-        'contact.received'       => $e('contact_received', 'important', ['email'], 'contact:{entity_id}:received:{recipient}', 'contact_message', 'A visitor sends a message through the contact form'),
+        // The temple office, not a family: email only, under the transactional
+        // 'office' category (migration 019), so no consent rule can hold it
+        // back. One notification per configured address (contact_notify.php);
+        // the recipient is part of the key so each address gets exactly one.
+        'contact.received'       => $e('contact_received', 'important', ['email'], 'contact:{entity_id}:{recipient}', 'contact_message', 'A visitor sends the contact form; the temple office is told'),
+        // Brief §20: sponsor confirmation. Once per sponsorship, when it becomes
+        // PAID — an online pooja donation's first success, or the committee
+        // recording a paid sponsorship in Admin → Sponsors.
+        'sponsor.confirmed'      => $e('sponsor_confirmed', 'important', ['email', 'whatsapp'], 'sponsor:{entity_id}:confirmed', 'sponsor', 'A pooja sponsorship is paid; the sponsor is thanked and told how they will be credited', ['whatsapp' => 'sms']),
     ];
 }
 

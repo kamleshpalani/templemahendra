@@ -7,8 +7,9 @@ payments (CCAvenue)* is the admin-facing walk-through. This page is the
 order of work for taking the gateway from *off* to PRODUCTION safely, and what
 to check when something looks wrong.
 
-Needs migrations `007_notifications.sql` and `010_payments.sql`. Payments are
-**off** until an owner turns them on.
+Needs migrations `007_notifications.sql` and `010_payments.sql`; pooja
+sponsorships (`/donate?pooja=<id>`) need `023_payments_pooja_sponsor.sql`.
+Payments are **off** until an owner turns them on.
 
 ## How a payment flows
 
@@ -54,6 +55,12 @@ Payable (donation / booking) statuses add `REFUND_INITIATED`,
   answers the same 303 and writes `response_duplicate`. A donor who pays
   twice gets one receipt; the second attempt is flagged `double_payment` for
   refund.
+- **One sponsor per paid pooja donation.** A donation made from
+  `/donate?pooja=<id>` writes its `sponsors` row inside the same transaction
+  as the receipt, keyed on `sponsors.donation_id`, which is UNIQUE — a
+  replayed response, a duplicate DEN or the reconciliation sweep can never
+  write a second, and `sponsor_assigned` is audited once. A full refund marks
+  the sponsor REFUNDED; nothing deletes it.
 - **No card data.** Only allow-listed response keys are stored; `payRedact()`
   drops anything matching key/secret/token/card/cvv. Receipts mask the donor's
   income-tax PAN.
@@ -141,6 +148,10 @@ and recorded as manual.
      closes or verifies the attempt within 10 minutes
    - receipt, email, SMS/WhatsApp, full and partial refund, reconciliation
      upload of the dashboard CSV
+   - pay for a pooja from `/donate?pooja=<id>`, then replay the captured
+     `encResp` → still one row in Admin → Sponsors, linked to the payment;
+     refund it in full → the sponsor is marked REFUNDED and leaves
+     `/api/donors`
    Record each in `docs/DEFECTS.md` if it misbehaves. Items that need
    CCAvenue's confirmation (URL-encoding of response values, `encResp` on
    cancel, Tamil in `billing_name`, API host/version, refund window) are

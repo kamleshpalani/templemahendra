@@ -463,6 +463,13 @@ try {
   const origin = new URL(BASE).origin;
   const axe = async (p) => {
     await p.addScriptTag({ content: axeSource });
+    // The error summary fades in (alert-in, 0.38 s): axe run mid-fade reads a
+    // colour nobody sees (2.98:1 at 88% opacity; 5.9:1 settled). Wait for the
+    // finite animations first, never longer than a second and a half.
+    await p.evaluate(() => Promise.race([
+      Promise.all(document.getAnimations().filter((a) => Number.isFinite(a.effect?.getTiming?.().iterations ?? 1)).map((a) => a.finished.catch(() => {}))),
+      new Promise((resolve) => setTimeout(resolve, 1500)),
+    ])).catch(() => {});
     return p.evaluate(async () => {
       const out = await window.axe.run(document, { runOnly: { type: "tag", values: ["wcag2a", "wcag2aa", "best-practice"] } });
       return out.violations.filter((v) => v.impact === "serious" || v.impact === "critical").map((v) => `${v.id} ×${v.nodes.length}: ${v.nodes[0]?.target?.[0]} — ${v.help}`);

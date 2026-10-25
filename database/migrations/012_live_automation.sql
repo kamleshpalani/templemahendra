@@ -63,6 +63,10 @@
 --   mysql --default-character-set=utf8mb4 -u <user> -p <db> < database/migrations/012_live_automation.sql
 
 -- ── live_settings ───────────────────────────────────────────────────────────
+-- The connection's character set, whatever client applies this file: without
+-- it a latin1 client (the Windows mysql default) stores Tamil text as '?'.
+SET NAMES utf8mb4;
+
 CREATE TABLE IF NOT EXISTS `live_settings` (
   `k`          VARCHAR(64) NOT NULL,
   `v`          TEXT        NOT NULL COMMENT 'plain for a setting; sbx1:base64(nonce+secretbox) for a secret',

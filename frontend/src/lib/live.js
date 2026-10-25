@@ -111,16 +111,18 @@ export function watchUrl(stream) {
 
 /**
  * Which broadcast the list page shows: the first LIVE one, else the first
- * STARTING one, else the next upcoming one (as a poster), else nothing.
+ * STARTING one, else the upcoming one that starts first (as a poster), else
+ * nothing. Read from `live` and `upcoming` — every public broadcast — not
+ * from the homepage's `now` / `next`, which leave out a broadcast whose
+ * "Show on homepage" switch is off.
  */
 export function pickStream(live, upcoming) {
   const liveList = Array.isArray(live) ? live : [];
-  const upcomingList = Array.isArray(upcoming) ? upcoming : [];
   return (
     liveList.find((s) => s?.status === "LIVE") ??
     liveList.find((s) => s?.status === "STARTING") ??
     liveList[0] ??
-    upcomingList[0] ??
+    nextInTime(upcoming) ??
     null
   );
 }
@@ -414,11 +416,36 @@ function offsetFrom(body) {
 function shapeOverview(body) {
   const live = Array.isArray(body?.live) ? body.live.filter(isObject) : [];
   const upcoming = Array.isArray(body?.upcoming) ? body.upcoming.filter(isObject) : [];
-  // `now` and `next` (SPEC-PHASE2 §1.1) carry day_bucket and starts_in_seconds;
-  // an answer without them (an older server) falls back to the two lists.
-  const now = isObject(body?.now) ? body.now : (live.find((s) => s.status === "LIVE") ?? live.find((s) => s.status === "STARTING") ?? null);
-  const next = isObject(body?.next) ? body.next : (upcoming[0] ?? null);
+  // `now` and `next` (SPEC-PHASE2 §1.1) are the homepage's: the live and the
+  // next broadcast among those whose "Show on homepage" switch is on, with
+  // day_bucket and starts_in_seconds. An explicit null means the homepage
+  // shows nothing; only an answer without the keys (an older server) falls
+  // back to the two lists.
+  const has = (k) => isObject(body) && Object.prototype.hasOwnProperty.call(body, k);
+  const now = has("now") ? (isObject(body.now) ? body.now : null) : (live.find((s) => s.status === "LIVE") ?? live.find((s) => s.status === "STARTING") ?? null);
+  const next = has("next") ? (isObject(body.next) ? body.next : null) : (nextInTime(upcoming) ?? null);
   return { live, upcoming, now, next };
+}
+
+/**
+ * The upcoming broadcast that starts first, whatever order the list came in
+ * (the API lists a featured one first): the earliest scheduled_start_at, a
+ * broadcast without a start last. The Live Darshan page shows it as the
+ * poster when nothing is live.
+ */
+export function nextInTime(upcoming) {
+  const list = Array.isArray(upcoming) ? upcoming.filter(isObject) : [];
+  let best = null;
+  let bestAt = Infinity;
+  for (const s of list) {
+    const at = Date.parse(String(s.scheduled_start_at ?? ""));
+    const key = Number.isFinite(at) ? at : Infinity;
+    if (best === null || key < bestAt) {
+      best = s;
+      bestAt = key;
+    }
+  }
+  return best;
 }
 
 // One request per page load, shared by every component mounting together;

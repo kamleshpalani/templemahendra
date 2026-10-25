@@ -826,7 +826,8 @@ try {
     /* ── 8. Shapes ───────────────────────────────────────────────────────── */
     section('8. liveShapePublic and liveShapeAdmin (§4.3, §4.4)');
     $publicKeys = ['id', 'slug', 'title_ta', 'title_en', 'description_ta', 'description_en', 'event_type', 'event_type_label', 'provider', 'status', 'is_live',
-                   'temple', 'deity', 'scheduled_start_at', 'scheduled_end_at', 'actual_start_at', 'actual_end_at', 'timezone', 'local', 'thumbnail_url', 'banner_url', 'playback', 'viewers', 'flags'];
+                   'temple', 'deity', 'scheduled_start_at', 'scheduled_end_at', 'actual_start_at', 'actual_end_at', 'timezone', 'local', 'thumbnail_url', 'banner_url', 'playback', 'viewers', 'flags',
+                   'pooja', 'event', 'sponsor'];
     sort($publicKeys);
     $pubLive = liveShapePublic($row($idLive));
     eq(keysOf($pubLive), $publicKeys, 'the public shape has exactly the §4.3 keys');
@@ -853,7 +854,8 @@ try {
     eq($localOf(liveShapePublic($row($idNoStart))), ['date' => null, 'start_time' => null, 'end_time' => null], 'no schedule → nulls');
     $localExtras = array_diff(array_keys($pubLive['local'] ?? []), ['date', 'start_time', 'end_time', 'end_date']);
     ok($localExtras === [], 'local carries nothing beyond date, start_time, end_time (and end_date for an overnight stream)', implode(',', $localExtras));
-    eq($pubLive['playback'], ['kind' => 'iframe', 'embedUrl' => "https://www.youtube-nocookie.com/embed/{$YT}?rel=0&playsinline=1", 'watchUrl' => "https://www.youtube.com/watch?v={$YT}"], 'playback is the provider descriptor');
+    eq($pubLive['playback'], ['kind' => 'iframe', 'embedUrl' => "https://www.youtube-nocookie.com/embed/{$YT}?rel=0&playsinline=1", 'watchUrl' => "https://www.youtube.com/watch?v={$YT}", 'unavailable' => false, 'reason' => null], 'playback is the provider descriptor plus unavailable/reason');
+    eq([$pubLive['pooja'], $pubLive['event'], $pubLive['sponsor']], [null, null, null], 'pooja, event and sponsor are null on an unlinked stream (migration 022)');
     eq($pubLive['thumbnail_url'], "https://i.ytimg.com/vi/{$YT}/hqdefault.jpg", 'thumbnail_url defaults to hqdefault.jpg');
     eq($pubLive['banner_url'], null, 'banner_url is null when unset');
     eq($pubLive['flags'], ['featured' => true, 'showOnHomepage' => true, 'donations' => true, 'notifications' => true, 'sharing' => true, 'archive' => true], 'flags are booleans keyed as the contract says');
@@ -879,7 +881,7 @@ try {
     ok(!array_key_exists('viewer_count', $pubLive) && !array_key_exists('last_sync_ok_at', $pubLive), 'the 012 column names themselves stay private');
     ok(is_string($pubLive['title_ta']) && is_string($pubLive['title_en']) && is_string($pubLive['slug']), 'titles and slug are strings');
     $adminShape = liveShapeAdmin($row($idLive));
-    $adminKeys = array_merge($publicKeys, ['created_by', 'updated_by', 'created_at', 'updated_at', 'deleted_at', 'provider_broadcast_id', 'playback_url_raw', 'temple_id', 'deity_id']);
+    $adminKeys = array_merge($publicKeys, ['created_by', 'updated_by', 'created_at', 'updated_at', 'deleted_at', 'provider_broadcast_id', 'playback_url_raw', 'temple_id', 'deity_id', 'pooja_id', 'event_id']);
     sort($adminKeys);
     ok(array_diff($adminKeys, keysOf($adminShape)) === [], 'the admin shape is the public shape plus the §4.4 admin keys', implode(',', array_diff($adminKeys, keysOf($adminShape))));
     $adminExtras = array_diff(keysOf($adminShape), $adminKeys, ['thumbnail_url_raw']);

@@ -84,7 +84,15 @@ try {
   const removed = archived();
   sql("UPDATE live_streams SET deleted_at=UTC_TIMESTAMP() WHERE id=?", [removed.id]);
   check(!ids(await march()).includes(removed.id) && (await detail(removed)).status === 404, "deleted recordings are hidden");
+  // Ending a YouTube stream by hand now keeps its own video as the recording
+  // (brief §12: "after completion the video remains available"), exactly as
+  // the poller does on an automatic completion.
   const missing = stream();
+  check(sql("SELECT recording_url FROM live_streams WHERE id=?", [missing.id])[0].recording_url === `https://www.youtube.com/watch?v=${video}`, "a manual End stream keeps the broadcast's own video as the recording");
+  check((await detail(missing)).body.stream.playback.embedUrl.includes(video), "…and the completed player plays it");
+  const hidden = stream({ flags: { archive: false } });
+  check(sql("SELECT recording_url FROM live_streams WHERE id=?", [hidden.id])[0].recording_url === null, "…but not when the archive switch is off");
+  assert.deepEqual(save(missing.id, { recording_url: "" }), []);
   check((await detail(missing)).body.stream.playback.kind === "none", "completion without a recording offers no player");
   check(!ids(await march()).includes(missing.id), "missing recordings are absent");
   for (const invalid of ["javascript:alert(1)", "https://evil.example/watch?v=abcdefghijk", "live_stream", "https://www.youtube.com/watch?v=too_short", [], {}]) {

@@ -1,4 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useState } from "react";
+import { loadSiteSettings } from "../lib/siteSettings";
 
 const LangContext = createContext();
 
@@ -33,6 +34,25 @@ export function LangProvider({ children }) {
   // Read synchronously so a returning English reader never sees a flash of
   // Tamil on reload. Anything other than "ta" or "en" falls back to Tamil.
   const [lang, setLangState] = useState(() => readStoredLang() ?? "ta"); // 'ta' = Tamil, 'en' = English
+  // The languages the committee offers and the one a first visit opens in
+  // (Admin → System → Languages). A visitor's own choice is never overridden;
+  // only a visit that made no choice follows the committee's default.
+  const [langs, setLangs] = useState(LANGS);
+  useEffect(() => {
+    let alive = true;
+    loadSiteSettings().then((s) => {
+      if (!alive) return;
+      const enabled = s.languages.enabled.length ? s.languages.enabled : LANGS;
+      setLangs(enabled);
+      const chosen = readStoredLang();
+      if (chosen === null) {
+        if (s.languages.default !== "ta") setLangState(s.languages.default);
+      } else if (!enabled.includes(chosen)) {
+        setLangState(enabled[0]);
+      }
+    });
+    return () => { alive = false; };
+  }, []);
 
   // Only an explicit choice is stored; a visitor who never touches the toggle
   // keeps following the default.
@@ -60,7 +80,7 @@ export function LangProvider({ children }) {
   }, []);
 
   return (
-    <LangContext.Provider value={{ lang, setLang }}>
+    <LangContext.Provider value={{ lang, setLang, langs }}>
       {children}
     </LangContext.Provider>
   );

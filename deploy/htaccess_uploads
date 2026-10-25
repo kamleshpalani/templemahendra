@@ -33,3 +33,28 @@ RemoveType    .php .phar .phtml .php3 .php4 .php5 .php7 .php8 .phps .pl .py .cgi
     Deny from all
   </IfModule>
 </FilesMatch>
+
+# A folder with its own rewrite block does not inherit the root's rules, so
+# the HTTPS redirect and the TM_HTTPS mark (which switches the root's HSTS
+# header on) are repeated here. Same conditions as deploy/htaccess_public_html.
+<IfModule mod_rewrite.c>
+  RewriteEngine On
+  RewriteCond %{HTTPS} !=on
+  RewriteCond %{HTTP:X-Forwarded-Proto} !=https
+  RewriteCond %{HTTP_HOST} !^$
+  RewriteCond %{HTTP_HOST} !^(localhost|127\.0\.0\.1)(:[0-9]+)?$ [NC]
+  RewriteRule ^ https://%{HTTP_HOST}%{REQUEST_URI} [R=301,L]
+
+  RewriteCond %{HTTPS} =on [OR]
+  RewriteCond %{HTTP:X-Forwarded-Proto} =https
+  RewriteRule ^ - [E=TM_HTTPS:1]
+</IfModule>
+
+# Whatever is served from here is an image. nosniff stops a browser guessing
+# otherwise, and a sandboxed, script-free policy means a file that somehow
+# turned out to be HTML or SVG-with-script could still do nothing if opened
+# directly. (The root .htaccess adds the site-wide headers on top.)
+<IfModule mod_headers.c>
+  Header set X-Content-Type-Options "nosniff"
+  Header set Content-Security-Policy "default-src 'none'; sandbox"
+</IfModule>

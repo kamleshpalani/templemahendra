@@ -19,7 +19,7 @@ $db = getDB();
 $str = static fn(array $src, string $key): string => is_scalar($src[$key] ?? null) ? (string) $src[$key] : '';
 
 if (!videoTablesExist()) {
-    adminHeader('Videos', 'Content');
+    adminHeader('Videos', 'Media');
     echo '<p class="alert alert--warning" role="alert">Videos are not installed on this site yet: apply database migration <code>017_videos.sql</code> and reload.</p>';
     adminFooter();
     exit;
@@ -267,7 +267,7 @@ $countLabel = $filtered ? "$shown of {$chipCounts['all']} videos" : "$shown vide
 $invalid    = static fn(string $f): string => isset($errors[$f]) ? ' aria-invalid="true" aria-describedby="err-' . $f . '"' : '';
 $fieldError = static fn(string $f, string $text): string => isset($errors[$f]) ? '<span class="field__error" id="err-' . $f . '">' . adminIcon('alert-circle') . h($text) . '</span>' : '';
 
-adminHeader('Videos', 'Content', [
+adminHeader('Videos', 'Media', [
     'actions' => '<a href="/videos" target="_blank" rel="noopener" class="btn btn-ghost btn--sm">' . adminIcon('external') . 'View on site</a>',
 ]);
 echo $msg;

@@ -71,12 +71,23 @@ function payLatestAttempt(array $payable): ?array
     return $attempts ? $attempts[count($attempts) - 1] : null;
 }
 
-/** What the payment was for, in 'ta' or 'en': the category name or the seva name. */
+/** What the payment was for, in 'ta' or 'en': the category name (plus the pooja it sponsors, with its date) or the seva name. */
 function payNotifyPurpose(array $payable, string $lang): string
 {
     $l = $lang === 'ta' ? 'ta' : 'en';
     if (($payable['type'] ?? '') === 'donation') {
-        return (string) ($payable['category'][$l] ?? $payable['purpose'] ?? '');
+        $purpose = (string) ($payable['category'][$l] ?? $payable['purpose'] ?? '');
+        $poojaName = (string) ($payable['pooja']['name'][$l] ?? '');
+        if ($poojaName !== '') {
+            // The pooja's date in words when the notification service is loaded
+            // (payNotifyFailed/payNotifyRefund build their variables before it
+            // is), else the plain d-m-Y the details table uses anyway.
+            $when = (string) ($payable['pooja']['date'] ?? '');
+            $dt = $when !== '' ? DateTime::createFromFormat('!Y-m-d', $when) : false;
+            $whenLabel = $dt ? (function_exists('notifyFormatDate') ? notifyFormatDate($when, $l) : $dt->format('d-m-Y')) : '';
+            $purpose = ($purpose !== '' ? $purpose . ' - ' : '') . $poojaName . ($whenLabel !== '' ? " ({$whenLabel})" : '');
+        }
+        return $purpose;
     }
     return (string) ($payable['seva'][$l] ?? $payable['seva_name'] ?? '');
 }

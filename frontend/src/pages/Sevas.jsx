@@ -2,16 +2,22 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import {
   LuBookOpen,
+  LuCalendarDays,
   LuCircleCheck,
   LuCircleDot,
+  LuClock,
   LuDroplets,
   LuFlame,
   LuFlower2,
+  LuHeart,
+  LuHeartHandshake,
   LuLock,
   LuPhone,
   LuSend,
+  LuStar,
   LuSun,
   LuTruck,
+  LuTv,
   LuUtensils,
 } from "react-icons/lu";
 import api from "../services/api";
@@ -30,13 +36,14 @@ import ShareButton from "../components/Share/ShareButton";
 import SectionHeader from "../components/ui/SectionHeader";
 import Modal from "../components/ui/Modal";
 import { SkeletonCards } from "../components/ui/Feedback";
-import { TEMPLE_PHONE } from "../data/temple";
+import { TEMPLE_PHONE, formatPhone, telHref } from "../data/temple";
 import { todayIST } from "../lib/templeTime";
 import PaymentRedirect from "../components/Payments/PaymentRedirect";
 import PaymentShare from "../components/Payments/PaymentShare";
 import BookingDetails from "../components/Payments/BookingDetails";
 import { formatMoney } from "../lib/money";
 import { paymentsUsable, postJson, usePaymentsConfig, writeLastPayment } from "../lib/payments";
+import { siteOfficeDigits, useSiteSettings } from "../lib/siteSettings";
 import "../components/Payments/Payments.css";
 import "./Sevas.css";
 
@@ -71,15 +78,30 @@ function sevaIcon(seva, index) {
  * same offering.
  */
 const sevaName = (seva, lang) => (lang === "ta" ? seva.name_ta : seva.name_en) || seva.name_en || seva.name_ta || "";
-const sevaDescription = (seva, lang) => {
-  if (!seva.description_ta && !seva.description_en && !seva.description) return null;
-  return (lang === "ta" ? (seva.description_ta ?? seva.description) : (seva.description_en ?? seva.description)) || null;
-};
+/* The note in the reading language, else the old single-language column, else
+   the other language: a seva the committee described once is never blank. */
+const sevaDescription = (seva, lang) =>
+  (lang === "ta"
+    ? seva.description_ta || seva.description || seva.description_en
+    : seva.description_en || seva.description || seva.description_ta) || null;
+/* When the seva is performed ("Daily 7–9 am"), in the reading language. */
+const sevaTiming = (seva, lang) => (lang === "ta" ? seva.timing_ta || seva.timing_en : seva.timing_en || seva.timing_ta) || null;
+/*
+ * Only an explicit "no" from the API makes a seva unbookable (migration 020's
+ * is_bookable). The standard list and older APIs carry no such flag, and a
+ * missing flag must not lock every card.
+ */
+const sevaBookable = (seva) => !(seva.is_bookable === false || seva.is_bookable === 0 || seva.is_bookable === "0");
+
+// The office's ten-digit number for tel: links comes from siteOfficeDigits()
+// in lib/siteSettings.js (the committee's setting however it was typed, else
+// the booklet's number).
 
 /* ── Seva Booking Modal ─────────────────────────────────────────── */
 function BookingModal({ seva: initialSeva, services, onClose, t, lang, live = false }) {
   const [selectedId, setSelectedId] = useState(initialSeva.id);
-  const seva = services.find((s) => Number(s.id) === Number(selectedId)) ?? initialSeva;
+  const bookableServices = services.filter(sevaBookable);
+  const seva = bookableServices.find((s) => Number(s.id) === Number(selectedId)) ?? initialSeva;
   const [people, setPeople] = useState([{ key: 1, name: "", rasi: "", nakshatram: "" }]);
   const [deliveryAddress, setDeliveryAddress] = useState({ address: "", city: "", state: "", country: "", postcode: "" });
   const [confirmation, setConfirmation] = useState(null);
@@ -388,7 +410,7 @@ function BookingModal({ seva: initialSeva, services, onClose, t, lang, live = fa
             />
           )}
         </Field>
-        <BookingDetails seva={seva} services={services} onService={setSelectedId} people={people} setPeople={setPeople}
+        <BookingDetails seva={seva} services={bookableServices} onService={setSelectedId} people={people} setPeople={setPeople}
           address={deliveryAddress} setAddress={setDeliveryAddress} errors={errors} t={t} />
 
         {/* Honeypot. People never see it and cannot Tab to it; form-filling bots
@@ -589,6 +611,221 @@ function HowItWorks({ t }) {
   );
 }
 
+/* ── Upcoming special poojas (Admin → Temple → Poojas; brief §6, §9) ──
+   The dated poojas the committee schedules — Pournami, Pradosham, festival
+   abhishekams — with their sponsorship price. Read from GET /api/poojas
+   (upcoming, soonest first): every fact on a card, the date, the time, the
+   price, whether sponsorship is still open, the featured and live flags and
+   the consented sponsor's name, comes from that answer and nothing else. */
+const POOJA_TYPE_LABELS = {
+  pournami: ["பௌர்ணமி பூஜை", "Pournami Pooja"],
+  amavasai: ["அமாவாசை", "Amavasai"],
+  ekadasi: ["ஏகாதசி", "Ekadasi"],
+  sashti: ["சஷ்டி", "Sashti"],
+  pradosham: ["பிரதோஷம்", "Pradosham"],
+  chaturthi: ["சங்கடஹர சதுர்த்தி", "Sankatahara Chaturthi"],
+  abhishekam: ["அபிஷேகம்", "Abhishekam"],
+  archana: ["அர்ச்சனை", "Archana"],
+  festival: ["திருவிழா", "Festival"],
+  special: ["சிறப்பு பூஜை", "Special pooja"],
+  monthly: ["மாதாந்திர பூஜை", "Monthly pooja"],
+  daily: ["தினசரி பூஜை", "Daily pooja"],
+};
+/* The lunar observances take the moon tone (styles/README.md: --moon-* only
+   for lunar content); everything else is a plain type chip. */
+const LUNAR_TYPES = ["pournami", "amavasai", "ekadasi", "pradosham", "chaturthi"];
+
+const poojaName = (p, lang) => (lang === "ta" ? p.name_ta : p.name_en) || p.name_en || p.name_ta || "";
+const poojaDescription = (p, lang) =>
+  (lang === "ta" ? p.description_ta || p.description_en : p.description_en || p.description_ta) || null;
+/** "Thu, 1 October 2026" from the API's YYYY-MM-DD, with no time-zone shift. */
+function poojaDateLabel(ymd, lang) {
+  const d = new Date(`${ymd}T00:00:00`);
+  if (Number.isNaN(d.getTime())) return ymd ?? "";
+  return d.toLocaleDateString(lang === "ta" ? "ta-IN" : "en-IN", { weekday: "short", day: "numeric", month: "long", year: "numeric" });
+}
+
+function UpcomingPoojas({ t, lang, payOnline, officePhone }) {
+  const [poojas, setPoojas] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let alive = true;
+    api
+      .get("/poojas?upcoming=1&limit=6")
+      .then((r) => {
+        // The server's "upcoming" is its own today; a page left open past
+        // midnight IST must not keep offering yesterday's pooja (D-026).
+        const today = todayIST();
+        if (alive) setPoojas(Array.isArray(r.data) ? r.data.filter((p) => !p.date || p.date >= today) : []);
+      })
+      .catch(() => {})
+      .finally(() => {
+        if (alive) setLoading(false);
+      });
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  // Nothing scheduled: no section at all, rather than an empty band that
+  // promises poojas the committee has not planned.
+  if (!loading && poojas.length === 0) return null;
+
+  return (
+    <section className="section section--alt sevas-poojas" aria-labelledby="sevas-poojas-title">
+      <div className="container">
+        <SectionHeader
+          id="sevas-poojas-title"
+          align="split"
+          eyebrow={t("சிறப்பு பூஜைகள்", "Special poojas")}
+          title={t("வரவிருக்கும் சிறப்பு பூஜைகள்", "Upcoming special poojas")}
+          subtitle={t(
+            "பௌர்ணமி, பிரதோஷம், திருவிழா அபிஷேகங்கள் — ஒரு பூஜையை உங்கள் பெயரில் நடத்த ஸ்பான்சர் செய்யலாம்.",
+            "Pournami, Pradosham and festival abhishekams — sponsor one and it is performed in your name.",
+          )}
+          actions={
+            <Button to="/events" variant="outline" size="sm" icon={<LuCalendarDays aria-hidden="true" />}>
+              {t("நிகழ்வு நாட்காட்டி →", "Events calendar →")}
+            </Button>
+          }
+        />
+
+        {loading ? (
+          <>
+            <p className="sr-only" role="status">
+              {t("சிறப்பு பூஜைகள் ஏற்றப்படுகின்றன…", "Loading special poojas…")}
+            </p>
+            <SkeletonCards count={3} className="grid-auto pooja-grid" />
+          </>
+        ) : (
+          <ul className="grid-auto pooja-grid" role="list">
+            {poojas.map((p, i) => {
+              const name = poojaName(p, lang);
+              const altName = lang === "ta" ? p.name_en : p.name_ta;
+              const description = poojaDescription(p, lang);
+              const typeLabel = POOJA_TYPE_LABELS[p.type];
+              const sponsorLabel = t("இந்த பூஜையை ஸ்பான்சர் செய்ய", "Sponsor this pooja");
+              const callLabel = t(`ஸ்பான்சர் செய்ய அழைக்கவும்: ${formatPhone(officePhone)}`, `To sponsor, call ${formatPhone(officePhone)}`);
+              return (
+                <li
+                  key={p.id}
+                  className={`card card--static pooja-card${p.is_featured ? " pooja-card--featured" : ""} rise`}
+                  style={{ "--i": i }}
+                  data-pooja-id={p.id}
+                >
+                  {p.banner_url && (
+                    <div className="pooja-card__media">
+                      <img
+                        src={p.banner_url}
+                        alt=""
+                        loading="lazy"
+                        decoding="async"
+                        // A banner address that does not resolve hides the
+                        // picture box rather than showing a broken image.
+                        onError={(e) => {
+                          const box = e.currentTarget.parentElement;
+                          if (box) box.hidden = true;
+                        }}
+                      />
+                    </div>
+                  )}
+                  <div className="pooja-card__body">
+                    <div className="pooja-card__badges">
+                      {typeLabel && <Badge tone={LUNAR_TYPES.includes(p.type) ? "moon" : "default"}>{t(typeLabel[0], typeLabel[1])}</Badge>}
+                      {p.is_featured && (
+                        <Badge tone="gold" className="pooja-card__featured">
+                          <LuStar aria-hidden="true" /> {t("சிறப்பு", "Featured")}
+                        </Badge>
+                      )}
+                      {/* Streamed on the Live Darshan page (live_stream_enabled).
+                          No pulsing dot: that says "on air now", and a pooja
+                          three days out is not. */}
+                      {p.live_stream_enabled && (
+                        <Badge tone="danger" className="pooja-card__live">
+                          <LuTv aria-hidden="true" /> {t("நேரலை ஒளிபரப்பு", "Live stream")}
+                        </Badge>
+                      )}
+                    </div>
+                    <h3 className="pooja-card__name">{name}</h3>
+                    {altName && altName !== name && (
+                      <p className="pooja-card__alt" lang={lang === "ta" ? "en" : "ta"}>
+                        {altName}
+                      </p>
+                    )}
+                    <ul className="pooja-card__meta" role="list">
+                      <li>
+                        <LuCalendarDays aria-hidden="true" />
+                        <time dateTime={p.date}>{poojaDateLabel(p.date, lang)}</time>
+                      </li>
+                      {p.time && (
+                        <li>
+                          <LuClock aria-hidden="true" /> {p.time}
+                        </li>
+                      )}
+                    </ul>
+                    {description && <p className="pooja-card__desc">{description}</p>}
+
+                    <div className="pooja-card__foot">
+                      {p.sponsorship_amount != null && (
+                        <p className="pooja-card__price">
+                          <span className="pooja-card__amount text-gradient">{formatMoney(p.sponsorship_amount, "INR", lang)}</span>
+                          <span className="pooja-card__unit">{t("ஸ்பான்சர் தொகை", "sponsorship")}</span>
+                        </p>
+                      )}
+                      {/* Online when the gateway is on; the office otherwise, so a
+                          pooja can always be sponsored — just not always here. */}
+                      {p.sponsorship_available ? (
+                        payOnline ? (
+                          <Button
+                            to={`/donate?pooja=${p.id}`}
+                            variant="primary"
+                            size="sm"
+                            className="pooja-card__sponsor"
+                            icon={<LuHeartHandshake aria-hidden="true" />}
+                            aria-label={`${sponsorLabel} — ${name}`}
+                          >
+                            {sponsorLabel}
+                          </Button>
+                        ) : (
+                          <Button
+                            href={telHref(officePhone)}
+                            variant="outline"
+                            size="sm"
+                            className="pooja-card__sponsor"
+                            icon={<LuPhone aria-hidden="true" />}
+                            aria-label={`${callLabel} — ${name}`}
+                          >
+                            {callLabel}
+                          </Button>
+                        )
+                      ) : (
+                        <Badge tone="muted" className="pooja-card__closed">
+                          {t("ஸ்பான்சர் நிறைவு", "Fully sponsored")}
+                        </Badge>
+                      )}
+                    </div>
+                    {p.sponsor?.name && (
+                      <p className="pooja-card__sponsor-line">
+                        <LuHeart aria-hidden="true" />
+                        <span>
+                          {t("ஸ்பான்சர்: ", "Sponsored by ")}
+                          <strong>{p.sponsor.name}</strong>
+                          {p.sponsor.note ? ` — ${p.sponsor.note}` : ""}
+                        </span>
+                      </p>
+                    )}
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </div>
+    </section>
+  );
+}
+
 /* ── Page ───────────────────────────────────────────────────────── */
 export default function Sevas() {
   const [sevas, setSevas] = useState([]);
@@ -599,13 +836,21 @@ export default function Sevas() {
   const [params, setParams] = useSearchParams();
   // Fetched here, once, so the booking dialog knows at once whether it can
   // offer "pay online" instead of the choice appearing a beat after it opens.
-  usePaymentsConfig();
+  // The special-pooja cards read the same answer for their sponsor link.
+  const { config: paymentsConfig } = usePaymentsConfig();
+  const payOnline = paymentsUsable(paymentsConfig);
+  // The office number the committee typed (Admin → System → Settings), else
+  // the booklet's — for a seva or a sponsorship the website cannot take itself.
+  const { site } = useSiteSettings();
+  const officePhone = siteOfficeDigits(site, TEMPLE_PHONE.digits);
 
   const load = useCallback(() => {
     setLoading(true);
     setFailed(false);
+    // The whole list (the API's largest page), not its default first 50: this
+    // is the page that has to show every seva the committee offers.
     api
-      .get("/sevas")
+      .get("/sevas?limit=100")
       .then((r) => setSevas(Array.isArray(r.data) ? r.data : []))
       .catch(() => setFailed(true))
       .finally(() => setLoading(false));
@@ -627,25 +872,51 @@ export default function Sevas() {
    */
   const wantedSeva = useRef(params.get("seva"));
   const deepLinkDone = useRef(false);
+  // setParams is read through a ref because react-router hands back a new
+  // function whenever the location changes — as an effect dependency it would
+  // re-run the effect on its own writes and clear the parameter it had just set.
+  const setParamsRef = useRef(setParams);
+  setParamsRef.current = setParams;
+
+  // A new ?seva= while the page is already open (a search result for a seva)
+  // opens that seva's form too, under the same rules as the first link.
+  const sevaParam = params.get("seva");
+  const selectedRef = useRef(null);
+  selectedRef.current = selectedSeva;
+  useEffect(() => {
+    if (!deepLinkDone.current || !sevaParam || sevas.length === 0) return;
+    if (selectedRef.current && String(selectedRef.current.id) === sevaParam) return;
+    const match = sevas.find((s) => String(s.id) === sevaParam);
+    if (match && sevaBookable(match)) setSelectedSeva(match);
+  }, [sevaParam]);
 
   // A shared link must resolve to a current, active service.
   useEffect(() => {
     if (deepLinkDone.current || sevas.length === 0) return;
     deepLinkDone.current = true;
+    if (!wantedSeva.current) return;
     const match = sevas.find((s) => String(s.id) === wantedSeva.current);
-    if (match) setSelectedSeva(match);
+    // A shared link to a seva the office arranges by hand lands on its card,
+    // not on a form the office would have to refuse — and the address bar
+    // stops naming a form that was never opened (nor one that no longer exists).
+    if (match && sevaBookable(match)) {
+      setSelectedSeva(match);
+      return;
+    }
+    setParamsRef.current(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        next.delete("seva");
+        return next;
+      },
+      { replace: true },
+    );
   }, [sevas]);
 
   /*
    * The other direction, so the address bar always names the open form and can
    * be copied out of it. Skipped on the first run, where the URL is the truth.
-   *
-   * setParams is read through a ref because react-router hands back a new
-   * function whenever the location changes — as a dependency it would re-run
-   * this effect on its own writes and clear the parameter it had just set.
    */
-  const setParamsRef = useRef(setParams);
-  setParamsRef.current = setParams;
   const mounted = useRef(false);
   useEffect(() => {
     if (!mounted.current) {
@@ -668,6 +939,7 @@ export default function Sevas() {
   // Focus that card's Book button first so the dialog has a real opener to
   // return focus to on close (a click on the <li> leaves focus on <body>).
   function openFromCard(seva, e) {
+    if (!sevaBookable(seva)) return;
     if (typeof window !== "undefined" && window.getSelection?.()?.toString()) return;
     e?.currentTarget?.querySelector?.(".seva-card__book")?.focus?.({ preventScroll: true });
     setSelectedSeva(seva);
@@ -712,10 +984,10 @@ export default function Sevas() {
             )}
             actions={
               <Button
-                href={TEMPLE_PHONE.href}
+                href={telHref(officePhone)}
                 variant="outline"
                 icon={<LuPhone aria-hidden="true" />}
-                aria-label={`${callLabel} — ${TEMPLE_PHONE.display}`}
+                aria-label={`${callLabel} — ${formatPhone(officePhone)}`}
               >
                 {callLabel}
               </Button>
@@ -756,10 +1028,13 @@ export default function Sevas() {
                 const primaryName = sevaName(s, lang);
                 const altName = lang === "ta" ? s.name_en : s.name_ta;
                 const description = sevaDescription(s, lang);
+                const timing = sevaTiming(s, lang);
+                const bookable = sevaBookable(s);
+                const noteId = `seva-note-${s.id}`;
                 return (
                   <li
                     key={s.id}
-                    className="card card--interactive seva-card rise"
+                    className={`card ${bookable ? "card--interactive" : "card--static"} seva-card${bookable ? "" : " seva-card--locked"} rise`}
                     style={{ "--i": i }}
                     onClick={(e) => openFromCard(s, e)}
                   >
@@ -781,39 +1056,70 @@ export default function Sevas() {
                     {s.name_en === "Normal Annadhanam" && <>
                       <Badge tone="gold">{t("பரிந்துரைக்கப்படும் தொகை ₹10,000", "Recommended ₹10,000")}</Badge>
                     </>}
+                    {timing ? (
+                      <p className="seva-card__timing">
+                        <LuClock aria-hidden="true" /> {timing}
+                      </p>
+                    ) : null}
 
                     <div className="seva-card__foot">
                       {Number(s.amount) > 0 && <p className="seva-card__price">
-                          <span className="seva-card__amount text-gradient">{formatMoney(s.amount, "INR", lang)}</span>
-                          <span className="seva-card__unit">{t("சமர்ப்பணம்", "offering")}</span>
+                        <span className="seva-card__amount text-gradient">{formatMoney(s.amount, "INR", lang)}</span>
+                        <span className="seva-card__unit">{t("சமர்ப்பணம்", "offering")}</span>
                       </p>}
-                      <Button
-                        type="button"
-                        variant="gold"
-                        className="seva-card__book"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setSelectedSeva(s);
-                        }}
-                        aria-label={`${t("பதிவு செய்", "Book")} — ${primaryName}`}
-                      >
-                        {t("பதிவு செய் →", "Book →")}
-                      </Button>
+                      {/* A seva the office arranges by hand (migration 020
+                          is_bookable = 0) has no Book control at all: a button
+                          that can only refuse is a promise the page cannot
+                          keep. The note below says whom to call instead. */}
+                      {bookable && (
+                        <Button
+                          type="button"
+                          variant="gold"
+                          className="seva-card__book"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setSelectedSeva(s);
+                          }}
+                          aria-label={`${t("பதிவு செய்", "Book")} — ${primaryName}`}
+                        >
+                          {t("பதிவு செய் →", "Book →")}
+                        </Button>
+                      )}
                       {/* Icon-only: the price and the Book button own this row.
                           ?seva= reopens this offering's form for whoever
-                          receives the link. */}
+                          receives the link — only for a seva that has a form:
+                          an office-only seva shares the list itself. */}
                       <ShareButton
                         iconOnly
                         variant="ghost"
                         className="seva-card__share"
                         title={primaryName}
                         text={description || lead}
-                        to={`/sevas?seva=${s.id}`}
+                        to={bookable ? `/sevas?seva=${s.id}` : "/sevas"}
                       />
                       {Number(s.amount) <= 0 && <p className="seva-card__office-row">
                         <span className="seva-card__office-charge">{t("கட்டணத்திற்கு அலுவலகத்தை அணுகவும்", "Contact office for charges")}</span>
                       </p>}
                     </div>
+                    {!bookable && (
+                      <p id={noteId} className="seva-card__note" role="note">
+                        <LuPhone aria-hidden="true" />
+                        <span>
+                          {t(
+                            "இணையவழிப் பதிவு இல்லை. கோயில் அலுவலகத்தைத் தொடர்பு கொள்ளவும்: ",
+                            "Not bookable online. Contact the temple office: ",
+                          )}
+                          <a
+                            href={telHref(officePhone)}
+                            className="seva-card__note-link"
+                            onClick={(e) => e.stopPropagation()}
+                            aria-label={`${t("கோயில் அலுவலகத்தை அழைக்க", "Call the temple office")} — ${formatPhone(officePhone)}`}
+                          >
+                            {formatPhone(officePhone)}
+                          </a>
+                        </span>
+                      </p>
+                    )}
                   </li>
                 );
               })}
@@ -824,13 +1130,15 @@ export default function Sevas() {
             <LuPhone aria-hidden="true" />
             <p>
               {t(
-                `சேவை பதிவு செய்ய ${TEMPLE_PHONE.display} என்ற எண்ணில் அழைக்கவும் அல்லது காலை 8 – 12 மணி, மாலை 4 – 8 மணி நேரத்தில் கோயில் அலுவலகத்தை நேரில் அணுகவும்.`,
-                `To book a seva, call ${TEMPLE_PHONE.display} or visit the temple office between 8 AM – 12 PM and 4 PM – 8 PM.`,
+                `சேவை பதிவு செய்ய ${formatPhone(officePhone)} என்ற எண்ணில் அழைக்கவும் அல்லது காலை 8 – 12 மணி, மாலை 4 – 8 மணி நேரத்தில் கோயில் அலுவலகத்தை நேரில் அணுகவும்.`,
+                `To book a seva, call ${formatPhone(officePhone)} or visit the temple office between 8 AM – 12 PM and 4 PM – 8 PM.`,
               )}
             </p>
           </div>
         </div>
       </section>
+
+      <UpcomingPoojas t={t} lang={lang} payOnline={payOnline} officePhone={officePhone} />
 
       {selectedSeva && (
         <BookingModal

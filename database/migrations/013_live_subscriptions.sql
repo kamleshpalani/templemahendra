@@ -1,3 +1,7 @@
+-- The connection's character set, whatever client applies this file: without
+-- it a latin1 client (the Windows mysql default) stores Tamil text as '?'.
+SET NAMES utf8mb4;
+
 CREATE TABLE IF NOT EXISTS live_stream_subscriptions (
     id INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
     live_stream_id INT UNSIGNED NOT NULL,

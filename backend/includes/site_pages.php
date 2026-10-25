@@ -64,6 +64,18 @@ function sitePages(): array
             'பூஜைகள், திருவிழாக்கள், தரிசனப் பதிவுகள் மற்றும் சொற்பொழிவுகளின் காணொளிகள்.',
             'Videos of poojas, festivals, darshan recordings and discourses.',
         ],
+        // pages/Deities.jsx (brief §6 Deities) carries these exact strings.
+        '/deities' => [
+            'குலதெய்வங்கள்', 'Deities',
+            'கோயிலில் அருள்பாலிக்கும் தெய்வங்கள் — ஒவ்வொருவரின் பெயர், விவரம் மற்றும் திருவுருவப் படம்.',
+            'The deities worshipped at the temple — the name, description and image of each.',
+        ],
+        // pages/Sponsorship.jsx (brief §6 Sponsorship, §11) carries these exact strings.
+        '/sponsorship' => [
+            'பூஜை உபயம்', 'Sponsorship',
+            'வரவிருக்கும் பூஜைகளில் உபயம் அளித்து ஆசி பெறுங்கள்; பெயர் வெளியிட அனுமதி அளித்த உபயதாரர்களுக்கு இங்கே நன்றி.',
+            'Sponsor an upcoming pooja and receive the blessings; sponsors who agreed to be named are thanked here.',
+        ],
         // TRUST.name — the registered trust, in its own deity order.
         '/donations' => [
             'நன்கொடை', 'Donations',
@@ -187,6 +199,20 @@ function sitePathStatus(string $path): int
 {
     if (isset(sitePages()[$path])) return 200;
     if (in_array($path, SITE_REDIRECT_PATHS, true) || in_array($path, SITE_PRIVATE_PATHS, true)) return 200;
+    // One event's page (/events/<id>, brief §6): 200 while the event is shown,
+    // 404 once it is hidden or deleted. Same rule as a broadcast when the
+    // database cannot answer: assume the page exists.
+    if (preg_match('#^/events/([0-9]{1,10})$#', $path, $m)) {
+        try {
+            require_once __DIR__ . '/db.php';
+            $stmt = getDB()->prepare('SELECT 1 FROM events WHERE id = :id AND is_active = 1');
+            $stmt->execute([':id' => (int) $m[1]]);
+            return $stmt->fetchColumn() ? 200 : 404;
+        } catch (Throwable $e) {
+            error_log('[spa] ' . get_class($e) . ': ' . $e->getMessage());
+            return 200;
+        }
+    }
     if (preg_match('#^/live-darshan/([0-9]{1,10}|[a-z0-9][a-z0-9-]{1,118})$#i', $path, $m)) {
         try {
             require_once __DIR__ . '/db.php';

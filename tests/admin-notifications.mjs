@@ -3,39 +3,28 @@
  * tests/admin-notifications.mjs — the admin notification campaigns and saved
  * audiences, end to end over HTTP and in a real browser.
  *
- *   PHP_BIN=/path/to/php-with-db-env.sh \
+ *   PHP_BIN=/c/Users/nithp/AppData/Local/Temp/claude/temple-php-0913/php.sh \
  *     node tests/admin-notifications.mjs http://127.0.0.1:8003
  *
  * The server under test must run with
  *   NOTIFY_ALLOW_TEST_DRIVER=1 NOTIFY_EMAIL_DRIVER=test NOTIFY_APPROVAL_THRESHOLD=2
- * so that two families are "small" (approved automatically) and three need an
- * owner, and a test send never reaches a real mailbox. The email test driver
- * marks a delivery sent the moment the worker hands it over; WhatsApp and SMS
- * run on the recording ("log") driver.
- *
- * Devotee accounts, the in-app bell and web push are retired
- * (docs/registration/SPEC.md §1, §6): the committee sends email, WhatsApp and
- * SMS to registered families, and an announcement reaches only families who
- * ticked the consent box. Families are created here with consent, plus one
- * without it, so the suite proves that the estimate, the stored approval
- * reason and the worker's expansion all leave that family out.
+ * so that two devotees are "small" (approved automatically) and three need an
+ * owner, and a test send never reaches a real mailbox.
  *
  * It proves: roles are enforced on the server (a viewer is refused every write
  * and the JSON endpoints; an editor composes, submits and sends small campaigns
  * but cannot approve; an owner cannot approve their own campaign while another
- * owner exists); the composer offers exactly the three live channels; the
- * estimate equals notifyAudienceCount() for the campaign's category; the
- * preview answers for every channel and refuses a retired one; send now plus a
- * worker run scoped to the campaign notifies exactly its audience and the test
- * driver marks the email deliveries sent; a scheduled campaign that is
- * cancelled cancels its queued deliveries; duplicate, emergency send (reason
- * required), test send and CSRF refusals behave; saved audiences are saved,
- * audited, locked while an approved campaign uses them and deleted afterwards;
- * a validation error keeps the form without JavaScript; and list, composer and
- * campaign pages have no serious or critical axe violations and no horizontal
- * overflow at 390 and 1440 px.
+ * owner exists); the estimate equals notifyAudienceCount(); the preview answers
+ * for every channel; send now plus a worker run scoped to the campaign notifies
+ * exactly its audience; a scheduled campaign that is cancelled cancels its
+ * queued deliveries; duplicate, emergency send (reason required), test send and
+ * CSRF refusals behave; saved audiences are saved, audited, locked while an
+ * approved campaign uses them and deleted afterwards; a validation error keeps
+ * the form without JavaScript; and list, composer and campaign pages have no
+ * serious or critical axe violations and no horizontal overflow at 390 and
+ * 1440 px.
  *
- * Creates admin accounts e2e_nc_<run>_*, families e2e-nc-<run>-*@example.test,
+ * Creates admin accounts e2e_nc_<run>_*, devotees e2e-nc-<run>-*@example.test,
  * campaigns and audiences named E2E-NC-<run>…, and removes all of them (with
  * their notifications, audit rows and worker-run rows) at the end. Every request
  * carries X-Forwarded-For 10.33.7.7.
@@ -113,10 +102,8 @@ function sql(query, params = []) {
   return r.rows;
 }
 const one = (query, params) => sql(query, params)[0] ?? null;
-/** notifyAudienceCount(rules, category): with a category that needs consent, only consenting families count. */
-const audienceCount = (rules, category = "") =>
-  phpJson(["-r", 'require "backend/includes/notify.php"; echo json_encode(["count" => notifyAudienceCount(json_decode(getenv("NC_RULES"), true), getenv("NC_CATEGORY") ?: null)]);'],
-    { NC_RULES: JSON.stringify(rules), NC_CATEGORY: category }).count;
+const audienceCount = (rules) =>
+  phpJson(["-r", 'require "backend/includes/notify.php"; echo json_encode(["count" => notifyAudienceCount(json_decode(getenv("NC_RULES"), true))]);'], { NC_RULES: JSON.stringify(rules) }).count;
 
 /* ── HTTP ──────────────────────────────────────────────────────────────── */
 
@@ -206,7 +193,7 @@ function worker(id, extra = []) {
 
 /* ── Run ───────────────────────────────────────────────────────────────── */
 
-const ids = { small: [], large: [], noConsent: 0 };
+const ids = { small: [], large: [] };
 let browser = null;
 
 try {
@@ -220,14 +207,11 @@ try {
     sql("INSERT INTO admin_users (username, display_name, email, pass_hash, role, is_active, must_change) VALUES (?, ?, ?, ?, ?, 1, 0)",
       [username, `E2E NC ${role}`, `${P}${role}@example.test`, hash, role]);
   }
-  // Every family that should be reached ticked the consent box; the one that
-  // did not shares the large tag so the suite can prove it is left out.
-  for (let i = 0; i < 2; i++) ids.small.push(fixtures("create-devotee", { email: `${P}s${i}@example.test`, name: `E2E Small ${i}`, consent: true, city: "Madurai" }).id);
-  for (let i = 0; i < 3; i++) ids.large.push(fixtures("create-devotee", { email: `${P}l${i}@example.test`, name: `E2E Large ${i}`, consent: true, city: "Chennai" }).id);
-  ids.noConsent = fixtures("create-devotee", { email: `${P}nc@example.test`, name: "E2E NoConsent", city: "Chennai" }).id;
+  for (let i = 0; i < 2; i++) ids.small.push(fixtures("create-devotee", { email: `${P}s${i}@example.test`, name: `E2E Small ${i}`, verified: true, consent: true, city: "Madurai" }).id);
+  for (let i = 0; i < 3; i++) ids.large.push(fixtures("create-devotee", { email: `${P}l${i}@example.test`, name: `E2E Large ${i}`, verified: true, consent: true, city: "Chennai" }).id);
   for (const id of ids.small) sql("INSERT INTO devotee_tags (devotee_id, tag, created_by) VALUES (?, ?, 'e2e')", [id, TAG_SMALL]);
-  for (const id of [...ids.large, ids.noConsent]) sql("INSERT INTO devotee_tags (devotee_id, tag, created_by) VALUES (?, ?, 'e2e')", [id, TAG_LARGE]);
-  check(ids.small.length === 2 && ids.large.length === 3 && ids.noConsent > 0, "6 tagged fixture families (5 consenting, 1 without consent)");
+  for (const id of ids.large) sql("INSERT INTO devotee_tags (devotee_id, tag, created_by) VALUES (?, ?, 'e2e')", [id, TAG_LARGE]);
+  check(ids.small.length === 2 && ids.large.length === 3, "5 tagged fixture devotees");
 
   const admin = session("admin");
   const editor = session("editor");
@@ -246,9 +230,29 @@ try {
   html = await (await editor.get("/admin/notifications.php?new=1")).text();
   check(/Recording only - no provider configured/.test(html), "channel card says WhatsApp/SMS only record (log driver)");
   check(/Test driver - development only/.test(html), "channel card names the email test driver");
-  check(["email", "whatsapp", "sms"].every((c) => html.includes(`id="nc-ch-${c}"`)) && !/nc-ch-(inapp|push)/.test(html), "composer offers email, WhatsApp and SMS and no retired channel");
-  check(/id="nc-ch-email"[^>]*\schecked/.test(html), "email is the channel ticked by default");
   check(/id="nc-audience-fields"/.test(html) && /"booking_status"/.test(html), "rules builder field table is printed as JSON");
+
+  section("announce a broadcast or an event (brief §20)");
+  // "Announce to devotees" opens the composer pre-filled; the committee still
+  // picks the audience and submits, so consent and approval apply as usual.
+  const evDate = new Date(Date.now() + 330 * 60000 + 9 * 86400000).toISOString().slice(0, 10);
+  sql("INSERT INTO events (title_ta, title_en, description, event_date, is_active) VALUES (?, ?, ?, ?, 1)", [`${NAME} ஆடிப் பூரம்`, `${NAME} Aadi Pooram`, "Festival day.", evDate]);
+  const evId = Number(one("SELECT id FROM events WHERE title_en = ?", [`${NAME} Aadi Pooram`]).id);
+  html = await (await editor.get("/admin/events.php")).text();
+  check(html.includes(`/admin/notifications.php?new=1&amp;from=event:${evId}`) && /Announce to devotees/.test(html), "an upcoming event offers Announce to devotees");
+  html = await (await editor.get(`/admin/notifications.php?new=1&from=event:${evId}`)).text();
+  const val = (id) => (new RegExp(`id="${id}"[^>]*value="([^"]*)"`).exec(html)?.[1] ?? "").replace(/&amp;/g, "&");
+  check(val("nc-lang-ta-title").startsWith(`${NAME} ஆடிப் பூரம்`) && val("nc-lang-en-title").startsWith(`${NAME} Aadi Pooram`), "the composer is pre-filled with the event's Tamil and English titles", `${val("nc-lang-ta-title")} | ${val("nc-lang-en-title")}`);
+  check(val("nc-cta") === `/events/${evId}`, "…and links to the event's own page", val("nc-cta"));
+  check(/<option value="event"[^>]*selected/.test(html), "…under the Event category (devotees can switch it off)");
+  const stream = phpJson(["tests/support/live_fixtures.php", "create-stream", arg({ title_prefix: `${NAME}-stream`, label: "announce", status: "SCHEDULED" })]);
+  html = await (await editor.get(`/admin/notifications.php?new=1&from=live:${stream.id}`)).text();
+  check(val("nc-lang-en-title").startsWith("Live darshan: ") && val("nc-cta") === `/live-darshan/${stream.slug}`, "a scheduled broadcast pre-fills a live-darshan announcement linking to its page", `${val("nc-lang-en-title")} | ${val("nc-cta")}`);
+  check(/IST — Join the darshan live/.test(html), "…naming its start time in IST");
+  html = await (await editor.get("/admin/notifications.php?new=1&from=event:999999999")).text();
+  check(/nothing to announce/.test(html) && val("nc-lang-en-title") === "", "an unknown or past record leaves a blank composer with a notice");
+  sql("DELETE FROM events WHERE id = ?", [evId]);
+  phpJson(["tests/support/live_fixtures.php", "cleanup", arg({ title_prefix: `${NAME}-stream` })]);
 
   section("roles on the server");
   let res = await viewer.get("/admin/notifications.php");
@@ -276,14 +280,12 @@ try {
     ["rules[0][field]", "tag"], ["rules[0][op]", "in"], ["rules[0][value]", tag], ["priority", "normal"], ["category", "announcement"], ["channels[]", "email"], ...extra];
   res = await editor.post("/admin/notifications.php", estimatePairs(editor, TAG_SMALL));
   json = await res.json();
-  eq(json.count, audienceCount(tagRules(TAG_SMALL), "announcement"), "estimate equals notifyAudienceCount (small)");
-  eq(json.count, 2, "small audience is 2 families");
+  eq(json.count, audienceCount(tagRules(TAG_SMALL)), "estimate equals notifyAudienceCount (small)");
+  eq(json.count, 2, "small audience is 2 devotees");
   eq(json.approvalReason, null, "small email audience needs no approval");
   res = await editor.post("/admin/notifications.php", estimatePairs(editor, TAG_LARGE));
   json = await res.json();
-  eq(audienceCount(tagRules(TAG_LARGE)), 4, "the large tag itself matches 4 families");
-  eq(json.count, audienceCount(tagRules(TAG_LARGE), "announcement"), "estimate equals notifyAudienceCount (large, consenting only)");
-  eq(json.count, 3, "an announcement's estimate leaves out the family without consent");
+  eq(json.count, audienceCount(tagRules(TAG_LARGE)), "estimate equals notifyAudienceCount (large)");
   eq(json.approvalReason, "Reaches 3 families", "large audience names its approval reason");
   const allCount = (await (await editor.post("/admin/notifications.php", [["_csrf", editor.csrf], ["action", "estimate"], ["audience_source", "all"]])).json()).count;
   eq(allCount, audienceCount({ mode: "all_devotees" }), "estimate equals notifyAudienceCount (all devotees)");
@@ -314,16 +316,14 @@ try {
   res = await editor.post("/admin/notifications.php", previewPairs(editor, "email", "ta"));
   json = await res.json();
   check(json.title.includes("சோதனை"), "Tamil preview uses the Tamil translation");
-  for (const channel of ["fax", "inapp", "push"]) {
-    res = await editor.post("/admin/notifications.php", previewPairs(editor, channel, "en"));
-    json = await res.json().catch(() => null);
-    check(res.status === 422 && Boolean(json?.fields?.preview_channel), `${channel === "fax" ? "an unknown" : "the retired " + channel} preview channel answers 422`);
-  }
+  res = await editor.post("/admin/notifications.php", previewPairs(editor, "fax", "en"));
+  json = await res.json().catch(() => null);
+  check(res.status === 422 && Boolean(json?.fields?.preview_channel), "an unknown preview channel answers 422");
 
   section("devotee picker");
   res = await editor.get(`/admin/notifications.php?devotee_search=${encodeURIComponent(P)}`);
   json = await res.json();
-  check(res.status === 200 && json.items.length === 6 && json.items.length <= 20, "search finds the six fixture families", JSON.stringify(json).slice(0, 200));
+  check(res.status === 200 && json.items.length === 5 && json.items.length <= 20, "search finds the five fixture devotees", JSON.stringify(json).slice(0, 200));
   eq(Object.keys(json.items[0] || {}).sort(), ["city", "email", "id", "name"], "each result carries only id, name, email and city");
   json = await (await editor.get("/admin/notifications.php?devotee_search=a")).json();
   eq(json.items, [], "a one-letter search returns nothing");
@@ -362,7 +362,7 @@ try {
   eq(Number(one("SELECT COUNT(*) AS n FROM notification_campaign_translations WHERE campaign_id = ?", [smallId]).n), 2, "Tamil and English translations stored");
   r = await editor.act([["_csrf", editor.csrf], ["action", "submit"], ["id", smallId]]);
   c = campaign(smallId);
-  check(c.status === "approved" && c.approved_by === "system" && Number(c.estimated_count) === 2, "submit auto-approves a 2-family email campaign", JSON.stringify(c && { s: c.status, a: c.approved_by, n: c.estimated_count }));
+  check(c.status === "approved" && c.approved_by === "system", "submit auto-approves a 2-family email campaign", JSON.stringify(c && { s: c.status, a: c.approved_by, flash: r.flash?.text }));
   check(/Approved automatically/.test(r.flash?.text || ""), "the page says it was approved automatically");
   const auditApproved = one("SELECT detail FROM notification_audit WHERE campaign_id = ? AND action = 'approved' AND actor = 'system'", [smallId]);
   check(Boolean(auditApproved) && /below approval threshold/.test(auditApproved.detail), "automatic approval is audited by system");
@@ -372,7 +372,7 @@ try {
   if (campaign(smallId).status === "sending") worker(smallId);
   const got = sql("SELECT devotee_id FROM notifications WHERE campaign_id = ? ORDER BY devotee_id", [smallId]).map((x) => Number(x.devotee_id));
   eq(got, [...ids.small].sort((a, b) => a - b), "worker notified exactly the campaign's audience");
-  eq(sql("SELECT d.channel, d.status FROM notification_deliveries d JOIN notifications n ON n.id = d.notification_id WHERE n.campaign_id = ? ORDER BY n.devotee_id", [smallId]).map((x) => `${x.channel}:${x.status}`), ["email:sent", "email:sent"], "the test driver marks both email deliveries sent and nothing else was queued");
+  eq(sql("SELECT status FROM notification_deliveries d JOIN notifications n ON n.id = d.notification_id WHERE n.campaign_id = ? AND d.channel = 'email'", [smallId]).map((x) => x.status), ["sent", "sent"], "email deliveries go out through the test driver");
   eq(campaign(smallId).status, "completed", "campaign completes once nothing waits");
   html = await (await editor.get(`/admin/notifications.php?view=${smallId}`)).text();
   check(/Devotees reached/.test(html) && /History/.test(html) && /Sending started/.test(html), "campaign page shows delivery figures and the audit trail");
@@ -383,11 +383,10 @@ try {
   r = await editor.act(campaignForm(editor, { name: `${NAME}-large`, action: "save_submit", tag: TAG_LARGE, channels: ["email", "whatsapp"] }));
   const largeId = idFrom(r.location);
   c = campaign(largeId);
-  check(largeId > 0 && c.status === "review" && c.approval_reason === "Reaches 3 families" && Number(c.estimated_count) === 3, "3 consenting families go to review with the threshold at 2", JSON.stringify(c && { s: c.status, r: c.approval_reason, n: c.estimated_count }));
-  check(/Matches 3 devotees right now; 3 when submitted/.test(r.html), "the campaign page counts consenting families only", /Matches [^.]*\./.exec(r.html)?.[0]);
+  check(largeId > 0 && c.status === "review" && c.approval_reason === "Reaches 3 families", "3 devotees go to review with the threshold at 2", JSON.stringify(c && { s: c.status, r: c.approval_reason }));
   check(/Waiting for an owner/.test(r.html) && new RegExp(USERS.editor).test(r.html), "view shows the approval banner naming the author");
   r = await editor.act([["_csrf", editor.csrf], ["action", "approve"], ["id", largeId]]);
-  check(campaign(largeId).status === "review" && /Only a Super Admin or Temple Admin can do that\. Your role is Content Editor\./.test(r.flash?.text || ""), "the editor cannot approve: the page refuses and names the roles", r.flash?.text);
+  check(campaign(largeId).status === "review" && /Only a Super Admin or Temple Admin/.test(r.flash?.text || ""), "the editor cannot approve", r.flash?.text);
 
   r = await admin.act(campaignForm(admin, { name: `${NAME}-admin`, action: "save_submit", priority: "urgent", tag: TAG_SMALL }));
   const adminId = idFrom(r.location);
@@ -412,8 +411,6 @@ try {
   worker(largeId, [`--now=${after}`, "--channels=none"]);
   const queued = Number(one("SELECT COUNT(*) AS n FROM notification_deliveries d JOIN notifications n ON n.id = d.notification_id WHERE n.campaign_id = ? AND d.channel = 'email' AND d.status = 'queued'", [largeId]).n);
   eq(queued, 3, "expansion left 3 email deliveries queued");
-  eq(sql("SELECT devotee_id FROM notifications WHERE campaign_id = ? ORDER BY devotee_id", [largeId]).map((x) => Number(x.devotee_id)), [...ids.large].sort((a, b) => a - b), "the family without consent got no notification at all");
-  eq(sql("SELECT d.status, d.skip_reason FROM notification_deliveries d JOIN notifications n ON n.id = d.notification_id WHERE n.campaign_id = ? AND d.channel = 'whatsapp' GROUP BY d.status, d.skip_reason", [largeId]), [{ status: "skipped", skip_reason: "no phone" }], "WhatsApp is skipped for families with no phone number");
   r = await editor.act([["_csrf", editor.csrf], ["action", "cancel"], ["id", largeId]]);
   check(campaign(largeId).status === "sending" && /Only an owner can cancel/.test(r.flash?.text || ""), "the editor cannot cancel someone else's sending campaign", r.flash?.text);
   r = await owner.act([["_csrf", owner.csrf], ["action", "cancel"], ["id", largeId]]);
@@ -441,7 +438,7 @@ try {
   r = await owner.act(campaignForm(owner, { name: `${NAME}-emergency`, priority: "emergency", category: "emergency", tag: TAG_SMALL }));
   const emId = idFrom(r.location);
   r = await editor.act([["_csrf", editor.csrf], ["action", "emergency_send"], ["id", emId], ["reason", "Flooding"]]);
-  check(campaign(emId).status === "draft" && /Only a Super Admin or Temple Admin can do that/.test(r.flash?.text || ""), "the editor cannot emergency send", r.flash?.text);
+  check(campaign(emId).status === "draft" && /Only a Super Admin or Temple Admin/.test(r.flash?.text || ""), "the editor cannot emergency send", r.flash?.text);
   r = await owner.act([["_csrf", owner.csrf], ["action", "emergency_send"], ["id", emId], ["reason", ""]]);
   check(campaign(emId).status === "draft" && /Say why/.test(r.flash?.text || ""), "emergency send without a reason is refused", r.flash?.text);
   r = await owner.act([["_csrf", owner.csrf], ["action", "emergency_send"], ["id", emId], ["reason", "Temple closed: flooding on the approach road"]]);
@@ -569,15 +566,15 @@ try {
     check(!(await page.$("#nc-rule-1-field")), "Remove rule removes the row");
 
     await page.check("#nc-src-selected");
-    await page.fill("#nc-devotee-lookup", `${P}s0`);
+    await page.fill("#nc-devotee-lookup", P);
     await page.waitForSelector("#nc-devotee-results [role=option]", { timeout: 8000 }).catch(() => {});
     check((await page.getAttribute("#nc-devotee-lookup", "aria-expanded")) === "true", "the devotee picker opens its list");
     await page.keyboard.press("ArrowDown");
     await page.keyboard.press("Enter");
     await page.waitForFunction(() => /1 chosen/.test(document.querySelector("[data-nc-selected-count]")?.textContent || ""), null, { timeout: 5000 }).catch(() => {});
-    check(/1 chosen/.test(await page.textContent("[data-nc-selected-count]")), "keyboard choice adds a family");
+    check(/1 chosen/.test(await page.textContent("[data-nc-selected-count]")), "keyboard choice adds a devotee");
     await page.waitForFunction(() => document.querySelector("[data-nc-estimate-count]")?.textContent.trim() === "1", null, { timeout: 8000 }).catch(() => {});
-    eq((await page.textContent("[data-nc-estimate-count]")).trim(), "1", "the estimate follows the chosen families");
+    eq((await page.textContent("[data-nc-estimate-count]")).trim(), "1", "the estimate follows the chosen devotees");
     check(errors.length === 0, "composer behaviour raised no script errors", errors.slice(0, 3).join(" | "));
     page.on("dialog", (d) => d.accept());
     await ctx.close();

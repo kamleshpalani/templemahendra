@@ -210,6 +210,9 @@ export default function Donations() {
                   </p>
                   <Button to="/donate" variant="gold" trailingIcon={<LuArrowRight aria-hidden="true" />}>
                     {t("இணையவழியில் வழங்க", "Donate online")}
+                  </Button>{" "}
+                  <Button to="/sponsorship" variant="soft">
+                    {t("பூஜை உபயம் செய்ய", "Sponsor a pooja")}
                   </Button>
                 </div>
               </div>

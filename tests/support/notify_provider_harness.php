@@ -14,6 +14,10 @@
  *   send        {"channel","driver","env"?,"core"?,"message":{NotifyMessage fields by name}}
  *               → {"provider","class","configured","result":{status,messageId,reason,response,
  *                  retryAfter,recordedOnly}}
+ *   retired     {"channel","driver"?,"env"?,"message"?} → the provider the service itself
+ *               returns for that channel (no harness channel check), what a send
+ *               through it does, the provider registry's channels and any retired
+ *               provider class that still loads — proof that in-app and push are gone
  *   webhook     {"channel","driver","env"?,"method","headers"?,"body"?,"query"?,"url"?}
  *               → {"provider","result": handleWebhook()'s array}
  *   configured  {"channel","driver","env"?} → {"provider","class","configured"}
@@ -24,8 +28,7 @@
  * "env" sets environment variables for that one operation; null unsets one.
  * Whatever an operation set is restored before the next, so batched cases
  * never inherit each other's settings. "core": true loads notify.php (when it
- * exists) first, as the worker would — for a case that needs the service's
- * functions beside the provider.
+ * exists) first, as the worker would.
  *
  * The database environment comes from the caller (PHP_BIN=php.sh in the suites).
  */
@@ -144,6 +147,21 @@ function harnessRun(string $command, array $args, HarnessEnv $env): array
             );
             return ['provider' => $provider->name(), 'result' => $result];
 
+        case 'retired':
+            $channel  = (string) ($args['channel'] ?? '');
+            $provider = notifyProviderFor($channel, true);
+            $result   = $provider->send(harnessMessage(is_array($args['message'] ?? null) ? $args['message'] : [], $channel));
+            $gone     = ['NotifyWebPushProvider', 'NotifyFcmProvider', 'NotifyPushProvider', 'NotifyInAppProvider', 'NotifyInappProvider'];
+            return [
+                'provider'       => $provider->name(),
+                'class'          => get_class($provider),
+                'configured'     => $provider->isConfigured(),
+                'result'         => harnessResult($result),
+                'registry'       => array_keys(notifyProviderRegistry()),
+                'channels'       => NOTIFY_CHANNELS,
+                'retiredClasses' => array_values(array_filter($gone, 'class_exists')),
+            ];
+
         case 'configured':
             $provider = harnessProvider($args);
             return ['provider' => $provider->name(), 'class' => get_class($provider), 'configured' => $provider->isConfigured()];
@@ -166,7 +184,7 @@ function harnessRun(string $command, array $args, HarnessEnv $env): array
                 'applyProviderUpdate' => function_exists('notifyApplyProviderUpdate'),
             ];
     }
-    throw new InvalidArgumentException('unknown command; use send, webhook, configured, sendmail, core or batch');
+    throw new InvalidArgumentException('unknown command; use send, webhook, retired, configured, sendmail, core or batch');
 }
 
 $command = $argv[1] ?? '';

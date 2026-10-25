@@ -225,6 +225,12 @@ try {
   check(murugan.is_active === 1 && murugan.publish_consent === 0, "consent is off unless the box is ticked");
   let a = audits("sponsor_created", murugan.id);
   check(a.n === 1 && /no consent/.test(a.detail ?? ""), "creation is audited with the consent state", JSON.stringify(a));
+  // Brief §20: a sponsorship recorded as PAID is confirmed to the sponsor once,
+  // in the site's language, by e-mail and on the phone; saving again sends nothing.
+  const confirmations = () => sql("SELECT event, to_email, to_phone, dedupe_key, lang FROM notifications WHERE entity_type = 'sponsor' AND entity_id = ?", [murugan.id]).rows;
+  let conf = confirmations();
+  check(r.headers?.get?.("location") !== null && conf.length >= 1 && conf.every((n) => n.event === "sponsor.confirmed" && String(n.dedupe_key).startsWith(`sponsor:${murugan.id}:confirmed`)), "a PAID sponsorship queues its sponsor.confirmed", JSON.stringify(conf));
+  check(conf.some((n) => n.to_email === EMAIL) && conf.every((n) => !n.to_email || n.to_email === EMAIL), "…to the sponsor's own address", JSON.stringify(conf.map((n) => n.to_email)));
 
   /* ── E2E-010: active without consent is hidden everywhere ──────────── */
   const widgetsBefore = one("SELECT COUNT(*) AS n FROM homepage_widgets WHERE is_active = 1").n;
@@ -423,6 +429,11 @@ try {
   r = await owner.get("/admin/homepage_widgets.php");
   check(r.status === 200 && new RegExp(`${P} by finance \\(no publish consent\\)`).test(r.text), "widget editor marks a sponsor without consent", `${r.status}`);
 
+  // Saving the sponsorship as PAID again later (it went PENDING in between)
+  // must not confirm it a second time: the dedupe key is per sponsor.
+  conf = confirmations();
+  r = await save({ id: String(murugan.id), name: `${P} முருகன்`, family_name: `${P} முருகன் குடும்பம்`, phone: PHONE, email: EMAIL, pooja_id: "", event_id: "", /* both were deleted by the checks above */ amount: "5,000.50", payment_status: "PAID", payment_ref: `UPI-${RUN}`, note: `${P} அன்னதானம்`, is_active: "1" });
+  check(redirected(r) && confirmations().length === conf.length, "saving the paid sponsorship again sends no second confirmation", `${r.status} ${flashOf(r.text)} · ${conf.length} → ${confirmations().length}`);
   check(!FATAL.test(log), "no PHP warnings, notices or fatals in the server log", log.slice(-600));
   console.log(`\nsponsors: ${checks} passed, 0 failed`);
 } catch (e) {
@@ -432,6 +443,7 @@ try {
 } finally {
   try {
     sql("DELETE FROM homepage_widgets WHERE title_en LIKE ?", [`${P}%`]);
+    sql("DELETE FROM notifications WHERE entity_type = 'sponsor' AND entity_id IN (SELECT id FROM (SELECT id FROM sponsors WHERE name LIKE ? OR family_name LIKE ?) x)", [`${P}%`, `${P}%`]);
     sql("DELETE FROM sponsors WHERE name LIKE ? OR family_name LIKE ?", [`${P}%`, `${P}%`]);
     sql("DELETE FROM events WHERE title_en LIKE ?", [`${P}%`]);
     sql("DELETE FROM poojas WHERE name_en LIKE ?", [`${P}%`]);

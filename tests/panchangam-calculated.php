@@ -1,5 +1,6 @@
 <?php
 require_once __DIR__ . '/../backend/includes/panchangam_calculated.php';
+require_once __DIR__ . '/../backend/includes/panchangam.php';
 $checks = 0;
 function checkPanchangam(bool $ok, string $message): void {
     global $checks;
@@ -12,6 +13,7 @@ foreach (range(2020, 2035) as $year) {
         checkPanchangam(count($result['days']) === cal_days_in_month(CAL_GREGORIAN, $month, $year), 'Month length');
         foreach ($result['days'] as $day) {
             checkPanchangam($day['tithi'] >= 0 && $day['tithi'] <= 29, 'Tithi range');
+            checkPanchangam(panchTithi($year, $month, $day['day']) === $day['tithi'], 'Generated poojas use calendar sunrise tithi');
             checkPanchangam(!$day['verified'] && $day['calculated'], 'Provenance');
             checkPanchangam($day['timings']['nalla_neram'] === [] && $day['nakshatram_en'] === null, 'No invented auspicious data');
             checkPanchangam($day['sunrise'] < $day['sunset'], 'Solar ordering');

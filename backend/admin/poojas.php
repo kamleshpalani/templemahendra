@@ -4,23 +4,43 @@ require_once __DIR__ . '/../includes/auth.php';
 requireAdminAuth();
 require_once __DIR__ . '/../includes/db.php';
 require_once __DIR__ . '/../includes/helpers.php';
+require_once __DIR__ . '/../includes/public_guard.php';
+require_once __DIR__ . '/../includes/panchangam.php';
 require_once __DIR__ . '/includes/admin_layout.php';
 
 $db = getDB();
 
+// Migration 024: typed times, sponsorship price and availability, banner,
+// featured and live-stream flags, more pooja types, "Generate from Panchangam".
+$pV2 = publicGuardHasColumn('poojas', 'start_time');
+
 // ── Vocabulary ───────────────────────────────────────────────────────────────
 $typeLabels = [ // Tamil + English — used in the form select
-    'pournami' => 'பௌர்ணமி (Pournami)',
-    'amavasai' => 'அமாவாசை (Amavasai)',
-    'ekadasi'  => 'ஏகாதசி (Ekadasi)',
-    'sashti'   => 'சஷ்டி (Sashti)',
-    'special'  => 'Special',
-    'monthly'  => 'Monthly',
-    'daily'    => 'Daily',
+    'pournami'   => 'பௌர்ணமி (Pournami)',
+    'amavasai'   => 'அமாவாசை (Amavasai)',
+    'ekadasi'    => 'ஏகாதசி (Ekadasi)',
+    'sashti'     => 'சஷ்டி (Sashti)',
+    'pradosham'  => 'பிரதோஷம் (Pradosham)',
+    'chaturthi'  => 'சங்கடஹர சதுர்த்தி (Sankatahara Chaturthi)',
+    'abhishekam' => 'அபிஷேகம் (Abhishekam)',
+    'archana'    => 'அர்ச்சனை (Archana)',
+    'festival'   => 'திருவிழா (Festival)',
+    'special'    => 'Special',
+    'monthly'    => 'Monthly',
+    'daily'      => 'Daily',
 ];
-$typeEnglish = ['pournami' => 'Pournami', 'amavasai' => 'Amavasai', 'ekadasi' => 'Ekadasi', 'sashti' => 'Sashti', 'special' => 'Special', 'monthly' => 'Monthly', 'daily' => 'Daily'];
-$typeTones   = ['pournami' => 'moon', 'amavasai' => '', 'ekadasi' => 'sage', 'sashti' => 'sage', 'special' => 'gold', 'monthly' => 'info', 'daily' => 'info'];
+$typeEnglish = ['pournami' => 'Pournami', 'amavasai' => 'Amavasai', 'ekadasi' => 'Ekadasi', 'sashti' => 'Sashti',
+                'pradosham' => 'Pradosham', 'chaturthi' => 'Sankatahara Chaturthi', 'abhishekam' => 'Abhishekam', 'archana' => 'Archana', 'festival' => 'Festival',
+                'special' => 'Special', 'monthly' => 'Monthly', 'daily' => 'Daily'];
+$typeTones   = ['pournami' => 'moon', 'amavasai' => '', 'ekadasi' => 'sage', 'sashti' => 'sage',
+                'pradosham' => 'warning', 'chaturthi' => 'info', 'abhishekam' => 'gold', 'archana' => 'gold', 'festival' => 'danger',
+                'special' => 'gold', 'monthly' => 'info', 'daily' => 'info'];
+if (!$pV2) {
+    foreach (['pradosham', 'chaturthi', 'abhishekam', 'archana', 'festival'] as $t) unset($typeLabels[$t], $typeEnglish[$t], $typeTones[$t]);
+}
 $types       = array_keys($typeLabels);
+$imageOk     = static fn(string $u): bool => $u === '' || preg_match('#^(/(uploads|images|icons)/[A-Za-z0-9._/-]+|https://[^\s"<>]+)$#', $u) === 1;
+$clockOk     = static fn(string $t): bool => $t === '' || preg_match('/^([01]\d|2[0-3]):[0-5]\d$/', $t) === 1;
 
 // ── Filters (GET, whitelisted) ───────────────────────────────────────────────
 $get  = fn(string $k): string => is_string($_GET[$k] ?? null) ? $_GET[$k] : '';
@@ -68,6 +88,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $ptype     = in_array($post('pooja_type'), $types, true) ? $post('pooja_type') : 'special';
             $is_active = isset($_POST['is_active']) ? 1 : 0;
             $id        = (int) ($_POST['id'] ?? 0);
+            // Migration 024 fields (ignored, and never written, on an older database)
+            $start     = $pV2 ? trim($post('start_time')) : '';
+            $end       = $pV2 ? trim($post('end_time')) : '';
+            $amountRaw = $pV2 ? trim($post('sponsorship_amount')) : '';
+            $available = $pV2 ? (isset($_POST['sponsorship_available']) ? 1 : 0) : 1;
+            $banner    = $pV2 ? mb_substr(trim($post('banner_url')), 0, 500) : '';
+            $featured  = $pV2 ? (isset($_POST['is_featured']) ? 1 : 0) : 0;
+            $liveOn    = $pV2 ? (isset($_POST['live_stream_enabled']) ? 1 : 0) : 0;
+            $amount    = null;
 
             if ($name_ta === '') $errors['name_ta'] = 'Tamil name is required.';
             if ($name_en === '') $errors['name_en'] = 'English name is required.';
@@ -76,26 +105,92 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             } elseif (!preg_match('/^(\d{4})-(\d{2})-(\d{2})$/', $date, $m) || !checkdate((int) $m[2], (int) $m[3], (int) $m[1])) {
                 $errors['pooja_date'] = 'Enter a valid date.';
             }
+            if (!$clockOk($start)) $errors['start_time'] = 'Enter the start time as HH:MM.';
+            if (!$clockOk($end))   $errors['end_time']   = 'Enter the end time as HH:MM.';
+            if ($start !== '' && $end !== '' && empty($errors['start_time']) && empty($errors['end_time']) && $end <= $start) {
+                $errors['end_time'] = 'The end time must be after the start time.';
+            }
+            if ($amountRaw !== '') {
+                if (!is_numeric($amountRaw) || (float) $amountRaw < 0 || (float) $amountRaw > 99999999) $errors['sponsorship_amount'] = 'Enter the sponsorship amount in rupees, 0 or more.';
+                else $amount = round((float) $amountRaw, 2);
+            }
+            if (!$imageOk($banner)) $errors['banner_url'] = 'Use a site path such as /uploads/banner.webp or an https:// address.';
+            // A typed range gives the display time when none was typed by hand.
+            if ($time === '' && $start !== '') $time = panchTimeLabel($start, $end !== '' ? $end : null, '');
 
             if ($errors) {
                 $missing = $name_ta === '' || $name_en === '' || $date === '';
-                $msg = $alert('error', $missing ? 'Tamil name, English name, and date are required.' : $errors['pooja_date']);
+                $msg = $alert('error', $missing ? 'Tamil name, English name, and date are required.' : implode(' ', $errors));
                 $old = ['id' => $id, 'name_ta' => $name_ta, 'name_en' => $name_en, 'description_ta' => $desc_ta, 'description_en' => $desc_en,
-                        'pooja_date' => $date, 'pooja_time' => $time, 'pooja_type' => $ptype, 'is_active' => $is_active];
-            } elseif ($id > 0) {
-                $db->prepare('UPDATE poojas SET name_ta=:ta,name_en=:en,description_ta=:dta,description_en=:den,
-                              pooja_date=:dt,pooja_time=:tm,pooja_type=:typ,is_active=:a WHERE id=:id')
-                   ->execute([':ta' => $name_ta, ':en' => $name_en, ':dta' => $desc_ta, ':den' => $desc_en,
-                              ':dt' => $date, ':tm' => $time, ':typ' => $ptype, ':a' => $is_active, ':id' => $id]);
-                adminAudit('pooja_updated', 'pooja:' . $id, $name_en . ' · ' . $date);
-                $redirect($alert('success', 'Pooja updated.'));
+                        'pooja_date' => $date, 'pooja_time' => $time, 'pooja_type' => $ptype, 'is_active' => $is_active,
+                        'start_time' => $start, 'end_time' => $end, 'sponsorship_amount' => $amountRaw, 'sponsorship_available' => $available,
+                        'banner_url' => $banner, 'is_featured' => $featured, 'live_stream_enabled' => $liveOn];
             } else {
-                $db->prepare('INSERT INTO poojas (name_ta,name_en,description_ta,description_en,
-                              pooja_date,pooja_time,pooja_type,is_active) VALUES (:ta,:en,:dta,:den,:dt,:tm,:typ,:a)')
-                   ->execute([':ta' => $name_ta, ':en' => $name_en, ':dta' => $desc_ta, ':den' => $desc_en,
-                              ':dt' => $date, ':tm' => $time, ':typ' => $ptype, ':a' => $is_active]);
-                adminAudit('pooja_created', 'pooja:' . (int) $db->lastInsertId(), $name_en . ' · ' . $date);
-                $redirect($alert('success', 'Pooja created.'));
+                $params = [':ta' => $name_ta, ':en' => $name_en, ':dta' => $desc_ta, ':den' => $desc_en,
+                           ':dt' => $date, ':tm' => $time !== '' ? $time : null, ':typ' => $ptype, ':a' => $is_active];
+                $setV2 = $colsV2 = $valsV2 = '';
+                if ($pV2) {
+                    $params += [':st' => $start !== '' ? $start : null, ':et' => $end !== '' ? $end : null, ':amt' => $amount,
+                                ':av' => $available, ':bn' => $banner !== '' ? $banner : null, ':ft' => $featured, ':lv' => $liveOn];
+                    $setV2  = ',start_time=:st,end_time=:et,sponsorship_amount=:amt,sponsorship_available=:av,banner_url=:bn,is_featured=:ft,live_stream_enabled=:lv';
+                    $colsV2 = ',start_time,end_time,sponsorship_amount,sponsorship_available,banner_url,is_featured,live_stream_enabled';
+                    $valsV2 = ',:st,:et,:amt,:av,:bn,:ft,:lv';
+                }
+                if ($id > 0) {
+                    $db->prepare('UPDATE poojas SET name_ta=:ta,name_en=:en,description_ta=:dta,description_en=:den,
+                                  pooja_date=:dt,pooja_time=:tm,pooja_type=:typ,is_active=:a' . $setV2 . ' WHERE id=:id')
+                       ->execute($params + [':id' => $id]);
+                    adminAudit('pooja_updated', 'pooja:' . $id, $name_en . ' · ' . $date);
+                    $redirect($alert('success', 'Pooja updated.'));
+                } else {
+                    $db->prepare('INSERT INTO poojas (name_ta,name_en,description_ta,description_en,
+                                  pooja_date,pooja_time,pooja_type,is_active' . $colsV2 . ') VALUES (:ta,:en,:dta,:den,:dt,:tm,:typ,:a' . $valsV2 . ')')
+                       ->execute($params);
+                    adminAudit('pooja_created', 'pooja:' . (int) $db->lastInsertId(), $name_en . ' · ' . $date);
+                    $redirect($alert('success', 'Pooja created.'));
+                }
+            }
+        } elseif ($action === 'generate' && $pV2) {
+            // "Generate from Panchangam": one pooja per date the observance falls on
+            // (brief §9 recurring activities), skipping dates that already have one
+            // of that type, so it can be run again next season without duplicates.
+            $obs     = in_array($post('observance'), array_keys(PANCH_OBSERVANCES), true) ? $post('observance') : '';
+            $months  = max(1, min(12, (int) $post('months')));
+            $gTa     = sanitizeText($post('g_name_ta'), 200);
+            $gEn     = sanitizeText($post('g_name_en'), 200);
+            $gDescTa = sanitizeText($post('g_description_ta'), 2000);
+            $gDescEn = sanitizeText($post('g_description_en'), 2000);
+            $gStart  = trim($post('g_start_time'));
+            $gEnd    = trim($post('g_end_time'));
+            $gAmtRaw = trim($post('g_amount'));
+            if ($obs === '') {
+                $msg = $alert('error', 'Choose which observance to generate poojas for.');
+            } elseif (!$clockOk($gStart) || !$clockOk($gEnd) || ($gStart !== '' && $gEnd !== '' && $gEnd <= $gStart)) {
+                $msg = $alert('error', 'Enter the times as HH:MM, with the end after the start.');
+            } elseif ($gAmtRaw !== '' && (!is_numeric($gAmtRaw) || (float) $gAmtRaw < 0)) {
+                $msg = $alert('error', 'Enter the sponsorship amount in rupees, 0 or more.');
+            } else {
+                $gTa = $gTa !== '' ? $gTa : PANCH_OBSERVANCES[$obs]['ta'] . ' பூஜை';
+                $gEn = $gEn !== '' ? $gEn : PANCH_OBSERVANCES[$obs]['en'] . ' Pooja';
+                $todayIst = (new DateTime('now', new DateTimeZone('Asia/Kolkata')))->format('Y-m-d');
+                $dates  = panchObservanceDates($obs, $todayIst, $months);
+                $exists = $db->prepare('SELECT 1 FROM poojas WHERE pooja_type = :t AND pooja_date = :d LIMIT 1');
+                $ins    = $db->prepare('INSERT INTO poojas (name_ta,name_en,description_ta,description_en,pooja_date,pooja_time,start_time,end_time,
+                                        pooja_type,recurrence_type,sponsorship_amount,is_active)
+                                        VALUES (:ta,:en,:dta,:den,:dt,:tm,:st,:et,:typ,:rec,:amt,1)');
+                $added = 0; $skipped = 0;
+                foreach ($dates as $d) {
+                    $exists->execute([':t' => $obs, ':d' => $d]);
+                    if ($exists->fetchColumn()) { $skipped++; continue; }
+                    $ins->execute([':ta' => $gTa, ':en' => $gEn, ':dta' => $gDescTa !== '' ? $gDescTa : null, ':den' => $gDescEn !== '' ? $gDescEn : null,
+                                   ':dt' => $d, ':tm' => panchTimeLabel($gStart !== '' ? $gStart : null, $gEnd !== '' ? $gEnd : null, '') ?: null,
+                                   ':st' => $gStart !== '' ? $gStart : null, ':et' => $gEnd !== '' ? $gEnd : null,
+                                   ':typ' => $obs, ':rec' => $obs, ':amt' => $gAmtRaw !== '' ? round((float) $gAmtRaw, 2) : null]);
+                    $added++;
+                }
+                adminAudit('pooja_generated', 'pooja_type:' . $obs, $added . ' added, ' . $skipped . ' already existed, ' . $months . ' month(s): ' . $gEn);
+                $redirect($alert('success', 'Generated ' . $added . ' ' . $gEn . ' date' . ($added === 1 ? '' : 's') . ' from the Panchangam'
+                    . ($skipped ? ' (' . $skipped . ' already existed)' : '') . '.'));
             }
         } elseif ($action === 'delete') {
             $id = (int) ($_POST['id'] ?? 0);
@@ -138,7 +233,9 @@ if (isset($_GET['edit'])) {
     if (!$editing) $msg .= $alert('warning', 'That pooja no longer exists.');
 }
 $form = $old ?? $editing ?? ['id' => 0, 'name_ta' => '', 'name_en' => '', 'description_ta' => '', 'description_en' => '',
-                             'pooja_date' => '', 'pooja_time' => '', 'pooja_type' => 'special', 'is_active' => 1];
+                             'pooja_date' => '', 'pooja_time' => '', 'pooja_type' => 'special', 'is_active' => 1,
+                             'start_time' => '', 'end_time' => '', 'sponsorship_amount' => '', 'sponsorship_available' => 1,
+                             'banner_url' => '', 'is_featured' => 0, 'live_stream_enabled' => 0];
 $isEditing = (int) ($form['id'] ?? 0) > 0;
 
 // ── Data ─────────────────────────────────────────────────────────────────────
@@ -196,12 +293,12 @@ $fieldAttrs = fn(string $k): string => isset($errors[$k]) ? ' aria-invalid="true
 $fieldError = fn(string $k): string => isset($errors[$k]) ? '<span class="field__error" id="p-' . $k . '-err">' . adminIcon('alert-circle') . h($errors[$k]) . '</span>' : '';
 
 // ── Page ─────────────────────────────────────────────────────────────────────
-adminHeader('Poojas', 'Worship', [
+adminHeader('Poojas', 'Temple', [
     'actions' => '<a href="/admin/sponsors.php" class="btn btn-ghost btn--sm">' . adminIcon('heart-hands') . 'Sponsors</a>',
 ]);
 echo $msg;
 echo adminPageIntro(
-    'Schedule the Pournami, Amavasai, Ekadasi, Sashti and special poojas shown on the public website; hidden poojas stay here but are not published.',
+    'Schedule the Pournami, Amavasai, Pradosham, Sankatahara Chaturthi, Ekadasi, Sashti and special poojas shown on the public website' . ($pV2 ? ', or generate a season of them from the Panchangam' : '') . '; hidden poojas stay here but are not published.',
     '<button type="button" class="btn btn-primary btn--sm form-drawer-toggle" aria-controls="pooja-panel" aria-expanded="false">' . adminIcon('plus') . ' New pooja</button>' .
     '<a href="/admin/bulk_upload.php?entity=poojas" class="btn btn--sm">' . adminIcon('upload') . ' Import CSV</a>'
 );
@@ -246,9 +343,54 @@ echo adminKpi([
         <label for="p-pooja_time">
           Time
           <input id="p-pooja_time" name="pooja_time" maxlength="20" value="<?= h($form['pooja_time']) ?>" placeholder="07:00 AM" autocomplete="off" />
-          <span class="field__hint">Shown as typed, e.g. 07:00 AM</span>
+          <span class="field__hint">Shown as typed, e.g. 07:00 AM<?= $pV2 ? ' — or leave it empty and set the times below' : '' ?></span>
         </label>
       </div>
+
+      <?php if ($pV2): ?>
+      <div class="form-grid">
+        <label for="p-start_time">
+          Start time
+          <input id="p-start_time" type="time" name="start_time" value="<?= h(substr((string) ($form['start_time'] ?? ''), 0, 5)) ?>"<?= $fieldAttrs('start_time') ?> />
+          <?= $fieldError('start_time') ?>
+        </label>
+        <label for="p-end_time">
+          End time
+          <input id="p-end_time" type="time" name="end_time" value="<?= h(substr((string) ($form['end_time'] ?? ''), 0, 5)) ?>"<?= $fieldAttrs('end_time') ?> />
+          <?= $fieldError('end_time') ?>
+        </label>
+      </div>
+      <div class="form-grid">
+        <label for="p-amount">
+          Sponsorship amount (₹)
+          <input id="p-amount" type="number" name="sponsorship_amount" min="0" step="1" inputmode="numeric"
+                 value="<?= h($form['sponsorship_amount'] !== null && $form['sponsorship_amount'] !== '' ? (string) (0 + $form['sponsorship_amount']) : '') ?>"<?= $fieldAttrs('sponsorship_amount') ?> />
+          <?= $fieldError('sponsorship_amount') ?>
+          <span class="field__hint">Shown on the website as the price to sponsor this pooja. Leave empty when it is not sponsorable.</span>
+        </label>
+        <label for="p-banner">
+          Banner image
+          <input id="p-banner" name="banner_url" maxlength="500" value="<?= h((string) ($form['banner_url'] ?? '')) ?>" placeholder="/uploads/pooja-banner.webp"<?= $fieldAttrs('banner_url') ?> />
+          <?= $fieldError('banner_url') ?>
+          <span class="field__hint">A photo already in the Gallery (its /uploads/… address) or an https:// picture.</span>
+        </label>
+      </div>
+      <label class="switch">
+        <input type="checkbox" name="sponsorship_available" value="1"<?= !empty($form['sponsorship_available']) ? ' checked' : '' ?> />
+        <span class="switch__track" aria-hidden="true"></span>
+        <span class="switch__label">Open for sponsorship<span class="switch__desc">Turn off once the pooja is fully sponsored; the website then says so.</span></span>
+      </label>
+      <label class="switch">
+        <input type="checkbox" name="is_featured" value="1"<?= !empty($form['is_featured']) ? ' checked' : '' ?> />
+        <span class="switch__track" aria-hidden="true"></span>
+        <span class="switch__label">Featured<span class="switch__desc">Highlighted on the Pooja page.</span></span>
+      </label>
+      <label class="switch">
+        <input type="checkbox" name="live_stream_enabled" value="1"<?= !empty($form['live_stream_enabled']) ? ' checked' : '' ?> />
+        <span class="switch__track" aria-hidden="true"></span>
+        <span class="switch__label">Will be streamed live<span class="switch__desc">Shows a "Live" mark; schedule the broadcast itself under Live Streaming.</span></span>
+      </label>
+      <?php endif; ?>
 
       <label for="p-pooja_type">
         <span class="field__label">Type <span class="field__required" aria-hidden="true">*</span></span>
@@ -282,6 +424,49 @@ echo adminKpi([
         <?php endif; ?>
       </div>
     </form>
+
+    <?php if ($pV2): ?>
+    <details class="mt-4" id="generate">
+      <summary><?= adminIcon('calendar', 'ico--sm') ?> Generate from Panchangam</summary>
+      <form method="POST" action="<?= h($listUrl) ?>" class="mt-4" aria-label="Generate recurring poojas">
+        <?= csrfField() ?>
+        <input type="hidden" name="action" value="generate" />
+        <div class="form-grid">
+          <label for="g-obs">
+            <span class="field__label">Observance <span class="field__required" aria-hidden="true">*</span></span>
+            <select id="g-obs" name="observance" required aria-required="true">
+              <?php foreach (PANCH_OBSERVANCES as $key => $o): ?>
+                <option value="<?= h($key) ?>"><?= h($o['ta'] . ' (' . $o['en'] . ')') ?></option>
+              <?php endforeach; ?>
+            </select>
+          </label>
+          <label for="g-months">
+            Months ahead
+            <input id="g-months" type="number" name="months" min="1" max="12" value="6" inputmode="numeric" />
+          </label>
+        </div>
+        <div class="form-grid">
+          <label for="g-name_ta">
+            Tamil name
+            <input id="g-name_ta" name="g_name_ta" lang="ta" maxlength="200" placeholder="பௌர்ணமி பூஜை" />
+          </label>
+          <label for="g-name_en">
+            English name
+            <input id="g-name_en" name="g_name_en" maxlength="200" placeholder="Pournami Pooja" />
+          </label>
+        </div>
+        <div class="form-grid">
+          <label for="g-start">Start time <input id="g-start" type="time" name="g_start_time" /></label>
+          <label for="g-end">End time <input id="g-end" type="time" name="g_end_time" /></label>
+          <label for="g-amount">Sponsorship amount (₹) <input id="g-amount" type="number" name="g_amount" min="0" step="1" inputmode="numeric" /></label>
+        </div>
+        <span class="field__hint">Adds one pooja on every date the observance falls on, from today for the months chosen, skipping dates that already have a pooja of that type. Each row is marked with the observance as its recurrence type, so this can be run again next season.</span>
+        <div class="form-actions">
+          <button type="submit" class="btn btn-primary"><?= adminIcon('calendar') ?> Generate</button>
+        </div>
+      </form>
+    </details>
+    <?php endif; ?>
   </section>
 
   <div class="admin-list">
@@ -332,19 +517,26 @@ echo adminKpi([
               <tr>
                 <td>
                   <time class="cell-title" datetime="<?= h($row['pooja_date']) ?>"><?= adminFmtDate($row['pooja_date']) ?></time>
-                  <span class="cell-sub"><?= $row['pooja_time'] !== null && $row['pooja_time'] !== '' ? h($row['pooja_time']) . ' · ' : '' ?><?= h($when_txt) ?></span>
+                  <?php $timeLabel = panchTimeLabel($row['start_time'] ?? null, $row['end_time'] ?? null, $row['pooja_time']); ?>
+                  <span class="cell-sub"><?= $timeLabel !== '' ? h($timeLabel) . ' · ' : '' ?><?= h($when_txt) ?></span>
                 </td>
                 <td>
                   <span class="cell-title" lang="ta"><?= h($row['name_ta']) ?></span>
                   <span class="cell-sub"><?= h($row['name_en']) ?></span>
                 </td>
-                <td><?= adminBadge($typeEnglish[$row['pooja_type']] ?? $row['pooja_type'], $typeTones[$row['pooja_type']] ?? '') ?></td>
+                <td>
+                  <?= adminBadge($typeEnglish[$row['pooja_type']] ?? $row['pooja_type'], $typeTones[$row['pooja_type']] ?? '') ?>
+                  <?php if (!empty($row['is_featured'])) echo ' ' . adminBadge('Featured', 'gold'); ?>
+                  <?php if (!empty($row['live_stream_enabled'])) echo ' ' . adminBadge('Live', 'info'); ?>
+                  <?php if (isset($row['sponsorship_available']) && (int) $row['sponsorship_available'] === 0) echo ' ' . adminBadge('Sponsored', 'muted'); ?>
+                </td>
                 <td class="num">
                   <?php if ((int) $row['sponsor_count'] > 0): ?>
                     <a href="/admin/sponsors.php?pooja=<?= $rid ?>" data-tip="View sponsors"><?= (int) $row['sponsor_count'] ?></a>
                   <?php else: ?>
                     <span class="text-muted">—</span>
                   <?php endif; ?>
+                  <?php if (!empty($row['sponsorship_amount'])): ?><span class="cell-sub">₹<?= number_format((float) $row['sponsorship_amount']) ?></span><?php endif; ?>
                 </td>
                 <td><?= $row['is_active'] ? adminBadge('Active', 'success') : adminBadge('Hidden', 'muted') ?></td>
                 <td class="cell-actions">

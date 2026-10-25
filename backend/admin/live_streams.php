@@ -440,7 +440,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
 // ── Not installed yet ────────────────────────────────────────────────────────
 if (!$tables) {
-    adminHeader('Live Streaming', 'Content');
+    adminHeader('Live Streaming', 'Media');
     echo $msg;
     echo adminPageIntro('Live darshan broadcasts are not set up on this database yet.');
     echo '<section class="card card--static"><div class="card__body">'
@@ -500,9 +500,13 @@ $tzSelected     = liveIsTimezone($defaultTz) ? $defaultTz : liveTempleTz();
 $parsedId       = $existingRow !== null ? (string) ($existingRow['provider_broadcast_id'] ?? '') : '';
 $deitiesByTemple = [];
 foreach ($deities as $d) $deitiesByTemple[$d['temple_id']][] = $d;
+// Migration 022: the pooja / event the broadcast belongs to (latest active first, plus the linked one).
+$linksInstalled = liveLinksInstalled();
+$poojaOptions   = $linksInstalled ? livePoojaOptions($db, (int) $val('pooja_id', '0') ?: null) : [];
+$eventOptions   = $linksInstalled ? liveEventOptions($db, (int) $val('event_id', '0') ?: null) : [];
 
 // ── Page ─────────────────────────────────────────────────────────────────────
-adminHeader('Live Streaming', 'Content', [
+adminHeader('Live Streaming', 'Media', [
     'actions' => '<a href="/live-darshan" target="_blank" rel="noopener" class="btn btn-ghost btn--sm">' . adminIcon('external') . 'Open /live-darshan</a>',
 ]);
 echo $msg;
@@ -601,6 +605,30 @@ echo adminPageIntro(
             </select>
             <?= $fieldError('deity_id') ?>
           </label>
+          <?php if ($linksInstalled): ?>
+          <label for="pooja_id">
+            <span class="field__label">Pooja <span class="field__optional">optional</span></span>
+            <select id="pooja_id" name="pooja_id"<?= $invalid('pooja_id') ?>>
+              <option value="">— none —</option>
+              <?php foreach ($poojaOptions as $po): ?>
+                <option value="<?= (int) $po['id'] ?>"<?= (string) $po['id'] === $val('pooja_id') ? ' selected' : '' ?>><?= h($po['name_en']) ?> · <?= h($po['name_ta']) ?><?= $po['pooja_date'] ? ' — ' . h((string) $po['pooja_date']) : '' ?></option>
+              <?php endforeach; ?>
+            </select>
+            <?= $fieldError('pooja_id') ?>
+            <span class="field__hint">The pooja this broadcast shows. The public page says “Part of” it and credits its sponsor when the family agreed to be named.</span>
+          </label>
+          <label for="event_id">
+            <span class="field__label">Event <span class="field__optional">optional</span></span>
+            <select id="event_id" name="event_id"<?= $invalid('event_id') ?>>
+              <option value="">— none —</option>
+              <?php foreach ($eventOptions as $ev): ?>
+                <option value="<?= (int) $ev['id'] ?>"<?= (string) $ev['id'] === $val('event_id') ? ' selected' : '' ?>><?= h($ev['title_en']) ?> · <?= h($ev['title_ta']) ?><?= $ev['event_date'] ? ' — ' . h((string) $ev['event_date']) : '' ?></option>
+              <?php endforeach; ?>
+            </select>
+            <?= $fieldError('event_id') ?>
+            <span class="field__hint">The temple event this broadcast is part of; the public page links to it.</span>
+          </label>
+          <?php endif; ?>
           <label for="event_type">
             <span class="field__label">Programme type</span>
             <select id="event_type" name="event_type"<?= $invalid('event_type') ?>>
@@ -666,7 +694,7 @@ echo adminPageIntro(
           <input id="recording_url" name="recording_url" type="text" maxlength="500" autocomplete="off" spellcheck="false"
                  placeholder="YouTube recording link or video ID" value="<?= h($val('recording_url')) ?>"<?= $invalid('recording_url') ?> />
           <?= $fieldError('recording_url') ?>
-          <span class="field__hint">Shown after completion when archive is enabled. The poller fills this when a recording is available. Clear it to remove the recording.</span>
+          <span class="field__hint">Shown after completion when archive is enabled. Filled automatically when the stream ends — by End stream or by the YouTube check — with the broadcast’s own video (unless YouTube reports it was not recorded). Paste another link to replace it, or clear it to remove the recording.</span>
         </label>
         <div class="form-grid">
           <div class="field<?= isset($errors['thumbnail']) || isset($errors['thumbnail_url']) ? ' field--error' : '' ?>">
@@ -797,8 +825,8 @@ echo adminPageIntro(
         <legend>Options</legend>
         <?php
         $switches = [
-            'is_featured'           => ['Featured', 'Highlighted among the upcoming darshans.'],
-            'show_on_homepage'      => ['Show on homepage', 'Offered to the homepage once that block exists (Phase 2).'],
+            'is_featured'           => ['Featured', 'Listed first among the upcoming darshans and on its day of the schedule, with a Featured badge.'],
+            'show_on_homepage'      => ['Show on homepage', 'Shown in the homepage’s live darshan block and hero row (Live now / Next darshan). Off, the stream is still on the Live Darshan page and the schedule.'],
             'donations_enabled'     => ['Enable donations', 'Show the donate button beside the player.'],
             'notifications_enabled' => ['Enable notifications', 'Allow reminders for this stream (later phase).'],
             'sharing_enabled'       => ['Enable sharing', 'Show the share button on the stream page.'],
@@ -873,6 +901,9 @@ echo adminPageIntro(
               if (!$deleted) {
                   $menu[] = ['label' => 'Edit', 'icon' => 'pencil', 'href' => $listUrl(['edit' => $rid])];
                   $menu[] = ['label' => 'View page', 'icon' => 'external', 'href' => '/live-darshan/' . rawurlencode((string) $row['slug']), 'target' => '_blank'];
+                  if (adminCan('notifications.compose') && in_array($row['status'], ['SCHEDULED', 'STARTING', 'LIVE'], true)) {
+                      $menu[] = ['label' => 'Announce to devotees', 'icon' => 'megaphone', 'href' => '/admin/notifications.php?new=1&from=live:' . $rid];
+                  }
                   if ($canPublish) {
                       $actions = liveAdminActions($row);
                       if ($actions) $menu[] = 'divider';

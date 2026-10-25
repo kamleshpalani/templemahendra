@@ -4,8 +4,69 @@
 require_once __DIR__ . '/../config/config.php';
 require_once __DIR__ . '/temple_identity.php';
 
+/*
+ * API_ENVELOPE — the one flag behind the /api/v1 response envelope (brief §26).
+ *
+ * api/index.php defines it as true when the request carried the version
+ * prefix (/api/v1/…), and sendJson() — so sendError() too — then wraps what it
+ * is given in the brief's shape:
+ *
+ *   success  {"success":true,"data":<today's payload>,"message":""}
+ *   error    {"success":false,"error":{"code":"VALIDATION_ERROR|NOT_FOUND|
+ *             UNAUTHORIZED|FORBIDDEN|RATE_LIMITED|METHOD_NOT_ALLOWED|SERVER_ERROR",
+ *             "message":"…","fields":{…}}}   (fields only when the endpoint has them)
+ *
+ * Left undefined — every unversioned /api/* request, og.php, sitemap.php,
+ * robots.php, spa.php and the admin — both functions answer exactly what they
+ * always have, byte for byte: the React app and every suite depend on it.
+ */
+
+/**
+ * The /api/v1 envelope around one of today's payloads, for the given HTTP
+ * status. Below 400 the payload becomes `data` untouched. From 400 up the
+ * status picks the code; the endpoint's `error` sentence is the message, its
+ * `fields` map is carried as `fields` (an empty one as {}), its own machine
+ * code (`code`, e.g. "bad_token") as `reason`, and anything else it reported
+ * (a 500's `reference`, `retryAfter`, a payment's `status`) is kept under
+ * `error` as well, so nothing an unversioned caller can read is lost.
+ */
+function apiEnvelope(mixed $payload, int $status): array
+{
+    if ($status < 400) {
+        return ['success' => true, 'data' => $payload, 'message' => ''];
+    }
+    [$code, $fallback] = match (true) {
+        $status === 401 => ['UNAUTHORIZED', 'Sign in first'],
+        $status === 403 => ['FORBIDDEN', 'Forbidden'],
+        $status === 404 => ['NOT_FOUND', 'Not found'],
+        $status === 405 => ['METHOD_NOT_ALLOWED', 'Method not allowed'],
+        $status === 429 => ['RATE_LIMITED', 'Too many requests. Please try again later.'],
+        $status >= 500  => ['SERVER_ERROR', 'The server could not complete that request. Please try again.'],
+        default         => ['VALIDATION_ERROR', 'Please check the request.'],   // 400, 409, 413, 422, …
+    };
+    $given   = is_array($payload) ? $payload : [];
+    $message = is_string($given['error'] ?? null) && $given['error'] !== '' ? $given['error']
+             : (is_string($payload) && $payload !== '' ? $payload : $fallback);
+    $error = ['code' => $code, 'message' => $message];
+    if (is_string($given['code'] ?? null) && $given['code'] !== '') {
+        $error['reason'] = $given['code'];
+    }
+    if (is_array($given['fields'] ?? null)) {
+        $error['fields'] = $given['fields'] === [] ? new stdClass() : $given['fields'];
+    }
+    foreach ($given as $key => $value) {
+        if (!in_array($key, ['error', 'code', 'fields'], true) && !array_key_exists($key, $error)) {
+            $error[$key] = $value;
+        }
+    }
+    return ['success' => false, 'error' => $error];
+}
+
 function sendJson(mixed $data, int $status = 200): never
 {
+    if (defined('API_ENVELOPE') && API_ENVELOPE) {
+        $data = apiEnvelope($data, $status);
+    }
     http_response_code($status);
     header('Content-Type: application/json; charset=utf-8');
     echo json_encode($data, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);

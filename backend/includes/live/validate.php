@@ -16,7 +16,7 @@
 
 /** The input keys liveValidate() reads (the page inputs and the JSON body). */
 const LIVE_INPUT_KEYS = [
-    'title_ta', 'title_en', 'description_ta', 'description_en', 'slug', 'temple_id', 'deity_id',
+    'title_ta', 'title_en', 'description_ta', 'description_en', 'slug', 'temple_id', 'deity_id', 'pooja_id', 'event_id',
     'event_type', 'provider', 'provider_reference', 'playback_url', 'recording_url', 'thumbnail_url', 'banner_url',
     'scheduled_date', 'start_time', 'end_time', 'end_date', 'timezone', 'status',
     'is_featured', 'show_on_homepage', 'donations_enabled', 'notifications_enabled', 'sharing_enabled', 'archive_enabled',
@@ -55,6 +55,8 @@ function liveRowToInput(array $row): array
         'slug'               => (string) ($row['slug'] ?? ''),
         'temple_id'          => (string) (int) ($row['temple_id'] ?? 0),
         'deity_id'           => isset($row['deity_id']) && (int) $row['deity_id'] > 0 ? (string) (int) $row['deity_id'] : '',
+        'pooja_id'           => isset($row['pooja_id']) && (int) $row['pooja_id'] > 0 ? (string) (int) $row['pooja_id'] : '',
+        'event_id'           => isset($row['event_id']) && (int) $row['event_id'] > 0 ? (string) (int) $row['event_id'] : '',
         'event_type'         => (string) ($row['event_type'] ?? 'live_darshan'),
         'provider'           => (string) ($row['provider'] ?? 'youtube'),
         'provider_reference' => (string) ($row['provider_broadcast_id'] ?? ''),
@@ -141,6 +143,30 @@ function liveValidate(array $in, ?array $existing, PDO $db): array
         $stmt->execute([':id' => $deityId, ':t' => $values['temple_id']]);
         if ($stmt->fetchColumn() === false) $errors['deity_id'] = 'Choose a deity of this temple.';
         else $values['deity_id'] = $deityId;
+    }
+
+    // ── The pooja and the event the broadcast belongs to (migration 022) ──
+    // Optional, "none" as '' or '0'. The row is looked up before the write,
+    // as admin/sponsors.php does, so the foreign key never raises on a pooja
+    // deleted after the select was rendered. Without 022 the two keys are
+    // accepted only as "none": the columns do not exist to write.
+    foreach (['pooja_id' => ['poojas', 'pooja'], 'event_id' => ['events', 'event']] as $key => [$table, $noun]) {
+        $raw = $text($key);
+        $values[$key] = null;
+        if ($raw === null || $raw === '' || $raw === '0') continue;
+        if (isset($errors[$key])) continue;
+        if (!preg_match('/^\d{1,10}$/', $raw)) {
+            $errors[$key] = 'Choose a ' . $noun . ' from the list, or “None”.';
+            continue;
+        }
+        if (!liveLinksInstalled()) {
+            $errors[$key] = 'Linking a stream to a ' . $noun . ' needs database migration 022_live_links.sql first.';
+            continue;
+        }
+        $stmt = $db->prepare('SELECT 1 FROM ' . $table . ' WHERE id = :id');
+        $stmt->execute([':id' => (int) $raw]);
+        if ($stmt->fetchColumn() === false) $errors[$key] = 'That ' . $noun . ' no longer exists — pick another or choose “None”.';
+        else $values[$key] = (int) $raw;
     }
 
     // ── Programme type, provider, reference ───────────────────────────────

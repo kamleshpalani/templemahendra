@@ -97,3 +97,46 @@ function payCategoryPublic(array $category): array
         'suggestedAmount' => $category['suggested_amount'] !== null ? payNumberOut($category['suggested_amount']) : null,
     ];
 }
+
+/* ── Poojas a donation can sponsor (migration 023, brief §13) ──────────── */
+
+/** True once migration 023 has given donations a pooja_id column. */
+function payPoojaLinksReady(): bool
+{
+    return publicGuardHasColumn('donations', 'pooja_id');
+}
+
+/**
+ * A poojas row in the shape the module carries: id, name {ta, en}, date
+ * (Y-m-d), time, type, is_active, and open — active and on today or a later IST
+ * date, the only kind a donor may sponsor.
+ */
+function payPoojaShape(array $row): array
+{
+    $active = (int) $row['is_active'] === 1;
+    $date = (string) $row['pooja_date'];
+    return [
+        'id'        => (int) $row['id'],
+        'name'      => ['ta' => (string) $row['name_ta'], 'en' => (string) $row['name_en']],
+        'date'      => $date,
+        'time'      => $row['pooja_time'] !== null && $row['pooja_time'] !== '' ? (string) $row['pooja_time'] : null,
+        'type'      => (string) $row['pooja_type'],
+        'is_active' => $active,
+        'open'      => $active && $date >= payIstDate(null, 'Y-m-d'),
+    ];
+}
+
+/** One pooja by id in the payPoojaShape() shape, active or not; null when unknown. */
+function payPoojaLoad(PDO $db, int $id): ?array
+{
+    if ($id <= 0) return null;
+    try {
+        $stmt = $db->prepare('SELECT id, name_ta, name_en, pooja_date, pooja_time, pooja_type, is_active FROM poojas WHERE id = :id');
+        $stmt->execute([':id' => $id]);
+        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+    } catch (Throwable $e) {
+        error_log('[payments] pooja lookup failed: ' . $e->getMessage());
+        return null;
+    }
+    return $row ? payPoojaShape($row) : null;
+}

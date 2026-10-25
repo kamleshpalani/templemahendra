@@ -3,10 +3,15 @@
 **Stack:** React 18 + Vite · PHP 8 · MySQL 8 · Custom PHP Admin CMS  
 **Hosting:** Hostinger India — Standard Web Hosting
 
+**Node.js + Supabase migration:** An isolated, staging-only Node foundation is
+available at the repository root. It does not replace the PHP application or
+migrate production data. See [Node staging setup and migration gates](docs/NODE-SUPABASE.md)
+before using it on Hostinger Web Apps.
+
 **Documentation:** [DEPLOYMENT.md](docs/DEPLOYMENT.md) (environments, Hostinger
 release steps, cron, backups and restore) · [DATABASE.md](docs/DATABASE.md)
 (schema, migrations, conventions) · [TESTING.md](docs/TESTING.md) (suites and
-the E2E-001…050 matrix) · [CCAvenue-INTEGRATION.md](docs/CCAvenue-INTEGRATION.md) ·
+the E2E-001…055 matrix) · [CCAvenue-INTEGRATION.md](docs/CCAvenue-INTEGRATION.md) ·
 [LIVE-STREAMING.md](docs/LIVE-STREAMING.md) · [DEFECTS.md](docs/DEFECTS.md) ·
 [GAP-ANALYSIS.md](docs/GAP-ANALYSIS.md). Detailed specifications live under
 `docs/live/`, `docs/payments/`, `docs/notifications/` and `docs/registration/`.
@@ -110,11 +115,17 @@ extension=openssl
 extension=curl
 extension=fileinfo
 extension=zip
+extension=gd
 ```
 
 Then run `php.exe -c php.ini -S 127.0.0.1:8000 router.php` from `backend/`.
 Check the driver loaded before blaming the app for a 500:
 `php -m | findstr pdo_mysql`.
+
+The gallery's thumbnails need the GD extension (`php -m | grep gd`; every
+Hostinger PHP 8 build has it): the copies are WebP when GD can write it
+(`imagewebp`), JPEG otherwise. Without GD photos still upload and the site
+uses the original file.
 
 ### Database
 
@@ -151,7 +162,10 @@ ADMIN_PASS_HASH=<php -r "echo password_hash('YourPassword', PASSWORD_BCRYPT);">
 ### Three things that catch people out
 
 **Use `http://localhost:5173`, not `127.0.0.1:5173`.** Vite binds the IPv6
-loopback, so the IPv4 address refuses the connection.
+loopback, so the IPv4 address refuses the connection. The Playwright suites
+dial `127.0.0.1`, so before running them start Vite with
+`npm run dev -- --host 127.0.0.1` (on Node 24 `--host localhost` binds `::1`
+only; see `tests/README.md`).
 
 **Email is not configured locally, and that is fine.** With `MAIL_TRANSPORT`
 unset, confirmation and password-reset messages are written to
@@ -233,12 +247,23 @@ Upload via Hostinger File Manager or FTP:
 | `015_admin_roles.sql` | Five committee roles (brief §17): widens `admin_users.role` to `owner` / `admin` / `editor` / `finance` / `viewer` and `admin_activity.action` to 60 characters for `session_expired` / `account_locked`. Existing rows keep their values. |
 | `016_sponsors_consent.sql` | Sponsor management (brief §11): `family_name`, `email`, `event_id` (FK, `ON DELETE SET NULL`), `amount`, `payment_ref`, `payment_status`, `publish_consent` (defaults to 0 — existing sponsors stay private until an admin grants consent) and `updated_at`. Public APIs only ever show `is_active = 1 AND publish_consent = 1` rows, under the family name when one is set. |
 | `017_videos.sql` | Videos module (brief §6): `video_categories` (bilingual names, slug, order, visibility; seeded Poojas / Festivals / Discourses / Darshan recordings) and `videos` (unique 11-character `youtube_id`, bilingual titles and descriptions, `category_id` FK `ON DELETE SET NULL`, optional `live_stream_id` FK to a completed broadcast `ON DELETE SET NULL`, `published_on`, `sort_order`, `is_featured`, `is_active`). Public: `GET /api/videos`, `/videos`. |
-| `018_calendar_entries.sql` | Temple Calendar entries (brief §6): `calendar_entries` (`mode` add/hide, `entry_type`, `entry_date`/`end_date` span, bilingual title and description, optional `pooja_id`/`event_id` FKs `ON DELETE SET NULL`, `sort_order`, `is_active`). Merged into `GET /api/calendar`: add-entries join a day's `special[]`, hide-entries remove a computed observance (Pournami, Pradosham, …) the temple does not follow that day. Admin: Worship → Temple Calendar. |
-| `019_contact_notifications.sql` | Contact-form notifications (brief §20, E2E-040, gap G-19): the transactional `office` notification category the `contact_received` template is filed under, so the office copy of a website message needs no devotee consent and can never be picked for a campaign. |
+| `018_calendar_entries.sql` | Temple Calendar entries (brief §6): `calendar_entries` (`mode` add/hide, `entry_type`, `entry_date`/`end_date` span, bilingual title and description, optional `pooja_id`/`event_id` FKs `ON DELETE SET NULL`, `sort_order`, `is_active`). Merged into `GET /api/calendar`: add-entries join a day's `special[]`, hide-entries remove a computed observance (Pournami, Pradosham, …) the temple does not follow that day. Admin: Temple → Temple Calendar. |
+| `019_contact_email_subject.sql` | Contact form (brief §20, §21): `contact_messages.email` and `subject` (both optional — the inbox offers a mailto: link and the office alert quotes them), `updated_at`, and the transactional `office` notification category (inserted only when migration 007's tables exist) through which `contact.received` reaches `CONTACT_NOTIFY_EMAIL`. `POST /api/contact` accepts the two fields. Admin: Communication → Messages shows them. |
+| `020_bilingual_content_events.sql` | Bilingual content (brief §6, §7, §25): `announcements.title_ta/title_en`, `body_ta/body_en`, a publish window `start_date/end_date` (only current notices are served) and `updated_at`; `events.description_ta/en`, `event_type` (festival / pooja / special / other), `is_featured`, `end_date`, `start_time/end_time`, `venue_ta/en`, `image_url`, `created_at/updated_at`; `sevas.description_ta/en`, `timing_ta/en`, `is_bookable` (0 = listed, not bookable online), `created_at/updated_at`. The old `title`/`body`/`description` columns are backfilled into both languages, kept in step by the admin pages (English, else Tamil) and still emitted by the APIs for one release. Public: `GET /api/events?past=1\|featured=1\|type=`, `GET /api/events/{id}`, `/events/<id>` (og.php preview, spa.php status, sitemap). Admin: the Announcements, Events and Sevas pages need this migration. |
+| `021_gallery_albums.sql` | Photo gallery albums (brief §6, §22, §34): `gallery_albums` (slug, bilingual title and description, optional `event_id` FK `ON DELETE SET NULL`, `cover_image_id` FK to `gallery` `ON DELETE SET NULL`, `sort_order`, `is_active`; seeded Pournami Pooja / Navaratri / Temple Festival / Kumbabhishekam / Annadhanam, listed publicly once they hold a shown photo) and on `gallery`: `album_id` FK `ON DELETE SET NULL`, `alt_ta` / `alt_en`, `thumb_filename` / `medium_filename` (GD-made ~480 px / ~1280 px copies beside the original — WebP when GD can write it, else JPEG), `width` / `height`, `updated_at`. Rows uploaded before the migration keep working (the API falls back to the original file). Public: `GET /api/gallery?album=&limit=`, `GET /api/gallery/albums`, `/gallery?album=<slug>`. Admin: Media → Gallery needs this migration for albums, alt text and thumbnails. |
+| `022_live_links.sql` | Live streams that belong to worship (brief §12, §6): `live_streams.pooja_id` / `event_id` (FKs to `poojas` / `events`, `ON DELETE SET NULL`, indexed) — a broadcast belongs to a pooja or an event; the public API adds `pooja`, `event` and the pooja's consenting sponsor (`sponsor {name, note}`). Admin: Media → Live Streaming (the Pooja / Event selects) needs this migration. |
+| `023_payments_pooja_sponsor.sql` | Online donations for a pooja (brief §13, §6): `donations.pooja_id` (FK `poojas` `ON DELETE SET NULL`) chosen from `/donate?pooja=<id>` and validated as an active pooja on today or a later date; `sponsors.transaction_id` (FK `payment_transactions`) and `sponsors.donation_id` (FK `donations`, **UNIQUE** — one paid donation can create at most one sponsor, however often CCAvenue repeats itself; both `ON DELETE SET NULL`); donation category `pournami_pooja` ("பௌர்ணமி பூஜை" / "Pournami Pooja"). On a pooja donation's first `SUCCESS` the receipt transaction also writes the sponsor row (name, phone, email, amount, `PAID`, `payment_ref` = receipt number, publish consent = the donor's thank-you-list tick); a full refund marks it `REFUNDED`, nothing deletes it. Admin → Online Payments links the pooja and the sponsor; Admin → Sponsors links the payment. |
+| `024_homepage_engine_poojas.sql` | Homepage engine and pooja model (brief §8–§10): `homepage_widgets.content_type` gains `upcoming_event`, `livestream`, `custom`; `source_type` gains `system`; `linked_event_id` / `linked_stream_id` (FKs `ON DELETE SET NULL`), `image_url`, `display_order`. `poojas` gains `start_time` / `end_time` (the free-text `pooja_time` is parsed into `start_time` where it reads as a clock time), `pooja_type` values `pradosham`, `chaturthi` (Sankatahara), `abhishekam`, `archana`, `festival`, `recurrence_type`, `sponsorship_amount`, `sponsorship_available`, `banner_url`, `is_featured`, `live_stream_enabled`, `updated_at`. Public: `GET /api/poojas`. Admin: Content → Homepage (the Upcoming Event and Live Stream cards) and Temple → Poojas ("Generate from Panchangam") need this migration. |
+| `025_cms_pages_settings.sql` | The committee edits the site's own facts (brief §3, §15, §25): `site_settings` — one row per key (temple name and descriptor, postal address, phones, e-mail, map search text, opening hours, the daily pooja schedule, today's special by weekday, Nalla Neram, Pournami timing, hero title and lead, introduction, the "coming soon" threshold, social links, the office-alert address and language, the languages offered and the default), `value_ta` / `value_en` for bilingual text and `value` for the rest; a NULL cell means "not edited yet" and the built-in default applies, so an upgraded site looks exactly as it did until someone edits. `pages` — CMS pages (slug, bilingual title, plain-text body, bilingual meta title and description, order, shown/hidden); `mission` and `history` are seeded with empty bodies so the About page keeps its built-in text until the committee writes. `seo_settings` — per-address overrides of the title, description, preview image and `noindex`. Public: `GET /api/pages`, `GET /api/pages/{slug}`, `GET /api/settings` (`site`, `seo`, `languages`); `og.php` and the sitemap honour the overrides, `/api/pulse`, the Panchangam's Nalla Neram and the contact-form alerts read the settings. Admin: Content → Pages, Temple → Nalla Neram, System → Settings / Languages / SEO need this migration and say so until it is applied. |
 
 ```bash
-for f in database/migrations/*.sql; do mysql -u <user> -p <db> < "$f"; done
+for f in database/migrations/*.sql; do mysql --default-character-set=utf8mb4 -u <user> -p <db> < "$f"; done
 ```
+
+Always pass `--default-character-set=utf8mb4` (or run through phpMyAdmin,
+which does): a `latin1` client stores every Tamil seed row as `?` — migrations
+007, 010, 011, 013, 017, 019, 021, 023 and 025 all insert Tamil literals
+(D-036).
 
 ### Live recordings archive (Phase 8)
 
@@ -270,13 +295,17 @@ Values needed:
 | `ADMIN_USERNAME`  | Admin panel login                                        |
 | `ADMIN_PASS_HASH` | bcrypt hash of the admin password (see Step 5)           |
 | `ADMIN_IDLE_MINUTES` | Optional. Admin sessions end after this many idle minutes (default 30, max 1440) |
+| `ADMIN_IP_LOGIN_ATTEMPTS` | Optional. Failed sign-ins from one client address in 15 minutes, across every username, before that address is refused (default 30) |
 | `CORS_ORIGIN`     | Allowed origin, e.g. `https://www.templemahendra.in`     |
-| `CONTACT_NOTIFY_EMAIL` | Optional. The temple office mailbox(es), comma-separated, that receive a copy of every website contact-form message through the Notification Service (`contact.received`, migration 019). Blank: messages are only stored for Admin → Messages. |
-| `CONTACT_NOTIFY_LANG` | Optional. `en` (default) or `ta`: the language of the office copy. |
+| `APP_ENV`         | `production` (the default when unset), `staging` or `development`. Outside development no error detail is shown; errors go to the host's PHP log, else `backend/logs/php-error.log`. `APP_DEBUG=1` only works in development. |
 
 Admin sign-in locks an account for 15 minutes after 10 failed attempts (any
 IP, case-insensitive username). A Super Admin issuing a new password from
-Committee accounts clears the lock. Roles: `owner` = Super Admin, `admin` =
+Committee accounts clears the lock. Thirty failed sign-ins from one client
+address in 15 minutes — whatever usernames they try — refuse that address
+(`ADMIN_IP_LOGIN_ATTEMPTS`), and the `ADMIN_USERNAME` recovery account's lock
+is keyed on the address as well as the name, so a stranger can only ever lock
+it for themselves. Roles: `owner` = Super Admin, `admin` =
 Temple Admin, `editor` = Content Editor, `finance` = Finance Admin, `viewer` =
 read-only; the capability matrix lives in `backend/includes/roles.php`.
 
@@ -289,6 +318,7 @@ been applied; see `backend/.env.example` for the annotated version.
 | `MAIL_TRANSPORT`  | `smtp` on Hostinger. `mail` hands off to PHP's `mail()`. Left blank, messages are written to `backend/logs/mail.log` and the site tells the caller that email is unavailable — fine locally, never in production. |
 | `SMTP_HOST` `SMTP_PORT` `SMTP_USER` `SMTP_PASS` `SMTP_SECURE` | Mailbox for outgoing mail. `SMTP_SECURE` is `tls` on port 587 or `ssl` on 465. |
 | `MAIL_FROM` `MAIL_FROM_NAME` | Sender address and display name. Use a mailbox on your own domain, or the messages will be filed as spam. |
+| `CONTACT_NOTIFY_EMAIL` `CONTACT_NOTIFY_LANG` | Where contact-form enquiries are emailed (one address or a comma-separated list) and in which language (`en` default, `ta`). Every enquiry is saved to Admin → Messages regardless; without an address nobody is emailed. Sent through the notification worker like every other email. Since migration 025 both can also be set under Admin → System → Settings → *Office alerts*; an environment value wins over the stored one. |
 
 ### Paths that belong to PHP, not to React
 
@@ -313,7 +343,9 @@ gets the React app at `/admin/`, because the request never leaves the browser.
 `api/sitemap.php` (the `.htaccess` and `backend/router.php` both route them
 there). The sitemap lists every public page in `site_pages.php` except `/search`,
 plus one `/live-darshan/<slug>` entry per broadcast that is scheduled, starting,
-live or completed; robots disallows `/admin/`, `/api/`, `/search` and the
+live or completed and one `/events/<id>` entry per shown event that has not
+ended, and leaves out any address the committee marked `noindex` under Admin →
+System → SEO; robots disallows `/admin/`, `/api/`, `/search` and the
 `/payment/*` pages. Both use `SITE_URL` for the origin.
 
 The SPA fallback (`api/spa.php`) serves the built `index.html` unchanged, but
@@ -338,7 +370,7 @@ previews as the same generic page. So:
 
 | Piece | Role |
 | ----- | ---- |
-| `backend/api/og.php` | Renders a real preview per path — title, description, image, canonical. Reads one seva, photograph or public live broadcast for `?seva=`, `?photo=` or `/live-darshan/<slug>` links. |
+| `backend/api/og.php` | Renders a real preview per path — title, description, image, canonical. Reads one seva, photograph, event or public live broadcast for `?seva=`, `?photo=`, `/events/<id>` or `/live-darshan/<slug>` links. |
 | `backend/includes/site_pages.php` | The per-page copy og.php uses. The same sentences the React pages pass to `<Seo>`. |
 | `deploy/htaccess_public_html` | Sends unfurler user agents to `og.php`. Search engines are deliberately excluded — they run JavaScript and should index the real page. |
 | `backend/router.php` | The same diversion locally, so previews can be checked before shipping: `curl -A "WhatsApp/2.23" http://127.0.0.1:8000/sevas?seva=1` |
@@ -349,6 +381,19 @@ exactly the kind of thing that drifts. `tests/og.mjs` loads every route in a rea
 browser, reads the tags React wrote, and fails if they disagree with what
 `og.php` returns for the same path — so changing a page's lead tells you to
 update the table.
+
+Two things the committee changes without a deploy. **SEO overrides** (Admin →
+System → SEO, migration 025) set a per-address title, description, preview
+image and robots directive: `og.php` applies them to the preview for that
+exact path (in the requested language, falling back to the other), the sitemap
+leaves a `noindex` address out, and the React `<Seo>` reads the same rows from
+`GET /api/settings`, so the browser tab and the shared card agree; switched
+off or deleted, the built-in words from `site_pages.php` return. And every
+event has its own address, **`/events/<id>`** (migration 020): `og.php`
+previews it with the event's bilingual title, description, dates and picture —
+a hidden or unknown id is a 404 / `noindex` preview, never the events list
+under a wrong address — `spa.php` answers it with a 200, and the sitemap lists
+each event that has not ended.
 
 Live broadcast previews use the saved title, description and thumbnail with
 Tamil/English fallback. Draft and deleted broadcasts return 404/noindex;
@@ -422,8 +467,19 @@ is a printable page with a QR verification link (`/payment/receipt`), and the
 notification worker sends it by email, SMS or WhatsApp. Every rule is in
 `docs/payments/SPEC.md`.
 
-Needs migrations `007_notifications.sql` and `010_payments.sql`. Payments stay
+Needs migrations `007_notifications.sql` and `010_payments.sql`; pooja
+sponsorships also need `023_payments_pooja_sponsor.sql`. Payments stay
 **off** until an owner turns them on.
+
+A donor who opens `/donate?pooja=<id>` (the Sponsor button on a pooja) gives
+for that pooja: the id is validated as an active pooja on today or a later
+date, the purpose is preselected (`pournami_pooja`, else `pooja_seva`), the
+review step and the receipt say what the gift is for, and on the first
+`SUCCESS` the same transaction that assigns the receipt also writes **one**
+sponsor row (`sponsors.donation_id` is unique, so a replayed callback can
+never write a second). A full refund marks that sponsor `REFUNDED` — it is
+never deleted — and `GET /api/donors` names the pooja rather than the receipt
+note and leaves refunded sponsorships out.
 
 ### Turning on TEST mode
 
@@ -521,7 +577,9 @@ it can never be switched on by mistake in production.
   KPIs (today / this month / this year in IST, domestic and international), the
   Transactions list with filters and a CSV export, a detail view per payment
   (attempts, gateway references, the audit trail, *Resend receipt*, *Check with
-  CCAvenue now*, *Mark reviewed*), the Refunds tab and the Reconciliation tab.
+  CCAvenue now*, *Mark reviewed*, and for a pooja donation the pooja and the
+  sponsor row it created), the Refunds tab and the Reconciliation tab.
+  Finance → Sponsors links a payment-made sponsor back to its payment.
 - **Refunds** (owners): full or partial, with a reason and a confirmation
   sentence; sent through CCAvenue's `refundOrder` when the API is configured,
   otherwise recorded as a refund already made in the CCAvenue dashboard. The
@@ -571,7 +629,7 @@ shows that nothing is scheduled.
 
 ### In the admin
 
-Admin → **Live Streaming** (group *Content*; the sidebar's "New live stream"
+Admin → **Live Streaming** (group *Media*; the sidebar's "New live stream"
 quick action goes straight to the form). Viewers can read the page, editors
 can create, edit, delete, restore and publish.
 
@@ -599,9 +657,16 @@ can create, edit, delete, restore and publish.
 - **Address** — the page address (`/live-darshan/<slug>`) is made from the
   English title and can be edited while the stream is a draft; once published
   it is locked, so a link the committee has already shared keeps working.
-- **Options** — featured, show on homepage, donations, notifications, sharing
-  and archive are stored now for the later phases; in phase 1 only *sharing*
-  (the share button on the stream page) changes anything.
+- **Belongs to** (migration 022) — pick the pooja or the event the broadcast
+  is part of (the latest 50 active ones, newest first; a linked one is always
+  offered). The public page links to it, and the pooja's sponsor is credited
+  by name when the family agreed to be named — never phone, email or amount.
+- **Options** — *featured* lists the broadcast first with a gold badge; *show
+  on homepage* (off by default) decides whether it fills the homepage block
+  and the hero row — a stream with the switch off stays on `/live-darshan` and
+  the schedule; *donations*, *notifications*, *sharing* and *archive* switch
+  on the Donate button, the Notify-me form, the share button and the
+  recording (see the phases below).
 
 A scheduled darshan whose start time has passed stays on the public page for
 three hours (or until its end time) with "Starting shortly", so a committee
@@ -765,15 +830,44 @@ past broadcasts, per-stream share previews and other providers (the
 
 | Method | Path                 | Description            |
 | ------ | -------------------- | ---------------------- |
-| GET    | `/api/announcements` | List announcements     |
-| GET    | `/api/sevas`         | List sevas             |
-| GET    | `/api/events`        | List events            |
-| GET    | `/api/gallery`       | List gallery images    |
+| GET    | `/api/announcements` | Current announcements (inside their publish window) in both languages; the old `title` / `body` keys are still emitted for one release. |
+| GET    | `/api/sevas`         | List sevas: bilingual description and timing, `is_bookable` (a seva with `is_bookable = 0` refuses bookings with 422). |
+| GET    | `/api/events`        | Shown events, soonest first — without a parameter every one, past included: `?upcoming=1` (last day today or later), `?past=1` (newest first), `?featured=1`, `?type=festival\|pooja\|special\|other` (422 for junk); bilingual description and venue, `event_type`, `end_date`, `start_time` / `end_time`, `image_url`, `is_featured`. |
+| GET    | `/api/events/{id}`   | One shown event, or 404 when hidden or unknown. Its page is `/events/<id>`, with its own share preview, SPA status and sitemap entry. |
+| GET    | `/api/poojas`        | Active poojas: `?upcoming=1` (default), `?past=1`, `?all=1`, `?type=`, `?featured=1`, `?sponsorship=1` (open for sponsorship — the /sponsorship page), `?limit=`, `?page=`; both languages, `start_time`/`end_time` + display `time`, `sponsorship_amount`, `sponsorship_available`, `banner_url`, `is_featured`, `live_stream_enabled`, the consented sponsor only. |
+| GET    | `/api/homepage_widgets` | The homepage cards (§8/§10): every card carries `source_type` (manual / calendar / system), `image_url`, `display_order`; Upcoming Event cards carry `event {...}`, Live Stream cards `stream {...}` with `is_live`; expired poojas are never published; falls back to the next pooja, then the newest announcement, then events. |
+| GET    | `/api/gallery`       | Shown photos, newest first. Each carries `caption`, `alt_ta` / `alt_en`, `album_id` / `album_slug`, `url`, `thumb_url` (~480 px), `medium_url` (~1280 px), `width` / `height`, `thumb_width` / `medium_width`. `?album=<slug\|id>` filters, `?limit=1..200` caps (the homepage strip). Photos in hidden albums are not listed. |
+| GET    | `/api/gallery/albums` | Shown albums holding at least one shown photo, in display order: `slug`, `title_ta` / `title_en`, `description_ta` / `description_en`, `event_id`, `count`, `cover` (`{id, thumb_url, alt_ta, alt_en, caption, width, height}` — the chosen cover, else the newest photo). |
+| GET    | `/api/pages`         | Shown CMS pages in display order (migration 025): `slug`, `title_ta` / `title_en`, meta title and description, `has_body`, `updated_at`. Cached for a minute; an empty list on a database without the migration. |
+| GET    | `/api/pages/{slug}`  | One shown page with `body_ta` / `body_en` (plain text; blank lines separate paragraphs), or 404 when hidden or unknown. |
+| GET    | `/api/settings`      | The homepage section switches (`show_pournami_section`, `show_nalla_strip`, `show_donor_ticker`) plus, since migration 025, `site` (the public site settings — temple name, address, phones, e-mail, hours, daily schedule, today's special, Nalla Neram, hero copy, social links, …; the office-alert address never leaves the server), `seo` (per-path overrides) and `languages` (`enabled`, `default`). Cached for a minute. |
+| GET    | `/api/pulse`         | Live temple status: open / closed, the next pooja of the day, today's special, upcoming events. Since migration 025 the opening hours, the daily pooja schedule and the weekday specials come from the site settings (Admin → System → Settings), with the former built-in figures as defaults. |
 | POST   | `/api/donations`     | Submit donation record |
-| POST   | `/api/contact`       | Submit contact message |
-| GET    | `/api/search`        | Search sevas, events, poojas, announcements, gallery captions and the static pages. `?q=` and an optional `?limit=`. Answers in both languages. |
+| POST   | `/api/contact`       | Submit a contact message: name, phone and message, optional email and subject. The office is emailed (`CONTACT_NOTIFY_EMAIL`). |
+| GET    | `/api/search`        | Site search in Tamil and English: sevas (description, timing), events (description, venue), poojas, current announcements (inside their publish window), gallery captions and alt text, CMS pages and the static pages. `?q=` and an optional `?limit=`. Each hit carries `title_ta` / `title_en`, `snippet_ta` / `snippet_en` (and `snippet`), and its page: `/events/<id>`, `/sevas?seva=<id>` for a bookable seva, `/gallery?photo=<id>`, `/about#mission`. |
 | GET    | `/api/og.php`        | The share preview for a path: `?path=/sevas&seva=3`. Returns HTML, not JSON — it is what link unfurlers read. See *Shared links and rich previews*. |
 | GET    | `/api/live-streams`  | Live and upcoming YouTube Live broadcasts (`/live`, `/upcoming`, `/schedule?filter=`, `/<id>`, `/<slug>`). See *Live Darshan (YouTube Live)*. |
+
+### Versioned API: `/api/v1` (brief §26)
+
+Every route above is also served under `/api/v1/…` (`/api/v1/events`,
+`/api/v1/poojas?upcoming=1`, …), wrapped in the brief's envelope:
+
+```json
+{ "success": true,  "data": <the payload above>, "message": "" }
+{ "success": false, "error": { "code": "VALIDATION_ERROR", "message": "…", "fields": { "email": "…" } } }
+```
+
+Error codes: `VALIDATION_ERROR` (400/409/413/422), `UNAUTHORIZED` (401),
+`FORBIDDEN` (403), `NOT_FOUND` (404), `METHOD_NOT_ALLOWED` (405),
+`RATE_LIMITED` (429), `SERVER_ERROR` (5xx). Under v1 only, the brief's
+resource names are aliases: `/api/v1/home` → `homepage_widgets`,
+`/api/v1/streams…` → `live-streams…`, `/api/v1/sponsors` → `poojas`. The
+unversioned `/api/*` the React app calls is unchanged byte for byte, and
+answers meant for a browser or a provider (CCAvenue return/cancel/notify, the
+payment simulator, notification webhooks, tracked links, og.php, sitemap,
+robots) are never wrapped. `tests/api-v1.mjs` checks every GET route against
+its unversioned twin.
 
 ### Devotee accounts
 
@@ -810,10 +904,76 @@ neighbour's number and read their donation history.
 
 Access: `https://yourdomain.in/admin/`
 
-Pages: Dashboard · Homepage Widgets · Announcements · Gallery · Poojas · Sevas ·
-Events · Sponsors · Seva Bookings · Donations · Online Payments · Donation
-Categories · Messages · Bulk Upload · Settings · Payment Gateway · Committee
-Accounts · My Profile
+The sidebar is grouped the way the brief's §15 lists the CMS
+(`adminNavGroups()` in `backend/admin/includes/admin_layout.php`):
+
+| Group | Pages |
+| ----- | ----- |
+| Overview | Dashboard |
+| Content | Homepage (the cards on the public homepage) · **Pages** · Announcements |
+| Temple | Deities · Poojas · Sevas · Events · Temple Calendar · **Nalla Neram** |
+| Media | Gallery · Videos · Live Streaming · YouTube Automation |
+| Finance | Donations · Online Payments · **Receipts** · Sponsors · Donation Categories · Payment Gateway |
+| Communication | Notifications · Message Templates · Audiences · Delivery Analytics · Messages |
+| Devotees | Family Registrations · Seva Bookings · Bulk Upload |
+| System | Users · **Roles** · **Settings** · **Languages** · **SEO** · Audit Logs · My Profile |
+
+The pages in bold arrived with migration 025 (`site_settings`, `pages`,
+`seo_settings`); each says so until the migration is applied.
+
+- **Pages** (Content; editors) — the written pages the public site reads:
+  slug, Tamil and English title, a plain-text body whose blank lines become
+  paragraphs, meta title and description, order, shown / hidden. `mission`
+  and `history` are seeded for the About page, which keeps its built-in text
+  while their bodies are empty; every page is served by `GET /api/pages` and
+  `/api/pages/{slug}`.
+- **Nalla Neram** (Temple; editors) — the two auspicious windows per weekday
+  that the Panchangam page, the homepage strip and the Nalla Neram cards show,
+  with a *Reset to the built-in table* action. A window that ends before it
+  starts is refused.
+- **Roles** (System; every role can read it) — the capability matrix
+  (`ADMIN_ROLE_GRANTS`) as a table, so nobody has to read PHP to know who may
+  do what. It is read-only; roles are changed in code.
+- **Languages** (System; admins) — which of Tamil and English the site
+  offers and which one a first visit opens in. At least one language stays on
+  and the default must be among them; the React app reads the answer from
+  `GET /api/settings`.
+- **SEO** (System; admins) — per-address overrides of the title, description,
+  preview image and robots directive (`noindex`) for `og.php`, the sitemap and
+  the React `<Seo>`; a duplicate path is refused, and switching an override
+  off restores the built-in words.
+- **Settings → temple details** (System; admins) — the temple name and
+  descriptor, postal address, phones, e-mail and map search text; opening
+  hours and the daily pooja schedule typed one line each; today's special by
+  weekday; the hero title and lead, the introduction and the "coming soon"
+  threshold; social links; and the office-alert address and language. Each
+  value is Tamil and English where it is text, blank means "back to the
+  built-in default", and the audit row lists only the keys that changed. The
+  homepage section switches and the administrator's own account stay on the
+  same page.
+
+- **Receipts** (Finance; every role that may read payments) — each receipt
+  issued for an online donation or seva booking: receipt and payment numbers,
+  donor, purpose in both languages, amount, issue date (IST), tracking id,
+  bank reference and mode, status. Search, month / type / status filters,
+  totals of the filtered set, a formula-safe CSV (`export`, audited), open
+  the printable receipt, open the payment, and **Resend receipt**
+  (`payments.manage`, audited) through the payments module.
+- **Announce to devotees** (a row action in Live Streaming and Events, for
+  roles that may compose notifications) — opens the notification composer
+  pre-filled for a scheduled or live broadcast (start time in IST, link to
+  its page) or an upcoming event (date, venue, description, link to
+  /events/<id>), under an announcement category devotees can switch off. The
+  committee chooses the audience and submits, so consent, unsubscribe links
+  and the approval threshold apply as to any campaign.
+- **Sponsors** — marking a sponsorship PAID (or recording a paid one) sends
+  the sponsor one confirmation (`sponsor.confirmed`, e-mail + WhatsApp,
+  saying whether the family will be named); a paid online pooja donation does
+  the same automatically.
+
+The dashboard adds four cards for the brief's §16: **Next poojas**, **Online
+payments · 7 days**, **Latest donations** and **Recent CMS activity**, beside
+the existing KPIs, the Live Darshan health card and the bookings list.
 
 Press <kbd>Ctrl</kbd>+<kbd>K</kbd> anywhere in the admin to jump to a page or run
 a quick action.
@@ -866,8 +1026,10 @@ See `docs/live/SPEC-PHASE7.md`.
   reading a page and posting to it, so `viewer` accounts are genuinely read-only
 - Every admin form carries a per-session CSRF token, checked by `adminCsrfGuard()`
 - Sign-ins, failures and account changes are written to `admin_activity`
-- Sign-in locks the account for 15 minutes after 10 failures; sessions end after
-  `ADMIN_IDLE_MINUTES` idle; `?next=` redirects are restricted to `/admin/`
+- Sign-in locks the account for 15 minutes after 10 failures, and refuses a client
+  address after 30 failures in 15 minutes across any usernames (the recovery
+  account's lock is per address, so it cannot be locked remotely); sessions end
+  after `ADMIN_IDLE_MINUTES` idle; `?next=` redirects are restricted to `/admin/`
 - All user input is sanitised with `strip_tags` + length limits before DB inserts
 - All DB queries use PDO prepared statements — no SQL injection risk
 - `config/` and `includes/` folders have `.htaccess` denying direct HTTP access
@@ -877,4 +1039,16 @@ See `docs/live/SPEC-PHASE7.md`.
   attacker-chosen filename or extension can never reach `uploads/`
 - `deploy/htaccess_uploads` additionally turns the PHP handler off inside
   `public_html/uploads/`, so nothing in that folder can execute
-- CORS origin is configurable per environment
+- CORS origin is configurable per environment (set `CORS_ORIGIN` to the site's own origin in production)
+- `deploy/htaccess_public_html`, `htaccess_api` and `htaccess_uploads` force
+  HTTPS (308 for the API so a POST stays a POST), send HSTS over TLS, a strict
+  Content-Security-Policy for the React site (a relaxed one only for `/admin`
+  and og.php), `nosniff`, frame, referrer and permissions headers, and deny
+  `includes/ config/ bin/ logs/ database/ tests/` and dotfiles, dumps, logs and
+  `.env` files; `tests/deploy-config.mjs` checks every rule
+- `APP_ENV` keeps error detail off the page outside development
+- Public outputs never publish a sponsor's private data: `sponsorPublicSql()`
+  requires consent, drops refunded sponsorships and never exposes the payment
+  module's bookkeeping note
+- The full OWASP Top 10 review, with evidence and the production checklist, is
+  in `docs/SECURITY-REVIEW.md`

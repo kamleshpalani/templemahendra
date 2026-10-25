@@ -128,11 +128,9 @@ try {
   let ready = false;
   for (let i = 0; i < 50; i++) {
     if (server.exitCode !== null) throw new Error(log);
-    try {
-      const probe = await fetch(`${base}/api/calendar`);
-      ready = probe.ok;
-      await probe.arrayBuffer();
-    } catch { /* starting */ }
+    // Drain the body: an unread response this large leaves undici's parser
+    // paused when the built-in server closes the socket, and Node aborts.
+    try { const probe = await fetch(`${base}/api/calendar`); await probe.text(); ready = probe.ok; } catch { /* starting */ }
     if (ready) break;
     await delay(100);
   }
@@ -153,7 +151,7 @@ try {
 
   /* ── computed baseline ──────────────────────────────────────────────── */
   const baseline = await month();
-  check(baseline && baseline.days.length === 31 && baseline.days.every((d) => Array.isArray(d.special) && d.tithi_ta && d.timings), "GET /api/calendar answers 31 computed days for March 2033");
+  check(baseline && baseline.days.length === 31 && baseline.days.every((d) => Array.isArray(d.special) && (d.tithi_ta || (d.tithi === 29 && d.tithi_en === null && d.tithi_end === null)) && d.timings), "GET /api/calendar answers 31 computed days with New Moon labels omitted for March 2033");
   check(!baseline.days.some((d) => d.special.some((s) => s.custom)), "precondition: no committee entries in the test month");
   const pournamiDay = baseline.days.find((d) => d.special.some((s) => s.type === "pournami"));
   const busyDay = baseline.days.find((d) => d.special.length >= 1 && d !== pournamiDay);
@@ -327,7 +325,7 @@ try {
   r = await owner.get("/admin/calendar_entries.php?f=" + encodeURIComponent(SQLI) + "&edit=" + encodeURIComponent(SQLI));
   check(r.status === 200 && !FATAL.test(r.text), "E2E-047 SQL payload in the filter and edit id is harmless");
   r = await api(`/api/calendar?year=${encodeURIComponent(SQLI)}&month=${encodeURIComponent(XSS)}`);
-  check(r.status === 200 && r.json && r.json.days.length >= 28, "E2E-047 hostile year/month fall back to the current month");
+  check(r.status === 422 && r.json && typeof r.json.error === "string", "E2E-047 hostile year/month are explicitly rejected");
 
   /* ── delete ─────────────────────────────────────────────────────────── */
   r = await owner.post("/admin/calendar_entries.php", { _csrf: csrf, action: "delete", id: String(hostile.id) });

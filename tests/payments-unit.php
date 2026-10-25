@@ -148,6 +148,13 @@ function unitCleanup(PDO $db, string $like): array
           OR (payable_type = 'seva_booking' AND payable_id IN ({$sids}))"
     );
     $out['refunds'] = $db->exec("DELETE FROM payment_refunds WHERE transaction_id IN ({$tids})");
+    // Sponsor rows paid pooja donations created (migration 023), before the donations go.
+    $hasSponsorLink = (int) $db->query("SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'sponsors' AND COLUMN_NAME = 'donation_id'")->fetchColumn() > 0;
+    if ($hasSponsorLink) {
+        $stmt = $db->prepare("DELETE FROM sponsors WHERE donation_id IN ({$dids}) OR name LIKE ?");
+        $stmt->execute([$like]);
+        $out['sponsors'] = $stmt->rowCount();
+    }
     $out['attempts'] = $db->exec("DELETE FROM payment_transactions WHERE id IN ({$tids})");
     $stmt = $db->prepare('DELETE FROM donations WHERE name LIKE ?');
     $stmt->execute([$like]);
@@ -155,6 +162,9 @@ function unitCleanup(PDO $db, string $like): array
     $stmt = $db->prepare('DELETE FROM seva_bookings WHERE devotee_name LIKE ?');
     $stmt->execute([$like]);
     $out['bookings'] = $stmt->rowCount();
+    $stmt = $db->prepare('DELETE FROM poojas WHERE name_en LIKE ?');
+    $stmt->execute([$like]);
+    $out['poojas'] = $stmt->rowCount();
     return $out;
 }
 
@@ -483,6 +493,41 @@ try {
     ok(isset($refused['fields']['currency']) && str_contains($refused['fields']['currency'], 'INR'), 'with international off, only INR is accepted', json_encode($refused['fields']));
     eq(payValidateDonation($donation(), $domestic)['fields'], [], 'INR still works with international off');
 
+    // A donation for a pooja (brief §13, migration 023): only an active pooja on today or a later IST date.
+    $poojaIds = [];
+    if (payPoojaLinksReady()) {
+        $ins = $db->prepare("INSERT INTO poojas (name_ta, name_en, pooja_date, pooja_time, pooja_type, is_active) VALUES (:ta, :en, :d, '18:00', 'pournami', :a)");
+        foreach ([
+            ['open', payIstDate(null, 'Y-m-d'), 1],
+            ['future', date('Y-m-d', time() + 30 * 86400), 1],
+            ['past', date('Y-m-d', time() - 2 * 86400), 1],
+            ['hidden', date('Y-m-d', time() + 10 * 86400), 0],
+        ] as [$k, $d, $a]) {
+            $ins->execute([':ta' => "{$NAME} பௌர்ணமி {$k}", ':en' => "{$NAME} Pournami {$k}", ':d' => $d, ':a' => $a]);
+            $poojaIds[$k] = (int) $db->lastInsertId();
+        }
+        $v = payValidateDonation($donation(['pooja_id' => (string) $poojaIds['future']]), $cfg);
+        ok($v['fields'] === [] && $v['values']['pooja_id'] === $poojaIds['future'] && ($v['values']['pooja_name']['en'] ?? '') === "{$NAME} Pournami future" && ($v['values']['pooja_name']['ta'] ?? '') === "{$NAME} பௌர்ணமி future",
+            'an active future pooja is accepted and named in both languages', json_encode($v['fields']));
+        eq(payValidateDonation($donation(['pooja_id' => $poojaIds['open']]), $cfg)['fields'], [], "today's pooja (IST) is still open for sponsorship");
+        eq(payValidateDonation($donation(), $cfg)['values']['pooja_id'], null, 'no pooja_id → null, no error');
+        eq(payValidateDonation($donation(['pooja_id' => '']), $cfg)['values']['pooja_id'], null, 'an empty pooja_id → null, no error');
+        foreach ([
+            ['a pooja that is over', $poojaIds['past']],
+            ['a hidden pooja', $poojaIds['hidden']],
+            ['an unknown pooja', 99999999],
+            ['a pooja_id as an array', [$poojaIds['future']]],
+            ['a pooja_id as text', 'abc'],
+            ['a negative pooja_id', '-1'],
+            ['a pooja_id as a float', 1.5],
+        ] as [$label, $value]) {
+            $r = payValidateDonation($donation(['pooja_id' => $value]), $cfg);
+            ok(isset($r['fields']['pooja_id']) && ($r['values']['pooja_id'] ?? null) === null, "{$label} → a field error on \"pooja_id\" and no pooja", json_encode($r['fields']));
+        }
+    } else {
+        ok(false, 'migration 023 (donations.pooja_id) is applied');
+    }
+
     section('8b. payValidateSevaBooking (§5.2)');
     $sevaRow = $db->query('SELECT id, amount FROM sevas WHERE is_active = 1 AND amount > 0 ORDER BY id LIMIT 1')->fetch(PDO::FETCH_ASSOC);
     if ($sevaRow === false) {
@@ -683,6 +728,49 @@ try {
     }
 
     /* ── 10. Refunds ─────────────────────────────────────────────────────── */
+    section('9d. A paid pooja donation is one sponsor, however often CCAvenue repeats itself (brief §13)');
+    if (payPoojaLinksReady() && paySponsorLinksReady() && !empty($poojaIds['future'])) {
+        $checked = payValidateDonation([
+            'category' => 'general', 'amount' => '2500', 'currency' => 'INR', 'name' => "{$NAME} Sponsor",
+            'phone' => '919876543210', 'phoneCountry' => 'IN', 'country' => 'IN', 'email' => 'e2e-pay-unit-sponsor@example.test',
+            'showNamePublicly' => true, 'acceptTerms' => true, 'lang' => 'en', 'pooja_id' => $poojaIds['future'],
+        ], $cfg);
+        if ($checked['fields']) throw new RuntimeException('pooja donation refused: ' . json_encode($checked['fields']));
+        $sp = payCreateDonation($db, $checked['values'], $cfg, '10.83.0.9');
+        $spId = (int) $sp['payable']['id'];
+        $spOrder = (string) $sp['attempt']['order_id'];
+        $sponsorCount = static fn(): int => (int) $db->query("SELECT COUNT(*) FROM sponsors WHERE donation_id = {$spId}")->fetchColumn();
+        eq((int) $db->query("SELECT pooja_id FROM donations WHERE id = {$spId}")->fetchColumn(), $poojaIds['future'], 'the donation stores its pooja');
+        eq($sponsorCount(), 0, 'no sponsor before the payment');
+        $r1 = $applyTo($spOrder, 'SUCCESS', ['responded' => true, 'tracking_id' => 'UNITSP' . $run, 'verification' => 'callback', 'channel' => 'response']);
+        $receiptsIssued++;
+        ok($r1['firstSuccess'] && $r1['receiptNumber'] !== null, 'the first SUCCESS assigns the receipt');
+        eq($sponsorCount(), 1, 'and exactly one sponsor row');
+        $row = $db->query("SELECT * FROM sponsors WHERE donation_id = {$spId}")->fetch(PDO::FETCH_ASSOC) ?: [];
+        ok(($row['name'] ?? '') === "{$NAME} Sponsor" && ($row['phone'] ?? '') === '+919876543210' && ($row['email'] ?? '') === 'e2e-pay-unit-sponsor@example.test'
+            && (int) ($row['pooja_id'] ?? 0) === $poojaIds['future'] && ($row['amount'] ?? '') === '2500.00' && ($row['payment_status'] ?? '') === 'PAID'
+            && ($row['payment_ref'] ?? '') === $r1['receiptNumber'] && (int) ($row['transaction_id'] ?? 0) === (int) $sp['attempt']['id'] && (int) ($row['donation_id'] ?? 0) === $spId
+            && (int) ($row['publish_consent'] ?? 0) === 1 && (int) ($row['is_active'] ?? 0) === 1 && array_key_exists('family_name', $row) && $row['family_name'] === null && ($row['note'] ?? '') === "Online donation {$sp['payable']['number']}",
+            'name, dialable phone, email, pooja, amount, PAID, receipt as reference, attempt, donation, consent mirrored, active, no family name, note', json_encode($row));
+        $applyTo($spOrder, 'SUCCESS', ['responded' => true, 'channel' => 'notify']);                                        // a duplicate DEN notification
+        $applyTo($spOrder, 'SUCCESS', ['checked' => true, 'verification' => 'status_api', 'verified' => true]);           // the sweep re-verifying
+        eq($sponsorCount(), 1, 'a replayed callback and a re-verification add no second sponsor');
+        eq((int) $db->query("SELECT COUNT(*) FROM payment_audit_log WHERE payable_type = 'donation' AND payable_id = {$spId} AND event = 'sponsor_assigned'")->fetchColumn(), 1, 'one sponsor_assigned audit row');
+        $spNow = payLoadPayable($db, $sp['payable']['number']);
+        ok(($spNow['pooja']['name']['en'] ?? '') === "{$NAME} Pournami future" && payPublicView($db, $spNow)['pooja']['ta'] === "{$NAME} பௌர்ணமி future", 'the payable and the public view carry the pooja in both languages');
+        $refund = payRefundCreate($db, $spNow, $spNow['attempts'][0], 'full', '', 'Unit test refund', 'manual', null, 'unit');
+        ok($refund['ok'] === true, 'a full manual refund is recorded', $refund['message']);
+        eq($db->query("SELECT payment_status FROM sponsors WHERE donation_id = {$spId}")->fetchColumn(), 'REFUNDED', 'the sponsor is marked REFUNDED');
+        eq($sponsorCount(), 1, 'and not deleted');
+        ok(in_array('sponsor_refunded', array_column($db->query("SELECT event FROM payment_audit_log WHERE payable_type = 'donation' AND payable_id = {$spId}")->fetchAll(PDO::FETCH_ASSOC), 'event'), true), 'audit sponsor_refunded');
+        $db->prepare('DELETE FROM poojas WHERE id = :id')->execute([':id' => $poojaIds['future']]);
+        ok($db->query("SELECT pooja_id FROM donations WHERE id = {$spId}")->fetchColumn() === null
+            && $db->query("SELECT pooja_id FROM sponsors WHERE donation_id = {$spId}")->fetchColumn() === null && $sponsorCount() === 1,
+            'deleting the pooja nulls the links on the donation and the sponsor and keeps both rows');
+    } else {
+        ok(false, 'migration 023 (sponsors.donation_id / transaction_id) is applied');
+    }
+
     section('10. Refund arithmetic (§8)');
     $refundPayable = payLoadPayable($db, $paidNumber);
     $successAttempt = paySuccessAttempt($refundPayable);

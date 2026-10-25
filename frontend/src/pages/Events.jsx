@@ -9,12 +9,58 @@ import Button from "../components/ui/Button";
 import Alert from "../components/ui/Alert";
 import HomepageWidgets from "../components/HomepageWidgets/HomepageWidgets";
 import { SkeletonCards } from "../components/ui/Feedback";
+import { to12h } from "../lib/templeTime";
 import "./Events.css";
 
+// Shared with EventDetail so a linked card and its detail page agree.
+export const EVENT_TYPE_META = {
+  festival: { ta: "திருவிழா", en: "Festival", tone: "gold" },
+  pooja: { ta: "பூஜை", en: "Pooja", tone: "info" },
+  special: { ta: "சிறப்பு நிகழ்வு", en: "Special", tone: "warning" },
+  temple: { ta: "கோயில்", en: "Temple", tone: "gold" },
+};
+
+export function eventTypeKey(ev) {
+  const type = ev?.event_type;
+  return type === "festival" || type === "pooja" || type === "special" ? type : "temple";
+}
+
+export function eventText(ev, field, lang) {
+  if (!ev) return "";
+  const ta = ev[`${field}_ta`];
+  const en = ev[`${field}_en`];
+  return (lang === "ta" ? ta || en : en || ta) || ev[field] || "";
+}
+
+export function eventDateLabel(from, until, lang) {
+  const locale = lang === "ta" ? "ta-IN" : "en-IN";
+  const a = new Date(`${from}T00:00:00`);
+  if (Number.isNaN(a.getTime())) return from ?? "";
+  const full = (d) => d.toLocaleDateString(locale, { day: "numeric", month: "short", year: "numeric" });
+  if (!until || until === from) return full(a);
+  const b = new Date(`${until}T00:00:00`);
+  if (Number.isNaN(b.getTime())) return full(a);
+  if (a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth()) {
+    return `${a.getDate()}–${b.getDate()} ${b.toLocaleDateString(locale, { month: "short", year: "numeric" })}`;
+  }
+  return `${full(a)} – ${full(b)}`;
+}
+
+export function eventTimeLabel(ev) {
+  if (!ev?.start_time && !ev?.end_time) return "";
+  if (ev.start_time && ev.end_time) return `${to12h(ev.start_time)} – ${to12h(ev.end_time)}`;
+  return to12h(ev.start_time || ev.end_time);
+}
+
 export const poojaCard = (p) => ({
-  id: `pooja-${p.id}`, content_type: p.pooja_type === "pournami" ? "calendar_pooja" : "upcoming_pooja",
+  id: `pooja-${p.id}`, content_type: (p.pooja_type || p.type) === "pournami" ? "calendar_pooja" : "upcoming_pooja",
   title_ta: p.name_ta, title_en: p.name_en, description_ta: p.description_ta, description_en: p.description_en,
-  pooja: { id: p.id, date: p.pooja_date, time: p.pooja_time, type: p.pooja_type },
+  pooja: {
+    id: p.id, date: p.pooja_date || p.date, time: p.pooja_time || p.time, type: p.pooja_type || p.type,
+    sponsorship_amount: p.sponsorship_amount, sponsorship_available: p.sponsorship_available,
+  },
+  image_url: p.banner_url,
+  sponsor: p.sponsor,
 });
 
 export default function Events() {
@@ -27,15 +73,28 @@ export default function Events() {
     setError(false);
     setData(null);
     Promise.all([api.get("/events?upcoming=1&limit=100"), api.get("/pooja-schedule"), api.get("/announcements?limit=50")])
-      .then(([events, poojas, notices]) => { if (active) setData({ events: events.data, poojas: poojas.data, notices: notices.data }); })
+      .then(([events, poojas, notices]) => {
+        if (active) setData({
+          events: Array.isArray(events.data) ? events.data : [],
+          poojas: Array.isArray(poojas.data) ? poojas.data : [],
+          notices: Array.isArray(notices.data) ? notices.data : [],
+        });
+      })
       .catch(() => { if (active) setError(true); });
     return () => { active = false; };
   }, [retry]);
-  const pournami = data?.poojas.filter((p) => p.pooja_type === "pournami") ?? [];
-  const other = data?.poojas.filter((p) => p.pooja_type !== "pournami") ?? [];
+  const poojas = (data?.poojas ?? []).filter((p) => (p.pooja_type || p.type) !== "amavasai");
+  const pournami = poojas.filter((p) => (p.pooja_type || p.type) === "pournami");
+  const other = poojas.filter((p) => (p.pooja_type || p.type) !== "pournami");
   const eventCards = (data?.events ?? []).map((e) => ({
     id: `event-${e.id}`, content_type: "upcoming_event", title_ta: e.title_ta, title_en: e.title_en,
-    description_ta: e.description, description_en: e.description, event_date: e.event_date,
+    description_ta: eventText(e, "description", "ta"), description_en: eventText(e, "description", "en"), event_date: e.event_date,
+    event: {
+      id: e.id, date: e.event_date, time: eventTimeLabel(e),
+      date_label: eventDateLabel(e.event_date, e.end_date, lang),
+      venue_ta: e.venue_ta, venue_en: e.venue_en,
+    },
+    image_url: e.image_url,
   }));
   const sections = [
     { id: "next-scheduled-pooja", Icon: LuFlame, title: t("அடுத்த திட்டமிட்ட பூஜை", "Next Scheduled Pooja"),
@@ -46,8 +105,11 @@ export default function Events() {
       cards: eventCards, empty: t("புதிய நிகழ்வுகள் விரைவில்.", "Upcoming temple activities will be announced here.") },
     { id: "temple-notices", Icon: LuMegaphone, title: t("அறிவிப்புகள்", "Temple Notices"),
       cards: (data?.notices ?? []).map((notice) => ({
-        id: `notice-${notice.id}`, content_type: "announcement", title_ta: notice.title, title_en: notice.title,
-        description_ta: notice.body, description_en: notice.body,
+        id: `notice-${notice.id}`, content_type: "announcement",
+        title_ta: notice.title_ta || notice.title || notice.title_en,
+        title_en: notice.title_en || notice.title || notice.title_ta,
+        description_ta: notice.body_ta || notice.body || notice.body_en,
+        description_en: notice.body_en || notice.body || notice.body_ta,
       })), empty: t("புதிய அறிவிப்புகள் விரைவில்.", "New notices will appear here when published.") },
   ];
   return <div className="events-page">

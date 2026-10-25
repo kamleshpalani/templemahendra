@@ -297,7 +297,7 @@ $headerActions = '';
 if ($tables && adminCan('payments.settings')) {
     $headerActions .= '<a href="/admin/payment_settings.php" class="btn btn-ghost btn--sm">' . adminIcon('shield') . 'Payment Gateway</a>';
 }
-adminHeader('Online Payments', 'Devotees', ['actions' => $headerActions, 'wide' => true]);
+adminHeader('Online Payments', 'Finance', ['actions' => $headerActions, 'wide' => true]);
 echo $msg;
 
 if (!$tables) {
@@ -349,6 +349,15 @@ if ($detail !== null):
             <dt>Refunded</dt><dd class="cell-money"><?= h(payAdminMoney($p['amount_refunded'], $p['currency'])) ?></dd>
           <?php endif; ?>
           <dt><?= $isDonation ? 'Purpose' : 'Seva' ?></dt><dd><?= h($purpose) ?></dd>
+          <?php if ($isDonation && !empty($p['pooja'])): ?>
+            <dt>Pooja</dt><dd><a href="/admin/poojas.php?edit=<?= (int) $p['pooja']['id'] ?>#new"><?= h($p['pooja']['name']['en']) ?></a>
+              <span class="cell-sub"><?= h(adminFmtDate($p['pooja']['date'])) ?><?= $p['pooja']['is_active'] ? '' : ' · hidden pooja' ?></span></dd>
+          <?php endif; ?>
+          <?php if (!empty($detail['sponsor'])): $sp = $detail['sponsor']; ?>
+            <dt>Sponsor</dt><dd><a href="/admin/sponsors.php?edit=<?= (int) $sp['id'] ?>#new">Sponsor #<?= (int) $sp['id'] ?></a>
+              <?= adminBadge(ucfirst(strtolower((string) $sp['payment_status'])), $sp['payment_status'] === 'PAID' ? 'success' : ($sp['payment_status'] === 'REFUNDED' ? 'info' : 'muted')) ?>
+              <?= $sp['publish_consent'] ? adminBadge('Consent given', 'info') : adminBadge('No consent', 'muted') ?></dd>
+          <?php endif; ?>
           <?php if ($isDonation && !empty($p['live_stream_id'])): ?>
             <dt>Live darshan</dt><dd><a href="/admin/live_streams.php?edit=<?= (int) $p['live_stream_id'] ?>">Stream #<?= (int) $p['live_stream_id'] ?></a></dd>
           <?php endif; ?>

@@ -13,6 +13,7 @@
  *   create-stream  {title_prefix, label?, title_en?, title_ta?, slug?, status?, provider?,
  *                   provider_reference?, playback_url?, thumbnail_url?, banner_url?,
  *                   description_ta?, description_en?, event_type?, temple_slug?, deity_slug?,
+ *                   pooja_id?, event_id? (migration 022),
  *                   scheduled_start_local?, scheduled_end_local?, timezone?, flags?,
  *                   starts_in_seconds?, ends_in_seconds?,
  *                   actual_start_local?, actual_end_local?, deleted?, actor?}
@@ -215,6 +216,9 @@ try {
                 'description_en'     => (string) ($args['description_en'] ?? 'Test live darshan created by the test suite.'),
                 'temple_id'          => (string) $templeId,
                 'deity_id'           => $deityId,
+                // Migration 022: the pooja / event the broadcast belongs to, by id ('' = none).
+                'pooja_id'           => isset($args['pooja_id']) && (int) $args['pooja_id'] > 0 ? (string) (int) $args['pooja_id'] : '',
+                'event_id'           => isset($args['event_id']) && (int) $args['event_id'] > 0 ? (string) (int) $args['event_id'] : '',
                 'event_type'         => (string) ($args['event_type'] ?? 'live_darshan'),
                 'provider'           => (string) ($args['provider'] ?? 'youtube'),
                 'provider_reference' => (string) ($args['provider_reference'] ?? 'dQw4w9WgXcQ'),
