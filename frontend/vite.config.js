@@ -1,6 +1,7 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import { VitePWA } from "vite-plugin-pwa";
+import identity from "../backend/config/temple_identity.json";
 
 // Which PHP server the dev proxy talks to. The site's own development server is
 // on :8000; a test suite that needs its own PHP (the payment suites start one
@@ -15,8 +16,8 @@ export default defineConfig({
       registerType: "autoUpdate",
       includeAssets: ["favicon.svg"],
       manifest: {
-        name: "தபலவார் ரேணுகா தேவி லிங்கம்மா சின்னம்மாள் கோவில் | Dhabbalavaar Renuka Devi Lingamma Sinnammal Temple",
-        short_name: "Dhabbalavaar Temple",
+        name: `தபலவார் ரேணுகா தேவி லிங்கம்மா சின்னம்மாள் கோவில் | ${identity.name_en}`,
+        short_name: "Dhabbalavar Temple",
         description:
           "Official temple app — poojas, sevas, events, donations & more.",
         theme_color: "#3d0707",

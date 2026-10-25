@@ -24,11 +24,13 @@ function adminNavGroups(): array
             'sevas.php'            => ['sparkles',    'Sevas',            'Bookable sevas and prices'],
             'events.php'           => ['calendar',    'Events',           'Festivals and temple events'],
             'calendar_entries.php' => ['calendar',    'Temple Calendar',  'Custom entries on the Panchangam calendar'],
+            'panchangam.php'       => ['calendar',    'Daily Panchangam', 'Committee-verified local timings and lunar details'],
             'sponsors.php'         => ['heart-hands', 'Sponsors',         'Devotees sponsoring poojas'],
             'donation_categories.php' => ['heart-hands', 'Donation Categories', 'Purposes donors can give to'],
         ],
         'Devotees' => [
             'devotees.php'         => ['users',       'Family Registrations', 'Registered families and their members'],
+            'matrimony.php'        => ['users',       'Matrimony', 'Private profile review and consent-based summaries'],
             'seva_bookings.php'    => ['clipboard',   'Seva Bookings',    'Online seva requests'],
             'donations.php'        => ['banknote',    'Donations',        'Pledges, totals and CSV reports'],
             'payments.php'         => ['landmark',    'Online Payments',  'Donation and seva payments, refunds, reconciliation'],

@@ -21,6 +21,7 @@ import StatusBadge from "../components/Payments/StatusBadge";
 import PaymentRedirect from "../components/Payments/PaymentRedirect";
 import SimulatorBanner from "../components/Payments/SimulatorBanner";
 import EmailReceiptForm from "../components/Payments/EmailReceiptForm";
+import PaymentShare from "../components/Payments/PaymentShare";
 import { useLang, rateLimitInfo, rateLimitMessage } from "../context/LangContext";
 import { PRIMARY_CONTACT, formatPhone, telHref } from "../data/temple";
 import { clearDonationDraft } from "../lib/donation";
@@ -370,6 +371,8 @@ export default function PaymentResult() {
             </Button>
           </div>
           <EmailReceiptForm number={data.number} token={token} email={data.email} className="pay-result__email" />
+          <PaymentShare path={receiptPath(data.number, token)} receipt reference={data.receiptNumber}
+            amountLabel={amountLabel} purposeLabel={purposeLabel} testMode={data.simulator || data.testMode} />
         </>
       )}
 

@@ -28,18 +28,20 @@
  * The path is exactly what the browser shows, with no query string. '/' is the
  * home page, whose title is the temple's name on its own — see og.php.
  */
+require_once __DIR__ . '/temple_identity.php';
+
 function sitePages(): array
 {
     return [
         '/' => [
             '', '',
-            'பக்தி, பாரம்பரியம் மற்றும் சமூகம் — ஒரு புனிதத் தலம்',
-            'A sacred place of devotion, tradition, and community',
+            'அருள்மிகு ஸ்ரீ லிங்கம்மாள், ஸ்ரீ ரேணுகாதேவி, ஸ்ரீ சின்னம்மாள் திருக்கோவில்',
+            templeIdentity()['name_en'],
         ],
         '/about' => [
             'பற்றி', 'About',
             'தப்பலவார் குலதெய்வம் அருள்மிகு ஸ்ரீ லிங்கம்மாள், ஸ்ரீ ரேணுகாதேவி, ஸ்ரீ சின்னம்மாள் திருக்கோவில்',
-            'Dhabbalavaar Kula Deivam — Arulmigu Sri Lingammal, Sri Renukadevi, Sri Chinnammal Temple',
+            templeIdentity()['name_en'],
         ],
         '/sevas' => [
             'சேவைகள்', 'Sevas',
@@ -47,9 +49,9 @@ function sitePages(): array
             "Offer a pooja in your name or your family's name and receive the blessings of the Goddess.",
         ],
         '/events' => [
-            'நிகழ்வுகள்', 'Events',
-            'பவுர்ணமி பூஜைகள், திருவிழாக்கள் மற்றும் சிறப்பு நிகழ்வுகள் — ஒரே இடத்தில்.',
-            'Pournami poojas, festivals and special occasions — all in one place.',
+            'நிகழ்வுகள் & பூஜை அட்டவணை', 'Events & Pooja Schedule',
+            'கமிட்டியால் அறிவிக்கப்பட்ட பூஜைகள், திருவிழாக்கள் மற்றும் நிகழ்வுகள்.',
+            'Poojas, celebrations and activities announced by the temple committee.',
         ],
         '/gallery' => [
             'தொகுப்பு', 'Gallery',
@@ -76,8 +78,8 @@ function sitePages(): array
         ],
         '/panchangam' => [
             'பஞ்சாங்கம்', 'Panchangam',
-            'அமாவாசை · பௌர்ணமி · ஏகாதசி · நல்ல நேரம் · ராகு காலம்',
-            'Amavasai · Pournami · Ekadasi · Good Timings · Rahu Kalam',
+            'பௌர்ணமி · ஏகாதசி · நல்ல நேரம் · ராகு காலம்',
+            'Pournami · Ekadasi · Good Timings · Rahu Kalam',
         ],
         '/search' => [
             'தேடல்', 'Search',
@@ -90,6 +92,10 @@ function sitePages(): array
             'குடும்பப் பதிவு', 'Family registration',
             'கோயில் உங்கள் குடும்பத்தை அறிந்து கொள்ள, ஒரு முறை மட்டும் இந்தப் படிவத்தை நிரப்புங்கள். கணக்கோ கடவுச்சொல்லோ தேவையில்லை.',
             'Fill this in once so the temple knows your family. No account or password is needed.',
+        ],
+        '/matrimony' => [
+            'திருமணத் தகவல்','Matrimony',
+            'உங்கள் ஒப்புதலுடன், உங்கள் தனியுரிமையுடன்.','Your consent. Your privacy.',
         ],
         // Online giving through CCAvenue (docs/payments/SPEC.md §7.3). /donations
         // keeps the bank details and the pledge form; this is the payment flow.
@@ -117,8 +123,8 @@ function sitePages(): array
         ],
         '/shipping-delivery-policy' => [
             'அனுப்புதல் & விநியோகக் கொள்கை', 'Shipping & Delivery Policy',
-            'அறக்கட்டளை எந்தப் பொருளையும் விற்பதோ அனுப்புவதோ இல்லை. நன்கொடை ரசீதுகள் மின்னணு முறையில் வழங்கப்படுகின்றன; சேவைகள் திருக்கோவிலில் நடைபெறுகின்றன.',
-            'The Trust sells and ships no goods. Donation receipts are delivered electronically, and sevas are performed at the temple.',
+            'சேவைகள் திருக்கோவிலில் நடைபெறுகின்றன. தேர்ந்தெடுத்த அர்ச்சனை சேவைகளுக்கு பிரசாதம் வீட்டிற்கு அனுப்பப்படும்; கட்டணமும் விநியோக விவரங்களும் பதிவுக்கு முன் காட்டப்படும்.',
+            'Sevas are performed at the temple. Selected Archana services include home delivery of Prasadam, with charges and delivery details shown before booking.',
         ],
         // Live darshan (docs/live/SPEC-PHASE1.md §4.6). The React page passes
         // exactly these strings to <Seo>; tests/og.mjs checks they agree.

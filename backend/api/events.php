@@ -3,6 +3,7 @@
 
 require_once __DIR__ . '/../includes/db.php';
 require_once __DIR__ . '/../includes/helpers.php';
+require_once __DIR__ . '/../includes/public_content.php';
 
 $limit    = min(intParam('limit', 20), 100);
 $upcoming = boolParam('upcoming');
@@ -22,4 +23,4 @@ $stmt = $db->prepare($sql);
 $stmt->bindValue(':limit', $limit, PDO::PARAM_INT);
 $stmt->execute();
 
-sendJson($stmt->fetchAll());
+sendJson(publicContentVisible($stmt->fetchAll()));

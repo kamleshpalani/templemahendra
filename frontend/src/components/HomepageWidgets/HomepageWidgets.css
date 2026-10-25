@@ -219,7 +219,8 @@
 /* ══════════════════════════════════════════════════════════════════
    Featured card — the one dark surface in the bento
    ══════════════════════════════════════════════════════════════════ */
-.hw-card--featured {
+.hw-card--featured,
+.hw-card--calendar_pooja {
   --hw-glow: var(--saffron-500);
   justify-content: center;
   gap: var(--space-3);
@@ -231,6 +232,23 @@
     linear-gradient(150deg, var(--maroon-900) 0%, var(--maroon-700) 60%, var(--maroon-800) 100%);
   border-color: color-mix(in srgb, var(--gold-300) 28%, transparent);
   box-shadow: var(--shadow-md), var(--glass-ink-edge);
+}
+.hw-card--calendar_pooja .hw-card__title {
+  color: var(--gold-200);
+}
+.hw-card--calendar_pooja .hw-card__date,
+.hw-card--calendar_pooja .hw-card__desc {
+  color: var(--text-on-dark-2);
+}
+.hw-card--calendar_pooja .badge {
+  background: color-mix(in srgb, var(--text-on-dark) 12%, transparent);
+  border-color: color-mix(in srgb, var(--gold-300) 40%, transparent);
+  color: var(--gold-200);
+}
+.hw-card--calendar_pooja .hw-sponsor__name,
+.hw-card--calendar_pooja .hw-sponsor__note,
+.hw-card--calendar_pooja .hw-sponsor__label {
+  color: var(--text-on-dark-2);
 }
 .hw-card--featured.hw-card--tone-moon {
   --hw-glow: var(--moon-500);

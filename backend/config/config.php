@@ -1,7 +1,8 @@
 <?php
 // backend/config/config.php
 
-define('SITE_NAME', 'Sri Mahendra Temple');
+require_once __DIR__ . '/../includes/temple_identity.php';
+define('SITE_NAME', templeIdentity()['name_en']);
 define('UPLOAD_DIR', __DIR__ . '/../uploads/');
 define('UPLOAD_MAX_MB', 5);
 define('ALLOWED_IMAGE_TYPES', ['image/jpeg', 'image/png', 'image/webp']);
@@ -16,4 +17,3 @@ define('CORS_ORIGIN', getenv('CORS_ORIGIN') ?: '*');
 // On Hostinger: hPanel → Hosting → Manage → PHP → Environment Variables
 //   Key:   GEMINI_API_KEY
 //   Value: AIza...your-key...
-

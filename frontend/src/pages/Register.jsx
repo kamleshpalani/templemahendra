@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Link, useSearchParams } from "react-router-dom";
-import { LuArrowLeft, LuArrowRight, LuCircleCheck, LuHouse, LuSend, LuSparkles, LuUserPlus } from "react-icons/lu";
+import { LuArrowLeft, LuArrowRight, LuCircleCheck, LuFlower2, LuHeartHandshake, LuHouse, LuSend, LuSparkles, LuUserPlus } from "react-icons/lu";
 import Seo from "../components/Seo";
 import PageHero from "../components/ui/PageHero";
 import Button from "../components/ui/Button";
@@ -75,7 +75,8 @@ function restoreForm(saved, lang) {
     form.members = saved.members
       .filter((m) => m && Number.isInteger(m.key) && m.key > 0)
       .slice(0, LIMITS.maxMembers)
-      .map((m) => ({ key: m.key, name: String(m.name ?? ""), relationship: String(m.relationship ?? ""), age: String(m.age ?? "") }));
+      .map((m) => Object.fromEntries(Object.entries(emptyMember(m.key)).map(([key, value]) =>
+        [key, key === "key" ? m.key : typeof m[key] === "string" ? m[key] : value])));
   }
   return form;
 }
@@ -397,10 +398,17 @@ export default function Register() {
     <>
       <Seo title={t("குடும்பப் பதிவு", "Family registration")} description={lead} />
       <PageHero
+        variant="register"
         eyebrow={t("ஒரு முறை பதிவு", "One-time registration")}
         title={heroTitle}
         lead={lead}
         crumbs={[{ label: t("குடும்பப் பதிவு", "Family registration") }]}
+        aside={<div className="reg-welcome">
+          <span className="reg-welcome__emblem" aria-hidden="true"><LuHeartHandshake /></span>
+          <p className="reg-welcome__eyebrow">{t("இறையருளுடன் இணைவோம்", "Connected through devotion")}</p>
+          <h2>{t("ஒரு குடும்பம். ஓர் ஆலயம். தலைமுறைகளின் பந்தம்.", "One family. One temple. A bond across generations.")}</h2>
+          <p>{t("உங்கள் குடும்பத்தையும் நம் ஆலயக் குடும்பத்தில் இணைத்திடுங்கள்.", "Bring your family closer to our temple community.")}</p>
+        </div>}
       />
     </>
   );
@@ -496,7 +504,7 @@ export default function Register() {
       <Button
         type={where === "inline" ? "submit" : "button"}
         onClick={where === "dock" ? primary : undefined}
-        variant="primary"
+        variant="gold"
         className="reg-actions__next"
         loading={sending}
         icon={stepKey === "review" ? <LuSend aria-hidden="true" /> : null}
@@ -521,6 +529,11 @@ export default function Register() {
               t={t}
             />
           </div>
+          <div className="reg-reassurance">
+            <span><LuFlower2 aria-hidden="true" />{t("4 எளிய படிகள்", "Four simple steps")}</span>
+            <span><LuCircleCheck aria-hidden="true" />{t("கடவுச்சொல் தேவையில்லை", "No password needed")}</span>
+            <span><LuHeartHandshake aria-hidden="true" />{t("குடும்பத்தினர் விவரங்களைச் சேர்க்கலாம்", "Include your family members")}</span>
+          </div>
 
           <form
             className="reg-form"
@@ -533,6 +546,7 @@ export default function Register() {
           >
             <div key={stepKey} className="card card--solid card--static reg-card" data-direction={direction}>
               <header className="reg-card__head">
+                <span className="reg-card__emblem" aria-hidden="true"><LuFlower2 /></span>
                 <span className="reg-card__eyebrow">
                   {t(`படி ${stepIndex + 1} / ${STEPS.length}`, `Step ${stepIndex + 1} of ${STEPS.length}`)}
                 </span>

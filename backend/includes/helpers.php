@@ -2,6 +2,7 @@
 // backend/includes/helpers.php
 
 require_once __DIR__ . '/../config/config.php';
+require_once __DIR__ . '/temple_identity.php';
 
 function sendJson(mixed $data, int $status = 200): never
 {

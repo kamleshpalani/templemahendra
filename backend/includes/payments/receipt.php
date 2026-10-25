@@ -116,6 +116,15 @@ function payPublicView(PDO $db, array $payable, bool $forReceipt = false): array
             'country'  => $payable['country'],
         ];
         $view['message'] = $payable['message'];
+        if (!$isDonation) {
+            $fee = $payable['delivery_fee'] ?? '0.00';
+            $view['participants'] = $payable['participants'] ?? [];
+            $view['deliveryAddress'] = $payable['delivery_address'] ?? null;
+            $view['deliveryFee'] = payNumberOut($fee);
+            $view['serviceAmount'] = payNumberOut(payCentsToAmount(payAmountCents($payable['amount']) - payAmountCents($fee)));
+            $view['dispatchStatus'] = $payable['dispatch_status'] ?? 'not_required';
+            $view['trackingReference'] = $payable['tracking_reference'] ?? null;
+        }
     }
     return $view;
 }

@@ -4,6 +4,7 @@ require_once __DIR__ . '/../includes/auth.php';
 requireAdminAuth();
 require_once __DIR__ . '/../includes/db.php';
 require_once __DIR__ . '/../includes/helpers.php';
+require_once __DIR__ . '/../includes/booking_details.php';
 require_once __DIR__ . '/includes/admin_layout.php';
 
 $db = getDB();
@@ -48,6 +49,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             'sort_order'  => (int) $str($_POST, 'sort_order'),
             'is_featured' => isset($_POST['is_featured']) ? 1 : 0,
             'is_active'   => isset($_POST['is_active']) ? 1 : 0,
+            'service_kind' => $str($_POST, 'service_kind'),
+            'delivery_fee' => $str($_POST, 'delivery_fee'),
         ];
     }
 
@@ -61,6 +64,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $featured = isset($_POST['is_featured']) ? 1 : 0;
         $active   = isset($_POST['is_active']) ? 1 : 0;
         $id       = (int) $str($_POST, 'id');
+        $kind = $str($_POST, 'service_kind');
+        $deliveryFee = filter_var($str($_POST, 'delivery_fee'), FILTER_VALIDATE_FLOAT);
+        if (!in_array($kind, BOOKING_KINDS, true)) $errors['service_kind'] = true;
+        if ($deliveryFee === false || $deliveryFee < 0 || $deliveryFee > 99999999.99) $errors['delivery_fee'] = true;
+        if (!in_array($kind, ['archana_prasadam', 'archana_pooja'], true)) $deliveryFee = 0;
 
         if ($name_ta === '')                   $errors['name_ta'] = true;
         if ($name_en === '')                   $errors['name_en'] = true;
@@ -68,20 +76,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if ($amount === false || $amount < 0 || $amount > 99999999.99) $errors['amount'] = true;
 
         if ($errors) {
-            $msg     = '<p class="alert alert--error">Tamil name, English name, and a valid amount are required.</p>';
+            $msg     = '<p class="alert alert--error">Tamil and English names, a valid service type, and non-negative service and delivery charges are required.</p>';
             $editing = [
                 'id' => $id, 'name_ta' => $name_ta, 'name_en' => $name_en, 'description' => $desc,
                 'amount' => $str($_POST, 'amount'), 'sort_order' => $sort, 'is_featured' => $featured, 'is_active' => $active,
+                'service_kind' => $kind, 'delivery_fee' => $str($_POST, 'delivery_fee'),
             ];
         } else {
             if ($id > 0) {
-                $db->prepare('UPDATE sevas SET name_ta=:ta,name_en=:en,description=:d,amount=:a,sort_order=:s,is_featured=:f,is_active=:act WHERE id=:id')
-                   ->execute([':ta' => $name_ta, ':en' => $name_en, ':d' => $desc, ':a' => $amount, ':s' => $sort, ':f' => $featured, ':act' => $active, ':id' => $id]);
+                $db->prepare('UPDATE sevas SET name_ta=:ta,name_en=:en,description=:d,amount=:a,sort_order=:s,is_featured=:f,is_active=:act,service_kind=:kind,delivery_fee=:fee WHERE id=:id')
+                   ->execute([':ta' => $name_ta, ':en' => $name_en, ':d' => $desc, ':a' => $amount, ':s' => $sort, ':f' => $featured, ':act' => $active, ':kind'=>$kind, ':fee'=>$deliveryFee, ':id' => $id]);
                 adminAudit('seva_updated', 'seva:' . $id, $name_en . ' · ₹' . $amount);
                 $_SESSION['flash'] = '<p class="alert alert--success">Updated.</p>';
             } else {
-                $db->prepare('INSERT INTO sevas (name_ta,name_en,description,amount,sort_order,is_featured,is_active) VALUES (:ta,:en,:d,:a,:s,:f,:act)')
-                   ->execute([':ta' => $name_ta, ':en' => $name_en, ':d' => $desc, ':a' => $amount, ':s' => $sort, ':f' => $featured, ':act' => $active]);
+                $db->prepare('INSERT INTO sevas (name_ta,name_en,description,amount,sort_order,is_featured,is_active,service_kind,delivery_fee) VALUES (:ta,:en,:d,:a,:s,:f,:act,:kind,:fee)')
+                   ->execute([':ta' => $name_ta, ':en' => $name_en, ':d' => $desc, ':a' => $amount, ':s' => $sort, ':f' => $featured, ':act' => $active, ':kind'=>$kind, ':fee'=>$deliveryFee]);
                 adminAudit('seva_created', 'seva:' . (int) $db->lastInsertId(), $name_en . ' · ₹' . $amount);
                 $_SESSION['flash'] = '<p class="alert alert--success">Created.</p>';
             }
@@ -209,6 +218,21 @@ echo adminPageIntro(
         </label>
       </div>
 
+      <div class="form-grid">
+        <label class="field">Service type
+          <select name="service_kind">
+            <?php foreach (BOOKING_KINDS as $kind): ?>
+              <option value="<?= h($kind) ?>" <?= ($editing['service_kind'] ?? 'general') === $kind ? 'selected' : '' ?>><?= h(ucwords(str_replace('_',' ',$kind))) ?></option>
+            <?php endforeach; ?>
+          </select>
+          <?= $fieldError('service_kind','Choose a valid service type.') ?>
+        </label>
+        <label class="field">Prasadam delivery fee (₹)
+          <input type="number" min="0" max="99999999.99" step="0.01" name="delivery_fee" value="<?= h((string)($editing['delivery_fee'] ?? '0')) ?>" required>
+          <?= $fieldError('delivery_fee','Enter a valid non-negative delivery fee.') ?>
+          <span class="field__hint">Only applies to Archana with Prasadam / Pooja. An offering amount of 0 means charges are not configured and online payment is unavailable.</span>
+        </label>
+      </div>
       <label class="switch">
         <input type="checkbox" name="is_featured" value="1"<?= (!$editing || !empty($editing['is_featured'])) ? ' checked' : '' ?> />
         <span class="switch__track" aria-hidden="true"></span>

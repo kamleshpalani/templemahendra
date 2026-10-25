@@ -1,0 +1,5 @@
+.payment-share { margin-block: 1.5rem; padding: 1.25rem; border: 1px solid var(--gold-300); border-radius: var(--radius-md); background: var(--gold-100); color: var(--maroon-900); }
+.payment-share h3 { font-size: var(--text-lg); margin: 0 0 .5rem; }
+.payment-share p { font-size: var(--text-sm); line-height: 1.7; margin-block: .5rem; }
+.payment-share__actions { display: flex; flex-wrap: wrap; gap: .65rem; margin-top: 1rem; }
+@media print { .payment-share { display: none !important; } }

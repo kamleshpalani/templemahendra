@@ -6,12 +6,9 @@ import {
   TEMPLE,
   ADDRESS,
   TRUST,
-  PRIMARY_CONTACT,
-  SECONDARY_CONTACT,
+  TEMPLE_PHONE,
   TEMPLE_EMAIL,
   MAPS_URL,
-  formatPhone,
-  telHref,
 } from "../../data/temple";
 import "./Footer.css";
 
@@ -33,22 +30,6 @@ export default function Footer() {
   // mobile drawer) carries it, and a second copy was repetition, not reach.
   const { t } = useLang();
 
-  const quickLinks = [
-    { to: "/about#history", ta: "கோவில் வரலாறு", en: "History" },
-    { to: "/about#trust", ta: "தர்ம அறக்கட்டளை", en: "Dharma Trust" },
-    { to: "/about#committee", ta: "திருக்கோவில் கமிட்டி", en: "Committee" },
-    { to: "/sevas", ta: "சேவைகள் & பூஜைகள்", en: "Sevas & Poojas" },
-    { to: "/events", ta: "நிகழ்வுகள் & திருவிழா", en: "Events & Festivals" },
-    { to: "/live-darshan", ta: "நேரடி தரிசனம்", en: "Live Darshan" },
-    { to: "/gallery", ta: "படத் தொகுப்பு", en: "Gallery" },
-    { to: "/videos", ta: "காணொளிகள்", en: "Videos" },
-    { to: "/panchangam", ta: "பஞ்சாங்கம்", en: "Panchangam" },
-    { to: "/donations", ta: "நன்கொடை", en: "Donate" },
-    { to: "/register", ta: "குடும்பப் பதிவு", en: "Family registration" },
-    { to: "/contact", ta: "தொடர்பு கொள்ளுங்கள்", en: "Contact Us" },
-  ];
-
-  const contacts = [PRIMARY_CONTACT, SECONDARY_CONTACT];
   const scrollTop = () => window.scrollTo({ top: 0, behavior: "smooth" });
 
   return (
@@ -59,13 +40,9 @@ export default function Footer() {
             <span className="footer__logo-ring" aria-hidden="true">
               <img src="/logo.svg" alt="" width="44" height="44" />
             </span>
-            <h2 className="footer__title">{t(TEMPLE.name.ta, TEMPLE.name.en)}</h2>
+            <h2 className="footer__title">{t(TEMPLE.name.ta, `${TEMPLE.brand.line1.en} ${TEMPLE.brand.line2.en}`)}</h2>
           </div>
-          <p className="footer__desc">{t(TEMPLE.descriptor.ta, TEMPLE.descriptor.en)}</p>
-          <p className="footer__invocation">
-            <em>{t(TEMPLE.invocation.ta, TEMPLE.invocation.en)}</em>
-          </p>
-          <NavLink to="/about#trust" className="footer__trust">
+          <NavLink to="/trust-committee#trust" className="footer__trust">
             <LuShieldCheck aria-hidden="true" />
             <span>
               {t(
@@ -77,18 +54,7 @@ export default function Footer() {
         </div>
 
         <div className="footer__col">
-          <h3 className="footer__heading">{t("இணைப்புகள்", "Explore")}</h3>
-          <ul className="footer__links" role="list">
-            {quickLinks.map(({ to, ta, en }) => (
-              <li key={to}>
-                <NavLink to={to}>{t(ta, en)}</NavLink>
-              </li>
-            ))}
-          </ul>
-        </div>
-
-        <div className="footer__col">
-          <h3 className="footer__heading">{t("வருகை", "Visit")}</h3>
+          <h3 className="footer__heading">{t("முகவரி", "Address")}</h3>
           <ul className="footer__contact" role="list">
             <li>
               <LuMapPin aria-hidden="true" />
@@ -113,25 +79,23 @@ export default function Footer() {
         <div className="footer__col">
           <h3 className="footer__heading">{t("தொடர்பு", "Contact")}</h3>
           <ul className="footer__contact" role="list">
-            {contacts.map((c) => (
-              <li key={c.phone}>
+              <li>
                 <LuPhone aria-hidden="true" />
                 <span>
                   <a
-                    href={telHref(c.phone)}
-                    aria-label={`${formatPhone(c.phone)} — ${t(c.name.ta, c.name.en)}, ${t(c.role.ta, c.role.en)}`}
+                    href={TEMPLE_PHONE.href}
+                    aria-label={`${t("கோயில் அலுவலகம்", "Temple Office")} — ${TEMPLE_PHONE.display}`}
                   >
-                    {formatPhone(c.phone)}
+                    {TEMPLE_PHONE.display}
                   </a>
                   <span className="footer__contact-role">
-                    {t(c.role.ta, c.role.en)} – {t(c.name.ta, c.name.en)}
+                    {t("கோயில் அலுவலகம்", "Temple Office")}
                   </span>
                 </span>
               </li>
-            ))}
             <li>
               <FaWhatsapp aria-hidden="true" />
-              <a href={`https://wa.me/91${PRIMARY_CONTACT.phone}`} target="_blank" rel="noopener noreferrer">
+              <a href={`https://wa.me/91${TEMPLE_PHONE.digits}`} target="_blank" rel="noopener noreferrer">
                 {t("வாட்ஸ்அப்பில் பேசுங்கள்", "Chat on WhatsApp")}
               </a>
             </li>
@@ -162,9 +126,6 @@ export default function Footer() {
             )}
           </p>
           <div className="footer__bottom-actions">
-            <a href="/admin/" className="footer__admin" rel="nofollow">
-              {t("கமிட்டி உள்நுழைவு", "Committee sign-in")}
-            </a>
             <button type="button" className="footer__top" onClick={scrollTop} aria-label={t("மேலே செல்", "Back to top")}>
               <LuArrowUp aria-hidden="true" />
             </button>

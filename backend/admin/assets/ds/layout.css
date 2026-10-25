@@ -21,10 +21,10 @@
 /* ── Sections ────────────────────────────────────────────────────── */
 .section {
   position: relative;
-  padding-block: clamp(3rem, 7vw, 5.5rem);
+  padding-block: clamp(1.5rem, 3vw, 2.5rem);
 }
 .section--tight {
-  padding-block: clamp(2rem, 4vw, 3rem);
+  padding-block: clamp(1rem, 2vw, 1.5rem);
 }
 .section--flush-top {
   padding-top: 0;
@@ -46,7 +46,7 @@
 }
 .section-cta {
   text-align: center;
-  margin-top: var(--space-10);
+  margin-top: var(--space-5);
 }
 
 /* ── Section header (eyebrow · title · subtitle) ─────────────────── */
@@ -56,7 +56,7 @@
   align-items: center;
   text-align: center;
   gap: var(--space-3);
-  margin-bottom: clamp(2rem, 4vw, 3rem);
+  margin-bottom: clamp(1rem, 2vw, 1.5rem);
 }
 .section-head--left {
   align-items: flex-start;
@@ -105,7 +105,7 @@
 }
 .divider + .section-subtitle {
   text-align: center;
-  margin: 0 auto var(--space-10);
+  margin: 0 auto var(--space-5);
 }
 .section-head .divider {
   margin: 0;
@@ -359,7 +359,7 @@
   width: 100%;
   max-width: var(--container);
   margin: 0 auto;
-  padding: clamp(3rem, 8vw, 5.5rem) var(--gutter) clamp(2.5rem, 6vw, 4.5rem);
+  padding: clamp(1.5rem, 4vw, 3rem) var(--gutter) clamp(1.5rem, 3vw, 2.5rem);
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   gap: var(--space-8);
@@ -472,8 +472,8 @@
 }
 @media (max-width: 640px) {
   .page-hero__content {
-    padding-top: clamp(2.5rem, 8vw, 3.5rem);
-    padding-bottom: 2.25rem;
+    padding-top: 1.5rem;
+    padding-bottom: 1.5rem;
   }
   .page-hero h1,
   .page-hero__title {

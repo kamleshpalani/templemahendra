@@ -1,4 +1,5 @@
 <?php
+require_once __DIR__ . '/../includes/public_content.php';
 /**
  * backend/api/search.php — one search box across everything a visitor can read.
  *
@@ -179,8 +180,8 @@ $PAGES = [
      'sub_ta' => 'பற்றி', 'sub_en' => 'About', 'kw' => 'trust registration 80g pan tax exemption bank ifsc account number receipt aRakkattalai அறக்கட்டளை தர்ம அறக்கட்டளை ரசீது வரி விலக்கு வங்கி கணக்கு'],
     ['url' => '/about#committee',     'ta' => 'திருக்கோவில் கமிட்டி', 'en' => 'Temple committee',
      'sub_ta' => 'பற்றி', 'sub_en' => 'About', 'kw' => 'committee president secretary treasurer contact members phone gengaiah kumar கமிட்டி தலைவர் செயலாளர் பொருளாளர் உறுப்பினர்கள்'],
-    ['url' => '/about#timings',       'ta' => 'வழிபாட்டு நேரங்கள்', 'en' => 'Pooja timings',
-     'sub_ta' => 'பற்றி', 'sub_en' => 'About', 'kw' => 'timings hours open close morning evening thiruvanandal kalasanthi uchikalam sayarakshai arthajama நேரம் கோயில் நேரம் வழிபாட்டு நேரம் காலை மாலை திறப்பு'],
+    ['url' => '/contact',            'ta' => 'வழிபாட்டு நேரங்கள்', 'en' => 'Temple hours',
+     'sub_ta' => 'தொடர்பு', 'sub_en' => 'Contact', 'kw' => 'timings hours open close morning evening நேரம் கோயில் நேரம் காலை மாலை திறப்பு'],
     ['url' => '/about#land-donation', 'ta' => 'அன்னதான கூடம்', 'en' => 'Annadanam hall',
      'sub_ta' => 'பற்றி', 'sub_en' => 'About', 'kw' => 'annadanam hall land donation subbaram construction toilets rest rooms அன்னதானம் அன்னதான கூடம் நிலம் கட்டிடம்'],
     ['url' => '/donations',           'ta' => 'நன்கொடை', 'en' => 'Donate',
@@ -197,6 +198,8 @@ $PAGES = [
     // family registration form is what replaced both.
     ['url' => '/register',            'ta' => 'குடும்பப் பதிவு', 'en' => 'Family registration',
      'sub_ta' => 'பதிவு', 'sub_en' => 'Register', 'kw' => 'register registration family members member household enrol enroll sign up signup join temple updates whatsapp பதிவு குடும்பம் குடும்பப் பதிவு உறுப்பினர் உறுப்பினர்கள்'],
+    ['url' => '/matrimony',           'ta' => 'திருமணத் தகவல்', 'en' => 'Matrimony',
+     'sub_ta' => 'பதிவு', 'sub_en' => 'Register', 'kw' => 'matrimony marriage profile privacy consent திருமணம் திருமணத் தகவல் சுயவிவரம்'],
     // Online giving and the four policy pages (docs/payments/SPEC.md §7.8).
     // Titles are the pages' own SEO titles, as in site_pages.php.
     ['url' => '/donate',              'ta' => 'இணையவழி நன்கொடை', 'en' => 'Donate online',
@@ -246,7 +249,7 @@ $total  = 0;
 foreach ($LABELS as $type => $label) {
     if (empty($out[$type])) continue;
     usort($out[$type], fn($a, $b) => $b['score'] <=> $a['score']);
-    $items = array_slice($out[$type], 0, $limit);
+    $items = array_slice(publicContentVisible($out[$type]), 0, $limit);
     $total += count($items);
     $groups[] = ['type' => $type, 'label_ta' => $label['ta'], 'label_en' => $label['en'], 'items' => $items];
 }

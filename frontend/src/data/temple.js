@@ -4,15 +4,18 @@
  *
  * Every Tamil string is VERBATIM from the committee's printed donation-appeal
  * booklet. English strings are translations added only because the site has
- * an EN toggle. Where the site already had an English transliteration of the
- * temple name, that is kept unchanged (see TEMPLE.name.en).
+ * an EN toggle. English branding and the approved email are shared with PHP
+ * through temple_identity.json.
  *
  * Use with the site's i18n helper:  const { t } = useLang();  t(x.ta, x.en)
  *
  * Deity order differs by context and is preserved deliberately:
- *   • Temple name : Lingammal → Renukadevi → Chinnammal
+ *   • Tamil temple name : Lingammal → Renukadevi → Chinnammal
+ *   • English branding : Renugadevi → Lingammal → Chinnammal
  *   • Trust name  : Renukadevi → Lingammal → Chinnammal
  */
+
+import identity from "../../../backend/config/temple_identity.json";
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -23,7 +26,7 @@ export const formatPhone = (digits) =>
 /** "9443002296" → "tel:+919443002296" */
 export const telHref = (digits) => `tel:+91${digits}`;
 
-/** The one number shown for calling in the navbar and on the Contact page. */
+/** Shared temple office number for calls and public WhatsApp enquiries. */
 export const TEMPLE_PHONE = {
   digits: "6379227382",
   display: "+91 6379 227 382",
@@ -33,22 +36,22 @@ export const TEMPLE_PHONE = {
 // ── Temple identity ─────────────────────────────────────────────────────────
 
 export const TEMPLE = {
-  /** Site-wide display name. English is the site's pre-existing transliteration. */
+  /** Site-wide display name, retaining the printed Tamil deity order. */
   name: {
     ta: "அருள்மிகு ஸ்ரீ லிங்கம்மாள், ஸ்ரீ ரேணுகாதேவி, ஸ்ரீ சின்னம்மாள் திருக்கோவில்",
-    en: "Dhabbalavaar Renuka Devi Lingamma Sinnammal Temple",
+    en: identity.name_en,
   },
 
   /** Full printed name including the clan-deity descriptor (booklet banner). */
   fullName: {
     ta: "தப்பலவார் குலதெய்வம் அருள்மிகு ஸ்ரீ லிங்கம்மாள், ஸ்ரீ ரேணுகாதேவி, ஸ்ரீ சின்னம்மாள் திருக்கோவில்",
-    en: "Dhabbalavaar Kula Deivam — Arulmigu Sri Lingammal, Sri Renukadevi, Sri Chinnammal Temple",
+    en: identity.name_en,
   },
 
   /** "Kula Deivam" = clan deity. */
   descriptor: {
     ta: "தப்பலவார் குலதெய்வம்",
-    en: "Dhabbalavaar Kula Deivam",
+    en: identity.descriptor_en,
   },
 
   /** Invocation printed on the booklet's front cover. */
@@ -67,11 +70,11 @@ export const TEMPLE = {
   /**
    * Two-line brand mark for the 70px navbar (space-constrained; the full name is
    * also exposed to assistive tech). Tamil follows the printed TEMPLE order;
-   * English keeps the site's pre-existing transliteration.
+   * English uses the approved Dhabbalavar branding.
    */
   brand: {
-    line1: { ta: "தப்பலவார் ஸ்ரீ லிங்கம்மாள்", en: "Dhabbalavaar Renuka Devi" },
-    line2: { ta: "ரேணுகாதேவி சின்னம்மாள் திருக்கோவில்", en: "Lingamma Sinnammal Temple" },
+    line1: { ta: "தப்பலவார் ஸ்ரீ லிங்கம்மாள்", en: identity.brand_en },
+    line2: { ta: "ரேணுகாதேவி சின்னம்மாள் திருக்கோவில்", en: identity.brand_suffix_en },
   },
 
   /** Alt text for the sanctum photograph (three deities in floral alankaram). */
@@ -121,12 +124,11 @@ export const ADDRESS = {
   },
 
   /** Google Maps free-text query (taluk + district disambiguate the several Pudupattis in TN). */
-  mapsQuery:
-    "Dhabbalavaar Renuka Devi Lingamma Sinnammal Temple, Middle Street, Pudupatti, Thiruvengadam Taluk, Tenkasi District, Tamil Nadu 627719",
+  mapsQuery: identity.maps_query,
 };
 
-export const MAPS_URL = `https://maps.google.com/maps?q=${encodeURIComponent(ADDRESS.mapsQuery)}`;
-export const MAPS_EMBED_URL = `${MAPS_URL}&output=embed`;
+export const MAPS_URL = identity.maps_url;
+export const MAPS_EMBED_URL = `https://maps.google.com/maps?q=${encodeURIComponent(ADDRESS.mapsQuery)}&output=embed`;
 
 // ── Dharma Trust ────────────────────────────────────────────────────────────
 
@@ -192,7 +194,7 @@ export const COMMITTEE = {
   invite: { ta: "அன்புடன் அழைக்கும் திருக்கோவில் கமிட்டியார்", en: "With warm regards, The Temple Committee" },
   signoff: {
     ta: "அருள்மிகு ஸ்ரீ லிங்கம்மாள் ஸ்ரீ ரேணுகாதேவி ஸ்ரீ சின்னம்மாள் திருக்கோவில், புதுப்பட்டி.",
-    en: "Arulmigu Sri Lingammal Sri Renukadevi Sri Chinnammal Temple, Pudupatti.",
+    en: `${identity.name_en}, Pudupatti.`,
   },
   /** In printed order. `phone` is the bare 10-digit mobile number. */
   members: [
@@ -201,7 +203,7 @@ export const COMMITTEE = {
     { name: { ta: "G. குமார்",       en: "G. Kumar"     }, role: { ta: "செயலாளர்",        en: "Secretary"       }, phone: "7373016302" },
     { name: { ta: "A. குருசாமி",     en: "A. Gurusamy"  }, role: { ta: "இணைச்செயலாளர்",   en: "Joint Secretary" }, phone: "8220552427" },
     { name: { ta: "K. இராஜேந்திரன்", en: "K. Rajendran" }, role: { ta: "பொருளாளர் 1",     en: "Treasurer 1"     }, phone: "9965040693" },
-    { name: { ta: "L. சிவக்குமார்",  en: "L. Sivakumar" }, role: { ta: "பொருளாளர் 2",     en: "Treasurer 2"     }, phone: "9488468206" },
+    { name: { ta: "P. வெங்கடாசலபதி", en: "P. Venkatachalapathy" }, role: { ta: "பொருளாளர் 2", en: "Treasurer 2" }, phone: "8012619860" },
   ],
 };
 
@@ -214,7 +216,7 @@ export const SECONDARY_CONTACT = COMMITTEE.members[2];
  * The temple's contact email. One copy for the footer, the policy pages and
  * the payment receipt (docs/payments/SPEC.md §7.6), so they can never disagree.
  */
-export const TEMPLE_EMAIL = "info@dhabbalavaartemple.in";
+export const TEMPLE_EMAIL = identity.email;
 
 // ── History (appeal letter, §5a–5h) ─────────────────────────────────────────
 
@@ -309,31 +311,31 @@ export const HISTORY = {
     {
       key: "landDonation",
       year: { ta: "தற்போது", en: "Now" },
-      status: "inProgress",
-      title: { ta: "அன்னதான கூடம் & கழிப்பறைகள் கட்டப்படுகின்றன", en: "Annadanam hall and toilets under construction" },
+      status: "completed",
+      title: { ta: "அன்னதான கூடம் & கழிப்பறைகள் கட்டி முடிக்கப்பட்டன", en: "Annadanam hall and toilets completed" },
       desc: {
-        ta: "திரு. த.கா. சுப்பாராம் குடும்பத்தார் நன்கொடையாக வழங்கிய இடத்தில் அன்னதான கூடமும் கழிப்பறைகளும் கட்டப்படுகின்றன. தங்கும் ஓய்வறைகள் சகல வசதியுடன் அமைக்கவும் முடிவெடுக்கப்பட்டுள்ளது.",
-        en: "On land donated by the family of Thiru T.K. Subbaram, an annadanam hall and toilets are being built. Rest rooms with every facility are also planned.",
+        ta: "திரு. த.கா. சுப்பாராம் குடும்பத்தார் நன்கொடையாக வழங்கிய இடத்தில் அன்னதான கூடமும் கழிப்பறைகளும் கட்டி முடிக்கப்பட்டன. இப்பணிகளுக்கு உதவிய அனைத்து நன்கொடையாளர்களுக்கும் நன்றி.",
+        en: "The annadanam hall and toilets have been completed on land donated by the family of Thiru T.K. Subbaram. We thank all donors who supported these works.",
       },
     },
     {
       key: "kumbabhishekamDue",
-      year: { ta: "வரவிருக்கும்", en: "Upcoming" },
-      status: "planned",
-      title: { ta: "மஹா கும்பாபிஷேகம் — 12 ஆண்டுகள் நிறைவு", en: "Maha Kumbabhishekam — 12 years on" },
+      year: { ta: "நிறைவடைந்தது", en: "Completed" },
+      status: "completed",
+      title: { ta: "மஹா கும்பாபிஷேகம் சிறப்பாக நிறைவடைந்தது", en: "Maha Kumbabhishekam successfully completed" },
       desc: {
-        ta: "2012-ல் கும்பாபிஷேகம் செய்து 12 வருடங்கள் முடிவடைந்துள்ளது. கும்பாபிஷேகம் செய்யவும் கட்டிடங்கள் கட்டவும் நன்கொடை வேண்டப்படுகிறது.",
-        en: "Twelve years have passed since the Kumbabhishekam of 2012. Donations are sought for the next Kumbabhishekam and for the new buildings.",
+        ta: "மஹா கும்பாபிஷேகம் சிறப்பாக நிறைவடைந்தது. இத்திருப்பணிக்கு ஆதரவும் நன்கொடையும் வழங்கிய அனைத்து பக்தர்களுக்கும் நன்றி.",
+        en: "The Maha Kumbabhishekam has been successfully completed. We thank all devotees who contributed their support and donations.",
       },
     },
   ],
 };
 
-/** §5h — land donation (verbatim). */
+/** Land donation history and committee-confirmed completion update. */
 export const LAND_DONATION = {
   heading: { ta: "அன்னதான கூடம் & இட நன்கொடை", en: "Annadanam Hall & Land Donation" },
-  ta: "நமது இனபந்துக்கள் கோவிலுக்கு வந்து சுவாமி தரிசனம் செய்பவர்களுக்கு போதிய வசதி இல்லை. அன்னதானம் வழங்கவும் போதிய வசதியும் இல்லை. இவை அனைத்தும் நிவர்த்தி செய்ய நம் இன பெரியவர்கள் முடிவு செய்தார்கள். இந்த முடிவின்படி முதலில் அன்னதான கூடம் கட்ட புதுப்பட்டியை பூர்வீகமாக கொண்டு தற்போது இராஜபாளையத்தில் வசித்து வரும் திரு. த.கா. சுப்பாராம் (காவல்துறை உதவி ஆய்வாளர், ஓய்வு) அவர்கள் குடும்பத்தார்கள் கோவிலுக்கு இடவசதி கொடுக்க முன் வந்து இடத்தை நன்கொடையாக திரு. த.கா.சுப்பாராம் அவர்கள் மனைவி திருமதி. இராமலட்சுமி அவர்களும் இவர்களது மகன் திரு. சீனிவாசன் அவர்களும் நமது தர்ம அறக்கட்டளை பெயரில் பத்திரம் பதிவு செய்து வழங்கியுள்ளார்கள். இந்த இடத்தில் தற்போது அன்னதான கூடமும், கழிப்பறைகளும் கட்டிக் கொண்டு உள்ளோம். இதுபோன்று தங்கும் ஓய்வறைகள் சகல வசதியும் அமைக்கவும் முடிவெடுக்கப்பட்டுள்ளது.",
-  en: "Devotees of our community who visit the temple for darshan lack adequate facilities, and there is no proper provision for serving annadanam. Our community elders resolved to address all of this. As a first step towards building an annadanam hall, the family of Thiru T.K. Subbaram (Sub-Inspector of Police, Retd.) — a native of Pudupatti now residing in Rajapalayam — came forward to provide land for the temple. His wife Thirumathi Ramalakshmi and their son Thiru Srinivasan have registered the deed and donated the land in the name of our Dharma Trust. On this land we are now constructing an annadanam hall and toilets. It has also been resolved to build rest rooms with every facility.",
+  ta: "பக்தர்களின் வசதிக்காக அன்னதான கூடமும் கழிப்பறைகளும் கட்டி முடிக்கப்பட்டன. புதுப்பட்டியைப் பூர்வீகமாகக் கொண்டு இராஜபாளையத்தில் வசிக்கும் திரு. த.கா. சுப்பாராம் (காவல்துறை உதவி ஆய்வாளர், ஓய்வு) குடும்பத்தார் இதற்கான இடத்தை நன்கொடையாக வழங்கினர். அவரது மனைவி திருமதி. இராமலட்சுமியும் மகன் திரு. சீனிவாசனும் நமது தர்ம அறக்கட்டளை பெயரில் பத்திரம் பதிவு செய்து வழங்கினர். இப்பணிகளுக்கு ஆதரவளித்த அனைவருக்கும் நன்றி.",
+  en: "The annadanam hall and toilets have been completed for the convenience of visiting devotees. The family of Thiru T.K. Subbaram (Sub-Inspector of Police, Retd.), a native of Pudupatti residing in Rajapalayam, donated the land. His wife Thirumathi Ramalakshmi and their son Thiru Srinivasan registered the deed in the name of our Dharma Trust. We thank everyone who supported these completed works.",
   donors: {
     family: { ta: "திரு. த.கா. சுப்பாராம் குடும்பத்தார்", en: "Family of Thiru T.K. Subbaram" },
     detail: { ta: "காவல்துறை உதவி ஆய்வாளர் (ஓய்வு), இராஜபாளையம்", en: "Sub-Inspector of Police (Retd.), Rajapalayam" },
@@ -341,11 +343,11 @@ export const LAND_DONATION = {
   },
 };
 
-/** §5i — Kumbabhishekam appeal (verbatim; the booklet says "this year"). */
+/** Completion update confirmed by the committee. */
 export const KUMBABHISHEKAM_APPEAL = {
-  heading: { ta: "கும்பாபிஷேக வேண்டுகோள்", en: "Kumbabhishekam Appeal" },
-  ta: "மேலும் 2012-ல் கும்பாபிஷேகம் செய்து 12 வருடங்கள் முடிவடைந்துள்ளது. இவ்வருடம் கும்பாபிஷேகம் செய்ய வேண்டியுள்ளது. கும்பாபிஷேகம் செய்யவும் கட்டிடங்கள் கட்டுவதற்கும் நம் இனபெரியவர்கள் ஒத்துழைப்பு கொடுத்து தாராளமாக நன்கொடை வழங்குமாறு அன்புடன் கேட்டுக்கொள்கிறோம்.",
-  en: "Twelve years have now passed since the Kumbabhishekam of 2012, and it is due to be performed again this year. We warmly request the elders of our community to lend their support and donate generously, both for the Kumbabhishekam and for the construction of these buildings.",
+  heading: { ta: "கும்பாபிஷேகம் & திருப்பணிகள் நிறைவு", en: "Kumbabhishekam & Completed Temple Works" },
+  ta: "மஹா கும்பாபிஷேகம் சிறப்பாக நிறைவடைந்தது. அன்னதான கூடமும் கழிப்பறைகளும் கட்டி முடிக்கப்பட்டன. ஆதரவளித்த அனைத்து பக்தர்களுக்கும் நன்கொடையாளர்களுக்கும் மனமார்ந்த நன்றி. தொடர்ந்து நடைபெறும் பூஜைகள், அன்னதானம் மற்றும் கோவில் பராமரிப்பிற்கு நன்கொடை வழங்கலாம்.",
+  en: "The Maha Kumbabhishekam has been successfully completed, along with the annadanam hall and toilets. Our heartfelt thanks to all devotees and donors for their support. Contributions are welcome for ongoing poojas, annadanam and temple maintenance.",
 };
 
 /** §5j — donation methods and receipt policy (verbatim). */
@@ -379,7 +381,7 @@ export const OBSERVANCES = {
 export const FACILITIES = {
   label: { ta: "வசதிகள்", en: "Facilities" },
   status: {
-    ta: "அன்னதான கூடமும் கழிப்பறைகளும் கட்டப்பட்டு வருகின்றன; தங்கும் ஓய்வறைகள் திட்டமிடப்பட்டுள்ளன.",
-    en: "Annadanam hall and toilets under construction; rest rooms planned.",
+    ta: "அன்னதான கூடமும் கழிப்பறைகளும் கட்டி முடிக்கப்பட்டன.",
+    en: "The annadanam hall and toilets have been completed.",
   },
 };

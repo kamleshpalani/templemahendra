@@ -23,10 +23,9 @@ import {
   ADDRESS,
   MAPS_URL,
   MAPS_EMBED_URL,
-  PRIMARY_CONTACT,
   TEMPLE_PHONE,
+  TEMPLE_EMAIL,
 } from "../data/temple";
-import CommitteeGrid from "../components/CommitteeGrid/CommitteeGrid";
 import PageHero from "../components/ui/PageHero";
 import Seo from "../components/Seo";
 import ShareButton from "../components/Share/ShareButton";
@@ -39,11 +38,11 @@ import "./Contact.css";
 
 // WhatsApp: wa.me wants country code + digits, no "+" (same convention as
 // FloatingActions / Footer). Pre-filled bilingual greeting.
-const WHATSAPP_HREF = `https://wa.me/91${PRIMARY_CONTACT.phone}?text=${encodeURIComponent(
+const WHATSAPP_HREF = `https://wa.me/91${TEMPLE_PHONE.digits}?text=${encodeURIComponent(
   `வணக்கம் 🙏 ${TEMPLE.name.ta} பற்றி மேலும் அறிய விரும்புகிறேன்.\nNamaskar 🙏 I would like to know more about ${TEMPLE.name.en}.`,
 )}`;
 
-const EMAIL = "info@dhabbalavaartemple.in";
+const EMAIL = TEMPLE_EMAIL;
 
 export default function Contact() {
   const { t } = useLang();
@@ -230,14 +229,6 @@ export default function Contact() {
                       </a>
                     </li>
                   </ul>
-                  <p className="contact-card__more">
-                    <a href="#committee">
-                      {t(
-                        "முழு கமிட்டி விவரங்கள் கீழே ↓",
-                        "Full committee contacts below ↓",
-                      )}
-                    </a>
-                  </p>
                 </div>
               </article>
 
@@ -399,7 +390,7 @@ export default function Contact() {
         </div>
 
         {/* Map: the full width, below the contact details and the message form */}
-        <div className="container contact-map-band">
+        <div id="location" className="container contact-map-band">
           <div className="card card--static contact-map rise">
             <iframe
               className="contact-map__frame"
@@ -435,17 +426,6 @@ export default function Contact() {
         </div>
       </section>
 
-      {/* Temple committee — the committee's printed office-bearer list */}
-      <section className="section section--alt contact-committee">
-        <div className="container">
-          <CommitteeGrid id="committee" />
-          <div className="section-cta">
-            <Button to="/donations" variant="outline">
-              {t("நன்கொடை விவரங்கள் →", "Donation details →")}
-            </Button>
-          </div>
-        </div>
-      </section>
     </>
   );
 }

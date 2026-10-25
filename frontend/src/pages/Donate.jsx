@@ -24,6 +24,7 @@ import FormStepper from "../components/ui/FormStepper";
 import FormErrorSummary from "../components/ui/FormErrorSummary";
 import { SkeletonText } from "../components/ui/Feedback";
 import PaymentRedirect from "../components/Payments/PaymentRedirect";
+import PaymentShare from "../components/Payments/PaymentShare";
 import SimulatorBanner from "../components/Payments/SimulatorBanner";
 import { useLang, rateLimitInfo, rateLimitMessage } from "../context/LangContext";
 import { TRUST } from "../data/temple";
@@ -1013,6 +1014,7 @@ export default function Donate() {
                 {/* ── Step 3: review and pay ──────────────────────────── */}
                 {stepKey === "review" && (
                   <div className="don-review-list">
+                    <PaymentShare path="/donate" />
                     <div className="don-total">
                       <span className="don-total__value">{amountLabel}</span>
                       <span className="don-total__code">{currency}</span>

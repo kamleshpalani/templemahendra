@@ -4,6 +4,7 @@
   "version": "1.0.0",
   "type": "module",
   "scripts": {
+    "generate-panchangam": "node scripts/generate-panchangam.mjs",
     "sync-tokens": "node scripts/sync-tokens.mjs",
     "predev": "npm run sync-tokens",
     "prebuild": "npm run sync-tokens",
@@ -23,6 +24,7 @@
     "react-router-dom": "^6.23.1"
   },
   "devDependencies": {
+    "astronomy-engine": "2.1.19",
     "@types/react": "^18.3.3",
     "@types/react-dom": "^18.3.0",
     "@vitejs/plugin-react": "^4.3.1",

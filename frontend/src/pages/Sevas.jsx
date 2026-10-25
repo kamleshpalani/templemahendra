@@ -30,9 +30,11 @@ import ShareButton from "../components/Share/ShareButton";
 import SectionHeader from "../components/ui/SectionHeader";
 import Modal from "../components/ui/Modal";
 import { SkeletonCards } from "../components/ui/Feedback";
-import { SECONDARY_CONTACT, formatPhone, telHref } from "../data/temple";
+import { TEMPLE_PHONE } from "../data/temple";
 import { todayIST } from "../lib/templeTime";
 import PaymentRedirect from "../components/Payments/PaymentRedirect";
+import PaymentShare from "../components/Payments/PaymentShare";
+import BookingDetails from "../components/Payments/BookingDetails";
 import { formatMoney } from "../lib/money";
 import { paymentsUsable, postJson, usePaymentsConfig, writeLastPayment } from "../lib/payments";
 import "../components/Payments/Payments.css";
@@ -74,60 +76,16 @@ const sevaDescription = (seva, lang) => {
   return (lang === "ta" ? (seva.description_ta ?? seva.description) : (seva.description_en ?? seva.description)) || null;
 };
 
-/* Standard list shown whenever the API returns nothing (or fails). */
-const FALLBACK_SEVAS = [
-  {
-    id: 1,
-    name_ta: "அபிஷேகம்",
-    name_en: "Abhishekam",
-    amount: 251,
-    description_ta: "பாலாபிஷேகம், தேன் மற்றும் ரோஜாநீரால் தெய்வ அபிஷேகம்.",
-    description_en: "Sacred bathing of the deity with milk, honey, and rose water.",
-  },
-  {
-    id: 2,
-    name_ta: "அர்ச்சனை",
-    name_en: "Archana",
-    amount: 51,
-    description_ta: "தெய்வத்தின் நாமங்களை ஓதி மலர் சமர்ப்பணம்.",
-    description_en: "Offering of flowers with chanting of the deity's names.",
-  },
-  {
-    id: 3,
-    name_ta: "தீபாராதனை",
-    name_en: "Deepa Aradhana",
-    amount: 101,
-    description_ta: "தெய்வத்திற்கு தீபாராதனை செய்தல்.",
-    description_en: "Waving of sacred lamps before the deity.",
-  },
-  {
-    id: 4,
-    name_ta: "சகஸ்ர நாமம்",
-    name_en: "Sahasranama",
-    amount: 501,
-    description_ta: "தெய்வத்தின் 1000 நாமங்களை சொல்லுதல்.",
-    description_en: "Recitation of 1000 names of the deity.",
-  },
-  {
-    id: 5,
-    name_ta: "அன்னதானம்",
-    name_en: "Annadanam",
-    amount: 2001,
-    description_ta: "பக்தர்களுக்கும் ஏழைகளுக்கும் இலவச உணவு வழங்குதல்.",
-    description_en: "Sponsoring a free meal for devotees and the needy.",
-  },
-  {
-    id: 6,
-    name_ta: "வாகன பூஜை",
-    name_en: "Vahana Pooja",
-    amount: 1001,
-    description_ta: "திருவிழா வாகனத்தில் சிறப்பு ஊர்வலம்.",
-    description_en: "Ceremonial procession of the festival vehicle.",
-  },
-];
-
 /* ── Seva Booking Modal ─────────────────────────────────────────── */
-function BookingModal({ seva, onClose, t, lang, live = false }) {
+function BookingModal({ seva: initialSeva, services, onClose, t, lang, live = false }) {
+  const [selectedId, setSelectedId] = useState(initialSeva.id);
+  const seva = services.find((s) => Number(s.id) === Number(selectedId)) ?? initialSeva;
+  const [people, setPeople] = useState([{ key: 1, name: "", rasi: "", nakshatram: "" }]);
+  const [deliveryAddress, setDeliveryAddress] = useState({ address: "", city: "", state: "", country: "", postcode: "" });
+  const [confirmation, setConfirmation] = useState(null);
+  const needsDelivery = ["archana_prasadam", "archana_pooja"].includes(seva.service_kind);
+  const deliveryFee = needsDelivery ? Number(seva.delivery_fee) : 0;
+  const total = Number(seva.amount) + deliveryFee;
   const toast = useToast();
   const [form, setForm] = useState({
     devotee_name: "",
@@ -139,6 +97,9 @@ function BookingModal({ seva, onClose, t, lang, live = false }) {
     acceptTerms: false,
     hp_token: "",
   });
+  const detailPayload = { participants: people.map(({ name, rasi, nakshatram }, index) => ({
+    name: index === 0 ? form.devotee_name : name, rasi, nakshatram,
+  })), delivery_address: needsDelivery ? deliveryAddress : null };
   const [errors, setErrors] = useState({});
   const [status, setStatus] = useState("idle"); // idle | loading | success | error | limited
   const [errMsg, setErrMsg] = useState("");
@@ -148,8 +109,7 @@ function BookingModal({ seva, onClose, t, lang, live = false }) {
 
   /*
    * Paying now is offered only when the committee has switched seva payments
-   * on, the offering came from the live list (the standard fallback list has
-   * ids of its own, and a payment must belong to a real seva) and it has a
+   * on, the offering came from the live list and it has a
    * price. Otherwise this dialog is exactly what it was: a booking request the
    * office confirms by phone (docs/payments/SPEC.md §7.5).
    */
@@ -158,7 +118,7 @@ function BookingModal({ seva, onClose, t, lang, live = false }) {
   const [gateway, setGateway] = useState(null);
   const canPayOnline = live && paymentsUsable(config) && config.sevaOnline && Number(seva.amount) > 0;
   const payNow = canPayOnline && (choice ?? "online") === "online";
-  const priceLabel = formatMoney(seva.amount, "INR", lang);
+  const priceLabel = formatMoney(total, "INR", lang);
 
   // The form unmounts on success; move focus to the Close button so the
   // focus trap does not fall back to the document behind the dialog.
@@ -174,6 +134,19 @@ function BookingModal({ seva, onClose, t, lang, live = false }) {
 
   function validate() {
     const next = {};
+    detailPayload.participants.forEach((person, i) => {
+        for (const key of ["name", "rasi", "nakshatram"]) {
+          if (!person[key].trim() || Array.from(person[key].trim()).length > 100) {
+            next[i === 0 && key === "name" ? "devotee_name" : `participants.${i}.${key}`] = t("இந்த விவரத்தை உள்ளிடவும் (அதிகபட்சம் 100 எழுத்துகள்).", "Enter this detail (up to 100 characters).");
+          }
+        }
+    });
+    if (needsDelivery) for (const [key, value] of Object.entries(deliveryAddress)) {
+      if (!value.trim()) next[`delivery_address.${key}`] = t("முழு முகவரியை உள்ளிடவும்.", "Enter the complete delivery address.");
+    }
+    if (needsDelivery && !/^[A-Za-z0-9][A-Za-z0-9 -]{1,19}$/.test(deliveryAddress.postcode.trim())) {
+      next["delivery_address.postcode"] = t("சரியான அஞ்சல் குறியீட்டை உள்ளிடவும்.", "Enter a valid postal code.");
+    }
     if (form.devotee_name.trim().length < 2)
       next.devotee_name = t("பெயரை உள்ளிடவும்", "Please enter your name");
     const pe = phoneProblem(form.phone, form.phoneCountry, { required: true, t });
@@ -190,6 +163,7 @@ function BookingModal({ seva, onClose, t, lang, live = false }) {
   /** Pay now: the price comes from the server, never from this page. */
   async function payOnline() {
     const res = await postJson("/api/payments/seva-bookings", {
+      ...detailPayload,
       seva_id: seva.id,
       devotee_name: form.devotee_name,
       phone: toE164(form.phone, form.phoneCountry),
@@ -216,7 +190,7 @@ function BookingModal({ seva, onClose, t, lang, live = false }) {
     if (res.status === 422 && res.body?.fields) {
       const fields = res.body.fields;
       const mapped = {};
-      for (const key of ["devotee_name", "phone", "email", "preferred_date", "message"]) {
+      for (const key of Object.keys(fields)) {
         if (fields[key]) mapped[key] = String(fields[key]);
       }
       setErrors(mapped);
@@ -249,7 +223,8 @@ function BookingModal({ seva, onClose, t, lang, live = false }) {
       return;
     }
     try {
-      await api.post("/seva-bookings", {
+      const response = await api.post("/seva-bookings", {
+        ...detailPayload,
         seva_id: seva.id,
         seva_name: sevaName(seva, lang),
         devotee_name: form.devotee_name,
@@ -260,12 +235,14 @@ function BookingModal({ seva, onClose, t, lang, live = false }) {
         lang,
         hp_token: form.hp_token,
       });
+      setConfirmation(response.data);
       setStatus("success");
       toast.success(
         t("உங்கள் சேவை பதிவு பெறப்பட்டது.", "Your seva request has been received."),
         t("பதிவு வெற்றி", "Booking received"),
       );
     } catch (err) {
+      if (err?.response?.status === 422 && err.response.data.fields) setErrors(err.response.data.fields);
       const limited = rateLimitInfo(
         err?.response?.status,
         err?.response?.data,
@@ -320,8 +297,9 @@ function BookingModal({ seva, onClose, t, lang, live = false }) {
           </p>
           <div className="booking-success__meta">
             <Badge tone="gold">{name}</Badge>
-            <Badge tone="muted">₹{seva.amount}</Badge>
+            <Badge tone="muted">{Number(seva.amount) > 0 ? priceLabel : t("கட்டணம் அலுவலகத்தில் உறுதி செய்யப்படும்", "Charges to be confirmed by office")}</Badge>
           </div>
+          {confirmation && <p>{confirmation.booking_number} · {t("கட்டணம் செலுத்தப்படவில்லை", "Payment: unpaid")} · {t("அலுவலக உறுதிக்காகக் காத்திருக்கிறது", "Awaiting office confirmation")}</p>}
           <Button ref={closeRef} variant="primary" onClick={onClose}>
             {t("மூடு", "Close")}
           </Button>
@@ -335,18 +313,22 @@ function BookingModal({ seva, onClose, t, lang, live = false }) {
       open
       onClose={onClose}
       size="md"
+      className="booking-modal"
       eyebrow={t("சேவை பதிவு", "Book Seva")}
       title={name}
       description={t(
         "விவரங்களை நிரப்பவும் — கோயில் அலுவலகம் தொலைபேசியில் உறுதி செய்யும்.",
         "Fill in your details — the temple office will confirm by phone.",
       )}
-     
     >
       <p className="booking-modal__amount">
-        <span className="booking-modal__value text-gradient">₹{seva.amount}</span>
-        <span className="booking-modal__unit">{t("சமர்ப்பணம்", "offering")}</span>
+        <LuFlower2 className="booking-modal__flower" aria-hidden="true" />
+        <span className="booking-modal__offering">
+        <span className="booking-modal__unit">{t("சமர்ப்பணம்", "Your offering")}</span>
+        <span className="booking-modal__value text-gradient">{Number(seva.amount) > 0 ? priceLabel : t("கட்டணம் அலுவலகத்தில் உறுதி செய்யப்படும்", "Charges to be confirmed by office")}</span>
+        </span>
       </p>
+      {needsDelivery && <p>{t("பூஜை கட்டணம்", "Pooja charge")}: {formatMoney(seva.amount, "INR", lang)} · {t("விநியோக கட்டணம்", "Delivery fee")}: {formatMoney(deliveryFee, "INR", lang)}</p>}
 
       <form className="booking-form" onSubmit={handleSubmit} noValidate>
         {canPayOnline && (
@@ -390,7 +372,7 @@ function BookingModal({ seva, onClose, t, lang, live = false }) {
           </fieldset>
         )}
 
-        <Field label={t("உங்கள் பெயர்", "Your Name")} required error={errors.devotee_name}>
+        <Field label={t("உங்கள் பெயர்", "Your Name")} required error={errors.devotee_name || errors["participants.0.name"]}>
           {(a11y) => (
             <input
               type="text"
@@ -399,13 +381,15 @@ function BookingModal({ seva, onClose, t, lang, live = false }) {
               onChange={handleChange}
               required
               minLength={2}
-              maxLength={200}
+              maxLength={100}
               autoComplete="name"
               placeholder={t("முழு பெயர்", "Full name")}
               {...a11y}
             />
           )}
         </Field>
+        <BookingDetails seva={seva} services={services} onService={setSelectedId} people={people} setPeople={setPeople}
+          address={deliveryAddress} setAddress={setDeliveryAddress} errors={errors} t={t} />
 
         {/* Honeypot. People never see it and cannot Tab to it; form-filling bots
             do fill it, and the server then quietly saves nothing. It must not be
@@ -450,6 +434,7 @@ function BookingModal({ seva, onClose, t, lang, live = false }) {
           <Field
             label={t("விரும்பும் தேதி", "Preferred Date")}
             hint={t("விருப்பத்தேர்வு — அலுவலகம் உறுதி செய்யும்", "Optional — the office will confirm")}
+            error={errors.preferred_date}
           >
             {(a11y) => (
               <input
@@ -538,6 +523,7 @@ function BookingModal({ seva, onClose, t, lang, live = false }) {
         {status === "limited" && <Alert tone="warning">{rateLimitMessage(t, retryAfter)}</Alert>}
         {status === "error" && errMsg && <Alert tone="error">{errMsg}</Alert>}
 
+        <PaymentShare path={`/sevas?seva=${seva.id}`} purposeLabel={name} />
         {/* One submit button, whichever way the devotee is paying: two would
             make the dialog ask the same question twice. */}
         <div className="modal__actions booking-form__actions">
@@ -546,7 +532,7 @@ function BookingModal({ seva, onClose, t, lang, live = false }) {
           </Button>
           <Button
             type="submit"
-            variant="primary"
+            variant="gold"
             loading={busy}
             icon={payNow ? <LuLock aria-hidden="true" /> : <LuSend aria-hidden="true" />}
           >
@@ -642,9 +628,7 @@ export default function Sevas() {
   const wantedSeva = useRef(params.get("seva"));
   const deepLinkDone = useRef(false);
 
-  // Matched against the live list only. The standard fallback list has ids of
-  // its own, and honouring the link against those could open a different
-  // offering than the one that was sent.
+  // A shared link must resolve to a current, active service.
   useEffect(() => {
     if (deepLinkDone.current || sevas.length === 0) return;
     deepLinkDone.current = true;
@@ -689,7 +673,7 @@ export default function Sevas() {
     setSelectedSeva(seva);
   }
 
-  const items = sevas.length > 0 ? sevas : FALLBACK_SEVAS;
+  const items = sevas;
   const callLabel = t("அழைத்து பதிவு செய்ய", "Book by phone");
   const heading = t("சேவைகள் & பூஜைகள்", "Sevas & Poojas");
   const lead = t(
@@ -708,7 +692,7 @@ export default function Sevas() {
 
       <PageHero
         variant="sevas"
-        eyebrow={t("ஆன்லைன் பதிவு", "Online booking")}
+        eyebrow={t("பக்தியுடன் சமர்ப்பணம்", "An offering of devotion")}
         title={heading}
         lead={lead}
         crumbs={[{ label: t("சேவைகள்", "Sevas") }]}
@@ -728,10 +712,10 @@ export default function Sevas() {
             )}
             actions={
               <Button
-                href={telHref(SECONDARY_CONTACT.phone)}
+                href={TEMPLE_PHONE.href}
                 variant="outline"
                 icon={<LuPhone aria-hidden="true" />}
-                aria-label={`${callLabel} — ${formatPhone(SECONDARY_CONTACT.phone)}`}
+                aria-label={`${callLabel} — ${TEMPLE_PHONE.display}`}
               >
                 {callLabel}
               </Button>
@@ -740,13 +724,13 @@ export default function Sevas() {
 
           {failed && !loading && (
             <Alert
-              tone="warning"
+              tone="error"
               className="sevas-alert"
-              title={t("நிலையான சேவைப் பட்டியல் காட்டப்படுகிறது", "Showing the standard seva list")}
+              title={t("சேவைப் பட்டியலை ஏற்ற இயலவில்லை", "Services could not be loaded")}
             >
               {t(
-                "நேரடி சேவைப் பட்டியலை ஏற்ற முடியவில்லை. கீழே உள்ள நிலையான பட்டியலில் இருந்து பதிவு செய்யலாம்.",
-                "The live seva list couldn't be loaded. You can still book from the standard list below.",
+                "மீண்டும் முயற்சிக்கவும் அல்லது கோயில் அலுவலகத்தைத் தொடர்பு கொள்ளவும்.",
+                "Please try again or contact the temple office. Bookings require the current service list.",
               )}
               <div className="sevas-alert__actions">
                 <Button variant="outline" size="sm" onClick={load}>
@@ -755,6 +739,8 @@ export default function Sevas() {
               </div>
             </Alert>
           )}
+
+          {!loading && !failed && items.length === 0 && <p>{t("சேவைகள் விரைவில் அறிவிக்கப்படும்.", "Services will appear here when published by the office.")}</p>}
 
           {loading ? (
             <>
@@ -792,15 +778,18 @@ export default function Sevas() {
                     </div>
 
                     {description ? <p className="seva-card__desc">{description}</p> : null}
+                    {s.name_en === "Normal Annadhanam" && <>
+                      <Badge tone="gold">{t("பரிந்துரைக்கப்படும் தொகை ₹10,000", "Recommended ₹10,000")}</Badge>
+                    </>}
 
                     <div className="seva-card__foot">
-                      <p className="seva-card__price">
-                        <span className="seva-card__amount text-gradient">₹{s.amount}</span>
-                        <span className="seva-card__unit">{t("சமர்ப்பணம்", "offering")}</span>
-                      </p>
+                      {Number(s.amount) > 0 && <p className="seva-card__price">
+                          <span className="seva-card__amount text-gradient">{formatMoney(s.amount, "INR", lang)}</span>
+                          <span className="seva-card__unit">{t("சமர்ப்பணம்", "offering")}</span>
+                      </p>}
                       <Button
                         type="button"
-                        variant="primary"
+                        variant="gold"
                         className="seva-card__book"
                         onClick={(e) => {
                           e.stopPropagation();
@@ -821,6 +810,9 @@ export default function Sevas() {
                         text={description || lead}
                         to={`/sevas?seva=${s.id}`}
                       />
+                      {Number(s.amount) <= 0 && <p className="seva-card__office-row">
+                        <span className="seva-card__office-charge">{t("கட்டணத்திற்கு அலுவலகத்தை அணுகவும்", "Contact office for charges")}</span>
+                      </p>}
                     </div>
                   </li>
                 );
@@ -832,8 +824,8 @@ export default function Sevas() {
             <LuPhone aria-hidden="true" />
             <p>
               {t(
-                `சேவை பதிவு செய்ய ${SECONDARY_CONTACT.role.ta} ${SECONDARY_CONTACT.name.ta} – ${formatPhone(SECONDARY_CONTACT.phone)} என்ற எண்ணில் அழைக்கவும் அல்லது காலை 8 – 12 மணி, மாலை 4 – 8 மணி நேரத்தில் கோயில் அலுவலகத்தை நேரில் அணுகவும்.`,
-                `To book a seva, call ${SECONDARY_CONTACT.role.en} ${SECONDARY_CONTACT.name.en} at ${formatPhone(SECONDARY_CONTACT.phone)} or visit the temple office between 8 AM – 12 PM and 4 PM – 8 PM.`,
+                `சேவை பதிவு செய்ய ${TEMPLE_PHONE.display} என்ற எண்ணில் அழைக்கவும் அல்லது காலை 8 – 12 மணி, மாலை 4 – 8 மணி நேரத்தில் கோயில் அலுவலகத்தை நேரில் அணுகவும்.`,
+                `To book a seva, call ${TEMPLE_PHONE.display} or visit the temple office between 8 AM – 12 PM and 4 PM – 8 PM.`,
               )}
             </p>
           </div>
@@ -843,11 +835,10 @@ export default function Sevas() {
       {selectedSeva && (
         <BookingModal
           seva={selectedSeva}
+          services={items}
           onClose={closeBooking}
           t={t}
           lang={lang}
-          /* Only an offering from the live list can be paid for: the standard
-             fallback list has ids of its own and no row behind them. */
           live={sevas.length > 0}
         />
       )}

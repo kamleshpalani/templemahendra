@@ -6,6 +6,34 @@
    ══════════════════════════════════════════════════════════════════ */
 
 /* ── Layout ──────────────────────────────────────────────────────── */
+.page-hero--donations { border-bottom: 1px solid var(--gold-300); }
+.page-hero--donations .page-hero__title { color: var(--gold-200); }
+.donations-blessing {
+  max-width: 380px;
+  padding: var(--space-6);
+  border: 1px solid var(--gold-300);
+  border-radius: 50% 50% var(--radius-lg) var(--radius-lg) / 48px 48px var(--radius-lg) var(--radius-lg);
+  background: radial-gradient(ellipse at top, color-mix(in srgb, var(--gold-300) 18%, transparent), transparent 70%), var(--maroon-900);
+  text-align: center;
+  box-shadow: var(--shadow-ink);
+}
+.donations-blessing__icon,
+.donations-pledge__emblem { display: grid; place-items: center; width: 52px; height: 60px; border: 1px solid var(--gold-300); border-radius: 50% 50% 10px 10px; color: var(--gold-200); background: var(--maroon-800); }
+.donations-blessing__icon { margin: 0 auto var(--space-3); }
+.donations-blessing__icon svg,
+.donations-pledge__emblem svg { width: 28px; height: 28px; }
+.page-hero--donations .donations-blessing__eyebrow { color: var(--gold-200); font-size: var(--text-xs); margin-bottom: var(--space-3); }
+.donations-blessing h2 { color: var(--gold-200); font-size: var(--text-xl); line-height: 1.5; text-wrap: balance; }
+.page-hero--donations .donations-blessing > p:last-child { font-size: var(--text-sm); line-height: 1.8; color: var(--text-on-dark); margin-top: var(--space-3); }
+.donations-content { background: radial-gradient(ellipse at top left, var(--gold-100), transparent 55%), var(--bg-root); }
+.donations-content #bank-details { border: 1px solid var(--gold-300); border-top: 3px solid var(--gold-500); background: var(--bg-root); scroll-margin-top: 120px; }
+.donations-pledge__emblem { margin-bottom: var(--space-4); }
+.donations-pledge .field__label { color: var(--maroon-700); font-weight: var(--weight-semibold); }
+.donations-pledge .field { margin-bottom: var(--space-4); min-width: 0; }
+.donations-pledge .field__control:focus-within { outline: 2px solid var(--gold-300); outline-offset: 3px; border-radius: var(--radius-sm); }
+.donations-pledge__form :is(input, select, textarea) { max-width: 100%; min-width: 0; }
+.donations-pledge .donations-pledge__chip { min-height: 44px; border-color: var(--gold-300); }
+.donations-pledge .donations-pledge__chip[aria-pressed="true"] { background: var(--maroon-800); color: var(--gold-200); }
 .donations__split {
   align-items: flex-start;
 }
@@ -61,7 +89,8 @@
   flex-shrink: 0;
   width: 52px;
   height: 52px;
-  border-radius: 16px;
+  border-radius: 50% 50% 10px 10px;
+  color: var(--gold-200);
   font-size: 1.5rem;
   line-height: 1;
   background: var(--glass-ink-2);
@@ -121,7 +150,12 @@
 
 /* ── Pledge form card ─────────────────────────────────────────────── */
 .donations-pledge {
-  padding: var(--space-8);
+  padding: var(--space-6);
+  border: 1px solid var(--gold-300);
+  border-top: 4px solid var(--gold-500);
+  background: linear-gradient(150deg, var(--bg-root), var(--gold-100));
+  box-shadow: var(--shadow-md);
+  scroll-margin-top: 120px;
 }
 .donations-pledge__head {
   margin-bottom: var(--space-5);
@@ -167,6 +201,8 @@
 /* ── "What happens next" callout ─────────────────────────────────── */
 .donations-next {
   margin-top: var(--space-5);
+  border: 1px solid var(--gold-300);
+  background: var(--bg-root);
 }
 .donations-next__body {
   min-width: 0;

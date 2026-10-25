@@ -7,7 +7,7 @@ require_once __DIR__ . '/../includes/helpers.php';
 $limit    = min(intParam('limit', 50), 100);
 $featured = boolParam('featured');
 
-$sql  = 'SELECT id, name_ta, name_en, description, amount, is_featured
+$sql  = 'SELECT id, name_ta, name_en, description, amount, is_featured, service_kind, delivery_fee
            FROM sevas
           WHERE is_active = 1';
 $params = [];

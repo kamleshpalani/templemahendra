@@ -301,8 +301,7 @@ echo adminKpi($kpis);
         <dt>Announcements</dt><dd><?= $counts['announcements'] ?></dd>
         <dt>Gallery photos</dt><dd><?= $counts['gallery'] ?></dd>
         <dt>Pournami section</dt><dd><?= adminBadge(($settings['show_pournami_section'] ?? true) ? 'Visible' : 'Hidden', ($settings['show_pournami_section'] ?? true) ? 'success' : 'muted') ?></dd>
-        <dt>Nalla Neram strip</dt><dd><?= adminBadge(($settings['show_nalla_strip'] ?? true) ? 'Visible' : 'Hidden', ($settings['show_nalla_strip'] ?? true) ? 'success' : 'muted') ?></dd>
-        <dt>Donor ticker</dt><dd><?= adminBadge(($settings['show_donor_ticker'] ?? true) ? 'Visible' : 'Hidden', ($settings['show_donor_ticker'] ?? true) ? 'success' : 'muted') ?></dd>
+        <dt>Donor acknowledgements</dt><dd><?= adminBadge(($settings['show_donor_ticker'] ?? true) ? 'Visible' : 'Hidden', ($settings['show_donor_ticker'] ?? true) ? 'success' : 'muted') ?></dd>
       </dl>
       <div class="cluster mt-4">
         <a href="/" target="_blank" rel="noopener" class="btn btn--sm"><?= adminIcon('external') ?> Preview site</a>

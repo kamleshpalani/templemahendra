@@ -3,8 +3,24 @@
    components/Registration/*). Personal → Family → Address → Review.
    ══════════════════════════════════════════════════════════════════ */
 
+.page-hero--register { border-bottom: 1px solid var(--gold-300); }
+.page-hero--register .page-hero__title { color: var(--gold-200); }
+.reg-welcome { max-width: 380px; padding: var(--space-6); border: 1px solid var(--gold-300); border-radius: 50% 50% var(--radius-lg) var(--radius-lg) / 40px 40px var(--radius-lg) var(--radius-lg); background: radial-gradient(ellipse at top, color-mix(in srgb, var(--gold-300) 16%, transparent), transparent 70%), var(--maroon-900); text-align: center; }
+.reg-welcome__emblem, .reg-card__emblem { display: grid; place-items: center; width: 48px; height: 56px; border: 1px solid var(--gold-300); border-radius: 50% 50% 10px 10px; background: var(--maroon-800); color: var(--gold-200); }
+.reg-welcome__emblem { margin: 0 auto var(--space-3); }
+.reg-welcome__emblem svg, .reg-card__emblem svg { width: 26px; height: 26px; }
+.page-hero--register .reg-welcome__eyebrow { font-size: var(--text-xs); color: var(--gold-200); margin-bottom: var(--space-3); }
+.reg-welcome h2 { font-size: var(--text-xl); line-height: 1.6; color: var(--gold-200); text-wrap: balance; }
+.page-hero--register .reg-welcome > p:last-child { color: var(--text-on-dark); font-size: var(--text-sm); line-height: 1.8; margin-top: var(--space-3); }
+.reg-reassurance { display: flex; justify-content: center; flex-wrap: wrap; gap: var(--space-3) var(--space-5); padding-inline: var(--space-2); color: var(--maroon-700); font-size: var(--text-xs); }
+.reg-reassurance span { display: inline-flex; align-items: center; gap: var(--space-2); }
+.reg-reassurance svg { width: 16px; height: 16px; flex-shrink: 0; }
+.reg-card__emblem { margin-bottom: var(--space-1); }
 .reg-section {
-  padding-top: var(--space-10);
+  padding-top: var(--space-6);
+  background:
+    radial-gradient(ellipse at top left, color-mix(in srgb, var(--gold-200) 35%, transparent), transparent 60%),
+    linear-gradient(180deg, var(--bg-alt), var(--bg-root));
 }
 .reg {
   display: grid;
@@ -17,7 +33,11 @@
   scroll-margin-top: calc(var(--header-h) + var(--space-4));
 }
 .reg-stepper {
-  padding-block: var(--space-2);
+  padding: var(--space-4) var(--space-3);
+  border: 1px solid color-mix(in srgb, var(--gold-500) 35%, transparent);
+  border-radius: var(--radius-xl);
+  background: linear-gradient(135deg, var(--bg-root), var(--gold-100));
+  box-shadow: var(--shadow-sm);
 }
 .reg-stepper__compact {
   display: none;
@@ -169,7 +189,12 @@
 
 /* ── Step card ────────────────────────────────────────────────────── */
 .reg-card {
-  padding: var(--space-8);
+  position: relative;
+  padding: clamp(1rem, 3vw, 2rem);
+  border-color: color-mix(in srgb, var(--gold-500) 35%, transparent);
+  border-top: 3px solid var(--gold-500);
+  background: linear-gradient(145deg, var(--white), var(--bg-alt));
+  box-shadow: var(--shadow-lg);
   /* backwards, not both: a transform left behind after the animation would
      trap anything fixed inside the card. */
   animation: reg-step-in var(--dur-slow) var(--ease-out) backwards;
@@ -192,7 +217,9 @@
 .reg-card__head {
   display: grid;
   gap: var(--space-2);
-  margin-bottom: var(--space-6);
+  margin-bottom: var(--space-4);
+  padding-bottom: var(--space-4);
+  border-bottom: 1px solid var(--border-soft);
 }
 .reg-card__eyebrow {
   color: var(--accent-ink);
@@ -221,8 +248,58 @@
 .reg-fields {
   min-width: 0;
 }
+.reg-fields .field {
+  margin-bottom: var(--space-4);
+}
+.reg-fields .field__label {
+  color: var(--maroon-800);
+  font-size: var(--text-sm);
+  overflow-wrap: anywhere;
+}
+.reg-fields .field__optional {
+  font-size: var(--text-2xs);
+  font-weight: var(--weight-medium);
+}
+.reg-fields input:not([type="radio"]):not([type="checkbox"]),
+.reg-fields select,
+.reg-fields textarea {
+  min-width: 0;
+  border-radius: var(--radius-sm);
+  background-color: var(--white);
+  border-color: var(--border-strong);
+  transition: border-color var(--transition), box-shadow var(--transition);
+}
+.reg-fields input:focus-visible,
+.reg-fields select:focus-visible,
+.reg-fields textarea:focus-visible {
+  border-color: var(--gold-500);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--gold-400) 22%, transparent);
+}
+.reg-fields .field__hint {
+  font-size: var(--text-xs);
+}
 .reg-date {
   max-width: 16rem;
+}
+.reg-dates-row,
+.reg-astro-row {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+.reg-dates-row > .field,
+.reg-astro-row > .field {
+  min-width: 0;
+}
+.reg-dates-row .field__label,
+.reg-astro-row .field__label {
+  display: block;
+  min-height: 3.5rem;
+  align-content: end;
+}
+.reg-dates-row .reg-date {
+  min-width: 0;
+  width: 100%;
+  max-width: 100%;
 }
 
 /* ── Radio cards (preferred language) ─────────────────────────────── */
@@ -382,7 +459,7 @@
 }
 @media (min-width: 600px) {
   .reg-member__fields {
-    grid-template-columns: minmax(0, 2fr) minmax(0, 1.6fr) 6.5rem;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 .reg-member__foot {

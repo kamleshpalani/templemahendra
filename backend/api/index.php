@@ -110,6 +110,10 @@ if ($path === '/registrations') {
     require __DIR__ . '/registrations.php';
     exit;
 }
+if ($path === '/matrimony') {
+    require __DIR__ . '/matrimony.php';
+    exit;
+}
 
 // Online payments (docs/payments/SPEC.md §5.5). Matched for every method:
 // payments.php answers 405s itself, and the CCAvenue return routes answer a
@@ -167,6 +171,7 @@ $routes = [
 ];
 
 $handler = $routes[$method][$path] ?? null;
+if ($method === 'GET' && $path === '/pooja-schedule') $handler = 'pooja_schedule.php';
 
 if ($handler === null) {
     sendError('Not found', 404);

@@ -19,6 +19,7 @@
 
 require_once __DIR__ . '/../includes/db.php';
 require_once __DIR__ . '/../includes/helpers.php';
+require_once __DIR__ . '/../includes/public_content.php';
 require_once __DIR__ . '/../includes/public_guard.php';
 
 setCorsHeaders();
@@ -277,4 +278,4 @@ if (count($widgets) < 4) {
     }
 }
 
-sendJson($widgets);
+sendJson(publicContentVisible($widgets));

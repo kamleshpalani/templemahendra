@@ -1,23 +1,19 @@
 import { useEffect, useState } from "react";
-import { Link, useLocation } from "react-router-dom";
+import { Link, Navigate, useLocation } from "react-router-dom";
 import {
   LuCalendarDays,
-  LuClock,
-  LuFileBadge,
+  LuFlower2,
   LuHeartHandshake,
   LuLandmark,
   LuMapPin,
   LuScrollText,
   LuSparkles,
-  LuUsers,
 } from "react-icons/lu";
 import api from "../services/api";
 import { useLang } from "../context/LangContext";
 import {
   TEMPLE,
   ADDRESS,
-  TRUST,
-  COMMITTEE,
   HISTORY,
   LAND_DONATION,
   KUMBABHISHEKAM_APPEAL,
@@ -26,22 +22,15 @@ import PageHero from "../components/ui/PageHero";
 import Button from "../components/ui/Button";
 import Seo from "../components/Seo";
 import ShareButton from "../components/Share/ShareButton";
-import { POOJA_SCHEDULE, to12h } from "../lib/templeTime";
 import HistoryTimeline from "../components/HistoryTimeline/HistoryTimeline";
-import TrustDetails from "../components/TrustDetails/TrustDetails";
-import CommitteeGrid from "../components/CommitteeGrid/CommitteeGrid";
 import "./PageCommon.css";
 import "./About.css";
 
-/* In-page section nav — ids match the h2 anchors below (deep-linked from
-   the navbar live pill (#timings), Donations (#trust) and Contact). */
+/* In-page navigation follows the story sections below. */
 const SECTIONS = [
   { id: "history", ta: "வரலாறு", en: "History", Icon: LuScrollText },
   { id: "deities", ta: "குலதெய்வங்கள்", en: "Deities", Icon: LuSparkles },
   { id: "land-donation", ta: "இட நன்கொடை", en: "Land donation", Icon: LuLandmark },
-  { id: "trust", ta: "அறக்கட்டளை", en: "Trust", Icon: LuFileBadge },
-  { id: "committee", ta: "கமிட்டி", en: "Committee", Icon: LuUsers },
-  { id: "timings", ta: "நேரங்கள்", en: "Timings", Icon: LuClock },
 ];
 
 /* Hero fact tiles — years come straight from HISTORY.timeline (no new facts). */
@@ -87,6 +76,9 @@ export default function About() {
   // shared with. See <Seo>.
   const title = t("ஆலயம் பற்றி", "About the Temple");
   const lead = t(TEMPLE.fullName.ta, TEMPLE.fullName.en);
+  if (hash === "#committee" || hash === "#trust" || hash === "#trust-details") {
+    return <Navigate to={`/trust-committee${hash}`} replace />;
+  }
 
   return (
     <>
@@ -94,7 +86,8 @@ export default function About() {
 
       <PageHero
         variant="about"
-        eyebrow={t("வரலாறு · அறக்கட்டளை · கமிட்டி", "History · Trust · Committee")}
+        className="about-hero"
+        eyebrow={t("வரலாறு · குலதெய்வங்கள்", "History · Deities")}
         title={title}
         lead={lead}
         crumbs={[{ label: t("பற்றி", "About") }]}
@@ -150,6 +143,19 @@ export default function About() {
 
       <section className="section section--tight about">
         <div className="container page-prose about-prose">
+          <div className="about-introduction">
+            <div className="about-introduction__text">
+              <span className="about-introduction__emblem" aria-hidden="true"><LuFlower2 /></span>
+              <p className="eyebrow">{t("நம் ஆலயம் · நம் பாரம்பரியம்", "Our temple · Our heritage")}</p>
+              <h2>{t("தலைமுறைகளை இணைக்கும் இறைநம்பிக்கை", "A sacred bond across generations")}</h2>
+              <p>{t(
+                "நம் குலதெய்வங்களின் அருளுடன், வழிபாடும் பாரம்பரியமும் குடும்பங்களை இணைக்கின்றன. நம் ஆலயத்தின் வரலாற்றையும் இறைச் சேவையையும் அறிந்திடுங்கள்.",
+                "In devotion to our clan deities, worship and tradition bring families together. Discover the story of our temple and the community that cares for it.",
+              )}</p>
+              <Button to="/trust-committee" variant="outline" icon={<LuHeartHandshake aria-hidden="true" />}>
+                {t("அறக்கட்டளை & கமிட்டி", "Meet the Trust & Committee")}
+              </Button>
+            </div>
           {photoOk && (
             <figure className={`about-figure card card--static${photoLoaded ? " rise" : " about-figure--pending"}`}>
               <img
@@ -166,12 +172,18 @@ export default function About() {
               )}
             </figure>
           )}
+          </div>
 
           {/* ── History ─────────────────────────────────────────── */}
+          <section className="about-story" aria-labelledby="history">
+          <p className="about-story__eyebrow">{t("01 · நம் வேர்கள்", "01 · Our roots")}</p>
           <h2 id="history">{t("வரலாறு", "History")}</h2>
           <HistoryTimeline />
+          </section>
 
           {/* ── Deities ─────────────────────────────────────────── */}
+          <section className="about-story about-story--deities" aria-labelledby="deities">
+          <p className="about-story__eyebrow">{t("02 · இறையருள்", "02 · Divine grace")}</p>
           <h2 id="deities">{t("குலதெய்வங்கள்", "Our Clan Deities")}</h2>
           <p>
             {t(
@@ -194,7 +206,7 @@ export default function About() {
                     />
                   ) : (
                     <span className="about-deities__glyph" aria-hidden="true">
-                      ✦
+                      <LuFlower2 />
                     </span>
                   )}
                   <span className="about-deities__ta" lang="ta">
@@ -213,8 +225,11 @@ export default function About() {
               {t("பௌர்ணமி தேதிகள் →", "Pournami dates →")}
             </Button>
           </p>
+          </section>
 
           {/* ── Land donation & buildings ───────────────────────── */}
+          <section className="about-story" aria-labelledby="land-donation">
+          <p className="about-story__eyebrow">{t("03 · இறைச் சேவை", "03 · A legacy of giving")}</p>
           <h2 id="land-donation">{t(LAND_DONATION.heading.ta, LAND_DONATION.heading.en)}</h2>
           <p>{t(LAND_DONATION.ta, LAND_DONATION.en)}</p>
           <div className="about-donor card card--gold card--static rise">
@@ -228,11 +243,6 @@ export default function About() {
               <p className="about-donor__names">{t(LAND_DONATION.donors.names.ta, LAND_DONATION.donors.names.en)}</p>
             </div>
           </div>
-
-          {/* ── Dharma Trust ────────────────────────────────────── */}
-          <h2 id="trust">{t("தர்ம அறக்கட்டளை", "Dharma Trust")}</h2>
-          <p>{t(TRUST.narrative.ta, TRUST.narrative.en)}</p>
-          <TrustDetails variant="full" id="trust-details" />
 
           <aside className="about-appeal card card--ink card--static rise" aria-labelledby="about-appeal-title">
             <div className="about-appeal__body">
@@ -250,40 +260,8 @@ export default function About() {
               </div>
             </div>
           </aside>
+          </section>
 
-          {/* ── Committee ───────────────────────────────────────── */}
-          <h2 id="committee">{t(COMMITTEE.heading.ta, COMMITTEE.heading.en)}</h2>
-          <p>
-            <em>{t(COMMITTEE.invite.ta, COMMITTEE.invite.en)}</em>
-          </p>
-          {/* Page owns the h2, so cards render as h3 (headingLevel 2, heading hidden) */}
-          <CommitteeGrid showHeading={false} showInvite={false} headingLevel={2} />
-
-          {/* ── Daily timings (existing schedule) ───────────────── */}
-          <h2 id="timings">{t("வழிபாட்டு நேரங்கள்", "Timings")}</h2>
-          <div className="about-timings">
-            <table className="timings-table">
-              <caption className="visually-hidden">{t("தினசரி பூஜை நேரங்கள்", "Daily pooja timings")}</caption>
-              <thead>
-                <tr>
-                  <th scope="col">{t("பூஜை", "Pooja")}</th>
-                  <th scope="col">{t("ஆங்கிலம்", "Tamil")}</th>
-                  <th scope="col">{t("நேரம்", "Time")}</th>
-                </tr>
-              </thead>
-              <tbody>
-                {/* Column 1 follows the active language; column 2 shows the other,
-                    so neither mode repeats the same text in both columns. */}
-                {POOJA_SCHEDULE.map(({ en, ta, h, m }) => (
-                  <tr key={en}>
-                    <td lang={lang}>{t(ta, en)}</td>
-                    <td lang={lang === "ta" ? "en" : "ta"}>{lang === "ta" ? en : ta}</td>
-                    <td>{to12h(`${h}:${m}`)} IST</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
         </div>
       </section>
     </>

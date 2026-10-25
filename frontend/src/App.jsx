@@ -8,6 +8,7 @@ import useReveal from "./hooks/useReveal";
 
 // Home stays eager for LCP; every other route is code-split.
 const About = lazy(() => import("./pages/About"));
+const TrustCommittee = lazy(() => import("./pages/TrustCommittee"));
 const Sevas = lazy(() => import("./pages/Sevas"));
 const Events = lazy(() => import("./pages/Events"));
 const Gallery = lazy(() => import("./pages/Gallery"));
@@ -17,6 +18,7 @@ const Contact = lazy(() => import("./pages/Contact"));
 const PanchangCalendar = lazy(() => import("./pages/PanchangCalendar"));
 const Search = lazy(() => import("./pages/Search"));
 const Register = lazy(() => import("./pages/Register"));
+const Matrimony = lazy(() => import("./pages/MatrimonyComingSoon"));
 const Policy = lazy(() => import("./pages/Policy"));
 const Donate = lazy(() => import("./pages/Donate"));
 const PaymentResult = lazy(() => import("./pages/PaymentResult"));
@@ -86,6 +88,7 @@ function App() {
           <Route element={<PageTransition />}>
             <Route index element={<Home />} />
             <Route path="about" element={<About />} />
+            <Route path="trust-committee" element={<TrustCommittee />} />
             <Route path="sevas" element={<Sevas />} />
             <Route path="events" element={<Events />} />
             <Route path="gallery" element={<Gallery />} />
@@ -95,6 +98,7 @@ function App() {
             <Route path="panchangam" element={<PanchangCalendar />} />
             <Route path="search" element={<Search />} />
             <Route path="register" element={<Register />} />
+            <Route path="matrimony" element={<Matrimony />} />
 
             {/* The legal pages the payment gateway requires (docs/payments/SPEC.md §7.1). */}
             <Route path="privacy-policy" element={<Policy slug="privacy" />} />

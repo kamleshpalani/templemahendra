@@ -4,6 +4,7 @@ import {
   LuArrowRight,
   LuBadgeCheck,
   LuCreditCard,
+  LuFlower2,
   LuHeartHandshake,
   LuIndianRupee,
   LuLandmark,
@@ -157,6 +158,14 @@ export default function Donations() {
         title={t("நன்கொடை", "Donations")}
         lead={t(TRUST.name.ta, TRUST.name.en)}
         crumbs={[{ label: t("நன்கொடை", "Donations") }]}
+        aside={
+          <div className="donations-blessing">
+            <span className="donations-blessing__icon" aria-hidden="true"><LuFlower2 /></span>
+            <p className="donations-blessing__eyebrow">{t("பக்தியுடன் சமர்ப்பணம்", "An offering of devotion")}</p>
+            <h2>{t("ஒவ்வொரு பங்களிப்பும் ஓர் இறைச் சேவை", "Every offering is an act of devotion")}</h2>
+            <p>{t("கோயில் திருப்பணிகளிலும் அன்னதானத்திலும் இணைந்திடுங்கள்.", "Be part of the temple’s sacred work and Annadanam.")}</p>
+          </div>
+        }
         actions={
           <>
             {online && (
@@ -179,7 +188,7 @@ export default function Donations() {
         }
       />
 
-      <section className="section">
+      <section className="section donations-content">
         <div className="container split donations__split">
           {/* ── Left: intro · appeal · bank details ─────────────────── */}
           <div className="donations__info rise" style={{ "--i": 0 }}>
@@ -199,7 +208,7 @@ export default function Donations() {
                       `Give now by UPI, card or net banking. The payment happens on CCAvenue's secure page and your receipt is ready at once. ${TRUST.taxExemption.short.en}.`,
                     )}
                   </p>
-                  <Button to="/donate" variant="primary" trailingIcon={<LuArrowRight aria-hidden="true" />}>
+                  <Button to="/donate" variant="gold" trailingIcon={<LuArrowRight aria-hidden="true" />}>
                     {t("இணையவழியில் வழங்க", "Donate online")}
                   </Button>
                 </div>
@@ -225,7 +234,7 @@ export default function Donations() {
             >
               <div className="card__body donations-appeal__body">
                 <span className="donations-appeal__glyph" aria-hidden="true">
-                  🛕
+                  <LuLandmark />
                 </span>
                 <div className="donations-appeal__text-wrap">
                   <h3 id="donations-appeal-title" className="donations-appeal__title">
@@ -248,7 +257,7 @@ export default function Donations() {
             <TrustDetails variant="bank" showNote id="bank-details" />
 
             <p className="donations__more">
-              <Link to="/about#trust" className="donations__more-link">
+              <Link to="/trust-committee#trust" className="donations__more-link">
                 {t("அறக்கட்டளை பதிவு விவரங்கள் முழுமையாக →", "Full Trust registration details →")}
               </Link>
             </p>
@@ -257,6 +266,7 @@ export default function Donations() {
           {/* ── Right: pledge form (sticky on desktop) ──────────────── */}
           <div className="split__sticky donations__aside">
             <div className="card card--solid card--static donations-pledge rise" id="pledge" style={{ "--i": 1 }}>
+              <span className="donations-pledge__emblem" aria-hidden="true"><LuHeartHandshake /></span>
               <SectionHeader
                 as="h2"
                 align="left"
@@ -383,9 +393,8 @@ export default function Donations() {
                   {(a11y) => (
                     <select {...a11y} name="purpose" value={form.purpose} onChange={handleChange}>
                       <option value="">{t("— தேர்ந்தெடுக்க —", "— Select —")}</option>
-                      <option value="kumbabhishekam">{t("கும்பாபிஷேகம்", "Kumbabhishekam")}</option>
                       <option value="annadanam_hall">
-                        {t("அன்னதான கூடம் கட்டுமானம்", "Annadanam Hall construction")}
+                        {t("அன்னதான கூடம் பராமரிப்பு", "Annadanam Hall maintenance")}
                       </option>
                       <option value="annadanam">{t("அன்னதானம்", "Annadanam")}</option>
                       <option value="abhishekam">{t("அபிஷேகம்", "Abhishekam")}</option>
@@ -437,13 +446,13 @@ export default function Donations() {
 
                 <Button
                   type="submit"
-                  variant="primary"
+                  variant="gold"
                   block
                   loading={sending}
                   icon={<LuSend aria-hidden="true" />}
                   className="donations-pledge__submit"
                 >
-                  {t("சமர்ப்பி", "Submit")}
+                  {t("நன்கொடை பதிவு செய்யுங்கள்", "Register your pledge")}
                 </Button>
               </form>
             </div>

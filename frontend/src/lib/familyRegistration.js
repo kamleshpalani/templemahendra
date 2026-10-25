@@ -67,9 +67,9 @@ export const LIMITS = {
 const RELATIONSHIP_BY_VALUE = new Map(RELATIONSHIPS.map((r) => [r.value, r]));
 const COUNTRY_CODES = new Set(COUNTRIES.map((c) => c.iso2));
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
-const PERSONAL_KEYS = new Set(["name", "phone", "email", "dateOfBirth", "lang"]);
+const PERSONAL_KEYS = new Set(["name", "phone", "email", "dateOfBirth", "marriageDate", "rasi", "nakshatram", "lang"]);
 const ADDRESS_KEYS = new Set(["address1", "address2", "city", "state", "country", "postcode"]);
-const MEMBER_ERROR_RE = /^members\.(\d+)\.(name|relationship|age)$/;
+const MEMBER_ERROR_RE = /^members\.(\d+)\.(name|relationship|age|dateOfBirth|marriageDate|rasi|nakshatram|gothram)$/;
 
 /** Characters as the server counts them: code points, after trimming. */
 export const charCount = (value) => Array.from(String(value ?? "").trim()).length;
@@ -136,10 +136,10 @@ export function formatBirthDate(ymd, lang) {
 /* ── Shapes ─────────────────────────────────────────────────────────────── */
 
 /** A blank family member card. `key` is stable for the card's life, never an index. */
-export const emptyMember = (key) => ({ key, name: "", relationship: "", age: "" });
+export const emptyMember = (key) => ({ key, name: "", relationship: "", age: "", dateOfBirth: "", marriageDate: "", rasi: "", nakshatram: "", gothram: "" });
 
 /** A card the family added and then left completely empty. */
-export const isBlankMember = (m) => !String(m.name ?? "").trim() && !m.relationship && !String(m.age ?? "").trim();
+export const isBlankMember = (m) => ["name", "relationship", "dateOfBirth", "rasi", "nakshatram", "gothram"].every((key) => !String(m[key] ?? "").trim());
 
 export function relationshipLabel(value, t) {
   const r = RELATIONSHIP_BY_VALUE.get(value);
@@ -154,6 +154,9 @@ export function initialForm(lang) {
     phoneCountry: DEFAULT_COUNTRY,
     email: "",
     dateOfBirth: "",
+    marriageDate: "",
+    rasi: "",
+    nakshatram: "",
     lang: lang === "en" ? "en" : "ta",
     members: [],
     address1: "",
@@ -239,6 +242,8 @@ function validateFamily(form, t) {
     );
   }
   for (const m of members) {
+    if (charCount(m.gothram) > 100) e[`members.${m.key}.gothram`] = t("அதிகபட்சம் 100 எழுத்துகள்.", "Use at most 100 characters.");
+    for (const [key, problem] of Object.entries(validatePersonDetails({ ...m, marriageDate: "" }, t))) e[`members.${m.key}.${key}`] = problem;
     const name = lengthProblem(
       m.name,
       LIMITS.memberName,
@@ -251,13 +256,6 @@ function validateFamily(form, t) {
       e[`members.${m.key}.relationship`] = t(
         "இவர் உங்களுக்கு என்ன உறவு என்பதைத் தேர்ந்தெடுக்கவும்.",
         "Choose how this person is related to you.",
-      );
-    }
-    const age = String(m.age ?? "").trim();
-    if (age && (!/^\d{1,3}$/.test(age) || Number(age) > LIMITS.maxAge)) {
-      e[`members.${m.key}.age`] = t(
-        `வயதை 0 முதல் ${LIMITS.maxAge} வரையிலான முழு எண்ணாக உள்ளிடவும், அல்லது காலியாக விடவும்.`,
-        `Enter the age as a whole number from 0 to ${LIMITS.maxAge}, or leave it blank.`,
       );
     }
   }
@@ -328,7 +326,7 @@ function validateAddress(form, t) {
 
 /** Problems on one step as { errorKey: message }. Review has none of its own. */
 export function validateStep(step, form, t) {
-  if (step === "personal") return validatePersonal(form, t);
+  if (step === "personal") return { ...validatePersonal(form, t), ...validatePersonDetails(form, t) };
   if (step === "family") return validateFamily(form, t);
   if (step === "address") return validateAddress(form, t);
   return {};
@@ -351,6 +349,9 @@ export function fieldIdFor(errorKey) {
       phone: "reg-phone",
       email: "reg-email",
       dateOfBirth: "reg-dob",
+      marriageDate: "reg-marriageDate",
+      rasi: "reg-rasi",
+      nakshatram: "reg-nakshatram",
       lang: "reg-lang-ta",
       members: "reg-add-member",
       address1: "reg-address1",
@@ -368,7 +369,9 @@ export function fieldLabel(errorKey, form, t) {
   const member = MEMBER_ERROR_RE.exec(errorKey);
   if (member) {
     const n = form.members.findIndex((m) => String(m.key) === member[1]) + 1;
-    const part = { name: t("பெயர்", "Name"), relationship: t("உறவு முறை", "Relationship"), age: t("வயது", "Age") }[member[2]];
+    const part = { name: t("பெயர்", "Name"), relationship: t("உறவு முறை", "Relationship"), age: t("வயது", "Age"),
+      dateOfBirth: t("பிறந்த தேதி", "Date of birth"), marriageDate: t("திருமண தேதி", "Marriage date"),
+      rasi: t("ராசி", "Rasi"), nakshatram: t("நட்சத்திரம்", "Nakshatram"), gothram: t("கோத்திரம்", "Gothram") }[member[2]];
     return `${t(`உறுப்பினர் ${n}`, `Member ${n}`)} — ${part}`;
   }
   switch (errorKey) {
@@ -417,10 +420,14 @@ export function toPayload(form) {
     phoneCountry: form.phoneCountry,
     email: email ? email.toLowerCase() : null,
     dateOfBirth: String(form.dateOfBirth ?? "").trim() || null,
+    marriageDate: form.marriageDate || null,
+    rasi: form.rasi.trim() || null,
+    nakshatram: form.nakshatram.trim() || null,
     lang: form.lang,
     members: members.map((m) => {
-      const age = String(m.age ?? "").trim();
-      return { name: m.name.trim(), relationship: m.relationship, age: age === "" ? null : Number(age) };
+      return { name: m.name.trim(), relationship: m.relationship, age: m.dateOfBirth ? ageFrom(m.dateOfBirth) : null,
+        dateOfBirth: m.dateOfBirth || null, marriageDate: null, gothram: (m.gothram ?? "").trim() || null,
+        rasi: (m.rasi ?? "").trim() || null, nakshatram: (m.nakshatram ?? "").trim() || null };
     }),
     address1: form.address1.trim(),
     address2: form.address2.trim(),
@@ -445,7 +452,7 @@ export function mapServerFields(fields, memberKeys, form, t, lang) {
   for (const [key, message] of Object.entries(fields ?? {})) {
     let step = null;
     let formKey = key;
-    const member = /^members\.(\d+)\.(name|relationship|age)$/.exec(key);
+    const member = MEMBER_ERROR_RE.exec(key);
     if (member) {
       step = "family";
       const cardKey = memberKeys[Number(member[1])];
@@ -464,3 +471,21 @@ export function mapServerFields(fields, memberKeys, form, t, lang) {
 
 /** The country's name as the country list shows it. */
 export const countryName = (iso2) => countryOf(iso2).name;
+
+export function validatePersonDetails(person, t) {
+  const errors = {};
+  const today = templeToday();
+  for (const key of ["dateOfBirth", "marriageDate"]) {
+    const value = person[key];
+    if (value && (!isRealDate(value) || value > today || value < earliestBirthDate(today))) {
+      errors[key] = t("கடந்த 120 ஆண்டுகளில் செல்லுபடியான தேதியை உள்ளிடவும்.", "Enter a valid date within the last 120 years, not in the future.");
+    }
+  }
+  if (person.marriageDate && person.dateOfBirth && person.marriageDate < person.dateOfBirth) {
+    errors.marriageDate = t("திருமண தேதி பிறந்த தேதிக்கு முன்பாக இருக்க முடியாது.", "Marriage date cannot be before date of birth.");
+  }
+  for (const key of ["rasi", "nakshatram"]) {
+    if (charCount(person[key]) > 100) errors[key] = t("அதிகபட்சம் 100 எழுத்துகள்.", "Use at most 100 characters.");
+  }
+  return errors;
+}

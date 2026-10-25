@@ -170,7 +170,7 @@ check(str_contains($text, $receipt['cta_label'] . ":\n" . $receiptUrl), 'the rec
 $facts = notifyTempleFacts();
 check((bool) preg_match('/^\+91\d{10}$/', $facts['phones']['primary']) && (bool) preg_match('/^\+91\d{10}$/', $facts['phones']['secondary']), 'temple phone numbers are E.164');
 check($facts['supportPhone'] === $facts['phones']['primary'], 'supportPhone is the primary contact the site calls');
-check(str_starts_with($facts['mapsUrl'], 'https://maps.google.com/maps?q=Dhabbalavaar%20Renuka%20Devi') && !str_contains($facts['mapsUrl'], ' '), 'maps URL is encoded like the site builds it');
+check(str_contains($facts['mapsUrl'], '!3d9.2101171!4d77.7736112') && !str_contains($facts['mapsUrl'], ' '), 'maps URL uses the supplied temple pin');
 foreach (['name', 'shortName', 'address', 'trust', 'taxNote'] as $f) {
     check(($facts[$f]['ta'] ?? '') !== '' && ($facts[$f]['en'] ?? '') !== '', "temple fact $f exists in ta and en");
 }

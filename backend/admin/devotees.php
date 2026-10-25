@@ -45,6 +45,9 @@ const DV_STATUS_SQL = [
 const DV_FIELD_LABELS = [
     'name'          => 'name',
     'date_of_birth' => 'date of birth',
+    'marriage_date' => 'marriage date',
+    'rasi' => 'Rasi',
+    'nakshatram' => 'Nakshatram',
     'email'         => 'email',
     'phone'         => 'phone number',
     'phone_country' => "phone number's country",
@@ -66,7 +69,7 @@ if (!registrationReady() || !publicGuardHasColumn('devotees', 'duplicate_of') ||
     echo adminEmpty(
         'users',
         'Family registration is not switched on yet',
-        'Apply database/migrations/009_family_registration.sql (after 003 to 008) to keep registered families and their members here. Until then the public registration form tells visitors it is not available yet.',
+        'Apply database migrations through 021_family_details.sql, in order, to manage registered families and their members. Until then public family registration is unavailable.',
         '<a href="/register" target="_blank" rel="noopener" class="btn btn--sm">' . adminIcon('external') . 'Public registration form</a>'
     );
     adminFooter();
@@ -299,7 +302,7 @@ function dvFieldId(string $key): string
         'country' => 'd-country', 'postcode' => 'd-postcode', 'members' => 'd-members',
     ];
     if (isset($map[$key])) return $map[$key];
-    if (preg_match('/^members\.(\d+)\.(name|relationship|age)$/', $key, $m)) return 'm-' . $m[1] . '-' . $m[2];
+    if (preg_match('/^members\.(\d+)\.(name|relationship|age|dateOfBirth|marriageDate|rasi|nakshatram|gothram)$/', $key, $m)) return 'm-' . $m[1] . '-' . $m[2];
     return 'reg-form';
 }
 
@@ -332,8 +335,15 @@ function dvMemberRow(string $n, array $row, array $errors, string $legend, bool 
         . dvInput("m-$n-age", "members[$n][age]", 'Age', $row['age'], [
             'optional' => true, 'error' => $errors["$key.age"] ?? '',
             'attrs'    => ['inputmode' => 'numeric', 'maxlength' => '3', 'autocomplete' => 'off'],
-        ])
-        . '</div>';
+        ]);
+    foreach (['dateOfBirth'=>'Date of birth', 'marriageDate'=>'Marriage date', 'rasi'=>'Rasi', 'nakshatram'=>'Nakshatram', 'gothram'=>'Gothram'] as $field=>$label) {
+        $isDate = in_array($field, ['dateOfBirth','marriageDate'], true);
+        $out .= dvInput("m-$n-$field", "members[$n][$field]", $label, (string)($row[$field] ?? ''), [
+            'optional'=>true, 'error'=>$errors["$key.$field"] ?? '',
+            'attrs'=>$isDate ? ['type'=>'date','max'=>registrationTempleToday()] : ['maxlength'=>'100'],
+        ]);
+    }
+    $out .= '</div>';
     if ($removable) {
         $who  = trim($row['name']) !== '' ? trim($row['name']) : $legend;
         $out .= '<div class="reg-member__foot"><label class="checkbox-label"><input type="checkbox" name="members[' . h($n) . '][remove]" value="1"'
@@ -402,6 +412,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $msg === '') {
             $input = [];
             foreach ([
                 'name' => 'name', 'dateOfBirth' => 'date_of_birth', 'phone' => 'phone', 'phoneCountry' => 'phone_country',
+                'marriageDate' => 'marriage_date', 'rasi'=>'rasi', 'nakshatram'=>'nakshatram',
                 'email' => 'email', 'lang' => 'lang', 'address1' => 'address1', 'address2' => 'address2',
                 'city' => 'city', 'state' => 'state', 'country' => 'country', 'postcode' => 'postcode',
             ] as $apiKey => $postKey) {
@@ -589,9 +600,10 @@ $orderSql = ' ORDER BY d.' . $sortCol . ' ' . strtoupper($dir) . ', d.id ' . str
 
         $cols = ['id', 'name', 'date_of_birth', 'phone', 'phone_country', 'email', 'lang', 'address1', 'address2', 'city', 'state',
                  'country', 'postcode', 'consent', 'updates_consent_at', 'updates_consent_by', 'unsubscribed_at', 'duplicate_of',
-                 'is_active', 'created_at', 'member_count', 'members'];
+                 'is_active', 'created_at', 'member_count', 'members', 'marriage_date', 'rasi', 'nakshatram'];
         $select = 'd.id, d.name, d.date_of_birth, d.phone, d.phone_country, d.email, d.lang, d.address1, d.address2, d.city, d.state,
-                   d.country, d.postcode, d.updates_consent_at, d.updates_consent_by, d.unsubscribed_at, d.duplicate_of, d.is_active, d.created_at';
+                   d.country, d.postcode, d.updates_consent_at, d.updates_consent_by, d.unsubscribed_at, d.duplicate_of, d.is_active, d.created_at,
+                   d.marriage_date, d.rasi, d.nakshatram';
         if ($hasTags) {
             // Space-separated, the way a tag list reads in a spreadsheet cell.
             $select .= ", (SELECT GROUP_CONCAT(dt.tag ORDER BY dt.tag SEPARATOR ' ') FROM devotee_tags dt WHERE dt.devotee_id = d.id) AS tags";
@@ -608,9 +620,10 @@ $orderSql = ' ORDER BY d.' . $sortCol . ' ' . strtoupper($dir) . ', d.id ' . str
             $put(array_map(static fn(string $c) => $r[$c] ?? '', $cols));
         }
     } else {
-        $put(['registration_id', 'registrant', 'registrant_phone', 'member_position', 'member_name', 'relationship', 'relationship_en', 'relationship_ta', 'age']);
+        $put(['registration_id', 'registrant', 'registrant_phone', 'member_position', 'member_name', 'relationship', 'relationship_en', 'relationship_ta', 'age', 'date_of_birth', 'marriage_date', 'rasi', 'nakshatram', 'gothram']);
         $stmt = $db->prepare(
-            'SELECT d.id AS registration_id, d.name AS registrant, d.phone, m.name, m.relationship, m.age
+            'SELECT d.id AS registration_id, d.name AS registrant, d.phone, m.name, m.relationship, m.age,
+                    m.date_of_birth, m.marriage_date, m.rasi, m.nakshatram, m.gothram
                FROM devotee_family_members m JOIN devotees d ON d.id = m.devotee_id' . $whereSql
             . $orderSql . ', m.sort_order, m.id'
         );
@@ -620,7 +633,8 @@ $orderSql = ' ORDER BY d.' . $sortCol . ' ' . strtoupper($dir) . ', d.id ' . str
             $rid = (int) $r['registration_id'];
             $position[$rid] = ($position[$rid] ?? 0) + 1;
             $put([$rid, $r['registrant'], $r['phone'], $position[$rid], $r['name'], $r['relationship'],
-                  registrationRelationshipLabel($r['relationship'], 'en'), registrationRelationshipLabel($r['relationship'], 'ta'), $r['age']]);
+                  registrationRelationshipLabel($r['relationship'], 'en'), registrationRelationshipLabel($r['relationship'], 'ta'), $r['age'],
+                  $r['date_of_birth'], $r['marriage_date'], $r['rasi'], $r['nakshatram'], $r['gothram']]);
         }
     }
     fclose($out);
@@ -686,6 +700,8 @@ if ($editing) {
     $memberRows = $f !== null ? $f['members'] : array_map(static fn(array $m): array => [
         'id' => (int) $m['id'], 'name' => (string) $m['name'], 'relationship' => (string) $m['relationship'],
         'age' => $m['age'] === null ? '' : (string) $m['age'], 'remove' => false,
+        'dateOfBirth' => (string)($m['date_of_birth'] ?? ''), 'marriageDate' => (string)($m['marriage_date'] ?? ''),
+        'rasi' => (string)($m['rasi'] ?? ''), 'nakshatram' => (string)($m['nakshatram'] ?? ''), 'gothram' => (string)($m['gothram'] ?? ''),
     ], $members);
     $consentTicked = $f !== null ? $f['consent'] : registrationHasConsent($editing);
     $disabled      = $canEdit ? '' : ' disabled';
@@ -798,6 +814,15 @@ if ($editing) {
                   'attrs'    => ['type' => 'date', 'max' => registrationTempleToday(),
                                  'min' => (new DateTimeImmutable(registrationTempleToday()))->modify('-' . REG_MAX_AGE . ' years')->format('Y-m-d')],
               ]) ?>
+            </div>
+            <div class="form-grid">
+              <?php foreach (['marriage_date'=>'Marriage date', 'rasi'=>'Rasi', 'nakshatram'=>'Nakshatram'] as $field=>$label):
+                $errorKey = $field === 'marriage_date' ? 'marriageDate' : $field;
+                echo dvInput('d-'.$errorKey, $field, $label, $val($field, $editing[$field]), [
+                  'optional'=>true, 'error'=>$err($errorKey),
+                  'attrs'=>$field === 'marriage_date' ? ['type'=>'date','max'=>registrationTempleToday()] : ['maxlength'=>'100'],
+                ]);
+              endforeach; ?>
             </div>
             <?= dvSelect('d-lang', 'lang', 'Language the temple writes in', $val('lang', $editing['lang']), ['ta' => 'Tamil', 'en' => 'English'], [
                 'required' => true, 'error' => $err('lang'),

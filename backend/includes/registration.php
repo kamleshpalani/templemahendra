@@ -109,7 +109,10 @@ function registrationReady(): bool
         return $ready = false;
     }
     return $ready = publicGuardHasColumn('devotees', 'updates_consent_at')
-        && publicGuardHasColumn('devotees', 'date_of_birth');
+        && publicGuardHasColumn('devotees', 'date_of_birth')
+        && publicGuardHasColumn('devotees', 'marriage_date')
+        && publicGuardHasColumn('devotee_family_members', 'date_of_birth')
+        && publicGuardHasColumn('devotee_family_members', 'gothram');
 }
 
 /** Today's date where the temple is, as YYYY-MM-DD. */
@@ -215,6 +218,9 @@ function registrationValidateDetails(array $input): array
     $values['name'] = $name;
 
     [$values['date_of_birth'], $errors['dateOfBirth']] = registrationDateOfBirth($input);
+    $extra = registrationPersonDetails($input);
+    $values += $extra['values'];
+    $errors += $extra['errors'];
 
     // A phone typed as a JSON number is still a phone number; an array is not.
     $rawPhone   = is_string($input['phone'] ?? null) || is_int($input['phone'] ?? null) ? $input['phone'] : '';
@@ -338,7 +344,36 @@ function registrationValidateMember(mixed $member, string $prefix): array
         $age = null;
     }
 
-    return ['values' => ['name' => $name, 'relationship' => $relationship, 'age' => $age], 'errors' => $errors];
+    $extra = registrationPersonDetails($m);
+    [$gothram, $gothramOk] = registrationText($m, 'gothram');
+    if (!$gothramOk || mb_strlen($gothram) > 100) $errors["$prefix.gothram"] = 'Enter Gothram using at most 100 characters.';
+    $extra['values']['gothram'] = $gothram !== '' ? $gothram : null;
+    [$dob, $dobError] = registrationDateOfBirth($m);
+    if ($dobError !== '') $extra['errors']['dateOfBirth'] = $dobError;
+    foreach ($extra['errors'] as $key => $problem) $errors["$prefix.$key"] = $problem;
+    if ($dob !== null) $age = registrationAgeFrom($dob);
+    return ['values' => ['name' => $name, 'relationship' => $relationship, 'age' => $age, 'date_of_birth' => $dob] + $extra['values'], 'errors' => $errors];
+}
+
+function registrationPersonDetails(array $input): array
+{
+    $values = [];
+    $errors = [];
+    [$marriage, $ok] = registrationText($input, 'marriageDate');
+    $today = registrationTempleToday();
+    $earliest = (new DateTimeImmutable($today))->modify('-120 years')->format('Y-m-d');
+    if (!$ok || ($marriage !== '' && (!isValidDate($marriage) || $marriage > $today || $marriage < $earliest))) {
+        $errors['marriageDate'] = 'Enter a valid marriage date within the last 120 years, not in the future.';
+    }
+    $birth = is_string($input['dateOfBirth'] ?? null) ? $input['dateOfBirth'] : '';
+    if ($marriage !== '' && $birth !== '' && $marriage < $birth) $errors['marriageDate'] = 'Marriage date cannot be before date of birth.';
+    $values['marriage_date'] = $marriage ?: null;
+    foreach (['rasi', 'nakshatram'] as $key) {
+        [$value, $ok] = registrationText($input, $key);
+        if (!$ok || mb_strlen($value) > 100) $errors[$key] = "Enter $key using at most 100 characters.";
+        $values[$key] = $value !== '' ? $value : null;
+    }
+    return ['values' => $values, 'errors' => $errors];
 }
 
 /**
@@ -464,14 +499,17 @@ function registrationCreate(PDO $db, array $v): int
 
         $db->prepare(
             'INSERT INTO devotees
-                (name, date_of_birth, email, phone, phone_country, duplicate_of, address1, address2, city, state, country, postcode,
+                (name, date_of_birth, marriage_date, rasi, nakshatram, email, phone, phone_country, duplicate_of, address1, address2, city, state, country, postcode,
                  lang, updates_consent_at, updates_consent_by, is_active)
              VALUES
-                (:name, :dob, :email, :phone, :phone_country, :duplicate_of, :address1, :address2, :city, :state, :country, :postcode,
+                (:name, :dob, :marriage, :rasi, :nakshatram, :email, :phone, :phone_country, :duplicate_of, :address1, :address2, :city, :state, :country, :postcode,
                  :lang, ' . ($v['consent'] ? 'UTC_TIMESTAMP()' : 'NULL') . ', NULL, 1)'
         )->execute([
             ':name'          => $v['name'],
             ':dob'           => $v['date_of_birth'],
+            ':marriage'      => $v['marriage_date'],
+            ':rasi'          => $v['rasi'],
+            ':nakshatram'    => $v['nakshatram'],
             ':email'         => $v['email'],
             ':phone'         => $v['phone'],
             ':phone_country' => $v['phone_country'],
@@ -487,11 +525,12 @@ function registrationCreate(PDO $db, array $v): int
         $id = (int) $db->lastInsertId();
 
         $insert = $db->prepare(
-            'INSERT INTO devotee_family_members (devotee_id, name, relationship, age, sort_order)
-             VALUES (:d, :n, :r, :a, :o)'
+            'INSERT INTO devotee_family_members (devotee_id, name, relationship, age, sort_order, date_of_birth, marriage_date, rasi, nakshatram, gothram)
+             VALUES (:d, :n, :r, :a, :o, :dob, :marriage, :rasi, :nakshatram, :gothram)'
         );
         foreach (array_values($v['members']) as $i => $m) {
-            $insert->execute([':d' => $id, ':n' => $m['name'], ':r' => $m['relationship'], ':a' => $m['age'], ':o' => $i]);
+            $insert->execute([':d' => $id, ':n' => $m['name'], ':r' => $m['relationship'], ':a' => $m['age'], ':o' => $i,
+                ':dob' => $m['date_of_birth'], ':marriage' => $m['marriage_date'], ':rasi' => $m['rasi'], ':nakshatram' => $m['nakshatram'], ':gothram' => $m['gothram']]);
         }
 
         $db->commit();
@@ -538,7 +577,7 @@ function registrationLoad(PDO $db, int $id, bool $lock = false): ?array
 function registrationMembers(PDO $db, int $devoteeId): array
 {
     $stmt = $db->prepare(
-        'SELECT id, name, relationship, age, sort_order FROM devotee_family_members
+        'SELECT id, name, relationship, age, sort_order, date_of_birth, marriage_date, rasi, nakshatram, gothram FROM devotee_family_members
           WHERE devotee_id = :d ORDER BY sort_order, id'
     );
     $stmt->execute([':d' => $devoteeId]);
@@ -590,7 +629,7 @@ function registrationApplyDetails(PDO $db, int $id, array $v, bool $consent, str
     $row = registrationLoad($db, $id, true);
     if (!$row) throw new DomainException('That registration no longer exists.');
 
-    $fields  = ['name', 'date_of_birth', 'email', 'phone', 'phone_country', 'address1', 'address2', 'city', 'state', 'country', 'postcode', 'lang'];
+    $fields  = ['name', 'date_of_birth', 'marriage_date', 'rasi', 'nakshatram', 'email', 'phone', 'phone_country', 'address1', 'address2', 'city', 'state', 'country', 'postcode', 'lang'];
     $changed = [];
     $sets    = [];
     $params  = [':id' => $id];
@@ -667,7 +706,7 @@ function registrationValidateMemberRows(mixed $posted): array
 
         $remove = ($row['remove'] ?? null) === '1';
         $blank  = true;
-        foreach (['name', 'relationship', 'age'] as $k) {
+        foreach (['name', 'relationship', 'age', 'dateOfBirth', 'marriageDate', 'rasi', 'nakshatram', 'gothram'] as $k) {
             $v = $row[$k] ?? null;
             if ($v !== null && !(is_string($v) && trim($v) === '')) {
                 $blank = false;
@@ -678,7 +717,8 @@ function registrationValidateMemberRows(mixed $posted): array
 
         $text = static fn(string $k): string => is_string($row[$k] ?? null) ? $row[$k] : '';
         $pos  = count($out['rows']);
-        $out['rows'][] = ['id' => $id, 'name' => $text('name'), 'relationship' => $text('relationship'), 'age' => $text('age'), 'remove' => $remove];
+        $out['rows'][] = ['id' => $id, 'name' => $text('name'), 'relationship' => $text('relationship'), 'age' => $text('age'), 'remove' => $remove,
+            'dateOfBirth' => $text('dateOfBirth'), 'marriageDate' => $text('marriageDate'), 'rasi' => $text('rasi'), 'nakshatram' => $text('nakshatram'), 'gothram' => $text('gothram')];
         if ($remove) {
             $out['remove'][] = $id;
             continue;
@@ -711,7 +751,7 @@ function registrationApplyMembers(PDO $db, int $devoteeId, array $keep, array $r
         throw new DomainException('A registration can list at most ' . REG_MAX_MEMBERS . ' family members.');
     }
     $stmt = $db->prepare(
-        'SELECT id, name, relationship, age, sort_order FROM devotee_family_members WHERE devotee_id = :d FOR UPDATE'
+        'SELECT * FROM devotee_family_members WHERE devotee_id = :d FOR UPDATE'
     );
     $stmt->execute([':d' => $devoteeId]);
     $existing = [];
@@ -728,12 +768,15 @@ function registrationApplyMembers(PDO $db, int $devoteeId, array $keep, array $r
     }
 
     $update = $db->prepare(
-        'UPDATE devotee_family_members SET name = :n, relationship = :r, age = :a, sort_order = :o WHERE id = :id'
+        'UPDATE devotee_family_members SET name = :n, relationship = :r, age = :a, sort_order = :o,
+         date_of_birth=:dob, marriage_date=:marriage, rasi=:rasi, nakshatram=:nakshatram, gothram=:gothram WHERE id = :id'
     );
     $insert = $db->prepare(
-        'INSERT INTO devotee_family_members (devotee_id, name, relationship, age, sort_order) VALUES (:d, :n, :r, :a, :o)'
+        'INSERT INTO devotee_family_members (devotee_id, name, relationship, age, sort_order, date_of_birth, marriage_date, rasi, nakshatram, gothram)
+         VALUES (:d, :n, :r, :a, :o, :dob, :marriage, :rasi, :nakshatram, :gothram)'
     );
     foreach (array_values($keep) as $pos => $m) {
+        $extra = [':dob'=>$m['date_of_birth'], ':marriage'=>$m['marriage_date'], ':rasi'=>$m['rasi'], ':nakshatram'=>$m['nakshatram'], ':gothram'=>$m['gothram']];
         if ($m['id'] > 0) {
             $was = $existing[$m['id']] ?? null;
             if (!$was) {
@@ -742,11 +785,12 @@ function registrationApplyMembers(PDO $db, int $devoteeId, array $keep, array $r
             $same = (string) $was['name'] === $m['name']
                 && (string) $was['relationship'] === $m['relationship']
                 && ($was['age'] === null ? $m['age'] === null : (int) $was['age'] === $m['age']);
+            foreach (['date_of_birth','marriage_date','rasi','nakshatram','gothram'] as $field) $same = $same && $was[$field] === $m[$field];
             if ($same && (int) $was['sort_order'] === $pos) continue;
-            $update->execute([':n' => $m['name'], ':r' => $m['relationship'], ':a' => $m['age'], ':o' => $pos, ':id' => $m['id']]);
+            $update->execute([':n' => $m['name'], ':r' => $m['relationship'], ':a' => $m['age'], ':o' => $pos, ':id' => $m['id']] + $extra);
             if (!$same) $done['updated'][] = $m['name'];
         } else {
-            $insert->execute([':d' => $devoteeId, ':n' => $m['name'], ':r' => $m['relationship'], ':a' => $m['age'], ':o' => $pos]);
+            $insert->execute([':d' => $devoteeId, ':n' => $m['name'], ':r' => $m['relationship'], ':a' => $m['age'], ':o' => $pos] + $extra);
             $done['added'][] = $m['name'];
         }
     }
@@ -894,7 +938,7 @@ function registrationMerge(PDO $db, int $sourceId, int $targetId, bool $fillEmpt
         $sets   = [];
         $params = [':id' => $targetId];
         if ($fillEmpty) {
-            foreach (['date_of_birth', 'email', 'address1', 'address2', 'city', 'state', 'country', 'postcode', 'phone_country'] as $f) {
+            foreach (['date_of_birth', 'marriage_date', 'rasi', 'nakshatram', 'email', 'address1', 'address2', 'city', 'state', 'country', 'postcode', 'phone_country'] as $f) {
                 if (trim((string) ($target[$f] ?? '')) === '' && trim((string) ($source[$f] ?? '')) !== '') {
                     $sets[]        = "$f = :$f";
                     $params[":$f"] = $source[$f];

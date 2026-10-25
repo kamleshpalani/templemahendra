@@ -109,6 +109,22 @@ export default function ReceiptDocument({ data }) {
         <Row label={t("தொகை", "Amount")}>
           {formatMoney(data.amount, data.currency, lang)} ({data.currency})
         </Row>
+        {!isDonation && data.deliveryAddress && <>
+          <Row label={t("பூஜை கட்டணம்", "Pooja charge")}>{formatMoney(data.serviceAmount, data.currency, lang)}</Row>
+          <Row label={t("விநியோக கட்டணம்", "Delivery fee")}>{formatMoney(data.deliveryFee, data.currency, lang)}</Row>
+          <Row label={t("பிரசாத முகவரி", "Prasadam delivery address")} wide>
+            {["address", "city", "state", "postcode", "country"].map((key) => data.deliveryAddress[key]).filter(Boolean).join(", ")}
+          </Row>
+          <Row label={t("விநியோக நிலை", "Delivery status")}>
+            {{ pending: t("அனுப்பப்பட வேண்டும்", "Pending dispatch"), dispatched: t("அனுப்பப்பட்டது", "Dispatched"), delivered: t("வழங்கப்பட்டது", "Delivered") }[data.dispatchStatus]}
+            {data.trackingReference ? ` · ${data.trackingReference}` : ""}
+          </Row>
+        </>}
+        {data.participants?.length > 0 && <Row label={t("அர்ச்சனை நபர்கள்", "Archana participants")} wide>
+          <ul role="list">{data.participants.map((person, i) => <li key={i}>
+            {person.name} · {person.rasi} · {person.nakshatram}
+          </li>)}</ul>
+        </Row>}
         {data.paymentMode && <Row label={t("கட்டண முறை", "Payment mode")}>{data.paymentMode}</Row>}
         <Row label={t("செலுத்திய நேரம்", "Payment date and time")}>{formatIstDateTime(data.paidAt, lang)}</Row>
         <Row label={t("நிலை", "Payment status")}>

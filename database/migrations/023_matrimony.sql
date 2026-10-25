@@ -1,0 +1,23 @@
+CREATE TABLE IF NOT EXISTS matrimony_profiles (
+  id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  name VARCHAR(200) NOT NULL,
+  date_of_birth DATE NOT NULL,
+  phone VARCHAR(20) NOT NULL,
+  phone_country CHAR(2) NULL,
+  email VARCHAR(190) NULL,
+  city VARCHAR(120) NOT NULL,
+  education VARCHAR(200) NULL,
+  occupation VARCHAR(200) NULL,
+  rasi VARCHAR(100) NULL,
+  nakshatram VARCHAR(100) NULL,
+  introduction TEXT NULL,
+  preferences TEXT NULL,
+  visibility ENUM('private','public_summary') NOT NULL DEFAULT 'private',
+  status ENUM('pending','approved','rejected') NOT NULL DEFAULT 'pending',
+  consent_at DATETIME NOT NULL,
+  reuse_consent_at DATETIME NULL,
+  management_hash CHAR(64) NOT NULL UNIQUE,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  INDEX idx_matrimony_public (status,visibility)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

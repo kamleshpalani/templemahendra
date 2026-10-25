@@ -75,6 +75,9 @@ export default function ReviewStep({ form, onEdit, setField, status, retryAfter,
           <Row label={t("விருப்ப மொழி", "Preferred language")}>
             <span lang={form.lang}>{form.lang === "ta" ? "தமிழ்" : "English"}</span>
           </Row>
+          <Row label={t("திருமண தேதி", "Marriage date")}>{form.marriageDate ? formatBirthDate(form.marriageDate, lang) : notGiven}</Row>
+          <Row label={t("ராசி", "Rasi")}>{form.rasi || notGiven}</Row>
+          <Row label={t("நட்சத்திரம்", "Nakshatram")}>{form.nakshatram || notGiven}</Row>
         </dl>
       </ReviewSection>
 
@@ -89,14 +92,15 @@ export default function ReviewStep({ form, onEdit, setField, status, retryAfter,
         {members.length ? (
           <ul className="reg-review__members">
             {members.map((m) => {
-              const memberAge = String(m.age).trim();
               return (
                 <li key={m.key} className="reg-review__member">
                   <span className="reg-review__member-name">{m.name.trim()}</span>
                   <span className="reg-review__member-meta">
                     {relationshipLabel(m.relationship, t)}
-                    {memberAge !== "" && ` · ${t(`வயது ${Number(memberAge)}`, `Age ${Number(memberAge)}`)}`}
                   </span>
+                  {m.dateOfBirth && <span>{t("பிறந்த தேதி", "Date of birth")}: {formatBirthDate(m.dateOfBirth, lang)}</span>}
+                  {m.gothram?.trim() && <span>{t("கோத்திரம்", "Gothram")}: {m.gothram.trim()}</span>}
+                  {(m.rasi || m.nakshatram) && <span>{[m.rasi, m.nakshatram].filter(Boolean).join(" · ")}</span>}
                 </li>
               );
             })}

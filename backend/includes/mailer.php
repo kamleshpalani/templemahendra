@@ -326,7 +326,7 @@ function mailTemplate(string $headingTa, string $headingEn, string $bodyHtml, ?s
       . $foot
       . '</td></tr>'
       . '<tr><td style="padding:16px 30px;border-top:1px solid rgba(153,27,27,0.1);background:#fff8f0;color:#85595c;font-size:12px;line-height:1.6">'
-      . 'Arulmigu Sri Lingammal, Sri Renukadevi, Sri Chinnammal Temple, Pudupatti, Thiruvengadam Taluk, Tenkasi District 627719'
+      . htmlspecialchars(templeIdentity()['name_en'], ENT_QUOTES, 'UTF-8') . ', Pudupatti, Thiruvengadam Taluk, Tenkasi District 627719'
       . '</td></tr>'
       . '</table></td></tr></table></body></html>';
 }

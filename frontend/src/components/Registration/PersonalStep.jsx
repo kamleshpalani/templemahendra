@@ -1,6 +1,7 @@
 import PhoneInput from "../ui/PhoneInput";
 import { Field } from "../ui/Field";
 import { LIMITS, ageFrom, earliestBirthDate, templeToday } from "../../lib/familyRegistration";
+import PersonDetails from "./PersonDetails";
 
 /** The two languages the temple writes in, each named in its own script. */
 const LANG_CHOICES = [
@@ -77,6 +78,7 @@ export default function PersonalStep({ form, errors, setField, onPhoneChange, t 
         </Field>
       </div>
 
+      <div className="field-row reg-dates-row">
       <Field
         id="reg-dob"
         label={t("பிறந்த தேதி", "Date of birth")}
@@ -99,7 +101,17 @@ export default function PersonalStep({ form, errors, setField, onPhoneChange, t 
           />
         )}
       </Field>
+      <Field id="reg-marriageDate" label={t("திருமண தேதி", "Marriage date")} optional
+        error={errors.marriageDate} announce={false}>
+        {(a11y) => <input {...a11y} type="date" className="reg-date" value={form.marriageDate ?? ""}
+          onChange={(e) => setField("marriageDate", e.target.value)}
+          min={earliestBirthDate(today)} max={today} />}
+      </Field>
+      </div>
 
+      <div className="field-row reg-astro-row">
+        <PersonDetails person={form} prefix="reg" errors={errors} onChange={setField} t={t} includeBirth={false} includeMarriage={false} />
+      </div>
       <fieldset className="field reg-choice" aria-describedby={errors.lang ? "reg-lang-err" : "reg-lang-hint"}>
         <legend className="field__label">{t("விருப்ப மொழி", "Preferred language")}</legend>
         <span id="reg-lang-hint" className="field__hint">

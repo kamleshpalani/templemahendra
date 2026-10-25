@@ -84,32 +84,23 @@
   max-width: 240px;
   border-radius: var(--radius-pill);
 }
-.navbar__logo-ring {
-  position: relative;
+.navbar__logo-ring,
+.footer__logo-ring {
   display: grid;
   place-items: center;
-  width: 46px;
-  height: 46px;
+  width: 48px;
+  height: 48px;
   border-radius: 50%;
   flex-shrink: 0;
-  background: conic-gradient(from 180deg, var(--saffron), var(--gold-300), var(--maroon), var(--saffron));
+  background: conic-gradient(from 180deg, var(--saffron), var(--gold-300), var(--maroon-300), var(--saffron));
   padding: 2px;
-  box-shadow: 0 0 0 3px rgba(249, 115, 22, 0.1);
-  transition: transform var(--transition-slow), box-shadow var(--transition-slow);
 }
-.navbar__brand:hover .navbar__logo-ring {
-  transform: rotate(180deg);
-  box-shadow: 0 0 0 5px rgba(249, 115, 22, 0.16), var(--glow-gold);
-}
-.navbar__logo {
+.navbar__logo,
+.footer__logo-ring img {
   width: 100%;
   height: 100%;
   border-radius: 50%;
   background: var(--white);
-  transition: transform var(--transition-slow);
-}
-.navbar__brand:hover .navbar__logo {
-  transform: rotate(-180deg);
 }
 .navbar--scrolled .navbar__logo-ring {
   width: 40px;
@@ -120,6 +111,9 @@
   flex-direction: column;
   line-height: 1.2;
   min-width: 0;
+  padding: var(--space-1) var(--space-2);
+  border-radius: var(--radius-sm);
+  background: var(--maroon-700);
 }
 .navbar__brand-line1,
 .navbar__brand-line2 {
@@ -127,17 +121,26 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  color: var(--gold-200);
+  text-shadow: 0 0 24px rgba(251, 191, 36, 0.35);
 }
 .navbar__brand-line1 {
   font-size: 0.98rem;
   font-weight: var(--weight-bold);
-  color: var(--maroon-600);
 }
 .navbar__brand-line2 {
   font-size: 0.74rem;
   font-weight: var(--weight-semibold);
-  color: var(--accent-ink);
   letter-spacing: 0.01em;
+}
+:lang(en) .navbar__brand-line1,
+:lang(en) .navbar__brand-line2 {
+  white-space: normal;
+  overflow: visible;
+  overflow-wrap: anywhere;
+}
+:lang(en) .navbar__brand-line2 {
+  display: block;
 }
 
 /* ── Desktop nav ─────────────────────────────────────────────────── */
@@ -221,14 +224,11 @@
     display: inline-flex;
   }
 }
-/* With Live Darshan the Tamil row carries eight labels (724 px at desktop
-   size). Between 1400 and 1439 px the CTA left the nav 661 px and clipped the
-   first and last labels, so in Tamil it waits until 1440, where the nav has
-   room for both; English labels are narrower and keep the CTA from 1400. */
-@media (min-width: 1400px) and (max-width: 1439px) {
-  :lang(ta) .navbar__cta {
-    display: none;
-  }
+/* Matrimony adds a ninth label. Keep Tamil navigation unclipped; Live Darshan
+   remains prominent in the hero and available in the drawer and footer. */
+:lang(ta) .navbar__cta,
+:lang(ta) .navbar__link--live {
+  display: none;
 }
 @media (min-width: 1560px) {
   /* The row stops growing at --header-max, so the spare width above that is
@@ -745,6 +745,9 @@
   .navbar__brand {
     max-width: 200px;
   }
+  :lang(ta) .navbar__link {
+    padding-inline: 0.32rem;
+  }
 }
 /* With Live Darshan the row carries eight labels, and in Tamil they no longer
    fit between the brand and the right cluster below 1060 px (the first and
@@ -759,7 +762,15 @@
 }
 /* Below 1024 the seven Tamil labels can no longer sit honestly in one row, so
    navigation moves into the drawer rather than being squeezed or clipped. */
-@media (max-width: 1023px) {
+@media (max-width: 1559px) {
+  :lang(ta) .navbar__nav {
+    display: none;
+  }
+  :lang(ta) .navbar__toggle {
+    display: flex;
+  }
+}
+@media (max-width: 1399px) {
   .navbar__nav {
     display: none;
   }
@@ -876,4 +887,10 @@
   .navbar__brand {
     max-width: 52px;
   }
+}
+.navbar__link[href="/sevas"],
+.drawer__link[href="/sevas"] {
+  background: color-mix(in srgb, var(--gold-300) 14%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--gold-300) 55%, transparent);
+  border-radius: var(--radius-sm);
 }

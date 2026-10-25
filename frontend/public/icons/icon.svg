@@ -19,6 +19,6 @@
   </g>
   <!-- Tamil OM symbol area -->
   <text x="256" y="420" text-anchor="middle" font-size="48" font-family="serif" fill="#f5d87c">🕉</text>
-  <!-- Temple name (abbreviated) -->
-  <text x="256" y="490" text-anchor="middle" font-size="22" font-family="sans-serif" fill="#f5d87c" font-weight="bold">Sri Mahendra</text>
+  <text x="256" y="478" text-anchor="middle" font-size="19" font-family="sans-serif" fill="#f5d87c" font-weight="bold">Dhabbalavar Renugadevi</text>
+  <text x="256" y="500" text-anchor="middle" font-size="18" font-family="sans-serif" fill="#f5d87c" font-weight="bold">Lingammal Chinnammal Temple</text>
 </svg>

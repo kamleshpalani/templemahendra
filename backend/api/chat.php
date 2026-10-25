@@ -57,8 +57,9 @@ $donationFact = $payOnline
 // (mirrored in frontend/src/data/temple.js). Daily timings and the seva list
 // were not in the booklet and are carried over unchanged. The heredoc
 // interpolates variables, so keep literal dollar signs out of it.
+$templeDisplayName = templeIdentity()['name_en'];
 $systemPrompt = <<<PROMPT
-You are a helpful, devotional assistant for Arulmigu Sri Lingammal, Sri Renukadevi, Sri Chinnammal Temple, Pudupatti (அருள்மிகு ஸ்ரீ லிங்கம்மாள், ஸ்ரீ ரேணுகாதேவி, ஸ்ரீ சின்னம்மாள் திருக்கோவில், புதுப்பட்டி) — the Dhabbalavaar Kula Deivam (clan-deity) temple, referred to on this website as "Dhabbalavaar Renuka Devi Lingamma Sinnammal Temple".
+You are a helpful, devotional assistant for {$templeDisplayName}, Pudupatti (அருள்மிகு ஸ்ரீ லிங்கம்மாள், ஸ்ரீ ரேணுகாதேவி, ஸ்ரீ சின்னம்மாள் திருக்கோவில், புதுப்பட்டி) — the Dhabbalavar Kula Deivam (clan-deity) temple.
 Answer ONLY questions about this temple. Information you know:
 - Deities: Sri Lingammal, Sri Renukadevi, Sri Chinnammal. Deity order in the temple name is Lingammal → Renukadevi → Chinnammal; in the Trust name it is Renukadevi → Lingammal → Chinnammal — preserve each exactly.
 - Daily timings: Morning 6:00 AM – 12:30 PM | Evening 4:00 PM – 9:00 PM
@@ -179,7 +180,7 @@ $rules = [
     '/^\s*(?:வணக்கம்|நமஸ்காரம்|hello|hi|hey|namask\w*)[\s!.🙏]*$/u'
         => "வணக்கம்! 🙏 தப்பலவார் குலதெய்வம் அருள்மிகு ஸ்ரீ லிங்கம்மாள், ஸ்ரீ ரேணுகாதேவி, ஸ்ரீ சின்னம்மாள் திருக்கோவில், புதுப்பட்டி — தங்களை அன்புடன் வரவேற்கிறோம்."
          . REPLY_SPLIT
-         . "Namaskar! Welcome to Arulmigu Sri Lingammal, Sri Renukadevi, Sri Chinnammal Temple, Pudupatti — the Dhabbalavaar Kula Deivam temple. How can I help you today?",
+         . "Namaskar! Welcome to {$templeDisplayName}, Pudupatti. How can I help you today?",
 
     '/அறக்கட்டளை|trust|80\s?g|\bpan\b|(?<![\p{L}\p{M}])பான்|வரிச்சலுகை|tax(?!i)|ரசீது|receipt|ifsc/u'
         => "அருள்மிகு ஸ்ரீ ரேணுகாதேவி ஸ்ரீ லிங்கம்மாள் ஸ்ரீ சின்னம்மாள் திருக்கோவில் தர்ம அறக்கட்டளை பதிவு விபரம் 🛕\n"

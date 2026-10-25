@@ -29,6 +29,9 @@ require_once __DIR__ . '/rate_limit.php';
  * numbers can be read, compared and changed in one place.
  */
 const PUBLIC_GUARD_LIMITS = [
+    'matrimony-attempt' => [30,3600],
+    'matrimony-management' => [20,3600],
+    'matrimony-saved' => [5,3600],
     'seva-booking-attempt' => [20, 3600],
     'seva-booking-saved'   => [8, 3600],
     'donation-attempt'     => [20, 3600],

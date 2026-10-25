@@ -2,6 +2,7 @@ import { LuTrash2, LuUserPlus, LuUsers } from "react-icons/lu";
 import Button from "../ui/Button";
 import { Field } from "../ui/Field";
 import { LIMITS, RELATIONSHIPS } from "../../lib/familyRegistration";
+import PersonDetails from "./PersonDetails";
 
 /**
  * Step 2 — the family, if the registrant wants to add them. Optional: a family
@@ -98,23 +99,14 @@ export default function FamilyStep({ members, errors, onAdd, onRemove, onMemberC
                     )}
                   </Field>
 
-                  <Field
-                    id={`reg-member-${m.key}-age`}
-                    label={t("வயது", "Age")}
-                    optional
-                    error={errors[`members.${m.key}.age`]}
-                    announce={false}
-                  >
-                    {(a11y) => (
-                      <input
-                        {...a11y}
-                        value={m.age}
-                        onChange={(e) => onMemberChange(m.key, "age", e.target.value)}
-                        inputMode="numeric"
-                        maxLength={3}
-                        autoComplete="off"
-                      />
-                    )}
+                  <PersonDetails person={m} prefix={`reg-member-${m.key}`} t={t} includeMarriage={false} birthLast
+                    errors={Object.fromEntries(["dateOfBirth", "rasi", "nakshatram"].map((key) => [key, errors[`members.${m.key}.${key}`]]))}
+                    onChange={(key, value) => onMemberChange(m.key, key, value)} />
+                  <Field id={`reg-member-${m.key}-gothram`} label={t("கோத்திரம்", "Gothram")} optional
+                    hint={t("தெரியாவிட்டால் காலியாக விடவும்.", "Leave blank if unknown.")}
+                    error={errors[`members.${m.key}.gothram`]} announce={false}>
+                    {(a11y) => <input {...a11y} value={m.gothram ?? ""} maxLength={100} autoComplete="off"
+                      onChange={(e) => onMemberChange(m.key, "gothram", e.target.value)} />}
                   </Field>
                 </div>
 

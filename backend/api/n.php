@@ -259,7 +259,7 @@ function nPage(int $status, string $state, array $ctx = []): never
 
     $facts        = function_exists('notifyTempleFacts') ? notifyTempleFacts() : [];
     $nameTa       = (string) ($facts['name']['ta'] ?? 'அருள்மிகு ஸ்ரீ லிங்கம்மாள், ஸ்ரீ ரேணுகாதேவி, ஸ்ரீ சின்னம்மாள் திருக்கோவில்');
-    $nameEn       = (string) ($facts['name']['en'] ?? 'Dhabbalavaar Renuka Devi Lingamma Sinnammal Temple');
+    $nameEn       = (string) ($facts['name']['en'] ?? templeIdentity()['name_en']);
     $officeTel    = (string) ($facts['supportPhone'] ?? '+919443002296');
     $officeShown  = (string) ($facts['supportPhoneDisplay'] ?? '+91 94430 02296');
     $home         = siteUrl('/');

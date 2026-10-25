@@ -305,7 +305,9 @@ const without = (obj, ...keys) => {
   return copy;
 };
 const create = (body, opts = {}) => http("POST", "/api/payments/donations", { json: body, lane: true, ...opts });
-const createSeva = (body, opts = {}) => http("POST", "/api/payments/seva-bookings", { json: body, lane: true, ...opts });
+const createSeva = (body, opts = {}) => http("POST", "/api/payments/seva-bookings", {
+  json: { participants: [{ name: "Test Devotee", rasi: "Mesham", nakshatram: "Ashwini" }], ...body }, lane: true, ...opts,
+});
 const retry = (number, token, opts = {}) => http("POST", "/api/payments/retry", { json: { number, token }, lane: true, ...opts });
 const status = (number, token) => http("GET", `/api/payments/status?ref=${encodeURIComponent(number)}&t=${encodeURIComponent(token)}`, { ip: IP.lookup });
 const receipt = (number, token) => http("GET", `/api/payments/receipt?ref=${encodeURIComponent(number)}&t=${encodeURIComponent(token)}`, { ip: IP.lookup });
@@ -853,6 +855,28 @@ try {
   const verS = await verify(vS.searchParams.get("r"), vS.searchParams.get("v"));
   check(verS.data?.valid === true && verS.data?.seva?.en === seva?.name_en && verS.data?.purpose === undefined && verS.data?.donor === "Anonymous devotee", "verify: the seva, and always an anonymous devotee", show(verS.data));
 
+  section("6a. Archana participants and Prasadam fees reach the gateway");
+  sql("INSERT INTO sevas (name_ta,name_en,amount,service_kind,delivery_fee,is_active) VALUES (?,?,200,'archana_prasadam',50,1)",
+    [`${NAME} பிரசாதம்`, `${NAME} delivery`]);
+  const deliveryId = Number(one("SELECT id FROM sevas WHERE name_en=?", [`${NAME} delivery`])?.id);
+  const participants = [{ name: "பக்தர்", rasi: "மேஷம்", nakshatram: "அசுவினி" },
+    { name: "Second devotee", rasi: "Rishabam", nakshatram: "Rohini" }];
+  const deliveryAddress = { address: "12 Test Street", city: "Tenkasi", state: "Tamil Nadu", country: "India", postcode: "627719" };
+  const deliveryCheckout = await createSeva({ seva_id: deliveryId, devotee_name: `${NAME} Delivery`, phone: PHONE, phoneCountry: "IN",
+    acceptTerms: true, lang: "en", participants, delivery_address: deliveryAddress, amount: "1", delivery_fee: "1" });
+  check(deliveryCheckout.status === 201 && decryptRequest(deliveryCheckout).amount === "250.00", "gateway receives service 200 + delivery 50, ignoring posted amounts", show(deliveryCheckout.data));
+  const deliveryBooking = booking(deliveryCheckout.data?.number);
+  check(deliveryBooking?.amount === "250.00" && deliveryBooking?.delivery_fee === "50.00" && JSON.parse(deliveryBooking?.participants ?? "[]").length === 2
+    && JSON.parse(deliveryBooking?.delivery_address ?? "{}").postcode === "627719", "online booking persists both participants, full address and fee");
+  const deliveryGateway = await openCheckout(deliveryCheckout);
+  await press(deliveryGateway.forms, "success");
+  check(booking(deliveryCheckout.data?.number)?.payment_status === "SUCCESS" && booking(deliveryCheckout.data?.number)?.dispatch_status === "pending",
+    "successful payment preserves Prasadam pending-dispatch state");
+  const deliveryReceipt = await receipt(deliveryCheckout.data?.number, deliveryCheckout.data?.token);
+  check(deliveryReceipt.data?.serviceAmount === 200 && deliveryReceipt.data?.deliveryFee === 50 && deliveryReceipt.data?.amount === 250 &&
+    deliveryReceipt.data?.participants?.[0]?.rasi === "மேஷம்" && deliveryReceipt.data?.deliveryAddress?.postcode === "627719",
+    "private receipt itemises service/delivery fees and preserves Tamil participants");
+
   section("6b. a zero-price, inactive or unknown seva is refused");
   sql("INSERT INTO sevas (name_ta, name_en, amount, is_active) VALUES (?, ?, 0, 1), (?, ?, 100, 0)", [`${NAME} இலவசம்`, `${NAME} zero price`, `${NAME} மறைந்த`, `${NAME} inactive`]);
   const zeroId = Number(one("SELECT id FROM sevas WHERE name_en = ?", [`${NAME} zero price`])?.id);
@@ -869,7 +893,7 @@ try {
   check(Number(one("SELECT COUNT(*) c FROM seva_bookings WHERE devotee_name = ?", [`${NAME} Refused`])?.c) === 0, "none of the refused bookings was saved");
 
   section("6c. an expired hold cancels the booking; a late success restores it");
-  const H = await createSeva({ seva_id: 2, devotee_name: `${NAME} Hold`, phone: PHONE, phoneCountry: "IN", acceptTerms: true, lang: "en" });
+  const H = await createSeva({ seva_id: 2, devotee_name: `${NAME} Hold`, phone: PHONE, phoneCountry: "IN", acceptTerms: true, lang: "en", participants });
   const numH = H.data?.number ?? "";
   const simH = await openCheckout(H);
   const moved = fixture("backdate", { number: numH, hold_minutes: 1 });
@@ -886,7 +910,7 @@ try {
   check(sweepAgain.expired === 0 && booking(numH)?.status === "pending", "a paid booking is never expired");
 
   section("6d. a booking the office cancelled cannot be paid for; one its hold cancelled still can");
-  const O = await createSeva({ seva_id: 2, devotee_name: `${NAME} Office Cancel`, phone: PHONE, phoneCountry: "IN", acceptTerms: true, lang: "en" });
+  const O = await createSeva({ seva_id: 2, devotee_name: `${NAME} Office Cancel`, phone: PHONE, phoneCountry: "IN", acceptTerms: true, lang: "en", participants });
   const numO = O.data?.number ?? "";
   const simO = await openCheckout(O);
   await press(simO.forms, "failure");
@@ -895,7 +919,7 @@ try {
   r = await retry(numO, O.data?.token);
   check(r.status === 409 && r.data?.code === "not_retryable" && r.data?.status === "FAILED" && txn(`${numO}-R2`) === null, "once the office cancels the booking, retry → 409 not_retryable and no new attempt", `${r.status} ${r.text}`);
   check((await status(numO, O.data?.token)).data?.canRetry === false, "and the status page offers no retry");
-  const K = await createSeva({ seva_id: 2, devotee_name: `${NAME} Hold Cancel`, phone: PHONE, phoneCountry: "IN", acceptTerms: true, lang: "en" });
+  const K = await createSeva({ seva_id: 2, devotee_name: `${NAME} Hold Cancel`, phone: PHONE, phoneCountry: "IN", acceptTerms: true, lang: "en", participants });
   const numK = K.data?.number ?? "";
   const simK = await openCheckout(K);
   await press(simK.forms, "failure");
@@ -916,9 +940,11 @@ try {
   const pledgeRow = one("SELECT source, status, donation_number, currency FROM donations WHERE name = ?", [`${NAME} Pledge`]);
   check(pledge.status === 201 && pledge.data?.success === true && Number(pledge.data?.id) > 0 && keysOf(pledge.data) === '["success","id"]', "POST /api/donations still answers 201 {success, id}", `${pledge.status} ${pledge.text}`);
   check(pledgeRow?.source === "pledge" && pledgeRow?.status === null && pledgeRow?.donation_number === null && pledgeRow?.currency === "INR", "a pledge is stored as a pledge: no status, no number", show(pledgeRow));
-  const request = await http("POST", "/api/seva-bookings", { json: { devotee_name: `${NAME} Request`, phone: "9000012345", phoneCountry: "IN", seva_name: "Archana" }, ip: IP.legacy });
+  const request = await http("POST", "/api/seva-bookings", { json: { devotee_name: `${NAME} Request`, phone: "9000012345", phoneCountry: "IN", seva_id: 2, seva_name: "Archana", participants }, ip: IP.legacy });
   const requestRow = one("SELECT payment_mode, payment_status, order_number, status FROM seva_bookings WHERE devotee_name = ?", [`${NAME} Request`]);
-  check(request.status === 201 && request.data?.success === true && Number(request.data?.id) > 0 && keysOf(request.data) === '["success","id"]', "POST /api/seva-bookings still answers 201 {success, id}", `${request.status} ${request.text}`);
+  check(request.status === 201 && request.data?.success === true && Number(request.data?.id) > 0 &&
+    request.data?.booking_number && request.data?.payment_status === "UNPAID",
+    "POST /api/seva-bookings answers 201 with success, id and booking/payment confirmation", `${request.status} ${request.text}`);
   check(requestRow?.payment_mode === "offline" && requestRow?.payment_status === null && requestRow?.order_number === null && requestRow?.status === "pending", "a request-only booking is offline with no payment status", show(requestRow));
 
   /* ── 8. Payments switched off ────────────────────────────────────────── */

@@ -8,6 +8,63 @@ pages: `CCAvenue-INTEGRATION.md`, `LIVE-STREAMING.md`.
 
 ## Environments
 
+### Temple website enhancements: release prerequisites
+
+- Back up the database, then apply migrations in order through
+  `020_verified_panchangam.sql`, `021_family_details.sql`,
+  `022_archana_bookings.sql`, and `023_matrimony.sql` before releasing the
+  matching PHP and frontend build. They add daily calendar records, family
+  dates/astrology, Archana/delivery details, and moderated Matrimony profiles.
+- In **Sevas**, confirm every service charge and delivery fee. New Archana with
+  Prasadam / Archana with Pooja start at zero (unconfigured): they accept an
+  office-confirmed request, not online payment. The initial Pournami Annadhanam
+  amount is INR 15,000 and recommended Normal Annadhanam is INR 100,000.
+  Amounts and service types remain editable; rerunning migration 022 does not
+  overwrite subsequently configured amounts on these named services.
+- In **Daily Panchangam**, transcribe a local source for Pudupatti in
+  `Asia/Kolkata`, including source edition/page or URL. Enter bilingual Tithi
+  and Nakshatram and all five timing fields. Unentered dates remain explicitly
+  labelled estimates, not locally verified astronomical calculations.
+  Manage festivals, Pournami dates and special pooja highlights separately in
+  **Temple Calendar**, and actual scheduled services in **Poojas**. Verified
+  daily records discard computed lunar/solar highlights to avoid contradicting
+  the local source; committee calendar entries are then applied normally.
+- **Bookings** exposes all Archana participants and Prasadam addresses, with
+  pending/dispatched/delivered status and tracking references. Online bookings
+  must be paid before dispatch can be recorded. CSV exports and private payment
+  receipts include the new details; public receipt verification does not.
+  Custom booking integrations must send an active `seva_id` and the required
+  Archana participant/delivery fields. Request confirmations retain `success`
+  and `id` and add the booking reference, booking status and unpaid status.
+- **Devotees** supports the new family dates and astrology fields, including
+  member editing and CSV exports. No family details are automatically reused
+  by Matrimony.
+- **Matrimony** requires adult self-registration and explicit consent, defaults
+  to private and requires committee moderation for public summaries. Review
+  every public field for identifying/contact information before approval.
+  Changes unpublish the profile until reviewed again. Applicants must save their
+  one-time management key; the server stores only its hash. The key permits
+  private load/edit/deletion and must never be logged or shared.
+- Confirm the revised bilingual privacy and shipping policies with the
+  committee, including Prasadam serviceability and delivery expectations.
+  The approved official email is `info@dhabbalavarkovil.com`; shared English
+  branding and email are in `backend/config/temple_identity.json`.
+  The English display name is **Dhabbalavar Renugadevi Lingammal Chinnammal Temple**,
+  including both lines of the header/footer brand. Preserve the printed Tamil
+  name and registered Dharma Trust name; they are separate from display branding.
+- Homepage display settings retain Pournami cards and consented donor
+  acknowledgements. The old Nalla Neram strip switch is retired; daily timings
+  now belong on Panchangam. Countdown widgets and duplicated homepage planner
+  content have been removed from the component structure, not hidden by CSS.
+- Run `tests/website-enhancements.mjs`, the registration API suite and payment
+  API suite against an isolated, migrated database before staging. Complete
+  real-device Android/iOS and real gateway TEST-mode checks on staging before
+  production; local browser emulation does not replace those checks.
+
+Explicit process environment variables take precedence over `.env.local` in
+admin authentication, allowing local test servers to use an isolated database
+and test account without being redirected to development credentials.
+
 | Environment | Where | Database | Payments mode | YouTube automation | Purpose |
 | --- | --- | --- | --- | --- | --- |
 | Local | `php -S 127.0.0.1:8000 router.php` + `npm run dev` | Docker `mysql:8` on 3307 | SIMULATOR (`PAYMENTS_ALLOW_SIMULATOR=1`) | simulator (`LIVE_ALLOW_SIMULATOR=1`) | development, the automated suites |
@@ -50,6 +107,48 @@ app, whose fallback runs through `api/spa.php` so unknown addresses return a
 true 404 (README → *Paths that belong to PHP, not to React*).
 
 ## Release procedure
+
+### VS Code SFTP connection
+
+On Windows, use **Terminal → Run Task**:
+
+1. Run **Hostinger: create SSH key (once)**. Choose a nonempty passphrase.
+   If a key already exists at the requested path, do not overwrite it.
+2. Run **Hostinger: show public SSH key** and add that public key in
+   Hostinger's SSH Access page. Never upload or share the private key (the
+   file without `.pub`).
+3. Run **Hostinger: open SFTP**. Before accepting the first connection,
+   compare the server host-key fingerprint with one confirmed through
+   Hostinger hPanel or support. Enter the private-key passphrase locally.
+
+The task connects to the existing production `public_html` directory.
+It does not upload anything automatically; use `pwd` and `ls` to check the
+connection, and `bye` to exit. SSH port reachability alone does not verify
+authentication.
+
+React source must be built before uploading the output of `frontend/dist`.
+PHP application files map from `backend` to the corresponding directories
+under `public_html`. Do not recursively upload the repository or enable
+upload-on-save. Preserve the live root `.htaccess` (which currently contains
+server credentials), environment/configuration secrets, uploads and logs.
+This connection task does not apply database migrations or implement an
+automated release.
+
+### Committee subdomain
+
+`admin.dhabbalavarkovil.com` shares the PHP site's document root and database.
+The panel remains under `/admin/`; the root routing template redirects the
+subdomain homepage there and main-domain `/admin/` pages to the subdomain.
+Sessions remain host-only, so committee members sign in again on the new host.
+Authentication, CSRF and role checks remain required; a subdomain is not an
+access-control boundary for code sharing the same document root.
+
+Enable SSL and HTTPS redirection for the subdomain before applying the routing
+changes. On an existing deployment, merge only the two committee redirect rules
+from `deploy/htaccess_public_html` immediately after `RewriteBase /`; do not
+replace the server's `.htaccess` or remove its private `SetEnv` configuration.
+Publish the rebuilt frontend to update the committee sign-in link. No database
+migration or duplicate admin deployment is needed.
 
 Do this on staging first, then repeat on production.
 

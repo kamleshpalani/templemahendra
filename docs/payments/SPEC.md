@@ -742,3 +742,18 @@ Must be confirmed against the merchant's own CCAvenue kit, account and API guide
 13. The committee approves the four policy pages' text (refund window 7 days, seva cancellation 48 hours, jurisdiction Tenkasi) — they are drafts written from the site's facts.
 14. `PAYMENTS_SECRET`, `PAYMENTS_SETTINGS_KEY`, `PAYMENTS_CRON_KEY`, `NOTIFY_CRON_KEY` set in Hostinger; both cron jobs running; SMS DLT template ids and WhatsApp approved templates entered for the payment templates; `MAIL_TRANSPORT=smtp` working.
 15. The whole lifecycle in requirement §30 passes in TEST mode with real CCAvenue test instruments (UPI, debit, credit, net banking, international card, foreign currency if used, success, failure, cancel, refresh, back, double click, duplicate callback, invalid callback, wrong amount, session expiry, network interruption, receipt, email, SMS, refund, partial refund, reports, reconciliation) — only then tick the production box.
+# Manual WhatsApp and email sharing
+
+Donation review and seva booking offer manual sharing of their public entry
+pages. These links require the recipient to fill the form; they do not create
+an order, reserve a booking or guarantee an amount. Confirmed payment results
+and printable receipts offer sharing of the token-protected receipt URL.
+Test/simulator receipts are explicitly marked as test-only in shared messages.
+
+Each sharing panel offers WhatsApp's recipient chooser and a blank email
+recipient for devotees, plus office-targeted WhatsApp (+91 6379 227 382) and
+email (info@dhabbalavarkovil.com). Buttons open drafts only; users must select
+or verify recipients and press Send. No automatic delivery, provider setup or
+delivery success is implied. Receipt links grant access to personal receipt
+details; the interface warns users before sharing. Sharing panels do not print.
+Existing automatic notification settings are unchanged.

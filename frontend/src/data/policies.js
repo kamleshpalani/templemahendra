@@ -123,12 +123,35 @@ export const POLICIES = {
             ),
           ),
           p(
-            "குடும்பப் பதிவில்: நீங்கள் உள்ளிடும் பெயர், தொலைபேசி, மின்னஞ்சல், பிறந்த தேதி, முகவரி, ஒவ்வொரு குடும்ப உறுப்பினரின் பெயர், உறவுமுறை, வயது. தொடர்பு படிவத்தில்: உங்கள் பெயர், தொலைபேசி, செய்தி.",
-            "For family registration: the name, phone number, email, date of birth and address you enter, and each family member's name, relationship and age. For the contact form: your name, phone number and message.",
+            "குடும்பப் பதிவில்: பெயர், தொலைபேசி, விருப்ப மின்னஞ்சல், பிறந்த தேதி, முகவரி, விருப்ப திருமண தேதி, ராசி, நட்சத்திரம்; குடும்ப உறுப்பினர்களின் பெயர், உறவுமுறை, வயது மற்றும் விருப்ப பிறந்த தேதி, திருமண தேதி, ராசி, நட்சத்திரம். தொடர்பு படிவத்தில்: பெயர், தொலைபேசி, செய்தி.",
+            "For family registration: name, phone, optional email, birth date, address, optional marriage date, Rasi and Nakshatram; each member's name, relationship, age and optional birth date, marriage date, Rasi and Nakshatram. For enquiries: name, phone and message.",
+          ),
+          p(
+            "அர்ச்சனைப் பதிவில் ஒவ்வொருவரின் பெயர், ராசி, நட்சத்திரம் சேகரிக்கப்படும். பிரசாத விநியோகத்திற்கு முழு அஞ்சல் முகவரி, அஞ்சல் குறியீடு மற்றும் தொடர்பு எண் தேவை. அனுப்புதல் தகவல்கள் திருக்கோவில் அலுவலகத்தால் நிர்வகிக்கப்படும்.",
+            "Archana bookings collect each participant's name, Rasi and Nakshatram. Prasadam delivery requires a full postal address, postal code and contact number. The temple office manages dispatch and delivery records.",
           ),
           p(
             "இணையதளத்தைத் தவறாகப் பயன்படுத்துவதைத் தடுக்க, ஒவ்வொரு படிவச் சமர்ப்பிப்பு மற்றும் பணம் செலுத்தும் கோரிக்கையின் IP முகவரியும் நேரமும் பதிவாகின்றன.",
             "To stop misuse, we record the IP address and time of each form submission and payment request.",
+          ),
+        ],
+      },
+      {
+        id: "matrimony",
+        nav: { ta: "திருமணத் தகவல்", en: "Matrimony privacy" },
+        heading: { ta: "திருமணத் தகவல் மற்றும் ஒப்புதல்", en: "Matrimony and consent" },
+        blocks: [
+          p(
+            "18 வயது நிறைந்தவர்கள் தங்கள் சொந்த சுயவிவரத்தை மட்டுமே பதிவு செய்யலாம். தனியான ஒப்புதலுடன் பெயர், பிறந்த தேதி, தொடர்பு விவரங்கள் மற்றும் நீங்கள் அளிக்கும் சுயவிவரத் தகவல்கள் தனிப்பட்ட கமிட்டி பரிசீலனைக்காகச் சேமிக்கப்படும். குடும்ப விவரங்கள் தானாக நகலெடுக்கப்படாது; இந்தத் தாவலில் உள்ள உங்கள் சொந்த வரைவை நகலெடுக்க தனி அனுமதி தேவை.",
+            "Adults aged 18 or over may register their own profile with separate explicit consent. We store your name, birth date, contact details and submitted profile information for private committee review. Family records are never copied automatically; copying your own family draft from the current tab requires separate permission.",
+          ),
+          p(
+            "தனிப்பட்ட நிலையே இயல்புநிலை. நீங்கள் தேர்ந்தெடுத்து கமிட்டி ஒப்புதல் அளித்தால் மட்டும் வயது, நகரம், கல்வி, தொழில், அறிமுகம் மற்றும் விருப்பங்கள் பெயரில்லா சுருக்கமாக வெளியிடப்படும். பெயர், சரியான பிறந்த தேதி, தொலைபேசி, மின்னஞ்சல் வெளியிடப்படாது. அறிமுகத்தில் அடையாள அல்லது தொடர்பு விவரங்களைச் சேர்க்க வேண்டாம்.",
+            "Profiles are private by default. Only if you select publication and the committee approves, age, city, education, occupation, introduction and preferences appear in an anonymous summary. Name, exact birth date, phone and email are not published. Do not include identifying or contact details in free-text fields.",
+          ),
+          p(
+            "பதிவின்போது வழங்கப்படும் ரகசிய நிர்வாகச் சாவியைப் பாதுகாப்பாகச் சேமிக்கவும். அதன் மூலம் விவரங்களைத் திருத்தலாம், தனிப்பட்ட நிலைக்கு மாற்றலாம் அல்லது நிரந்தரமாக நீக்கலாம். ஒவ்வொரு திருத்தமும் வெளியீட்டை நிறுத்தி மீண்டும் பரிசீலனைக்கு அனுப்பும். சாவி மின்னஞ்சலில் அனுப்பப்படாது; அதை இழந்தால் அலுவலகத்தைத் தொடர்பு கொள்ளுங்கள்.",
+            "Securely save the secret management key returned at registration. It lets you edit, switch to private or permanently delete the profile. Every edit removes publication until a new review. The key is not emailed; contact the office if you lose it. Profile data is retained until you delete it or request removal through the office.",
           ),
         ],
       },
@@ -731,14 +754,14 @@ export const POLICIES = {
     path: POLICY_PATHS.shipping,
     title: { ta: "அனுப்புதல் & விநியோகக் கொள்கை", en: "Shipping & Delivery Policy" },
     lead: {
-      ta: "அறக்கட்டளை எந்தப் பொருளையும் விற்பதோ அனுப்புவதோ இல்லை. நன்கொடை ரசீதுகள் மின்னணு முறையில் வழங்கப்படுகின்றன; சேவைகள் திருக்கோவிலில் நடைபெறுகின்றன.",
-      en: "The Trust sells and ships no goods. Donation receipts are delivered electronically, and sevas are performed at the temple.",
+      ta: "சேவைகள் திருக்கோவிலில் நடைபெறுகின்றன. தேர்ந்தெடுத்த அர்ச்சனை சேவைகளுக்கு பிரசாதம் வீட்டிற்கு அனுப்பப்படும்; கட்டணமும் விநியோக விவரங்களும் பதிவுக்கு முன் காட்டப்படும்.",
+      en: "Sevas are performed at the temple. Selected Archana services include home delivery of Prasadam, with charges and delivery details shown before booking.",
     },
     updated: "2026-09-14",
     glance: [
       li(
-        "அறக்கட்டளை இந்த இணையதளத்தின் மூலம் எந்தப் பொருளையும் விற்பதோ அனுப்புவதோ இல்லை.",
-        "The Trust sells and ships no physical goods through this website.",
+        "தேர்ந்தெடுத்த அர்ச்சனை சேவைகளில் மட்டுமே வீட்டிற்குப் பிரசாதம் அனுப்பப்படும்.",
+        "Prasadam home delivery is available only for the selected Archana services.",
       ),
       li(
         "நன்கொடைக்கான மின்னணு ரசீது, பணம் உறுதியானதும் உடனே கிடைக்கும்.",
@@ -749,19 +772,19 @@ export const POLICIES = {
         "Sevas are performed at the temple in Pudupatti on the confirmed date.",
       ),
       li(
-        "பிரசாதம் இருந்தால், திருக்கோவிலில் நேரில் பெற்றுக்கொள்ள வேண்டும்; அஞ்சலில் அனுப்பப்படாது.",
-        "Any prasadam is collected at the temple and is not posted.",
+        "பிரசாத விநியோகக் கட்டணம் பணம் செலுத்துவதற்கு முன் காட்டப்படும்.",
+        "Applicable Prasadam delivery fees are shown before payment.",
       ),
     ],
     sections: [
       {
         id: "no-physical-goods",
-        nav: { ta: "பொருட்கள்", en: "No goods shipped" },
-        heading: { ta: "பொருட்கள் அனுப்பப்படுவதில்லை", en: "No physical goods" },
+        nav: { ta: "விநியோக சேவைகள்", en: "Delivery services" },
+        heading: { ta: "பிரசாத விநியோக சேவைகள்", en: "Prasadam delivery services" },
         blocks: [
           p(
-            "இந்த இணையதளம் நன்கொடைகளையும் சேவைக் கட்டணங்களையும் மட்டுமே பெறுகிறது. அறக்கட்டளை எந்தப் பொருளையும் விற்பதில்லை; அஞ்சல் அல்லது கூரியர் மூலம் எதையும் அனுப்புவதில்லை. எனவே அனுப்புதல் கட்டணமோ விநியோகத் தாமதமோ இல்லை.",
-            "This website accepts only donations and seva payments. The Trust sells no goods and sends nothing by post or courier, so there are no shipping charges and no delivery delays.",
+            "பிரசாதத்துடன் அர்ச்சனை மற்றும் பூஜையுடன் அர்ச்சனை சேவைகளுக்கு பிரசாத விநியோகம் உண்டு. சேவைக் கட்டணமும் பொருந்தும் விநியோகக் கட்டணமும் தனித்தனியாகக் காட்டப்படும். கட்டணம் அமைக்கப்படாத சேவைகளுக்கு அலுவலகத்தை அணுகவும்.",
+            "Archana with Prasadam and Archana with Pooja include Prasadam delivery. Service and delivery charges are itemised before payment. Contact the office for services whose charges have not yet been configured.",
           ),
         ],
       },
@@ -807,8 +830,8 @@ export const POLICIES = {
         heading: { ta: "பிரசாதம்", en: "Prasadam" },
         blocks: [
           p(
-            "சேவையுடன் பிரசாதம் வழங்கப்பட்டால், அதைத் திருக்கோவிலில் நேரில் பெற்றுக்கொள்ள வேண்டும். பிரசாதம் அஞ்சல் அல்லது கூரியர் மூலம் அனுப்பப்படுவதில்லை.",
-            "Where a seva includes prasadam, it is collected in person at the temple. Prasadam is not sent by post or courier.",
+            "வீட்டு விநியோகத்திற்கு முழு முகவரி, ஊர், மாநிலம், நாடு, அஞ்சல் குறியீடு மற்றும் தொடர்பு எண் தரவும். கிடைக்கும் இடங்களையும் எதிர்பார்க்கப்படும் விநியோக நேரத்தையும் அலுவலகத்துடன் உறுதி செய்யவும். அனுப்புதல், கண்காணிப்பு மற்றும் விநியோக நிலைகளை அலுவலகம் நிர்வகிக்கும்; பதிவெண்ணுடன் தொடர்பு கொள்ளலாம். பிற சேவைகளின் பிரசாதத்தை நேரில் பெற்றுக்கொள்ளலாம்.",
+            "For home delivery, provide a complete address, city, state, country, postal code and contact number. Confirm serviceable locations and expected delivery time with the office. The office tracks pending dispatch, dispatched and delivered states and any tracking reference; contact them with your booking number for updates. Other services' Prasadam can be collected in person.",
           ),
         ],
       },

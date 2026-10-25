@@ -166,6 +166,7 @@ function payCreateSevaBooking(PDO $db, array $values, array $cfg, string $ip): a
         ]);
         $id = (int) $db->lastInsertId();
         $number = payNumberFor('seva_booking', $id, payIstDate());
+        bookingStoreDetails($db, $id, $values);
         $db->prepare('UPDATE seva_bookings SET order_number = :n WHERE id = :id')->execute([':n' => $number, ':id' => $id]);
 
         payAudit($db, 'payable_created', [
@@ -402,6 +403,11 @@ function payLoadPayableById(PDO $db, string $type, int $id, bool $lock = false):
         'notes'              => null,
         'purpose'            => null,
         'seva_name'          => (string) $r['seva_name'],
+        'participants'       => json_decode($r['participants'] ?? 'null', true, 512, JSON_THROW_ON_ERROR),
+        'delivery_address'   => json_decode($r['delivery_address'] ?? 'null', true, 512, JSON_THROW_ON_ERROR),
+        'delivery_fee'       => (string) ($r['delivery_fee'] ?? '0.00'),
+        'dispatch_status'    => $r['dispatch_status'] ?? 'not_required',
+        'tracking_reference' => $r['tracking_reference'] ?? null,
         'booking_status'     => (string) $r['status'],
         'hold_expires_at'    => $r['hold_expires_at'],
         // A 'cancelled' booking may still be paid for (and is restored) only when the

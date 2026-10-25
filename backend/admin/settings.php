@@ -23,9 +23,8 @@ try {
 
 // Seed defaults
 $defaults = [
-    ['show_pournami_section', '1', 'Show Pournami Poojai section on homepage'],
-    ['show_nalla_strip',      '1', 'Show Nalla Neram strip on homepage'],
-    ['show_donor_ticker',     '1', 'Show donor scroll ticker'],
+    ['show_pournami_section', '1', 'Show scheduled Pournami cards on homepage'],
+    ['show_donor_ticker',     '1', 'Show consented donor acknowledgements'],
 ];
 $ins = $db->prepare(
     "INSERT IGNORE INTO homepage_settings (key_name, val, label) VALUES (?,?,?)"
@@ -48,7 +47,7 @@ if (isset($_SESSION['admin_flash'])) {
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $msg = adminCsrfGuard();
     if ($msg === '') {
-        $allowedKeys = ['show_pournami_section', 'show_nalla_strip', 'show_donor_ticker'];
+        $allowedKeys = ['show_pournami_section', 'show_donor_ticker'];
         $before = $db->query('SELECT key_name, val FROM homepage_settings')->fetchAll(PDO::FETCH_KEY_PAIR);
         $stmt = $db->prepare("UPDATE homepage_settings SET val=? WHERE key_name=?");
         $changed = [];
@@ -73,9 +72,8 @@ foreach ($settings as $s) {
 
 // Homepage section switches: key => [title, description] (texts carried over from the original form)
 $sections = [
-    'show_pournami_section' => ['Pournami Pooja section', 'Show Pournami Poojai countdown + donor ticker on homepage'],
-    'show_nalla_strip'      => ['Nalla Neram strip',      'Show daily Nalla Neram (auspicious time) green strip below announcements'],
-    'show_donor_ticker'     => ['Donor ticker',           'Show scrolling donor/sponsor names inside Pournami section'],
+    'show_pournami_section' => ['Pournami Pooja cards', 'Show committee-scheduled Pournami cards on the homepage, without a countdown'],
+    'show_donor_ticker'     => ['Donor acknowledgements', 'Show consented donor/sponsor names not already acknowledged in a homepage card'],
 ];
 $visibleCount = 0;
 foreach (array_keys($sections) as $key) {

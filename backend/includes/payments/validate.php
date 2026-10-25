@@ -551,7 +551,7 @@ function payValidateSevaBooking(array $body, array $cfg): array
     if ($sevaId < 1) {
         $fields['seva_id'] = 'Choose a seva.';
     } else {
-        $stmt = getDB()->prepare('SELECT id, name_ta, name_en, amount, is_active FROM sevas WHERE id = :id');
+        $stmt = getDB()->prepare('SELECT id, name_ta, name_en, amount, is_active, service_kind, delivery_fee FROM sevas WHERE id = :id');
         $stmt->execute([':id' => $sevaId]);
         $seva = $stmt->fetch(PDO::FETCH_ASSOC) ?: null;
         if ($seva === null || (int) $seva['is_active'] !== 1) {
@@ -606,11 +606,13 @@ function payValidateSevaBooking(array $body, array $cfg): array
     }
 
     $sevaNames = $seva ? ['id' => (int) $seva['id'], 'ta' => trim((string) $seva['name_ta']), 'en' => trim((string) $seva['name_en'])] : null;
+    $details = bookingValidateDetails($body, $seva ?? []);
+    $fields += $details['fields'];
     $values = [
         'seva_id'        => $seva ? (int) $seva['id'] : null,
         'seva'           => $sevaNames,
         'seva_name'      => $sevaNames ? (($lang === 'ta' ? $sevaNames['ta'] : $sevaNames['en']) ?: ($sevaNames['en'] ?: $sevaNames['ta'])) : '',
-        'amount'         => $seva ? payAmountFormat((string) $seva['amount'], 'INR') : null,
+        'amount'         => $seva ? payCentsToAmount(payAmountCents((string)$seva['amount']) + payAmountCents($details['values']['delivery_fee'])) : null,
         'currency'       => 'INR',
         'devotee_name'   => $name,
         'phone'          => $ph['phone'],
@@ -620,5 +622,5 @@ function payValidateSevaBooking(array $body, array $cfg): array
         'message'        => $message,
         'lang'           => $lang,
     ];
-    return ['values' => $values, 'fields' => $fields];
+    return ['values' => $values + $details['values'], 'fields' => $fields];
 }

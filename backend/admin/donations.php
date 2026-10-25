@@ -579,7 +579,7 @@ echo adminKpi([
         $isOnline = $hasPayCols && (string) ($row['source'] ?? 'pledge') === 'online';
         $payNumber = $isOnline ? (string) ($row['donation_number'] ?? '') : '';
         $greet   = 'வணக்கம் ' . $row['name'] . ', நன்றி! Thank you for your donation pledge of ' . adminFmtMoney((float) $row['amount'], 2)
-                 . ($pLabel !== '' ? ' towards ' . $pLabel : '') . ' to Dhabbalavaar Renuka Devi Temple.';
+                 . ($pLabel !== '' ? ' towards ' . $pLabel : '') . ' to ' . templeIdentity()['name_en'] . '.';
         $menu    = [];
         if ($tel !== '') $menu[] = ['label' => 'Call', 'href' => 'tel:' . $tel, 'icon' => 'phone'];
         if ($wa !== '')  $menu[] = ['label' => 'WhatsApp', 'href' => 'https://wa.me/' . $wa . '?text=' . rawurlencode($greet), 'icon' => 'external'];

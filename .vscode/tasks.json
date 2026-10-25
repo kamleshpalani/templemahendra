@@ -1,0 +1,115 @@
+{
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"label": "Hostinger: fix release permissions",
+			"type": "process",
+			"command": "powershell.exe",
+			"args": [
+				"-NoProfile",
+				"-File",
+				"C:\\Users\\palan\\.copilot\\session-state\\35a32bf4-a945-422e-8fed-59525462891e\\files\\fix-hostinger-release-permissions.ps1"
+			],
+			"problemMatcher": [],
+			"presentation": { "reveal": "always", "panel": "dedicated" }
+		},
+		{
+			"label": "Hostinger: upload prepared release",
+			"type": "process",
+			"command": "powershell.exe",
+			"args": [
+				"-NoProfile",
+				"-File",
+				"C:\\Users\\palan\\.copilot\\session-state\\35a32bf4-a945-422e-8fed-59525462891e\\files\\upload-hostinger-release.ps1"
+			],
+			"problemMatcher": [],
+			"presentation": {
+				"reveal": "always",
+				"panel": "dedicated"
+			}
+		},
+		{
+			"label": "Hostinger: create SSH key (once)",
+			"type": "process",
+			"command": "ssh-keygen",
+			"args": [
+				"-t",
+				"ed25519",
+				"-f",
+				"${env:USERPROFILE}\\.ssh\\templemahendra_hostinger",
+				"-C",
+				"templemahendra-hostinger"
+			],
+			"problemMatcher": [],
+			"presentation": {
+				"reveal": "always",
+				"panel": "dedicated"
+			}
+		},
+		{
+			"label": "Hostinger: show public SSH key",
+			"type": "process",
+			"command": "powershell.exe",
+			"args": [
+				"-NoProfile",
+				"-Command",
+				"Get-Content -LiteralPath \"$env:USERPROFILE\\.ssh\\templemahendra_hostinger.pub\" -ErrorAction Stop"
+			],
+			"problemMatcher": []
+		},
+		{
+			"label": "Hostinger: open SFTP",
+			"type": "process",
+			"command": "sftp",
+			"args": [
+				"-P",
+				"65002",
+				"-o",
+				"IdentitiesOnly=yes",
+				"-o",
+				"PasswordAuthentication=no",
+				"-o",
+				"KbdInteractiveAuthentication=no",
+				"-o",
+				"StrictHostKeyChecking=ask",
+				"-i",
+				"${env:USERPROFILE}\\.ssh\\templemahendra_hostinger",
+				"u185017417@89.116.133.165:/home/u185017417/domains/dhabbalavarkovil.com/public_html"
+			],
+			"problemMatcher": [],
+			"presentation": {
+				"reveal": "always",
+				"panel": "dedicated"
+			}
+		},
+		{
+			"label": "Hostinger: open SSH terminal",
+			"type": "shell",
+			"command": "ssh",
+			"args": [
+				"-p",
+				"65002",
+				"-o",
+				"StrictHostKeyChecking=ask",
+				"u185017417@89.116.133.165"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "Hostinger: deployment preflight",
+			"type": "process",
+			"command": "ssh",
+			"args": [
+				"-p",
+				"65002",
+				"-o",
+				"StrictHostKeyChecking=yes",
+				"u185017417@89.116.133.165",
+				"set -eu; printf '\\nDEPLOYMENT PREFLIGHT\\n'; whoami; hostname; cd ~/domains/dhabbalavarkovil.com/public_html; pwd; ls -ld api admin includes config uploads; command -v php; command -v mysql; command -v mysqldump; command -v tar; printf '\\nPREFLIGHT COMPLETE - NO FILES CHANGED\\n'"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		}
+	]
+}

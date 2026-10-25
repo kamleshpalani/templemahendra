@@ -1,466 +1,85 @@
-import { useEffect, useMemo, useRef, useState } from "react";
-import {
-  LuCalendar,
-  LuCalendarDays,
-  LuChevronLeft,
-  LuChevronRight,
-  LuClock,
-  LuLandmark,
-  LuMoon,
-  LuMoveHorizontal,
-} from "react-icons/lu";
+import { useEffect, useState } from "react";
+import { LuCalendarDays, LuFlame, LuFlower2, LuMoon, LuMegaphone } from "react-icons/lu";
 import api from "../services/api";
 import { useLang } from "../context/LangContext";
-import Badge from "../components/ui/Badge";
-import Button from "../components/ui/Button";
-import PageHero from "../components/ui/PageHero";
 import Seo from "../components/Seo";
-import ShareButton from "../components/Share/ShareButton";
+import PageHero from "../components/ui/PageHero";
 import SectionHeader from "../components/ui/SectionHeader";
-import SegmentedControl from "../components/ui/Tabs";
-import { EmptyState, SkeletonCards, SkeletonText } from "../components/ui/Feedback";
-import { OBSERVANCES } from "../data/temple";
+import Button from "../components/ui/Button";
+import Alert from "../components/ui/Alert";
+import HomepageWidgets from "../components/HomepageWidgets/HomepageWidgets";
+import { SkeletonCards } from "../components/ui/Feedback";
 import "./Events.css";
 
-// Badge tone per event type (Badge primitive tones — no raw colours)
-const BADGE_META = {
-  pournami: { ta: "பௌர்ணமி", en: "Pournami", tone: "moon" },
-  amavasai: { ta: "அமாவாசை", en: "Amavasai", tone: "default" },
-  ekadasi: { ta: "ஏகாதசி", en: "Ekadasi", tone: "default" },
-  sashti: { ta: "சஷ்டி", en: "Sashti", tone: "default" },
-  pradosham: { ta: "பிரதோஷம்", en: "Pradosham", tone: "default" },
-  chaturthi: { ta: "சதுர்த்தி", en: "Chaturthi", tone: "default" },
-  festival: { ta: "திருவிழா", en: "Festival", tone: "gold" },
-  temple: { ta: "கோயில்", en: "Temple", tone: "gold" },
-};
-
-/** Evening slot shown on every Pournami tile when the API omits `time`. */
-const POURNAMI_TIME = "4:00 PM – 9:00 PM";
-
-/** Locale-aware view model for one /pournamis row (keeps the computed fields). */
-function pournamiView(p, lang) {
-  const locale = lang === "ta" ? "ta-IN" : "en-IN";
-  const d = new Date(p.date + "T00:00:00");
-  return {
-    dayNum: d.getDate(),
-    monthStr: d.toLocaleDateString(locale, { month: "short" }),
-    yearNum: d.getFullYear(),
-    longDate: d.toLocaleDateString(locale, { day: "numeric", month: "long", year: "numeric" }),
-    tamMonth: lang === "ta" ? p.tamil_month?.ta : p.tamil_month?.en,
-    weekday: lang === "ta" ? p.weekday_ta : p.weekday_en,
-    time: p.time || POURNAMI_TIME,
-  };
-}
-
-// ── Hero aside: the next Pournami at a glance ────────────────────────────────
-function NextPournami({ pournami, loading, lang, t }) {
-  if (loading) {
-    return (
-      <div className="events-hero__next events-hero__next--skeleton" aria-hidden="true">
-        <SkeletonText lines={2} />
-      </div>
-    );
-  }
-  if (!pournami) return null;
-  const v = pournamiView(pournami, lang);
-  const label = t("அடுத்த பௌர்ணமி பூஜை", "Next Pournami Poojai");
-  return (
-    <div className="events-hero__next" role="group" aria-label={label}>
-      <span className="events-hero__next-label">
-        <LuMoon aria-hidden="true" /> {label}
-      </span>
-      <time className="events-hero__next-date" dateTime={pournami.date}>
-        {v.longDate}
-      </time>
-      {(v.weekday || v.tamMonth) && (
-        <span className="events-hero__next-meta">{[v.weekday, v.tamMonth].filter(Boolean).join(" · ")}</span>
-      )}
-      <span className="events-hero__next-time">
-        <LuClock aria-hidden="true" /> {v.time}
-      </span>
-    </div>
-  );
-}
-
-// ── Pournami dates strip (dark ink panel, lunar accent) ─────────────────────
-function PournamiStrip({ pournamis, lang, t, todayStr, nextDate }) {
-  const rowRef = useRef(null);
-  if (!pournamis || pournamis.length === 0) return null;
-
-  const scrollRow = (dir) => {
-    const el = rowRef.current;
-    if (!el) return;
-    const reduce = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
-    el.scrollBy({ left: dir * Math.max(220, el.clientWidth * 0.8), behavior: reduce ? "auto" : "smooth" });
-  };
-
-  return (
-    <section
-      className="card card--ink card--static events-moon on-dark"
-      aria-labelledby="events-moon-title"
-      data-surface="dark"
-    >
-      <div className="events-moon__head">
-        <span className="events-moon__glyph" aria-hidden="true">
-          <LuMoon />
-        </span>
-        <div className="events-moon__text">
-          <Badge tone="moon">{t("பஞ்சாங்கம்", "Panchangam")}</Badge>
-          <h2 id="events-moon-title" className="events-moon__title">
-            {t("பௌர்ணமி பூஜை — அடுத்த திகதிகள்", "Pournami Poojai — Upcoming Dates")}
-          </h2>
-          <p className="events-moon__meta">
-            {t(
-              "பஞ்சாங்கம் படி கணக்கிடப்பட்டது · மாலை 4:00 – 9:00 மணி",
-              "Computed from Panchangam · Evening 4:00 PM – 9:00 PM",
-            )}
-          </p>
-          <p className="events-moon__desc">{t(OBSERVANCES.pournami.desc.ta, OBSERVANCES.pournami.desc.en)}</p>
-        </div>
-        <div className="events-moon__tools">
-          <span className="events-moon__hint">
-            <LuMoveHorizontal aria-hidden="true" /> {t("பக்கவாட்டில் உருட்டவும்", "Scroll sideways")}
-          </span>
-          <div className="events-moon__arrows">
-            <Button
-              variant="outline-light"
-              iconOnly
-              icon={<LuChevronLeft aria-hidden="true" />}
-              onClick={() => scrollRow(-1)}
-            >
-              {t("முந்தைய தேதிகள்", "Previous dates")}
-            </Button>
-            <Button
-              variant="outline-light"
-              iconOnly
-              icon={<LuChevronRight aria-hidden="true" />}
-              onClick={() => scrollRow(1)}
-            >
-              {t("அடுத்த தேதிகள்", "Next dates")}
-            </Button>
-          </div>
-        </div>
-      </div>
-
-      <ol
-        ref={rowRef}
-        className="events-moon__row"
-        role="list"
-        tabIndex={0}
-        aria-label={t("பௌர்ணமி தேதிகள்", "Pournami dates")}
-      >
-        {pournamis.map((p, i) => {
-          const v = pournamiView(p, lang);
-          const isToday = p.date === todayStr;
-          const isNext = !isToday && p.date === nextDate;
-          return (
-            <li
-              key={p.date}
-              className={`events-moon__tile rise${isToday || isNext ? " events-moon__tile--next" : ""}`}
-              style={{ "--i": Math.min(i, 10) }}
-              aria-current={isToday ? "date" : undefined}
-            >
-              <time className="events-moon__date" dateTime={p.date}>
-                <span className="events-moon__day">{v.dayNum}</span>
-                <span className="events-moon__month">{v.monthStr}</span>
-                <span className="events-moon__year">{v.yearNum}</span>
-              </time>
-              <div className="events-moon__info">
-                {(isToday || isNext) && (
-                  <Badge tone="moon" className="events-moon__flag">
-                    {isToday ? t("இன்று", "Today") : t("அடுத்தது", "Next")}
-                  </Badge>
-                )}
-                {v.tamMonth && <p className="events-moon__tmonth">🪔 {v.tamMonth}</p>}
-                {v.weekday && <p className="events-moon__weekday">{v.weekday}</p>}
-                <p className="events-moon__time">
-                  <LuClock aria-hidden="true" /> {v.time}
-                </p>
-              </div>
-            </li>
-          );
-        })}
-      </ol>
-    </section>
-  );
-}
+export const poojaCard = (p) => ({
+  id: `pooja-${p.id}`, content_type: p.pooja_type === "pournami" ? "calendar_pooja" : "upcoming_pooja",
+  title_ta: p.name_ta, title_en: p.name_en, description_ta: p.description_ta, description_en: p.description_en,
+  pooja: { id: p.id, date: p.pooja_date, time: p.pooja_time, type: p.pooja_type },
+});
 
 export default function Events() {
-  const [templeEvents, setTempleEvents] = useState([]);
-  const [pournamis, setPournamis] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [filter, setFilter] = useState("all"); // all | pournami | temple
-  const { lang, t } = useLang();
-
+  const { t, lang } = useLang();
+  const [data, setData] = useState(null);
+  const [error, setError] = useState(false);
+  const [retry, setRetry] = useState(0);
   useEffect(() => {
-    const eventsReq = api
-      .get("/events")
-      .then((r) => setTempleEvents(Array.isArray(r.data) ? r.data : []))
-      .catch(() => {});
-
-    // Single call for all pournami dates (replaces 24 separate /calendar calls)
-    const pournamiReq = api
-      .get("/pournamis?months=13")
-      .then((r) => setPournamis(Array.isArray(r.data) ? r.data : []))
-      .catch(() => {});
-
-    Promise.all([eventsReq, pournamiReq]).finally(() => setLoading(false));
-  }, []);
-
-  const todayStr = new Date().toISOString().slice(0, 10);
-
-  // Static fallback for temple events (used when API returns nothing)
-  const fallbackTemple = [
-    {
-      id: 1,
-      title_ta: "தைப்பூசம்",
-      title_en: "Thai Poosam",
-      event_date: "2026-01-24",
-      description_ta: "முருகன் திருவிழா — கவாடி ஊர்வலம்.",
-      description_en:
-        "Grand festival celebrating Murugan with kavadi procession.",
-      badge: "temple",
-    },
-    {
-      id: 2,
-      title_ta: "மகா சிவராத்திரி",
-      title_en: "Maha Shivaratri",
-      event_date: "2026-02-26",
-      description_ta:
-        "ஒவ்வொரு மஹா சிவராத்திரி அன்று நமது குல மக்கள் வந்து தரிசனம் செய்து வருகின்றார்கள். அன்று அன்னதானமும் நடைபெற்று வருகின்றது.",
-      description_en:
-        "Every Maha Shivaratri, our clan members gather for darshan, and annadanam is offered on that day.",
-      badge: "temple",
-    },
-    {
-      id: 3,
-      title_ta: "பங்குனி உத்திரம்",
-      title_en: "Panguni Uthiram",
-      event_date: "2026-03-31",
-      description_ta: "தெய்வீக திருமண திருவிழா.",
-      description_en:
-        "Sacred festival of divine weddings and celestial unions.",
-      badge: "temple",
-    },
+    let active = true;
+    setError(false);
+    setData(null);
+    Promise.all([api.get("/events?upcoming=1&limit=100"), api.get("/pooja-schedule"), api.get("/announcements?limit=50")])
+      .then(([events, poojas, notices]) => { if (active) setData({ events: events.data, poojas: poojas.data, notices: notices.data }); })
+      .catch(() => { if (active) setError(true); });
+    return () => { active = false; };
+  }, [retry]);
+  const pournami = data?.poojas.filter((p) => p.pooja_type === "pournami") ?? [];
+  const other = data?.poojas.filter((p) => p.pooja_type !== "pournami") ?? [];
+  const eventCards = (data?.events ?? []).map((e) => ({
+    id: `event-${e.id}`, content_type: "upcoming_event", title_ta: e.title_ta, title_en: e.title_en,
+    description_ta: e.description, description_en: e.description, event_date: e.event_date,
+  }));
+  const sections = [
+    { id: "next-scheduled-pooja", Icon: LuFlame, title: t("அடுத்த திட்டமிட்ட பூஜை", "Next Scheduled Pooja"),
+      cards: other.map(poojaCard), empty: t("புதிய சிறப்பு பூஜைகள் விரைவில் அறிவிக்கப்படும்.", "New special poojas will be listed when announced.") },
+    { id: "pournami-schedule", Icon: LuMoon, title: t("பௌர்ணமி பூஜை அட்டவணை", "Pournami Pooja Schedule"),
+      cards: pournami.map(poojaCard), empty: t("உறுதி செய்யப்பட்ட தேதிகள் விரைவில்.", "Confirmed Pournami pooja dates will be announced here.") },
+    { id: "temple-events", Icon: LuCalendarDays, title: t("கோயில் நிகழ்வுகள்", "Temple Events"),
+      cards: eventCards, empty: t("புதிய நிகழ்வுகள் விரைவில்.", "Upcoming temple activities will be announced here.") },
+    { id: "temple-notices", Icon: LuMegaphone, title: t("அறிவிப்புகள்", "Temple Notices"),
+      cards: (data?.notices ?? []).map((notice) => ({
+        id: `notice-${notice.id}`, content_type: "announcement", title_ta: notice.title, title_en: notice.title,
+        description_ta: notice.body, description_en: notice.body,
+      })), empty: t("புதிய அறிவிப்புகள் விரைவில்.", "New notices will appear here when published.") },
   ];
-
-  const templeSource =
-    templeEvents.length > 0
-      ? templeEvents.map((e) => ({ ...e, badge: "temple", isCalendar: false }))
-      : fallbackTemple;
-
-  // Convert pournamis API data to event-row format for the merged list
-  const pournamiEvents = useMemo(
-    () =>
-      pournamis.map((p) => ({
-        id: `pournami-${p.date}`,
-        title_ta: p.title_ta,
-        title_en: p.title_en,
-        event_date: p.date,
-        description_ta: p.desc_ta,
-        description_en: p.desc_en,
-        time: p.time,
-        badge: "pournami",
-        isCalendar: true,
-      })),
-    [pournamis],
-  );
-
-  // Merged + sorted list, today onwards only
-  const merged = useMemo(() => {
-    const all = [
-      ...templeSource.filter((e) => e.event_date >= todayStr),
-      ...pournamiEvents,
-    ];
-    const seen = new Set();
-    return all
-      .filter((e) => {
-        const key = `${e.event_date}-${e.badge}`;
-        if (seen.has(key)) return false;
-        seen.add(key);
-        return true;
-      })
-      .sort((a, b) => a.event_date.localeCompare(b.event_date));
-  }, [templeSource, pournamiEvents, todayStr]);
-
-  const filtered = useMemo(() => {
-    if (filter === "temple") return merged.filter((e) => !e.isCalendar);
-    if (filter === "pournami")
-      return merged.filter((e) => e.badge === "pournami");
-    return merged;
-  }, [merged, filter]);
-
-  // Counts for the filter pills (mirror the filter predicates above)
-  const counts = useMemo(
-    () => ({
-      all: merged.length,
-      pournami: merged.filter((e) => e.badge === "pournami").length,
-      temple: merged.filter((e) => !e.isCalendar).length,
-    }),
-    [merged],
-  );
-
-  // First Pournami on/after today — drives the hero aside and the "Next" tile flag
-  const nextPournami = useMemo(() => {
-    const upcoming = pournamis.filter((p) => p.date >= todayStr);
-    if (upcoming.length === 0) return null;
-    return upcoming.reduce((a, b) => (b.date < a.date ? b : a));
-  }, [pournamis, todayStr]);
-
-  // Named once: the hero shows them, <Seo> puts them in the page's description
-  // and its preview card, and the share sheet passes them to WhatsApp.
-  const heading = t("நிகழ்வுகள் & திருவிழாக்கள்", "Events & Festivals");
-  const lead = t(
-    "பவுர்ணமி பூஜைகள், திருவிழாக்கள் மற்றும் சிறப்பு நிகழ்வுகள் — ஒரே இடத்தில்.",
-    "Pournami poojas, festivals and special occasions — all in one place.",
-  );
-
-  const filterItems = [
-    {
-      value: "all",
-      label: t("அனைத்தும்", "All"),
-      count: loading ? undefined : counts.all,
-      icon: <LuCalendarDays aria-hidden="true" />,
-    },
-    {
-      value: "pournami",
-      label: t("பௌர்ணமி பூஜை", "Pournami Poojai"),
-      count: loading ? undefined : counts.pournami,
-      icon: <LuMoon aria-hidden="true" />,
-    },
-    {
-      value: "temple",
-      label: t("கோயில் நிகழ்வு", "Temple Events"),
-      count: loading ? undefined : counts.temple,
-      icon: <LuLandmark aria-hidden="true" />,
-    },
-  ];
-
-  return (
-    <>
-      <Seo title={t("நிகழ்வுகள்", "Events")} description={lead} />
-
-      <PageHero
-        variant="events"
-        eyebrow={t("பஞ்சாங்க அடிப்படையில்", "Panchangam-based calendar")}
-        title={heading}
-        lead={lead}
-        crumbs={[{ label: t("நிகழ்வுகள்", "Events") }]}
-        actions={<ShareButton variant="outline-light" title={heading} text={lead} />}
-        aside={<NextPournami pournami={nextPournami} loading={loading} lang={lang} t={t} />}
-      />
-
-      <section className="section events-page">
-        <div className="container">
-          {/* Pournami dates from Panchangam — always visible at top */}
-          {loading ? (
-            <SkeletonCards count={1} className="events-moon-skeleton" />
-          ) : (
-            <PournamiStrip
-              pournamis={pournamis}
-              lang={lang}
-              t={t}
-              todayStr={todayStr}
-              nextDate={nextPournami?.date}
-            />
-          )}
-
-          <SectionHeader
-            align="split"
-            eyebrow={t("நாட்காட்டி", "Calendar")}
-            title={t("வரவிருக்கும் நிகழ்வுகள்", "Upcoming Events")}
-            subtitle={t(
-              "பௌர்ணமி பூஜைகளும் கோயில் திருவிழாக்களும் — தேதி வரிசையில்.",
-              "Pournami poojas and temple festivals, in date order.",
-            )}
-            actions={
-              <SegmentedControl
-                className="events-filter"
-                label={t("நிகழ்வுகளை வடிகட்டு", "Filter events")}
-                items={filterItems}
-                value={filter}
-                onChange={setFilter}
-              />
-            }
-          />
-
-          {loading ? (
-            <SkeletonCards count={4} className="events-timeline events-timeline--skeleton" />
-          ) : (
-            <>
-              <p className="sr-only" role="status" aria-live="polite">
-                {t(`${filtered.length} நிகழ்வுகள் காட்டப்படுகின்றன`, `Showing ${filtered.length} events`)}
-              </p>
-
-              {filtered.length === 0 && (
-                <EmptyState
-                  icon={<LuCalendar />}
-                  title={t("நிகழ்வுகள் இல்லை", "No upcoming events")}
-                  action={
-                    filter !== "all" && (
-                      <Button variant="outline" size="sm" onClick={() => setFilter("all")}>
-                        {t("அனைத்து நிகழ்வுகளையும் காட்டு", "Show all events")}
-                      </Button>
-                    )
-                  }
-                >
-                  {t(
-                    "புதிய நிகழ்வுகள் அறிவிக்கப்படும் போது இங்கே காண்பிக்கப்படும்.",
-                    "New events will appear here as soon as they are announced.",
-                  )}
-                </EmptyState>
-              )}
-
-              {filtered.length > 0 && (
-                <ol className="events-timeline" role="list">
-                  {filtered.map((ev, i) => {
-                    const d = new Date(ev.event_date + "T00:00:00");
-                    const day = String(d.getDate()).padStart(2, "0");
-                    const month = d.toLocaleDateString("en-IN", {
-                      month: "short",
-                    });
-                    const year = d.getFullYear();
-                    const title = lang === "ta" ? ev.title_ta : ev.title_en;
-                    const desc =
-                      lang === "ta"
-                        ? (ev.description_ta ?? ev.description)
-                        : (ev.description_en ?? ev.description);
-                    const badgeMeta = BADGE_META[ev.badge] ?? BADGE_META.temple;
-                    return (
-                      <li
-                        key={ev.id}
-                        className="events-timeline__node rise"
-                        style={{ "--i": Math.min(i, 10) }}
-                        data-kind={ev.badge}
-                      >
-                        <article className="card card--static events-item">
-                          <time className="events-item__date" dateTime={ev.event_date}>
-                            <span className="events-item__day">{day}</span>
-                            <span className="events-item__month">{month}</span>
-                            <span className="events-item__year">{year}</span>
-                          </time>
-                          <div className="events-item__body">
-                            <div className="events-item__head">
-                              <h3 className="events-item__title">{title}</h3>
-                              <Badge tone={badgeMeta.tone}>{t(badgeMeta.ta, badgeMeta.en)}</Badge>
-                            </div>
-                            {desc && <p className="events-item__desc">{desc}</p>}
-                            {ev.time && (
-                              <p className="events-item__time">
-                                <LuClock aria-hidden="true" /> {ev.time}
-                              </p>
-                            )}
-                          </div>
-                        </article>
-                      </li>
-                    );
-                  })}
-                </ol>
-              )}
-            </>
-          )}
+  return <div className="events-page">
+    <Seo title={t("நிகழ்வுகள் & பூஜை அட்டவணை", "Events & Pooja Schedule")}
+      description={t("கமிட்டியால் அறிவிக்கப்பட்ட பூஜைகள், திருவிழாக்கள் மற்றும் நிகழ்வுகள்.", "Poojas, celebrations and activities announced by the temple committee.")} />
+    <PageHero variant="events" eyebrow={t("இறையருளுடன் இணைவோம்", "Gather in devotion")}
+      title={t("நிகழ்வுகள் & பூஜை அட்டவணை", "Events & Pooja Schedule")}
+      lead={t("கமிட்டியால் அறிவிக்கப்பட்ட பூஜைகள், திருவிழாக்கள் மற்றும் நிகழ்வுகள்.", "Poojas, celebrations and activities announced by the temple committee.")}
+      crumbs={[{ label: t("நிகழ்வுகள்", "Events") }]}
+      actions={<><Button to="/sevas" variant="gold" icon={<LuFlower2 aria-hidden="true" />}>{t("சேவை பதிவு", "Book a Seva")}</Button>
+        <Button to="/panchangam" variant="outline-light">{t("பஞ்சாங்கம் காண்க", "View Panchangam")}</Button></>}
+      aside={<div className="events-hero-note">
+        <LuFlower2 aria-hidden="true" /><p>{t("வழிபாடு · கொண்டாட்டம் · சமூகம்", "Worship · Celebration · Community")}</p>
+        <h2>{t("ஒன்றிணைந்து அம்மனை வழிபடுவோம்", "Sacred occasions. Shared blessings.")}</h2>
+        <span>{t("ஆலயத்தால் அறிவிக்கப்பட்ட நிகழ்வுகள் மட்டும்", "Temple-announced occasions, all in one place")}</span>
+      </div>} />
+    <section className="section"><div className="container events-content">
+      <nav className="events-navigation" aria-label={t("நிகழ்வுப் பிரிவுகள்", "Event sections")}>
+        {sections.map(({ id, Icon, title }) => <a key={id} href={`#${id}`}><Icon aria-hidden="true" />{title}</a>)}
+      </nav>
+      {error && <Alert tone="error">{t("அட்டவணையை ஏற்ற இயலவில்லை.", "The schedule could not be loaded.")}
+        <Button variant="outline" onClick={() => setRetry((n) => n + 1)}>{t("மீண்டும் முயற்சி", "Try again")}</Button></Alert>}
+      {!data && !error && <SkeletonCards count={3} />}
+      {data && sections.map(({ id, Icon, title, cards, empty }, index) => <section className="events-section" aria-labelledby={id} key={id}>
+        <div className="events-section__heading"><span className="events-section__icon"><Icon aria-hidden="true" /></span>
+          <SectionHeader id={id} align="left" eyebrow={`${String(index + 1).padStart(2, "0")} · ${t("ஆலயத் தகவல்கள்", "Temple updates")}`} title={title} />
         </div>
-      </section>
-    </>
-  );
+        {cards.length ? <HomepageWidgets widgets={cards} lang={lang} limit={100} showEventLinks={false} /> :
+          <div className="events-empty"><Icon aria-hidden="true" /><div>
+            <strong>{t("அறிவிப்புக்காகக் காத்திருங்கள்", "Watch this space")}</strong><p>{empty}</p>
+          </div><Button to="/contact" variant="outline" size="sm">{t("ஆலயத்தைத் தொடர்பு கொள்ள", "Contact the temple")}</Button></div>}
+      </section>)}
+    </div></section>
+  </div>;
 }

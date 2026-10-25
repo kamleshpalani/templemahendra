@@ -19,7 +19,7 @@ export default function LiveHomeSection({ now = null, next = null, serverOffset 
   const live = Boolean(now);
 
   return (
-    <section className="section home-section home-live reveal" aria-labelledby="home-live-title">
+    <section className="section reveal" aria-labelledby="home-live-title">
       <div className="container">
         <SectionHeader
           id="home-live-title"

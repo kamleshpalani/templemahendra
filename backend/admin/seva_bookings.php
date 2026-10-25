@@ -24,6 +24,8 @@ requireAdminAuth();
 require_once __DIR__ . '/../includes/db.php';
 require_once __DIR__ . '/../includes/devotee_notify.php';
 require_once __DIR__ . '/../includes/public_guard.php';
+require_once __DIR__ . '/../includes/booking_details.php';
+require_once __DIR__ . '/../includes/payments/admin.php';
 require_once __DIR__ . '/includes/admin_layout.php';
 
 $db = getDB();
@@ -150,6 +152,23 @@ $msg = adminCsrfGuard();
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && $msg === '') {
     $action = (string) ($_POST['action'] ?? '');
+    if ($action === 'dispatch') {
+        $id = (int)($_POST['id'] ?? 0);
+        $found = sbLoadBookings($db, [$id])[$id] ?? null;
+        $dispatch = is_string($_POST['dispatch_status'] ?? null) ? $_POST['dispatch_status'] : '';
+        $tracking = is_string($_POST['tracking_reference'] ?? null) ? trim($_POST['tracking_reference']) : '';
+        if (!$found || empty($found['delivery_address']) || !in_array($dispatch, ['pending','dispatched','delivered'], true) || mb_strlen($tracking) > 200) {
+            sbFlash('error', 'Choose a delivery booking, a valid dispatch status and a tracking reference up to 200 characters.');
+        } elseif (($found['payment_mode'] ?? '') === 'online' && !in_array($found['payment_status'], SB_PAID_STATUSES, true) && $dispatch !== 'pending') {
+            sbFlash('error', 'Confirm payment before dispatching Prasadam.');
+        } else {
+            $db->prepare('UPDATE seva_bookings SET dispatch_status=?,tracking_reference=? WHERE id=?')->execute([$dispatch,$tracking ?: null,$id]);
+            adminAudit('booking_dispatch', 'seva_booking:'.$id, $dispatch);
+            sbFlash('success', 'Prasadam delivery status saved.');
+        }
+        header('Location: '.sbBackUrl(), true, 303);
+        exit;
+    }
 
     if ($action === 'bulk_status') {
         $newStatus = (string) ($_POST['status'] ?? '');
@@ -295,6 +314,7 @@ if (($_GET['export'] ?? '') === 'csv') {
     // or script that reads this export by position keeps working.
     $head = ['id', 'devotee_name', 'phone', 'seva_id', 'seva_name', 'preferred_date', 'message', 'status', 'created_at'];
     if ($hasPayCols) array_push($head, 'payment_mode', 'amount', 'payment_status', 'order_number', 'receipt_number', 'paid_at');
+    if (bookingDetailsReady()) array_push($head, 'participants', 'delivery_address', 'delivery_fee', 'dispatch_status', 'tracking_reference');
     fputcsv($out, $head);
     while ($r = $stmt->fetch()) {
         $line = [$r['id'], $r['devotee_name'], $r['phone'], $r['seva_id'], $r['seva_name'], $r['preferred_date'], $r['message'], $r['status'], $r['created_at']];
@@ -302,7 +322,10 @@ if (($_GET['export'] ?? '') === 'csv') {
             array_push($line, (string) ($r['payment_mode'] ?? 'offline'), (string) ($r['amount'] ?? ''), (string) ($r['payment_status'] ?? ''),
                 (string) ($r['order_number'] ?? ''), (string) ($r['receipt_number'] ?? ''), (string) ($r['paid_at'] ?? ''));
         }
-        fputcsv($out, $line);
+        if (bookingDetailsReady()) {
+            array_push($line, $r['participants'], $r['delivery_address'], $r['delivery_fee'], $r['dispatch_status'], $r['tracking_reference']);
+        }
+        fputcsv($out, array_map('payCsvCell', $line), ',', '"', '');
     }
     fclose($out);
     exit;
@@ -470,6 +493,30 @@ echo adminKpi([
         <td><?= h($row['seva_name']) ?></td>
         <td class="cell-date"><?= adminFmtDate($row['preferred_date']) ?></td>
         <td>
+          <?php if (!empty($row['participants'])): ?>
+          <details><summary>Archana participants</summary>
+            <?php foreach (json_decode($row['participants'], true, 512, JSON_THROW_ON_ERROR) as $person): ?>
+              <p><?= h($person['name']) ?> · <?= h($person['rasi']) ?> · <?= h($person['nakshatram']) ?></p>
+            <?php endforeach; ?>
+          </details>
+          <?php endif; ?>
+          <?php if (!empty($row['delivery_address'])):
+            $address = json_decode($row['delivery_address'], true, 512, JSON_THROW_ON_ERROR); ?>
+          <details><summary>Prasadam: <?= h($row['dispatch_status']) ?></summary>
+            <address><?= h(implode(', ', array_values($address))) ?></address>
+            <p>Delivery fee: ₹<?= h($row['delivery_fee']) ?></p>
+            <form method="post" action="<?= SB_BASE ?>" class="stack">
+              <?= csrfField() ?><input type="hidden" name="action" value="dispatch"><input type="hidden" name="id" value="<?= $id ?>">
+              <label>Dispatch status <select name="dispatch_status" <?= !adminCan('devotees.edit') ? 'disabled' : '' ?>>
+                <?php foreach (['pending','dispatched','delivered'] as $dispatch): ?>
+                  <option value="<?= h($dispatch) ?>" <?= $row['dispatch_status'] === $dispatch ? 'selected' : '' ?>><?= h(ucfirst($dispatch)) ?></option>
+                <?php endforeach; ?>
+              </select></label>
+              <label>Carrier / tracking reference <input name="tracking_reference" maxlength="200" value="<?= h($row['tracking_reference'] ?? '') ?>" <?= !adminCan('devotees.edit') ? 'disabled' : '' ?>></label>
+              <?php if (adminCan('devotees.edit')): ?><button class="btn btn-outline btn--sm">Save delivery</button><?php endif; ?>
+            </form>
+          </details>
+          <?php endif; ?>
           <?php if (trim((string) $row['message']) !== ''): ?>
             <span class="cell-clip" title="<?= h($row['message']) ?>"><?= h($row['message']) ?></span>
           <?php else: ?>

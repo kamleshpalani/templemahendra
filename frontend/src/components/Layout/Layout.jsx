@@ -12,18 +12,16 @@ import {
   LuPhone,
   LuSearch,
   LuSparkles,
-  LuTv,
   LuUserPlus,
   LuX,
 } from "react-icons/lu";
 import Footer from "./Footer";
 import FloatingActions from "../FloatingActions/FloatingActions";
 import BottomNav from "../BottomNav/BottomNav";
-import Chatbot from "../Chatbot/Chatbot";
 import TemplePulseHeader from "../TemplePulseHeader/TemplePulseHeader";
 import { useLang } from "../../context/LangContext";
 import { TEMPLE, TEMPLE_PHONE } from "../../data/temple";
-import { getISTNow, getNextPooja, isTempleOpen } from "../../lib/templeTime";
+import { getISTNow, isTempleOpen } from "../../lib/templeTime";
 import "./Layout.css";
 
 // The palette is only needed once someone reaches for it.
@@ -34,12 +32,10 @@ export const NAV_LINKS = [
   { to: "/about", ta: "பற்றி", en: "About", Icon: LuLandmark },
   { to: "/sevas", ta: "சேவைகள்", en: "Sevas", Icon: LuFlame },
   { to: "/events", ta: "நிகழ்வுகள்", en: "Events", Icon: LuCalendarDays },
-  // `optional`: the header gives this entry up first when the row is short of
-  // width (Layout.css hides it between 1024 and 1059 px, where the eight Tamil
-  // labels clip); the drawer, the footer and the Home tile always carry it.
-  { to: "/live-darshan", ta: "நேரடி தரிசனம்", en: "Live Darshan", Icon: LuTv, optional: true },
   { to: "/panchangam", ta: "பஞ்சாங்கம்", en: "Panchangam", Icon: LuMoon },
   { to: "/donations", ta: "நன்கொடை", en: "Donate", Icon: LuHeartHandshake },
+  { to: "/trust-committee", ta: "அறக்கட்டளை & கமிட்டி", en: "Trust & Committee", Icon: LuLandmark },
+  { to: "/matrimony", ta: "திருமணத் தகவல்", en: "Matrimony", Icon: LuUserPlus },
   { to: "/contact", ta: "தொடர்பு", en: "Contact", Icon: LuMapPin },
 ];
 
@@ -115,7 +111,9 @@ export default function Layout() {
   }, [menuOpen, closeMenu]);
 
   // Accessible name starts with the visible brand text (WCAG 2.5.3 Label in Name)
-  const brandLabel = `${t(TEMPLE.brand.line1.ta, TEMPLE.brand.line1.en)} ${t(TEMPLE.brand.line2.ta, TEMPLE.brand.line2.en)} — ${t(TEMPLE.fullName.ta, TEMPLE.fullName.en)} — ${t("முகப்பு", "Home")}`;
+  const visibleBrand = `${t(TEMPLE.brand.line1.ta, TEMPLE.brand.line1.en)} ${t(TEMPLE.brand.line2.ta, TEMPLE.brand.line2.en)}`;
+  const fullBrand = t(TEMPLE.fullName.ta, TEMPLE.fullName.en);
+  const brandLabel = `${visibleBrand}${fullBrand === visibleBrand ? "" : ` — ${fullBrand}`} — ${t("முகப்பு", "Home")}`;
   const registerWord = t("குடும்பப் பதிவு", "Register family");
 
   return (
@@ -146,7 +144,8 @@ export default function Layout() {
                   to={link.to}
                   end={link.to === "/"}
                   className={({ isActive }) =>
-                    "navbar__link" + (link.optional ? " navbar__link--optional" : "") + (isActive ? " navbar__link--active" : "")
+                    "navbar__link" + (link.optional ? " navbar__link--optional" : "") +
+                    (isActive ? " navbar__link--active" : "")
                   }
                 >
                   {t(link.ta, link.en)}
@@ -160,20 +159,6 @@ export default function Layout() {
                 clipped on the right. The strip still carries that information,
                 and the timings link lives in the footer and in About. */}
             <div className="navbar__right">
-              {/* Calling the temple is the action people most often want, and it
-                  used to be a floating button that covered the page's left edge.
-                  Here it is in the sticky header, so it is reachable from every
-                  page at every scroll position. */}
-              <a
-                href={TEMPLE_PHONE.href}
-                className="navbar__icon-btn navbar__call"
-                aria-label={`${t("கோயிலை அழைக்கவும்", "Call the temple")} — ${TEMPLE_PHONE.display}`}
-                title={TEMPLE_PHONE.display}
-              >
-                <LuPhone aria-hidden="true" />
-                <span className="navbar__call-num">{TEMPLE_PHONE.display}</span>
-              </a>
-
               <button
                 type="button"
                 className="navbar__icon-btn navbar__search"
@@ -345,7 +330,6 @@ export default function Layout() {
 
       <Footer />
       <FloatingActions />
-      <Chatbot />
       <BottomNav />
     </>
   );
@@ -355,16 +339,11 @@ export default function Layout() {
 function DrawerStatus({ t }) {
   const now = getISTNow();
   const open = isTempleOpen(now);
-  const { pooja } = getNextPooja(now);
   return (
     <div className={`drawer__status${open ? " drawer__status--open" : ""}`}>
       <span className="drawer__status-dot" aria-hidden="true" />
       <div>
         <strong>{open ? t("கோயில் திறந்துள்ளது", "Temple is open") : t("கோயில் மூடியுள்ளது", "Temple is closed")}</strong>
-        <small>
-          {t("அடுத்த பூஜை", "Next pooja")}: {t(pooja.ta, pooja.en)} · {String(pooja.h).padStart(2, "0")}:
-          {String(pooja.m).padStart(2, "0")}
-        </small>
       </div>
     </div>
   );

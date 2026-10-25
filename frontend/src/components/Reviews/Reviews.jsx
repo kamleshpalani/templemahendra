@@ -112,7 +112,7 @@ export default function Reviews() {
   const total = Number(data.total_ratings);
 
   return (
-    <section className="section home-section reveal" aria-labelledby="home-reviews-title">
+    <section className="section reveal" aria-labelledby="home-reviews-title">
       <div className="container">
         <SectionHeader
           id="home-reviews-title"

@@ -128,7 +128,11 @@ try {
   let ready = false;
   for (let i = 0; i < 50; i++) {
     if (server.exitCode !== null) throw new Error(log);
-    try { ready = (await fetch(`${base}/api/calendar`)).ok; } catch { /* starting */ }
+    try {
+      const probe = await fetch(`${base}/api/calendar`);
+      ready = probe.ok;
+      await probe.arrayBuffer();
+    } catch { /* starting */ }
     if (ready) break;
     await delay(100);
   }

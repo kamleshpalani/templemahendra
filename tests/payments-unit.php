@@ -492,6 +492,7 @@ try {
         $price = payAmountFormat((string) $sevaRow['amount'], 'INR');
         $booking = static fn(array $over = []): array => array_merge([
             'seva_id' => $sevaId, 'devotee_name' => 'E2E-PAY-UNIT Devotee', 'phone' => '919876543210',
+            'participants' => [['name' => 'Devotee', 'rasi' => 'Mesham', 'nakshatram' => 'Ashwini']],
             'phoneCountry' => 'IN', 'acceptTerms' => true, 'lang' => 'ta',
         ], $over);
         $b = payValidateSevaBooking($booking(), $cfg);
@@ -648,6 +649,7 @@ try {
         $makeBooking = static function (string $label) use ($db, $cfg, $NAME, $sevaId): array {
             $checked = payValidateSevaBooking([
                 'seva_id' => $sevaId, 'devotee_name' => "{$NAME} {$label}", 'phone' => '919876543210',
+                'participants' => [['name' => 'Devotee', 'rasi' => 'Mesham', 'nakshatram' => 'Ashwini']],
                 'phoneCountry' => 'IN', 'acceptTerms' => true, 'lang' => 'en',
             ], $cfg);
             if ($checked['fields']) throw new RuntimeException('fixture booking refused: ' . json_encode($checked['fields']));

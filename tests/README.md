@@ -6,6 +6,9 @@ actually works, not that a mock agreed with itself.
 
 ## Prerequisites
 
+The free offline astronomical calendar also has a database-independent test:
+`php tests/panchangam-calculated.php`. See [calculation methods and limits](../docs/PANCHANGAM.md).
+
 ```bash
 # 1. MySQL with the schema + migrations
 docker run -d --name temple-mysql -e MYSQL_ROOT_PASSWORD=rootpass \
@@ -26,6 +29,31 @@ npm i playwright axe-core && npx playwright install chromium
 
 The admin suites sign in as `admin` / `Admin@Test123`; set `ADMIN_USERNAME`
 and `ADMIN_PASS_HASH` to match, or edit the credentials at the top of each file.
+
+## Website enhancement regression
+
+`node tests/website-enhancements.mjs` requires the frontend on localhost:5173,
+PHP on 127.0.0.1:8000 and a disposable MySQL schema migrated through 023.
+Export `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, `DB_PASS` for that same schema.
+Set `ADMIN_USERNAME` and `TEST_ADMIN_PASSWORD` to match the PHP server's
+`ADMIN_USERNAME` / `ADMIN_PASS_HASH`; suite defaults are the local-only
+`enhancement-qa` / `Enhancement@Test123`. `TEST_API` and `TEST_WEB` override URLs.
+Playwright and axe-core are resolved from the existing frontend dependencies.
+
+All seva bookings require participant names, Rasi and Nakshatram, for both office
+requests and online payments. Run `php tests/booking-details.php` to check these
+shared validation rules for every service kind.
+
+This suite verifies prices, multi-person Archana/delivery persistence, family
+dates/astrology, Matrimony privacy/key management/moderation, admin-verified
+Panchangam, dispatch, CSVs and public forms. It checks mobile/tablet/desktop
+layout, Chromium accessibility and WebKit iPhone viewports. If WebKit is not
+installed it reports an explicit skip. Neither emulation nor local gateway
+mocks constitute physical Android/iOS or real settlement testing.
+
+`node tests/payments-api.mjs` also exercises Archana with Prasadam through the
+local CCAvenue mock, asserting server-authoritative service/delivery totals,
+participant storage, successful payment and private receipt breakdown.
 
 ## Live recordings archive (Phase 8)
 
@@ -247,3 +275,9 @@ cd frontend && npm run audit
 
 Reports undefined CSS custom properties, class names with no rule, opaque raw
 colours outside `tokens.css`, and inline styles that are not dynamic values.
+# Family member Gothram
+
+After applying migration 029, run `php tests/registration-gothram.php` with the
+local test MySQL environment configured. Checks cover optional/Tamil values,
+length and type validation, public persistence, admin edits and clearing.
+Only its own fixtures are created and cleaned; use an authorized test database.

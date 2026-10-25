@@ -220,7 +220,7 @@ echo adminPageIntro(
         $id    = (int) $row['id'];
         $tel   = preg_replace('/[^\d+]/', '', (string) $row['phone']) ?? '';
         $wa    = messagesWaNumber((string) $row['phone']);
-        $greet = 'வணக்கம் ' . $row['name'] . ', உங்கள் செய்திக்கு நன்றி. This is Dhabbalavaar Renuka Devi Temple replying to your enquiry on our website — how can we help?';
+        $greet = 'வணக்கம் ' . $row['name'] . ', உங்கள் செய்திக்கு நன்றி. This is ' . templeIdentity()['name_en'] . ' replying to your enquiry on our website — how can we help?';
         $menu  = [];
         if ($tel !== '') $menu[] = ['label' => 'Call', 'href' => 'tel:' . $tel, 'icon' => 'phone'];
         if ($wa !== '')  $menu[] = ['label' => 'WhatsApp', 'href' => 'https://wa.me/' . $wa . '?text=' . rawurlencode($greet), 'icon' => 'external'];

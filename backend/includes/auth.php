@@ -57,7 +57,9 @@ if (file_exists($_envFile)) {
     foreach (file($_envFile, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES) as $_line) {
         if (str_starts_with(trim($_line), '#') || !str_contains($_line, '=')) continue;
         [$_k, $_v] = explode('=', $_line, 2);
-        putenv(trim($_k) . '=' . trim($_v));
+        $_k = trim($_k);
+        if ($_k === '' || getenv($_k) !== false) continue;
+        putenv($_k . '=' . trim($_v));
     }
 }
 unset($_envFile, $_line, $_k, $_v);
@@ -79,6 +81,8 @@ function adminPageCapability(string $file): string
         'sevas.php'            => 'content.edit',
         'events.php'           => 'content.edit',
         'calendar_entries.php' => 'content.edit',
+        'panchangam.php'       => 'content.edit',
+        'matrimony.php'        => 'devotees.edit',
         'sponsors.php'         => 'finance.edit',
         'bulk_upload.php'      => 'import',
         'settings.php'         => 'settings.edit',

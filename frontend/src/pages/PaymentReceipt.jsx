@@ -6,10 +6,11 @@ import Button from "../components/ui/Button";
 import { SkeletonText } from "../components/ui/Feedback";
 import ReceiptDocument from "../components/Payments/ReceiptDocument";
 import EmailReceiptForm from "../components/Payments/EmailReceiptForm";
+import PaymentShare from "../components/Payments/PaymentShare";
 import SimulatorBanner from "../components/Payments/SimulatorBanner";
 import { useLang } from "../context/LangContext";
 import { PRIMARY_CONTACT, formatPhone, telHref } from "../data/temple";
-import { getJson } from "../lib/payments";
+import { getJson, receiptPath } from "../lib/payments";
 import "../components/Payments/Payments.css";
 import "./PaymentReceipt.css";
 
@@ -153,6 +154,8 @@ export default function PaymentReceipt() {
           </div>
 
           <ReceiptDocument data={data} />
+          <PaymentShare path={receiptPath(data.number, token)} receipt reference={data.receiptNumber}
+            testMode={data.simulator || data.testMode} />
 
           <div className="pay-receipt-page__email">
             <EmailReceiptForm number={data.number} token={token} email={data.email} />

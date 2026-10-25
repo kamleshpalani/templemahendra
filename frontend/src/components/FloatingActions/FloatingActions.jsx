@@ -1,13 +1,12 @@
 import { FaWhatsapp } from "react-icons/fa";
 import { useLang } from "../../context/LangContext";
-import { TEMPLE, PRIMARY_CONTACT } from "../../data/temple";
+import { TEMPLE, TEMPLE_PHONE } from "../../data/temple";
 import "./FloatingActions.css";
 
-// President's number (first on the committee's printed list).
 // WhatsApp's wa.me wants country code + digits, no "+".
 // The call button that used to sit here now lives in the sticky header, where it
 // is visible without covering the page.
-const WHATSAPP_NUMBER = `91${PRIMARY_CONTACT.phone}`;
+const WHATSAPP_NUMBER = `91${TEMPLE_PHONE.digits}`;
 const WHATSAPP_MSG = encodeURIComponent(
   `வணக்கம் 🙏 ${TEMPLE.name.ta} பற்றி மேலும் அறிய விரும்புகிறேன்.\nNamaskar 🙏 I would like to know more about ${TEMPLE.name.en}.`,
 );

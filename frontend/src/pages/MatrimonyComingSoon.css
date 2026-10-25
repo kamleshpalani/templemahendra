@@ -1,0 +1,50 @@
+.page-hero--matrimony { border-bottom: 1px solid var(--gold-300); }
+.page-hero--matrimony .page-hero__title { color: var(--gold-200); }
+.matrimony-soon { padding: clamp(1.5rem, 4vw, 3rem) 0; background: radial-gradient(ellipse at top, var(--gold-100), transparent 70%), var(--bg-root); }
+.matrimony-soon__card {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.2fr);
+  gap: clamp(1.5rem, 4vw, 4rem);
+  align-items: center;
+  padding: clamp(1.25rem, 4vw, 3.5rem);
+  border: 1px solid var(--gold-500);
+  border-radius: var(--radius-xl);
+  background: radial-gradient(ellipse at 15% 30%, color-mix(in srgb, var(--gold-500) 16%, transparent), transparent 55%), linear-gradient(135deg, var(--maroon-800), var(--maroon-900));
+  color: var(--text-on-dark);
+  box-shadow: var(--shadow-lg);
+  isolation: isolate;
+}
+.matrimony-soon__card::before { content: ""; position: absolute; inset: 8px; border: 1px solid color-mix(in srgb, var(--gold-300) 30%, transparent); border-radius: inherit; pointer-events: none; z-index: -1; }
+.matrimony-soon__ceremony { padding: var(--space-4); }
+.matrimony-soon__arch { position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: var(--space-6); min-height: 330px; padding: var(--space-6); border: 1px solid var(--gold-300); border-radius: 50% 50% 12px 12px / 35% 35% 12px 12px; color: var(--gold-200); background: radial-gradient(ellipse at center, color-mix(in srgb, var(--gold-300) 10%, transparent), transparent 70%); box-shadow: inset 0 0 32px color-mix(in srgb, var(--gold-500) 8%, transparent); }
+.matrimony-soon__arch::before { content: ""; position: absolute; inset: 9px; border: 1px solid color-mix(in srgb, var(--gold-300) 30%, transparent); border-radius: inherit; pointer-events: none; }
+.matrimony-soon__flower { width: 30px; height: 30px; }
+.matrimony-soon__rings { position: relative; width: 150px; height: 86px; }
+.matrimony-soon__rings span { position: absolute; top: 0; width: 86px; height: 86px; border: 5px double var(--gold-200); border-radius: 50%; box-shadow: 0 0 20px color-mix(in srgb, var(--gold-500) 20%, transparent), inset 0 0 12px color-mix(in srgb, var(--gold-500) 15%, transparent); }
+.matrimony-soon__rings span:first-child { left: 0; }
+.matrimony-soon__rings span:last-child { right: 0; }
+.matrimony-soon__heart { width: 28px; height: 28px; }
+.matrimony-soon__flourish { display: flex; gap: var(--space-3); align-items: center; width: 80%; }
+.matrimony-soon__flourish span { height: 1px; flex: 1; background: var(--gold-300); }
+.matrimony-soon__flourish svg { width: 18px; height: 18px; flex-shrink: 0; }
+.matrimony-soon__message { min-width: 0; }
+.matrimony-soon__badge { display: inline-flex; gap: var(--space-2); align-items: center; padding: var(--space-2) var(--space-4); border: 1px solid var(--gold-300); border-radius: var(--radius-pill); color: var(--gold-200); font-size: var(--text-sm); background: color-mix(in srgb, var(--gold-300) 10%, transparent); }
+.matrimony-soon__badge svg { width: 16px; height: 16px; }
+.matrimony-soon__eyebrow { margin-top: var(--space-5); color: var(--gold-300); font-size: var(--text-xs); letter-spacing: 0.06em; line-height: 1.8; }
+.matrimony-soon__message h2 { font-size: clamp(1.65rem, 3vw, 2.65rem); color: var(--gold-200); line-height: 1.45; margin-block: var(--space-3); text-wrap: balance; }
+.matrimony-soon__description { max-width: 48ch; line-height: 1.9; font-size: var(--text-sm); }
+.matrimony-soon__actions { display: flex; flex-wrap: wrap; gap: var(--space-3); margin-top: var(--space-5); }
+.matrimony-soon__note { display: flex; align-items: center; gap: var(--space-2); margin-top: var(--space-5); padding-top: var(--space-4); border-top: 1px solid color-mix(in srgb, var(--gold-300) 30%, transparent); font-size: var(--text-xs); line-height: 1.8; color: var(--gold-200); }
+.matrimony-soon__note svg { flex-shrink: 0; width: 18px; height: 18px; }
+@media (max-width: 820px) {
+  .matrimony-soon__card { grid-template-columns: 1fr; gap: var(--space-4); }
+  .matrimony-soon__ceremony { width: min(100%, 300px); justify-self: center; padding: var(--space-2); }
+  .matrimony-soon__arch { min-height: 230px; gap: var(--space-3); }
+  .matrimony-soon__message { text-align: center; }
+  .matrimony-soon__description { margin-inline: auto; }
+  .matrimony-soon__actions, .matrimony-soon__note { justify-content: center; }
+}
+@media (max-width: 480px) {
+  .matrimony-soon__actions .btn { width: 100%; white-space: normal; }
+}

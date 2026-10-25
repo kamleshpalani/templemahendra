@@ -19,15 +19,8 @@ const TYPE_META = {
 };
 const STRIPE_TONE = { default: "maroon", gold: "gold", sage: "sage", moon: "moon" };
 
-function daysUntil(dateStr) {
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const target = new Date(dateStr + "T00:00:00");
-  return Math.max(0, Math.round((target - today) / 86400000));
-}
-
 // ── Individual card ───────────────────────────────────────────────────────────
-function WidgetCard({ widget, pournami, lang, index }) {
+function WidgetCard({ widget, pournami, lang, index, showEventLinks }) {
   const { t } = useLang();
   const meta = TYPE_META[widget.content_type] ?? TYPE_META.announcement;
   const { Icon } = meta;
@@ -36,26 +29,14 @@ function WidgetCard({ widget, pournami, lang, index }) {
   const isUpcomingPooja =
     widget.content_type === "upcoming_pooja" ||
     widget.content_type === "coming_soon";
-  const isEventLike = isUpcomingEvent || isUpcomingPooja;
+  const isEventLike = isUpcomingEvent || isUpcomingPooja || isCalPooja;
   const isFeatured = index === 0; // first card always gets featured treatment
-  // calendar_pooja cards show the CMS pooja's own date/time; panchangam data
-  // (tamil month, tithi) enriches the card only when it is for the same day.
-  const calDate = isCalPooja ? (widget.pooja?.date ?? pournami?.date ?? null) : null;
-  const richP =
-    isCalPooja && calDate
-      ? {
-          ...(pournami && pournami.date === calDate ? pournami : {}),
-          date: calDate,
-          daysLeft: daysUntil(calDate),
-          timing: widget.pooja?.time ?? null,
-        }
-      : null;
 
   const title = t(widget.title_ta, widget.title_en) || t(meta.ta, meta.en);
   const desc = t(widget.description_ta, widget.description_en);
 
   // Resolve the display date: upcoming_event uses event_date; upcoming_pooja/coming_soon uses pooja.date
-  const rawDate = widget.event_date ?? widget.pooja?.date ?? null;
+  const rawDate = widget.event_date ?? widget.pooja?.date ?? pournami?.date ?? null;
   const displayDateStr =
     isEventLike && rawDate
       ? new Date(rawDate + "T00:00:00").toLocaleDateString(
@@ -64,7 +45,7 @@ function WidgetCard({ widget, pournami, lang, index }) {
         )
       : null;
 
-  const ctaVariant = isFeatured ? "outline-light" : "outline";
+  const ctaVariant = isFeatured || isCalPooja ? "outline-light" : "outline";
 
   return (
     <article
@@ -110,52 +91,18 @@ function WidgetCard({ widget, pournami, lang, index }) {
             </p>
           )}
           {desc && <p className="hw-card__desc">{desc}</p>}
+          {widget.pooja?.time && <p className="hw-card__date"><LuClock aria-hidden="true" />{widget.pooja.time} IST</p>}
           <div className="hw-card__cta">
-            {isUpcomingPooja ? (
+            {isUpcomingPooja || isCalPooja ? (
               <Button to="/sevas" variant={ctaVariant} size="sm">
                 {t("சேவைகள் →", "View Sevas →")}
               </Button>
-            ) : (
+            ) : showEventLinks ? (
               <Button to="/events" variant={ctaVariant} size="sm">
                 {t("அனைத்து நிகழ்வுகள் →", "All Events →")}
               </Button>
-            )}
+            ) : null}
           </div>
-        </div>
-      ) : richP ? (
-        /* Calendar Pooja: rich panchangam display */
-        <div className="hw-pournami">
-          <h3 className="hw-card__title">{title}</h3>
-          <p className="hw-pournami__date">
-            {new Date(richP.date + "T00:00:00").toLocaleDateString(
-              lang === "ta" ? "ta-IN" : "en-IN",
-              {
-                weekday: "long",
-                day: "numeric",
-                month: "long",
-                year: "numeric",
-              },
-            )}
-          </p>
-          {richP.tamil_month && (
-            <p className="hw-pournami__meta">
-              {t(richP.tamil_month.ta, richP.tamil_month.en)}
-              {richP.tithi_ta && <> – {t(richP.tithi_ta, richP.tithi_en)}</>}
-            </p>
-          )}
-          <Badge tone={richP.daysLeft === 0 ? "gold" : "moon"} className="hw-pournami__badge">
-            {richP.daysLeft === 0
-              ? t("இன்று!", "Today!")
-              : richP.daysLeft === 1
-                ? t("நாளை", "Tomorrow")
-                : t(`${richP.daysLeft} நாட்களில்`, `In ${richP.daysLeft} days`)}
-          </Badge>
-          {richP.timing && (
-            <p className="hw-pournami__timing">
-              <LuClock aria-hidden="true" />
-              {t("நேரம்", "Timings")}: {richP.timing}
-            </p>
-          )}
         </div>
       ) : (
         /* Standard title for all other types */
@@ -223,6 +170,8 @@ export default function HomepageWidgets({
   pournami,
   pournamis,
   lang,
+  limit = 4,
+  showEventLinks = true,
 }) {
   if (loading) return <SkeletonCards count={4} />;
 
@@ -249,7 +198,7 @@ export default function HomepageWidgets({
       _pournami: p, // carry the panchangam data
     }));
 
-  const allWidgets = [...dbWidgets, ...synthCards].slice(0, 4);
+  const allWidgets = [...dbWidgets, ...synthCards].slice(0, limit);
   if (allWidgets.length === 0) return null;
 
   return (
@@ -272,6 +221,7 @@ export default function HomepageWidgets({
             pournami={cardPournami}
             lang={lang}
             index={idx}
+            showEventLinks={showEventLinks}
           />
         );
       })}

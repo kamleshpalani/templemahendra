@@ -42,7 +42,7 @@ function ogIdentity(): array
 {
     return [
         'name_ta' => 'அருள்மிகு ஸ்ரீ லிங்கம்மாள், ஸ்ரீ ரேணுகாதேவி, ஸ்ரீ சின்னம்மாள் திருக்கோவில்',
-        'name_en' => 'Dhabbalavaar Renuka Devi Lingamma Sinnammal Temple',
+        'name_en' => templeIdentity()['name_en'],
         'alt_ta'  => 'மலர் அலங்காரத்தில் மூன்று தெய்வங்கள் — ஸ்ரீ லிங்கம்மாள், ஸ்ரீ ரேணுகாதேவி, ஸ்ரீ சின்னம்மாள்',
         'alt_en'  => 'The three deities in floral alankaram — Sri Lingammal, Sri Renukadevi, Sri Chinnammal',
     ];

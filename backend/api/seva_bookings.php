@@ -5,6 +5,7 @@ require_once __DIR__ . '/../includes/db.php';
 require_once __DIR__ . '/../includes/helpers.php';
 require_once __DIR__ . '/../includes/devotee_notify.php';
 require_once __DIR__ . '/../includes/public_guard.php';
+require_once __DIR__ . '/../includes/booking_details.php';
 
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     sendError('Method not allowed', 405);
@@ -42,17 +43,28 @@ if ($seva_name === '') {
 // Validate and normalise preferred_date
 $dateValue = null;
 if (!empty($preferred_date)) {
-    $d = DateTime::createFromFormat('Y-m-d', $preferred_date);
+    $zone = new DateTimeZone('Asia/Kolkata');
+    $d = DateTime::createFromFormat('!Y-m-d', $preferred_date, $zone);
     if ($d && $d->format('Y-m-d') === $preferred_date) {
         // Must not be in the past
-        if ($d >= new DateTime('today')) {
+        if ($d >= new DateTime('today', $zone)) {
             $dateValue = $preferred_date;
         }
     }
+    if ($dateValue === null) sendJson(['error'=>'Choose today or a future date.', 'fields'=>['preferred_date'=>'Choose today or a future date.']], 422);
 }
 
 // A valid booking reaches the office and costs a message to the devotee, so
 // saved bookings have their own, tighter limit.
+if (!bookingDetailsReady()) sendError('Booking updates are not installed. Please contact the temple office.', 503);
+$db = getDB();
+$serviceQuery = $db->prepare('SELECT * FROM sevas WHERE id=? AND is_active=1');
+$serviceQuery->execute([$seva_id]);
+$service = $serviceQuery->fetch();
+if (!$service) sendError('Choose an available seva.', 422);
+$details = bookingValidateDetails($body, $service);
+if ($details['fields']) sendJson(['error'=>'Please correct the booking details.', 'fields'=>$details['fields']], 422);
+$seva_name = $lang === 'ta' ? $service['name_ta'] : $service['name_en'];
 publicGuardLimit('seva-booking-saved');
 
 // ── Insert ────────────────────────────────────────────────────────────────────
@@ -77,8 +89,19 @@ $stmt = $db->prepare(
     'INSERT INTO seva_bookings (' . implode(', ', $columns) . ')'
     . ' VALUES (' . implode(', ', array_keys($params)) . ')'
 );
-$stmt->execute($params);
-$bookingId = (int) $db->lastInsertId();
+$db->beginTransaction();
+try {
+    $stmt->execute($params);
+    $bookingId = (int) $db->lastInsertId();
+    bookingStoreDetails($db, $bookingId, $details['values']);
+    $db->prepare('UPDATE seva_bookings SET amount=? WHERE id=?')->execute([
+        (float)$service['amount'] > 0 ? number_format((float)$service['amount'] + (float)$details['values']['delivery_fee'], 2, '.', '') : null, $bookingId,
+    ]);
+    $db->commit();
+} catch (Throwable $e) {
+    if ($db->inTransaction()) $db->rollBack();
+    throw $e;
+}
 
 // ── Acknowledge it ───────────────────────────────────────────────────────────
 // booking.received, to the phone number the devotee gave, in the language the
@@ -112,4 +135,5 @@ try {
     error_log('[notify] booking.received for booking ' . $bookingId . ' failed: ' . $e->getMessage());
 }
 
-sendJson(['success' => true, 'id' => $bookingId], 201);
+sendJson(['success' => true, 'id' => $bookingId, 'booking_number' => devoteeBookingNumber($bookingId),
+    'payment_status' => 'UNPAID', 'status' => 'pending'], 201);

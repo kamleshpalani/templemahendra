@@ -44,18 +44,19 @@
  * characters on the full name, and the village is how devotees tell this temple
  * from every other Renukadevi temple.
  */
+require_once __DIR__ . '/../temple_identity.php';
+
 function notifyTempleFacts(): array
 {
     static $facts = null;
     if ($facts !== null) return $facts;
 
-    // ADDRESS.mapsQuery, encoded as encodeURIComponent does (letters, digits, commas and spaces only).
-    $mapsQuery = 'Dhabbalavaar Renuka Devi Lingamma Sinnammal Temple, Middle Street, Pudupatti, Thiruvengadam Taluk, Tenkasi District, Tamil Nadu 627719';
+    $identity = templeIdentity();
 
     return $facts = [
         'name' => [
             'ta' => 'அருள்மிகு ஸ்ரீ லிங்கம்மாள், ஸ்ரீ ரேணுகாதேவி, ஸ்ரீ சின்னம்மாள் திருக்கோவில்',
-            'en' => 'Dhabbalavaar Renuka Devi Lingamma Sinnammal Temple',
+            'en' => $identity['name_en'],
         ],
         'shortName' => [
             'ta' => 'புதுப்பட்டி திருக்கோவில்',
@@ -63,13 +64,13 @@ function notifyTempleFacts(): array
         ],
         'descriptor' => [
             'ta' => 'தப்பலவார் குலதெய்வம்',
-            'en' => 'Dhabbalavaar Kula Deivam',
+            'en' => $identity['descriptor_en'],
         ],
         'address' => [
             'ta' => 'நடு தெரு, புதுப்பட்டி, திருவேங்கடம் தாலுகா, தென்காசி மாவட்டம், தமிழ்நாடு - 627719',
             'en' => 'Middle Street, Pudupatti, Thiruvengadam Taluk, Tenkasi District, Tamil Nadu – 627719',
         ],
-        'mapsUrl' => 'https://maps.google.com/maps?q=' . rawurlencode($mapsQuery),
+        'mapsUrl' => $identity['maps_url'],
         // COMMITTEE.members[0] (President) is PRIMARY_CONTACT, the number every
         // "Call" button on the site dials; members[2] (Secretary) is SECONDARY_CONTACT.
         'phones' => [

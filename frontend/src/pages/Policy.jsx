@@ -103,7 +103,9 @@ export default function Policy({ slug }) {
 
   const toc = [
     ...policy.sections.map(({ id, nav }) => ({ id, nav })),
-    { id: "contact", nav: { ta: "தொடர்புக்கு", en: "Contact us" } },
+    ...(slug === "refunds" ? [] : [
+      { id: "contact", nav: { ta: "தொடர்புக்கு", en: "Contact us" } },
+    ]),
   ];
   const others = POLICY_ORDER.filter((key) => key !== slug);
 
@@ -172,7 +174,8 @@ export default function Policy({ slug }) {
             </Fragment>
           ))}
 
-          {/* ── Contact (same card on every policy) ───────────────── */}
+          {slug !== "refunds" && (
+            <>
           <h2 id="contact">{t("தொடர்புக்கு", "Contact us")}</h2>
           <p>{t(policy.contactIntro.ta, policy.contactIntro.en)}</p>
           <address className="card card--solid card--static policy-contact">
@@ -207,6 +210,8 @@ export default function Policy({ slug }) {
               </li>
             </ul>
           </address>
+            </>
+          )}
 
           {/* ── The other three policies ──────────────────────────── */}
           <nav className="policy-related" aria-labelledby="policy-related-title">

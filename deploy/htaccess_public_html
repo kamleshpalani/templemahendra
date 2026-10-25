@@ -9,6 +9,13 @@ Options -Indexes
   RewriteEngine On
   RewriteBase /
 
+  # Keep committee pages on their own host without changing local development.
+  RewriteCond %{HTTP_HOST} ^(?:www\.)?dhabbalavarkovil\.com(?::[0-9]+)?$ [NC]
+  RewriteRule ^admin(?:/(.*))?$ https://admin.dhabbalavarkovil.com/admin/$1 [R=302,L]
+
+  RewriteCond %{HTTP_HOST} ^admin\.dhabbalavarkovil\.com(?::[0-9]+)?$ [NC]
+  RewriteRule ^$ https://admin.dhabbalavarkovil.com/admin/ [R=302,L]
+
   # Pass /api/* and /admin/* straight through to PHP
   RewriteRule ^(api|admin|uploads)(/.*)?$ - [L]
 
