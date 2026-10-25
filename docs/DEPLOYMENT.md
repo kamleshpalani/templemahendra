@@ -56,6 +56,11 @@ below remain unchanged; do not cut over production to the Node foundation.
   The English display name is **Dhabbalavar Renugadevi Lingammal Chinnammal Temple**,
   including both lines of the header/footer brand. Preserve the printed Tamil
   name and registered Dharma Trust name; they are separate from display branding.
+- The static share preview uses `icons/temple-share-20261025.png` with the
+  corrected temple name. Publish that file before updating the preview tags.
+  Keep the static HTML and PHP/React fallback image paths in sync. A new image
+  URL avoids reuse of the former branded image, but WhatsApp may retain an
+  existing link preview; test a newly shared URL with a fresh query parameter.
 - Homepage display settings retain Pournami cards and consented donor
   acknowledgements. The old Nalla Neram strip switch is retired; daily timings
   now belong on Panchangam. Countdown widgets and duplicated homepage planner

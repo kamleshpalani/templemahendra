@@ -45,7 +45,7 @@ import { TEMPLE_HOURS } from "../lib/templeTime";
  * which ships with the build and is therefore always there.
  */
 export const SHARE_IMAGE_FALLBACK = TEMPLE.photoSrc;
-export const SHARE_IMAGE_LAST_RESORT = "/icons/icon-512x512.png";
+export const SHARE_IMAGE_LAST_RESORT = "/icons/temple-share-20261025.png";
 
 /* ── Structured data ─────────────────────────────────────────────────────── */
 

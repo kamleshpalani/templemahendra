@@ -2,6 +2,30 @@
 	"version": "2.0.0",
 	"tasks": [
 		{
+			"label": "Hostinger: fix WhatsApp share logo",
+			"type": "process",
+			"command": "powershell.exe",
+			"args": [
+				"-NoProfile",
+				"-File",
+				"C:\\Users\\palan\\.copilot\\session-state\\35a32bf4-a945-422e-8fed-59525462891e\\files\\deploy-share-branding.ps1"
+			],
+			"problemMatcher": [],
+			"presentation": { "reveal": "always", "panel": "dedicated" }
+		},
+		{
+			"label": "Hostinger: merged release schema check",
+			"type": "process",
+			"command": "powershell.exe",
+			"args": [
+				"-NoProfile",
+				"-File",
+				"C:\\Users\\palan\\.copilot\\session-state\\35a32bf4-a945-422e-8fed-59525462891e\\files\\hostinger-merged-preflight.ps1"
+			],
+			"problemMatcher": [],
+			"presentation": { "reveal": "always", "panel": "dedicated" }
+		},
+		{
 			"label": "Hostinger: fix release permissions",
 			"type": "process",
 			"command": "powershell.exe",

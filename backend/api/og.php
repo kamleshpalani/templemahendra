@@ -329,7 +329,7 @@ function ogImage(?string $preferred): array
     if ($safe !== null && str_starts_with(strtolower($safe), 'https://')) {
         return ['url' => $safe, 'width' => null, 'height' => null];
     }
-    $candidates = array_filter([$safe, '/images/deities-alankaram.jpg', '/icons/icon-512x512.png']);
+    $candidates = array_filter([$safe, '/images/deities-alankaram.jpg', '/icons/temple-share-20261025.png']);
     foreach ($candidates as $path) {
         $file = ogPublicFile($path);
         if ($file === null) continue;
@@ -342,7 +342,7 @@ function ogImage(?string $preferred): array
     }
     // Nothing on disk. Still name the icon: it ships with every build, and the
     // file may simply be unreadable from this process.
-    return ['url' => siteUrl('/icons/icon-512x512.png'), 'width' => null, 'height' => null];
+    return ['url' => siteUrl('/icons/temple-share-20261025.png'), 'width' => null, 'height' => null];
 }
 
 /* ── Resolve what this path is about ─────────────────────────────────────── */
