@@ -122,6 +122,8 @@ try {
     await delay(100);
   }
   check(ready, "PHP server started");
+  const publicSettings = await (await fetch(`${base}/api/settings`)).json();
+  check(!Object.hasOwn(publicSettings.data ?? publicSettings, "show_nalla_strip"), "public settings omit the retired Nalla Neram switch");
 
   /* ── schema ─────────────────────────────────────────────────────────── */
   const tbl = sql("SELECT ENGINE, TABLE_COLLATION FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'admin_activity'").rows[0];
@@ -225,7 +227,7 @@ try {
   // settings: flip one switch and restore it, both audited with the changed key
   const settingsBefore = sql("SELECT key_name, val FROM homepage_settings").rows;
   const cur = Object.fromEntries(settingsBefore.map((s) => [s.key_name, s.val]));
-  const keys = ["show_pournami_section", "show_nalla_strip", "show_donor_ticker"];
+  const keys = ["show_pournami_section", "show_donor_ticker"];
   csrf = await csrfFor("/admin/settings.php");
   const flipped = Object.fromEntries(keys.filter((k) => k !== "show_donor_ticker" ? cur[k] === "1" : cur[k] !== "1").map((k) => [k, "on"]));
   r = await owner.post("/admin/settings.php", { _csrf: csrf, ...flipped });

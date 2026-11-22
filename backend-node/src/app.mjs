@@ -104,7 +104,7 @@ export function createApp({ db, migrations, frontendDir, logger = console }) {
       return withNumericIds(rows);
     },
     "/settings": async () => {
-      const { rows } = await db.query("SELECT key_name, val FROM temple_node_staging.homepage_settings");
+      const { rows } = await db.query("SELECT key_name, val FROM temple_node_staging.homepage_settings WHERE key_name IN ('show_pournami_section', 'show_donor_ticker')");
       return Object.fromEntries(rows.map(({ key_name, val }) => [key_name, Boolean(Number.parseInt(val, 10))]));
     },
   };
