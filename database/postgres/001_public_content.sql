@@ -49,6 +49,7 @@ CREATE TABLE temple_node_staging.homepage_settings (
 );
 INSERT INTO temple_node_staging.homepage_settings (key_name, val, label) VALUES
   ('show_pournami_section', '1', 'Show Pournami Poojai section on homepage'),
+  ('show_nalla_strip', '1', 'Show Nalla Neram strip on homepage'),
   ('show_donor_ticker', '1', 'Show donor scroll ticker');
 
 -- No browser/PostgREST access. The Node server connects with its own DB role.
