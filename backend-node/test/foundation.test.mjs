@@ -182,7 +182,9 @@ test("gallery and settings keep existing output shapes without runtime DDL", asy
   await db.query("INSERT INTO temple_node_staging.gallery (filename, caption, created_at) VALUES ('fixture.jpg', 'Fixture', '2026-01-01 10:00:00')");
   await db.query("INSERT INTO temple_node_staging.gallery (filename, is_active) VALUES ('hidden.jpg', 0)");
   assert.deepEqual((await get("/api/gallery")).body, [{ id: 1, filename: "fixture.jpg", caption: "Fixture", created_at: "2026-01-01 10:00:00" }]);
-  assert.deepEqual((await get("/api/settings")).body, { show_pournami_section: true, show_nalla_strip: true, show_donor_ticker: true });
+  assert.deepEqual((await get("/api/settings")).body, { show_pournami_section: true, show_donor_ticker: true });
+  await db.query("INSERT INTO temple_node_staging.homepage_settings (key_name, val) VALUES ('show_nalla_strip', '0')");
+  assert.deepEqual((await get("/api/settings")).body, { show_pournami_section: true, show_donor_ticker: true });
   await db.query("UPDATE temple_node_staging.homepage_settings SET val = '0' WHERE key_name = 'show_donor_ticker'");
   assert.equal((await get("/api/settings")).body.show_donor_ticker, false);
 });

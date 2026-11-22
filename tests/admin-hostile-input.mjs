@@ -167,9 +167,9 @@ const CASES = [
   ["live_streams.php",     { action: XSS, id: "0" }],
 ];
 
-// The settings probe posts only one switch, which would leave the other two off
+// The settings probe posts only one switch, which would leave the other off
 // for every visitor: remember how the homepage switches stood and put them back.
-const SWITCHES = ["show_pournami_section", "show_nalla_strip", "show_donor_ticker"];
+const SWITCHES = ["show_pournami_section", "show_donor_ticker"];
 const settingsBefore = await (await get("/admin/settings.php")).text();
 const switchesOn = SWITCHES.filter((k) => new RegExp(`name="${k}"[^>]*\\bchecked`).test(settingsBefore));
 

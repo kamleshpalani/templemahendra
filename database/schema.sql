@@ -196,5 +196,4 @@ CREATE TABLE IF NOT EXISTS `homepage_settings` (
 
 INSERT IGNORE INTO `homepage_settings` (`key_name`, `val`, `label`) VALUES
 ('show_pournami_section', '1', 'Show Pournami Poojai section on homepage'),
-('show_nalla_strip',      '1', 'Show Nalla Neram strip on homepage'),
 ('show_donor_ticker',     '1', 'Show donor scroll ticker');

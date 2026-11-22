@@ -20,10 +20,10 @@ if ($_SERVER['REQUEST_METHOD'] !== 'GET') {
     sendError('Method not allowed', 405);
 }
 
-$out = ['show_pournami_section' => true, 'show_nalla_strip' => true, 'show_donor_ticker' => true];
+$out = ['show_pournami_section' => true, 'show_donor_ticker' => true];
 try {
     foreach (getDB()->query('SELECT key_name, val FROM homepage_settings')->fetchAll(PDO::FETCH_KEY_PAIR) as $k => $v) {
-        $out[$k] = (bool) (int) $v;
+        if (array_key_exists($k, $out)) $out[$k] = (bool) (int) $v;
     }
 } catch (Throwable $e) {
     // homepage_settings comes with schema.sql; without it the defaults above stand

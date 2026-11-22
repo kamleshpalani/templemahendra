@@ -29,7 +29,6 @@ function shape(data) {
     languages,
     homepage: {
       show_pournami_section: data?.show_pournami_section !== false,
-      show_nalla_strip: data?.show_nalla_strip !== false,
       show_donor_ticker: data?.show_donor_ticker !== false,
     },
     loaded: true,
